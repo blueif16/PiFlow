@@ -48,8 +48,9 @@ these; if you adapt the spawn, keep them:
 ## Watchdog (why the heartbeat exists)
 Because a headless model can stall with no output, the driver treats **silence as the signal**:
 it tracks "time since last event," raises a **stall flag at >45s**, and hard-kills a node past
-`--node-timeout` (default 600s, SIGTERM then SIGKILL). With `--debug` this is on your console
-every 4s; in production it still refreshes `run-status.json`. Never run a bring-up without it.
+`--node-timeout` (`$PI_RUNNER_NODE_TIMEOUT` or 1800s default, SIGTERM then SIGKILL). With `--debug`
+this is on your console every 4s; in production it still refreshes `run-status.json`. Never run a
+bring-up without it.
 
 ## Picking a model
 Start cheap and non-reasoning (`PI_CP_REASONING=0`) to shake out mechanics fast; flip reasoning

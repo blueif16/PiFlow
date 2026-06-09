@@ -29,8 +29,12 @@
 //   --until <phase>    truncate after the first stage whose phase TITLE or node LABEL contains
 //                      this substring (case-insensitive). Default = $PI_RUNNER_UNTIL or "all".
 //   --provider/--model/--extension(-e)/--status as below (model defaults to $PI_CP_MODEL).
-//   --debug            real-time heartbeats + stall detection (ALWAYS use while developing).
-//   --node-timeout N   hard-kill a node after N seconds (default 600).
+//   --debug            DEBUG mode: real-time heartbeats + stall detection AND the heavy forensic
+//                      archive (full raw <node>.events.jsonl + <node>.debug.log). Production (no
+//                      --debug) skips both — can be 100s of MB/node — keeping only the digest's
+//                      distilled aggregates (timing, tool breakdown, thinking, tokens). ALWAYS use
+//                      while developing; re-run one node with --debug to recover its raw archive.
+//   --node-timeout N   hard-kill a node after N seconds (default $PI_RUNNER_NODE_TIMEOUT or 1800).
 //   --dry-run          extract + build prompts + print the exact pi commands; invoke no model.
 
 import { spawn } from "node:child_process";
@@ -62,6 +66,9 @@ loadDefaults();
 //                    Default = ROOT.
 // PI_RUNNER_WORKFLOW path to the workflow .js. Relative paths resolve vs ROOT.
 // PI_RUNNER_UNTIL    optional default for --until (e.g. an early phase during bring-up).
+// PI_RUNNER_NODE_TIMEOUT  optional default node hard-kill seconds (--node-timeout overrides).
+//                    Set generously: heavy nodes (long TTS / build / render steps) run long on a
+//                    cheap coding-plan model. Default 1800 (30 min); 600 was too tight.
 const resolveFrom = (root, p, fb) => (!p ? fb : path.isAbsolute(p) ? p : path.join(root, p));
 const ROOT = process.env.PI_RUNNER_ROOT ? path.resolve(process.env.PI_RUNNER_ROOT) : path.resolve(HERE, "..");
 const RUN_CWD = resolveFrom(ROOT, process.env.PI_RUNNER_CWD, ROOT);
@@ -102,7 +109,8 @@ const extension = path.resolve(args.extension || path.join(HERE, "providers/codi
 const DEBUG = args.debug === true;
 const HEARTBEAT_MS = DEBUG ? 4000 : 10000;
 const STALL_WARN_S = 45;
-const NODE_TIMEOUT_S = args.nodeTimeout || 600;
+const NODE_TIMEOUT_S =
+  args.nodeTimeout || Number(process.env.PI_RUNNER_NODE_TIMEOUT) || 1800;
 
 const outRel = `out/${args.run}`;
 const promptDir = path.join(RUN_CWD, outRel, "_pi");
@@ -145,6 +153,8 @@ function selectStages(stages, until) {
   return stages.slice(0, idx + 1);
 }
 
+const RUN_T0 = Date.now();
+let stageT0 = 0;
 const status = {
   run: args.run,
   lessonId: args.wfArgs.lessonId || null,
@@ -156,12 +166,18 @@ const status = {
   debug: DEBUG,
   startedAt: nowISO(),
   updatedAt: nowISO(),
+  elapsedMs: 0,        // live wall-clock since start — answers "is a run going, and for how long?"
   done: false,
   ok: null,
+  durationMs: null,    // final wall-clock at completion
+  stage: null,         // { index, total, phase, nodes, startedAt, elapsedMs } while a stage runs
+  totals: null,        // { nodes, toolCalls, tokensBillable } at completion
   nodes: {},
 };
 function writeStatus() {
   status.updatedAt = nowISO();
+  status.elapsedMs = Date.now() - RUN_T0;
+  if (status.stage) status.stage.elapsedMs = Date.now() - stageT0;
   ensureDir(path.dirname(statusPath));
   fs.writeFileSync(statusPath, JSON.stringify(status, null, 2));
 }
@@ -214,10 +230,19 @@ async function runNode(node) {
   return await new Promise((resolve) => {
     let assistantText = "", stderr = "", toolCalls = 0, eventCount = 0;
     let lastEventAt = Date.now(), lastWrite = 0, finished = false;
-    const evStream = fs.createWriteStream(eventsFile);
+    // Distilled per-node telemetry — computed live from the stream, lands in the digest in BOTH
+    // modes (cheap). These are the SIGNAL that the raw archive below buries in bulk.
+    const toolBreakdown = {};                                       // toolName -> count
+    let thinkingChars = 0, thinkingDeltas = 0, thinkFirstAt = 0, thinkLastAt = 0;
+    const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, billable: 0, contextPeak: 0, cost: 0 };
+    // SINGLE FLIP (--debug) gates the heavy FORENSIC artifacts: the full raw event stream AND the
+    // timeline debug.log. The raw stream is cumulative — pi re-embeds the whole accumulated message
+    // on every delta, so a single node can reach 100s of MB. Production writes neither (the digest's
+    // aggregates above are its telemetry); re-run one node with --debug to get the archive back.
+    const evStream = DEBUG ? fs.createWriteStream(eventsFile) : null;
     const dbgStream = DEBUG ? fs.createWriteStream(debugLog) : null;
     const dbg = (m) => { if (dbgStream) dbgStream.write(`[+${((Date.now() - t0) / 1000).toFixed(1)}s] ${m}\n`); };
-    n.live = { eventCount: 0, toolCalls: 0, lastEvent: "(starting pi)", sinceEventMs: 0, elapsedMs: 0, currentTool: null, textChars: 0, stalled: false };
+    n.live = { eventCount: 0, toolCalls: 0, lastEvent: "(starting pi)", sinceEventMs: 0, elapsedMs: 0, currentTool: null, textChars: 0, thinkingChars: 0, stalled: false };
     dbg(`spawn: pi ${argv.join(" ")}`);
 
     // stdin MUST be closed — a headless CLI with an open stdin pipe (no TTY) blocks forever
@@ -226,7 +251,7 @@ async function runNode(node) {
 
     const refresh = (force) => {
       Object.assign(n.live, {
-        eventCount, toolCalls, textChars: assistantText.length,
+        eventCount, toolCalls, textChars: assistantText.length, thinkingChars,
         sinceEventMs: Date.now() - lastEventAt, elapsedMs: Date.now() - t0,
         stalled: Date.now() - lastEventAt > STALL_WARN_S * 1000,
       });
@@ -236,7 +261,7 @@ async function runNode(node) {
 
     const rl = createInterface({ input: child.stdout });
     rl.on("line", (line) => {
-      evStream.write(line + "\n");
+      if (evStream) evStream.write(line + "\n");
       eventCount++;
       lastEventAt = Date.now();
       let ev;
@@ -245,8 +270,27 @@ async function runNode(node) {
       if (t) n.live.lastEvent = t;
       const ame = ev.assistantMessageEvent || ev.event || null;
       if (ev.type === "message_update" && ame && ame.type === "text_delta" && typeof ame.delta === "string") assistantText += ame.delta;
+      else if (ev.type === "message_update" && ame && ame.type === "thinking_delta" && typeof ame.delta === "string") { thinkingChars += ame.delta.length; thinkingDeltas++; thinkLastAt = lastEventAt; if (!thinkFirstAt) thinkFirstAt = lastEventAt; }
       else if (typeof ev.delta === "string" && t.includes("text")) assistantText += ev.delta;
-      if (t.startsWith("tool_execution_start")) { toolCalls++; n.live.currentTool = ev.tool || ev.name || (ev.toolCall && ev.toolCall.name) || "tool"; dbg(`tool▶ ${n.live.currentTool}`); }
+      // Per-call usage is final on message_end. input/output are PER CALL → summing them is the true
+      // billable total (input re-sends context each turn, which is what you pay). totalTokens is a
+      // CUMULATIVE context counter, not per-call → take its MAX (peak context footprint), never sum.
+      // cost stays 0 for providers that don't price tokens.
+      if (t === "message_end" && ev.message && ev.message.usage) {
+        const u = ev.message.usage;
+        tokens.input += u.input || 0; tokens.output += u.output || 0;
+        tokens.cacheRead += u.cacheRead || 0; tokens.cacheWrite += u.cacheWrite || 0;
+        tokens.billable = tokens.input + tokens.output;
+        tokens.contextPeak = Math.max(tokens.contextPeak, u.totalTokens || 0);
+        tokens.cost += (u.cost && u.cost.total) || 0;
+      }
+      if (t.startsWith("tool_execution_start")) {
+        toolCalls++;
+        const tn = ev.toolName || ev.tool || ev.name || (ev.toolCall && ev.toolCall.name) || "tool";
+        toolBreakdown[tn] = (toolBreakdown[tn] || 0) + 1;
+        n.live.currentTool = tn;
+        dbg(`tool▶ ${tn}`);
+      }
       else if (t.startsWith("tool_execution_end")) { dbg(`tool✓ ${n.live.currentTool || ""}`); n.live.currentTool = null; }
       else if (dbgStream && t) dbg(`ev ${t}`);
       refresh(false);
@@ -258,8 +302,13 @@ async function runNode(node) {
       if (finished) return;
       refresh(true);
       if (DEBUG) {
+        // Console shows only ACTIONABLE signal: how long, what it's doing now, work/cost so far,
+        // and liveness (Δ since last event + stall). Raw event count + event-type strings stay in
+        // the polled `live` block, not the console — they are noise to a human watching.
         const el = (n.live.elapsedMs / 1000).toFixed(0), dl = (n.live.sinceEventMs / 1000).toFixed(0);
-        console.log(`    · ${node.id} t=${el}s ev=${eventCount} tools=${toolCalls} cur=${n.live.currentTool || "-"} last=${n.live.lastEvent} Δ=${dl}s${n.live.stalled ? "  ⚠ STALLED" : ""}`);
+        const think = thinkingChars > 999 ? `${(thinkingChars / 1000).toFixed(1)}k` : `${thinkingChars}`;
+        const tok = tokens.billable > 999 ? `${(tokens.billable / 1000).toFixed(1)}k` : `${tokens.billable}`;
+        console.log(`    · ${node.id}  t=${el}s  cur=${n.live.currentTool || "-"}  think=${think} tok=${tok}  Δ=${dl}s${n.live.stalled ? "  ⚠ STALLED" : ""}`);
       }
       if (n.live.elapsedMs > NODE_TIMEOUT_S * 1000) {
         console.error(`    ✕ ${node.id} exceeded --node-timeout ${NODE_TIMEOUT_S}s — killing pi`);
@@ -272,21 +321,27 @@ async function runNode(node) {
     child.on("close", (code) => {
       finished = true;
       clearInterval(hb);
-      evStream.end();
+      if (evStream) evStream.end();
       if (dbgStream) dbgStream.end();
-      n.eventsFile = path.relative(RUN_CWD, eventsFile);
-      if (DEBUG) n.debugLog = path.relative(RUN_CWD, debugLog);
+      if (DEBUG) { n.eventsFile = path.relative(RUN_CWD, eventsFile); n.debugLog = path.relative(RUN_CWD, debugLog); }
       const parsed = lastJsonBlock(assistantText);
       n.artifacts = ((parsed && parsed.outputArtifacts) || []).map(artifactState);
-      const allArtifacts = n.artifacts.length > 0 && n.artifacts.every((a) => a.exists);
+      // Suspect ONLY when the node DECLARED artifacts that are missing. A node that declares
+      // none (a check/preflight/gate node legitimately writes nothing) is judged by its
+      // self-reported status — forcing "blocked" on every zero-artifact node wrongly fails
+      // legitimate gates (e.g. a mid-chain-resume preflight that only verifies upstream files).
+      const declaredMissing = n.artifacts.length > 0 && !n.artifacts.every((a) => a.exists);
       let st;
       if (n.killedTimeout || code !== 0) st = "error";
       else if (parsed && parsed.status && parsed.status !== "ok") st = parsed.status; // gap/blocked self-report honored
-      else if (!allArtifacts) st = "blocked"; // ok claimed but a reported file is missing (measure, don't trust)
+      else if (declaredMissing) st = "blocked"; // ok claimed but a REPORTED file is missing (measure, don't trust)
       else st = "ok";
       n.status = st;
       n.exitCode = code;
       n.toolCalls = toolCalls;
+      n.toolBreakdown = toolBreakdown;
+      n.thinking = { deltas: thinkingDeltas, chars: thinkingChars, spanMs: thinkFirstAt ? thinkLastAt - thinkFirstAt : 0 };
+      n.tokens = tokens;
       n.eventCount = eventCount;
       n.summary = n.killedTimeout ? `killed: exceeded ${NODE_TIMEOUT_S}s node timeout` : (parsed && parsed.summary) || assistantText.trim().slice(-240) || "";
       n.issues = (parsed && parsed.issues) || [];
@@ -298,7 +353,9 @@ async function runNode(node) {
       delete n.live;
       writeStatus();
       const mark = st === "ok" ? "✓" : st === "error" || st === "blocked" ? "✕" : "•";
-      console.log(`    ${mark} ${node.label} → ${st} (${(n.durationMs / 1000).toFixed(1)}s, ev=${eventCount}, tools=${toolCalls}) — ${(n.summary || "").split("\n")[0].slice(0, 100)}`);
+      const tokK = tokens.billable > 999 ? `${(tokens.billable / 1000).toFixed(1)}k` : `${tokens.billable}`;
+      const thinkK = thinkingChars > 999 ? `${(thinkingChars / 1000).toFixed(1)}k` : `${thinkingChars}`;
+      console.log(`    ${mark} ${node.label} → ${st}  (${(n.durationMs / 1000).toFixed(1)}s · tools=${toolCalls} · think=${thinkK} · tok=${tokK}) — ${(n.summary || "").split("\n")[0].slice(0, 100)}`);
       resolve(n);
     });
   });
@@ -328,18 +385,34 @@ async function runNode(node) {
 
   for (let i = 0; i < stages.length; i++) {
     const s = stages[i];
+    stageT0 = Date.now();
+    status.stage = { index: i + 1, total: stages.length, phase: s.phase, nodes: s.nodes.map((x) => x.id), startedAt: nowISO(), elapsedMs: 0 };
     console.log(`[stage ${i + 1}/${stages.length}] [${s.phase}] ${s.nodes.map((x) => x.id).join(" ∥ ")}`);
     const results = await Promise.all(s.nodes.map((node) => runNode(node)));
+    console.log(`  └ stage ${i + 1}/${stages.length} done in ${((Date.now() - stageT0) / 1000).toFixed(1)}s  ·  run elapsed ${((Date.now() - RUN_T0) / 1000).toFixed(1)}s`);
     const bad = results.find((r) => r.status === "error" || r.status === "blocked");
     if (bad && !args.dryRun) {
-      status.done = true; status.ok = false; writeStatus();
-      console.error(`\n✕ halted at ${bad.id} (${bad.status}). See ${statusPath}\n`);
+      status.stage = null;
+      status.done = true; status.ok = false; status.durationMs = Date.now() - RUN_T0; writeStatus();
+      console.error(`\n✕ halted at ${bad.id} (${bad.status}) after ${((Date.now() - RUN_T0) / 1000).toFixed(1)}s. See ${statusPath}\n`);
       process.exit(1);
     }
   }
 
+  status.stage = null;
   status.done = true;
   status.ok = args.dryRun ? null : true;
+  status.durationMs = Date.now() - RUN_T0;
+  // Run-level rollup — cost/effort at a glance. Wall-clock total ≠ Σ(node durations): parallel
+  // lanes overlap, so durationMs is true elapsed while tokens/tools sum the work done.
+  const nodeVals = Object.values(status.nodes);
+  status.totals = {
+    nodes: nodeVals.length,
+    toolCalls: nodeVals.reduce((a, x) => a + (x.toolCalls || 0), 0),
+    tokensBillable: nodeVals.reduce((a, x) => a + ((x.tokens && x.tokens.billable) || 0), 0),
+  };
   writeStatus();
-  console.log(`\n${args.dryRun ? "DRY-RUN complete" : "✓ complete"} — ${stages.flatMap((s) => s.nodes).length} nodes. status: ${statusPath}\n`);
+  const totS = (status.durationMs / 1000).toFixed(1), totMin = (status.durationMs / 60000).toFixed(1);
+  const totTokK = status.totals.tokensBillable > 999 ? `${(status.totals.tokensBillable / 1000).toFixed(1)}k` : `${status.totals.tokensBillable}`;
+  console.log(`\n${args.dryRun ? "DRY-RUN complete" : "✓ complete"} — ${status.totals.nodes} nodes in ${totS}s (${totMin}m) · ${status.totals.toolCalls} tools · ${totTokK} tok · status: ${statusPath}\n`);
 })();
