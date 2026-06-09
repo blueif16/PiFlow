@@ -18,14 +18,41 @@ It reads:
 Any OpenAI-compatible coding-plan endpoint works (OpenRouter, DeepSeek, Zhipu/GLM, Moonshot/Kimi,
 Alibaba DashScope, a local vLLM, …). Confirm the current base URL with your provider.
 
-## Credentials live in `.env`, set once
-`pi-runner/.env` (gitignored) holds the key + model defaults. `run.mjs` loads it as **defaults**:
-a real `process.env` value always wins, so you can override per-invocation, but normal runs need
-nothing on the command line. Swap providers by editing `.env` — never code, never prompts. Ship
-`.env.example` with placeholders; ship `.gitignore` with `.env`. **Never commit the real key.**
+## Credential lives in pi's OWN global config — set once per machine, every product inherits it
+The key and model do **not** live in pi-runner at all. They live in pi's native global config,
+`~/.pi/agent/models.json`, which pi resolves for **every** project. So a coding-plan provider is set
+up ONCE per machine and every repo's driver just runs `pi --provider cp` — no per-product `.env`, no
+provider extension, no env var, ever again.
 
-The driver fails loudly before a live `cp` run if `CODING_PLAN_API_KEY`, `PI_CP_BASE_URL`, or a
-model is missing (use `--dry-run` to work without them).
+`models.json` registers any OpenAI-compatible endpoint as a first-class pi provider (resolution order
+explicitly includes "custom provider keys from `models.json`"). One-time setup:
+
+```bash
+cp templates/models.json.example ~/.pi/agent/models.json   # then edit: apiKey + baseUrl + model ids
+chmod 600 ~/.pi/agent/models.json
+pi --list-models cp                                          # verify: lists your models
+```
+
+Minimal shape (provider name MUST be `cp` — that's what the driver passes as `--provider`; first
+model = default):
+
+```json
+{ "providers": { "cp": {
+  "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+  "api": "openai-completions",
+  "apiKey": "sk-...",
+  "models": [ { "id": "qwen3.7-max", "contextWindow": 131072, "maxTokens": 8192 } ]
+} } }
+```
+
+`apiKey` accepts a literal, an env ref (`$MY_KEY`), or a command (`!op read ...`). Swap providers by
+editing this one file — never code, never prompts. The driver passes `--model` only if a repo pins
+`PI_CP_MODEL`; otherwise pi uses the provider's first model. `--no-extensions` does NOT disable
+`models.json` (it's core config, not an extension), so the headless invariants below still hold.
+
+The repo `pi-runner/.env` is now **wiring-only** (`PI_RUNNER_*`); it carries no secret. Before a live
+`cp` run the driver only *warns* if `~/.pi/agent/models.json` is absent — pi itself errors loudly on
+a real auth miss. Full schema + compat flags: pi's bundled `docs/models.md`.
 
 ## Headless pi invariants — learned from a real ~10-minute silent hang
 A headless coding CLI has sharp edges that don't show up interactively. The driver sets all of

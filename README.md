@@ -52,11 +52,13 @@ model", "pi-runner", or "offload the workflow to cheaper agents".
 
 1. **Confirm the source of truth** — exactly one `.claude/workflows/<name>.js`, `export const meta`
    pure literal, body uses only Workflow hooks. You edit and prove it on Claude; pi inherits it.
-2. **Drop in the harness verbatim** — copy `templates/pi-runner/` next to `.claude/`. Edit none of
-   the engine files (`run.mjs`, `extract.mjs`, `providers/coding-plan.ts`).
-3. **Configure `.env`** (the only per-repo surface) — `cp templates/pi-runner/.env.example
-   pi-runner/.env`, then set wiring (`PI_RUNNER_WORKFLOW`, `PI_RUNNER_CWD`) and model/credential
-   (`CODING_PLAN_API_KEY`, `PI_CP_BASE_URL`, `PI_CP_MODEL`) for any OpenAI-compatible endpoint.
+2. **Set the credential ONCE in pi's own global config** — `cp templates/models.json.example
+   ~/.pi/agent/models.json`, edit `apiKey`/`baseUrl`/model ids, `chmod 600`, verify `pi --list-models cp`.
+   pi resolves it natively for EVERY project; no product needs its own key. Skip if already set up.
+3. **Drop in the harness verbatim** — copy `templates/pi-runner/` next to `.claude/`. Edit none of
+   the engine files (`run.mjs`, `extract.mjs`). Then `cp templates/pi-runner/.env.example
+   pi-runner/.env` and set the **wiring only** (`PI_RUNNER_WORKFLOW`, `PI_RUNNER_CWD`) — no secret.
+   A fresh repo needs no credential of its own.
 4. **Sanity-check the DAG (free)** — `node pi-runner/extract.mjs` prints the realized stages, no
    model invoked.
 5. **Dry-run (free), then live (background, `--debug`)**:
@@ -71,8 +73,8 @@ model", "pi-runner", or "offload the workflow to cheaper agents".
 
 - **Single source of truth = the workflow `.js`.** Improve a wave by editing its prompt/skill and
   re-proving on Claude; pi runs the new prompts automatically.
-- **The engine files never diverge.** `run.mjs` / `extract.mjs` / `coding-plan.ts` stay
-  byte-identical across every repo and this template; 100% of per-repo specifics live in `.env`.
+- **The engine files never diverge.** `run.mjs` / `extract.mjs` stay byte-identical across every
+  repo and this template; per-repo wiring lives in `.env`, the credential in pi's global `models.json`.
 - **Extraction, not codegen.** `extract.mjs` runs the workflow under recording stubs and captures
   the exact prompts + grouping.
 - **Driver owns the graph; pi owns the node.** Plain code decides stage order + parallel lanes +
@@ -103,17 +105,17 @@ Claude Code — so future iterations have the context, not just the mechanics. F
 The exact headless command (from `run.mjs` `piArgs()`):
 ```
 pi -p --mode json -a --no-session --offline --no-extensions \
-   --provider <name> --model <id> -e <provider-extension.ts> @<prompt-file>
+   --provider cp @<prompt-file>          # creds/model from pi's global ~/.pi/agent/models.json
 ```
 - **`-p`** print / non-interactive · **`--mode json`** line-delimited JSON event stream · **`-a`**
   auto-approve tool use · **`--no-session`** ephemeral · **`--offline`** suppress pi's *own* startup
   network ops (the model API call still works) · **`--no-extensions`** disable auto-loaded
   extensions — *but an explicit `-e` still loads*.
 - **Prompt as a file (`@<path>`)** — robust for multi-KB prompts (our wave prompts are ~4.4–7.9 KB).
-- **Custom providers via `-e <extension.ts>`**: pi has **no static provider config file**; you
-  register one in an extension calling `pi.registerProvider(name, { baseUrl, apiKey,
-  api: "openai-completions", models })`. Fully env-driven (`PI_CP_*`), so a key/model swap never
-  touches code. `pi --list-models` works even when the provider isn't fully configured.
+- **Custom provider via pi's native `~/.pi/agent/models.json`** (set once per machine): a
+  `{ providers: { cp: { baseUrl, api: "openai-completions", apiKey, models } } }` block. pi resolves
+  it for every project, so `--provider cp` needs no `-e`, no env, no per-repo key. Swap providers by
+  editing that one file; `pi --list-models cp` verifies.
 - **JSON events we parse:** `message_update` → `assistantMessageEvent.type === "text_delta"`
   (delta text we accumulate into the node's final message); `tool_execution_start` /
   `tool_execution_end` (carry the tool name → tool count + live "current tool"). Every line is a

@@ -25,8 +25,13 @@ asked "is it still running?".
    Run it with the Bash tool's `run_in_background: true` (or `&`), capture the process, and poll.
 4. **Poll the verified status — not the model's word:**
    ```bash
-   cat <RUN_CWD>/out/<id>/run-status.json   # or jq '.nodes | map_values(.status)'
+   node pi-runner/status.mjs --run <id>     # ergonomic dashboard: per-node status/dur/cost + rollup
+   node pi-runner/watch.mjs  --run <id>     # background sentinel: wakes ONLY on done/error/driver-gone/dead-stall
+   cat <RUN_CWD>/out/<id>/run-status.json   # the raw truth — or jq '.nodes | map_values(.status)'
    ```
+   Prefer `watch.mjs` for a backgrounded run: it stays silent (no context spam) and exits with one
+   summary line on the first event that needs you — and it will NOT trip on the transient ~60–90s
+   `cp` stream pause (only a real >10-min dead stall, the stale driver, or a node error).
    `run-status.json` carries per-node `status`, `durationMs`, `toolCalls`, `toolBreakdown`
    (`{read,bash,write,…}`), `thinking` (`{deltas,chars,spanMs}`), `tokens` (`{input, output,
    billable, contextPeak, cost}`), `eventCount`, `summary`, `issues`, a `live` heartbeat while
