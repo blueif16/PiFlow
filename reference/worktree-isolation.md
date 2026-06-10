@@ -32,6 +32,37 @@ giving each run its own full checkout.
    removes the worktree (the branch persists for a human-gated merge). On failure (or
    `--keep-worktree`) the worktree is KEPT for inspection.
 
+## When do you need this? (decision guide)
+
+`--worktree` is **opt-in, and most workflows should NOT use it.** Decide with two questions:
+
+1. **Do you run a concurrent FLEET over ONE working tree?** — N runs at the same time in the same
+   checkout, *not* N serialized `--run <id>` runs that each write their own `out/<id>/`. Only a true
+   concurrent fleet can cross-contaminate a shared tree.
+2. **Do those runs contend on a SHARED MUTABLE file?** — e.g. a hand-edited registration list
+   (Remotion's `Root.tsx` `<Composition>` array). Disjoint per-run writes need no isolation.
+
+**Adopt `--worktree` only if BOTH are yes** — then physical isolation earns its merge-back cost
+(pair it with auto-discovered registration, below).
+
+**Skip it (the default) when** each run is a single pass to its own gitignored `out/<id>/` (or an
+isolated `projectDir`) with no shared mutable file. You already have the isolation that matters:
+per-run dirs are separate by construction, and the **Output Contract** (`artifact-contract.md`)
+makes silent path-drift a LOUD `blocked` — the *other* half of what isolation buys, without a second
+checkout. **First adopter test — game-omni** (one prompt→game pass per `out/<id>`) evaluated this and
+**chose NOT to use `--worktree`**: the Output Contract + gitignored per-run dir already gave the
+robustness, at zero added code/config.
+
+**GOTCHA if you DO adopt it with a `projectDir`-style workflow.** The remap rewrites only
+`BASE_ROOT`-absolute paths *in the prompt text* (`setupWorktree` + the line-~423 rewrite) — never the
+cheap model's *runtime self-reports*. So a workflow that uses a RELATIVE `projectDir`, or whose model
+self-reports project-relative paths, hits false `blocked`: the two driver resolvers disagree
+(`artifactState` tries RUN_CWD then ROOT; `artifactStateAbs` does a bare `statSync`), and
+`declaredMissing` can override a *satisfied* `DRIVER-ARTIFACTS` contract. Minimal generalizing fix
+(do this BEFORE relying on `--worktree` for such a workflow): unify the resolvers (`artifactStateAbs`
+forgiving like `artifactState`) and make a satisfied contract suppress the `declaredMissing`
+self-report override — i.e. apply "verified, not trusted" correctly.
+
 ## Why it needs auto-discovered registration
 
 Worktree isolation's one cost is **merge-back**: N branches that each hand-appended to a shared file
@@ -54,8 +85,13 @@ when two lessons both add a primitive.
 
 ## Verification status
 
-The git mechanics (create / symlink / teardown), the `--worktree` arg plumbing, the dry-run
-skip, and the prompt-rewrite (BASE_ROOT→worktree retargets the contract markers; kit paths
-untouched) are all verified. The full end-to-end (a real isolated pi render producing an MP4) must be
-validated on a machine with a Remotion-compatible Node — it is the "validation = a real clean-room
-run" rule, and it is the natural next step the first time the fleet runs with `--worktree`.
+The git mechanics (create / symlink / teardown), the `--worktree` arg plumbing, the dry-run skip,
+and the prompt-rewrite (BASE_ROOT→worktree retargets the contract markers; kit paths untouched) are
+verified. **First end-to-end exercise — game-omni, 2026-06-09** — which is what the "mechanics
+verified" status had been hiding: it surfaced and FIXED two real bugs on first contact — a **TDZ
+startup crash** (`setupWorktree` referenced `ensureDir`/`git` before init; `--worktree` had literally
+never run end-to-end — commit `0ce8303`) and **node_modules symlinked only for root+cwd**
+(multi-package repos got none — commit `dcae3a0`). It also surfaced the `projectDir` self-report gaps
+documented in the decision guide above. game-omni then concluded it did not need the worktree, so
+those gaps remain OPEN for the next workflow that genuinely needs `--worktree` with a
+relative/`projectDir` layout — fix them first (per the guide) and validate with a real clean-room run.
