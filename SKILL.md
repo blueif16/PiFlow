@@ -80,7 +80,9 @@ transforms an existing workflow; it does not author the pipeline logic.
    ```
    Pass the workflow's `args` with `--arg k=v` (repeatable) and `--arg-file k=path` (reads file
    text, e.g. `--arg-file brief=./brief.md`). `--until` brings a long pipeline up one block at a
-   time so a bare run can't hit a later toolchain wall.
+   time so a bare run can't hit a later toolchain wall; its mirror `--from <phase>` (and the
+   `--only <phase>` shorthand) RESUMES from a node on its frozen upstream artifacts —
+   preflight-gated — so a one-node fix retests in one node, not a full replay.
 
 7. **Monitor as the console.** Poll `out/<id>/run-status.json` (verified status — `ok` requires
    artifacts on disk), or use the two generic monitors shipped in the kit:

@@ -151,7 +151,8 @@ pi -p --mode json -a --no-session --offline --no-extensions \
 - **Context window** is per provider model (default 131072 in our extension) — wave prompts fit
   easily; large repo context must be managed by the node prompt, not assumed.
 - **No native cross-session job registry** (codex-companion has one). We have per-run
-  `out/<id>/run-status.json` + `_pi/<node>.{events.jsonl,debug.log}`, but no resume/cancel yet.
+  `out/<id>/run-status.json` + `_pi/<node>.{events.jsonl,debug.log}`, and `--from`/`--only`
+  node-range **resume** (skip+reuse a frozen prefix, preflight-gated), but no auto-cancel yet.
 - **Dynamic (data-dependent) fan-out isn't captured by extraction** — `extract.mjs` records the
   happy-path expansion; result-driven `parallel()` / loop-until-dry records only the stubbed
   iteration. Use static fan-out for pi targets (see `reference/architecture.md` "Dynamic workflows").
@@ -201,7 +202,9 @@ the external driver.
   label/agentType → a model id (cheapest for mechanical waves, stronger for pedagogy/compose).
 - **Dynamic fan-out in extraction** — shape the `GENERIC` stub or a two-pass driver that reads a
   prior phase's on-disk output to compute the item list, so result-driven pipelines run faithfully.
-- **DAG resume** — skip nodes whose artifacts already exist on disk (mirror Workflow journal resume).
+- **DAG resume** — the MANUAL half shipped: `--from`/`--only` skip a frozen prefix and reuse its
+  artifacts (preflight-gated). Remaining: make the skip AUTOMATIC — content-hash each node's declared
+  inputs+prompt and reuse on match (mirror the Workflow journal's "longest unchanged prefix").
 
 ## Security
 

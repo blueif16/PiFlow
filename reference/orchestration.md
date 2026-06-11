@@ -66,11 +66,23 @@ only; the digest's distilled aggregates (timing, tool breakdown, thinking, token
   (`PI_RUNNER_REPEAT_KILL`, default 400 consecutive identical deltas — the signature of a model stuck
   emitting one token; legit nodes never exceed ~2). Kills early instead of burning to the timeout.
 
-## The incremental-bring-up lever: `--until`
-`--until <substring>` truncates after the first stage whose phase title or node label contains
-that substring (case-insensitive); default is `all`. Use it to bring a long pipeline up one
+## The bring-up + resume levers: `--until` / `--from` / `--only`
+`--until <substring>` truncates after the LAST stage whose phase title, node label, or node id
+contains that substring (case-insensitive); default is `all`. Use it to bring a long pipeline up one
 block at a time so a bare run can't hit a later toolchain wall (a billed API key, a heavy
 render) during shakedown. Prove the dependency-light front of the pipeline first, then extend.
+
+`--from <substring>` is its mirror: **resume** — skip every stage BEFORE the first match and reuse
+their on-disk artifacts (a prior run must have produced them). Because nodes coordinate only through
+the filesystem, any node is a pure function of its frozen upstream artifacts, so the retest unit is
+ONE node. Pair them for an inclusive range (`--from verify --until scaffold`); `--only <substring>`
+is sugar for `--from X --until X` — re-run exactly one node against frozen upstream, the tight
+edit→retest loop that avoids replaying the whole prefix. Soundness: when `--from` skips a prefix the
+driver runs a **resume preflight** — it `stat()`s the skipped nodes' `DRIVER-ARTIFACTS` (no pi
+spawn) and HALTs (exit 1, naming each missing file + owner) rather than resume on absent/stale
+inputs. Skipped nodes register as `reused` in the digest; stage numbering stays absolute (`stage k/N`
+over the full DAG). The remaining roadmap is making the skip AUTOMATIC (content-hash the inputs and
+reuse on match) so resume needs no manual `--from`.
 
 ## Non-negotiables (orchestrator discipline)
 - **You run every command. The user runs nothing** — not setup, not status checks.
@@ -80,4 +92,5 @@ render) during shakedown. Prove the dependency-light front of the pipeline first
   a silent headless hang is otherwise invisible (see provider-and-headless.md).
 - **One halt rule.** The driver stops the run on the first `error`/`blocked` node and writes
   `ok: false`. Read `run-status.json`, fix the upstream cause (usually the workflow prompt or a
-  missing tool in `RUN_CWD`), re-run from that `--until` block.
+  missing tool in `RUN_CWD`), then **`--from <that node>`** to resume on the frozen upstream (or
+  `--only <that node>` to retest it in isolation) — never replay the prefix you didn't change.

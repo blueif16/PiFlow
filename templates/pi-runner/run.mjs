@@ -20,14 +20,21 @@
 //
 // USAGE (the orchestrator runs this — never the user):
 //   node pi-runner/run.mjs --run <id> [--arg k=v ...] [--arg-file k=path ...] \
-//        [--until <phase>] [--debug] [--dry-run] [--node-timeout N]
+//        [--from <phase>] [--until <phase>] [--only <phase>] [--debug] [--dry-run] [--node-timeout N]
 //   --run <id> | --id <id> | --lesson <id>   instance id — keys out/<id>/ AND seeds args.lessonId.
 //   --arg k=v          a workflow arg (repeatable). Becomes the workflow's `args.k`.
 //   --arg-file k=path  read file text into args.k (repeatable).
 //   --brief <file>     alias for --arg-file brief=<file> (common pipeline input doc).
 //   --style <value>    alias for --arg style=<value>.
-//   --until <phase>    truncate after the first stage whose phase TITLE or node LABEL contains
-//                      this substring (case-insensitive). Default = $PI_RUNNER_UNTIL or "all".
+//   --until <phase>    truncate AFTER the last stage whose phase TITLE / node LABEL / node ID
+//                      contains this substring (case-insensitive). Default = $PI_RUNNER_UNTIL or "all".
+//   --from <phase>     RESUME: skip every stage BEFORE the first one matching this substring and
+//                      reuse their on-disk artifacts (a prior run must have produced them — the
+//                      driver PREFLIGHT-verifies the skipped nodes' DRIVER-ARTIFACTS and HALTS if any
+//                      are missing, so a resume never runs on absent inputs). Pairs with --until to
+//                      run an inclusive node RANGE; default = $PI_RUNNER_FROM or the start.
+//   --only <phase>     sugar for --from <phase> --until <phase>: run exactly that stage in isolation
+//                      against frozen upstream artifacts (the tight edit→retest loop for one node).
 //   --provider/--model/--extension(-e)/--status as below (model defaults to $PI_CP_MODEL).
 //   --debug            DEBUG mode: real-time heartbeats + stall detection AND the forensic archive
 //                      (<node>.events.jsonl, slimmed to the low MB, + <node>.debug.log). Production
@@ -69,6 +76,7 @@ loadDefaults();
 //                    Default = ROOT.
 // PI_RUNNER_WORKFLOW path to the workflow .js. Relative paths resolve vs ROOT.
 // PI_RUNNER_UNTIL    optional default for --until (e.g. an early phase during bring-up).
+// PI_RUNNER_FROM     optional default for --from (resume boundary; --from/--only override).
 // PI_RUNNER_NODE_TIMEOUT  optional default node hard-kill seconds (--node-timeout overrides).
 //                    Set generously: heavy nodes (long TTS / build / render steps) run long on a
 //                    cheap coding-plan model. Default 1800 (30 min); 600 was too tight.
@@ -87,7 +95,7 @@ const WORKFLOW = resolveFrom(BASE_ROOT, process.env.PI_RUNNER_WORKFLOW, path.joi
 // ==========================================================================================
 
 function parseArgs(argv) {
-  const a = { until: process.env.PI_RUNNER_UNTIL || "all", provider: "cp", dryRun: false, wfArgs: {} };
+  const a = { until: process.env.PI_RUNNER_UNTIL || "all", from: process.env.PI_RUNNER_FROM || null, provider: "cp", dryRun: false, wfArgs: {} };
   const setRun = (v) => { a.run = v; if (a.wfArgs.lessonId === undefined) a.wfArgs.lessonId = v; if (a.wfArgs.id === undefined) a.wfArgs.id = v; };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
@@ -98,6 +106,8 @@ function parseArgs(argv) {
     else if (k === "--brief") a.wfArgs.brief = fs.readFileSync(path.resolve(next()), "utf8");
     else if (k === "--style") a.wfArgs.style = next();
     else if (k === "--until") a.until = next();
+    else if (k === "--from") a.from = next();
+    else if (k === "--only") { const v = next(); a.from = v; a.until = v; }
     else if (k === "--provider") a.provider = next();
     else if (k === "--model") a.model = next();
     else if (k === "--extension" || k === "-e") a.extension = next();
@@ -451,15 +461,33 @@ function returnProtocol(label) {
   ].join("\n");
 }
 
-function selectStages(stages, until) {
-  if (!until || until.toLowerCase() === "all") return stages;
-  const u = until.toLowerCase();
-  let idx = -1;
-  stages.forEach((s, i) => {
-    if ((s.phase || "").toLowerCase().includes(u) || s.nodes.some((n) => (n.label || "").toLowerCase().includes(u))) idx = i;
-  });
-  if (idx < 0) { console.error(`--until "${until}" matched no phase/label — running ALL stages`); return stages; }
-  return stages.slice(0, idx + 1);
+// A stage matches a --from/--until substring if it appears in the phase TITLE, any node LABEL, or
+// any node ID (the slug a human reads off run-status.json — e.g. "w2-scaffold"). Matching the id too
+// means you can copy a node id straight from the status digest into --from/--only and it just works.
+function stageMatches(s, sel) {
+  const u = sel.toLowerCase();
+  return [s.phase, ...s.nodes.map((n) => n.label), ...s.nodes.map((n) => n.id)]
+    .some((x) => (x || "").toLowerCase().includes(u));
+}
+// Resolve the inclusive [fromIdx, untilIdx] window over the FULL DAG. --from picks the FIRST matching
+// stage (resume boundary); --until picks the LAST (truncation boundary), preserving the prior --until
+// semantics exactly when --from is absent. Returns the selected slice + the skipped prefix (whose
+// artifacts the resume preflight verifies). Node ids must already be assigned (matching uses them).
+function selectStages(stages, until, from) {
+  let fromIdx = 0, untilIdx = stages.length - 1;
+  if (from && from.toLowerCase() !== "all") {
+    const i = stages.findIndex((s) => stageMatches(s, from));
+    if (i < 0) console.error(`--from "${from}" matched no phase/label/id — starting at the first stage`);
+    else fromIdx = i;
+  }
+  if (until && until.toLowerCase() !== "all") {
+    let i = -1;
+    stages.forEach((s, j) => { if (stageMatches(s, until)) i = j; }); // LAST match (unchanged --until behavior)
+    if (i < 0) console.error(`--until "${until}" matched no phase/label/id — running to the last stage`);
+    else untilIdx = i;
+  }
+  if (fromIdx > untilIdx) { console.error(`--from "${from}" resolves AFTER --until "${until}" — ignoring --from`); fromIdx = 0; }
+  return { fromIdx, untilIdx, selected: stages.slice(fromIdx, untilIdx + 1), skipped: stages.slice(0, fromIdx) };
 }
 
 const RUN_T0 = Date.now();
@@ -468,6 +496,7 @@ const status = {
   run: args.run,
   lessonId: args.wfArgs.lessonId || null,
   until: args.until,
+  from: args.from || null,
   source: path.relative(ROOT, WORKFLOW),
   provider: args.provider,
   model: model || null,
@@ -952,24 +981,56 @@ async function runNodeWithEscalation(node) {
 
   // THE SYNC: execute the workflow under recording stubs → exact prompts + DAG.
   const { stages: allStages } = await extractWorkflow(WORKFLOW, args.wfArgs);
-  const stages = selectStages(allStages, args.until);
+  // Assign stable ids over the FULL DAG FIRST — so a node's id is identical with or without
+  // --from/--until, --from/--until can match on id, and the preflight can name the skipped owners.
+  let gidx = 0;
+  for (const s of allStages) for (const node of s.nodes) node.id = slug(node.label, gidx++);
+  const { fromIdx, untilIdx, selected: stages, skipped } = selectStages(allStages, args.until, args.from);
 
-  // assign stable ids + register in status
-  let idx = 0;
-  for (const s of stages) for (const node of s.nodes) { node.id = slug(node.label, idx++); status.nodes[node.id] = { id: node.id, label: node.label, phase: node.phase, status: "pending" }; }
+  // Register the skipped upstream as "reused" (honest digest — those nodes ran in a prior invocation
+  // and their artifacts are reused this run), the selected window as "pending".
+  for (const s of skipped) for (const node of s.nodes) status.nodes[node.id] = { id: node.id, label: node.label, phase: node.phase, status: "reused" };
+  for (const s of stages)  for (const node of s.nodes) status.nodes[node.id] = { id: node.id, label: node.label, phase: node.phase, status: "pending" };
 
-  console.log(`\npi-runner — run "${args.run}" — ${stages.flatMap((s) => s.nodes).length} nodes / ${stages.length} stages from ${path.basename(WORKFLOW)} — ${args.dryRun ? "DRY-RUN" : `provider=${args.provider} model=${model}`}${DEBUG ? ` — DEBUG (heartbeat ${HEARTBEAT_MS / 1000}s · stall-warn>${STALL_WARN_S}s · stall-kill ${STALL_TIMEOUT_S || "off"}s · tool-repeat-kill ${TOOL_REPEAT_KILL || "off"} · node-timeout ${NODE_TIMEOUT_S}s)` : ""}`);
+  const span = (fromIdx > 0 || untilIdx < allStages.length - 1) ? ` [stages ${fromIdx + 1}–${untilIdx + 1} of ${allStages.length}]` : "";
+  console.log(`\npi-runner — run "${args.run}" — ${stages.flatMap((s) => s.nodes).length} nodes / ${stages.length} stages${span} from ${path.basename(WORKFLOW)} — ${args.dryRun ? "DRY-RUN" : `provider=${args.provider} model=${model}`}${DEBUG ? ` — DEBUG (heartbeat ${HEARTBEAT_MS / 1000}s · stall-warn>${STALL_WARN_S}s · stall-kill ${STALL_TIMEOUT_S || "off"}s · tool-repeat-kill ${TOOL_REPEAT_KILL || "off"} · node-timeout ${NODE_TIMEOUT_S}s)` : ""}`);
   console.log(`source-of-truth: ${WORKFLOW}`);
   console.log(`status → ${statusPath}\n`);
   writeStatus();
 
+  // RESUME PREFLIGHT (soundness of --from): the skipped upstream nodes were NOT re-run, so their
+  // on-disk artifacts MUST already exist or the resumed tail would run on stale/absent inputs. Verify
+  // the skipped nodes' DRIVER-ARTIFACTS (the same contract the driver enforces after a node) in plain
+  // code — no pi spawn — and HALT loudly on any miss. (Dry-run previews the slice but skips this gate:
+  // no execution to protect, and the file may legitimately not exist yet.)
+  if (fromIdx > 0 && !args.dryRun) {
+    const need = [];
+    for (const s of skipped) for (const node of s.nodes) {
+      if (wtRoot && node.prompt.includes(BASE_ROOT)) node.prompt = node.prompt.split(BASE_ROOT).join(wtRoot);
+      const req = markerPaths(node.prompt, "DRIVER-ARTIFACTS");
+      if (req) for (const p of req) need.push({ node: node.id, ...artifactStateAbs(p) });
+    }
+    const missing = need.filter((c) => !c.exists);
+    status.resumePreflight = { from: args.from, checked: need.length, missing: missing.map((m) => `${m.path} (${m.node})`) };
+    if (missing.length) {
+      console.error(`\n✕ cannot --from "${args.from}": ${missing.length} upstream artifact(s) the skipped nodes must have produced are missing —`);
+      for (const m of missing) console.error(`    - ${m.path}  (owner: ${m.node})`);
+      console.error(`  A resume never runs on absent inputs. Run from an earlier --from, or regenerate them.\n`);
+      status.done = true; status.ok = false; status.durationMs = Date.now() - RUN_T0; writeStatus();
+      process.exit(1);
+    }
+    console.log(`resume preflight ✓ — ${need.length} upstream artifact(s) from ${skipped.flatMap((s) => s.nodes).length} skipped node(s) present; reusing them\n`);
+    writeStatus();
+  }
+
   for (let i = 0; i < stages.length; i++) {
     const s = stages[i];
     stageT0 = Date.now();
-    status.stage = { index: i + 1, total: stages.length, phase: s.phase, nodes: s.nodes.map((x) => x.id), startedAt: nowISO(), elapsedMs: 0 };
-    console.log(`[stage ${i + 1}/${stages.length}] [${s.phase}] ${s.nodes.map((x) => x.id).join(" ∥ ")}`);
+    const absIndex = fromIdx + i + 1; // 1-based position in the FULL DAG, so the digest stays honest under --from
+    status.stage = { index: absIndex, total: allStages.length, phase: s.phase, nodes: s.nodes.map((x) => x.id), startedAt: nowISO(), elapsedMs: 0 };
+    console.log(`[stage ${absIndex}/${allStages.length}] [${s.phase}] ${s.nodes.map((x) => x.id).join(" ∥ ")}`);
     const results = await Promise.all(s.nodes.map((node) => runNodeWithEscalation(node)));
-    console.log(`  └ stage ${i + 1}/${stages.length} done in ${((Date.now() - stageT0) / 1000).toFixed(1)}s  ·  run elapsed ${((Date.now() - RUN_T0) / 1000).toFixed(1)}s`);
+    console.log(`  └ stage ${absIndex}/${allStages.length} done in ${((Date.now() - stageT0) / 1000).toFixed(1)}s  ·  run elapsed ${((Date.now() - RUN_T0) / 1000).toFixed(1)}s`);
     const bad = results.find((r) => r.status === "error" || r.status === "blocked");
     if (bad && !args.dryRun) {
       status.stage = null;
