@@ -77,6 +77,10 @@ loadDefaults();
 // PI_RUNNER_WORKFLOW path to the workflow .js. Relative paths resolve vs ROOT.
 // PI_RUNNER_UNTIL    optional default for --until (e.g. an early phase during bring-up).
 // PI_RUNNER_FROM     optional default for --from (resume boundary; --from/--only override).
+// PI_RUNNER_PROVIDER optional default provider the driver passes (--provider overrides). Default
+//                    "cp". Set it (e.g. "minimax") to pin THIS repo's model lane once in wiring,
+//                    instead of typing --provider every run. The named provider must exist in pi's
+//                    ~/.pi/agent/models.json. Verify the resolved model before a real run.
 // PI_RUNNER_NODE_TIMEOUT  optional default node hard-kill seconds (--node-timeout overrides).
 //                    Set generously: heavy nodes (long TTS / build / render steps) run long on a
 //                    cheap coding-plan model. Default 1800 (30 min); 600 was too tight.
@@ -95,7 +99,7 @@ const WORKFLOW = resolveFrom(BASE_ROOT, process.env.PI_RUNNER_WORKFLOW, path.joi
 // ==========================================================================================
 
 function parseArgs(argv) {
-  const a = { until: process.env.PI_RUNNER_UNTIL || "all", from: process.env.PI_RUNNER_FROM || null, provider: "cp", dryRun: false, wfArgs: {} };
+  const a = { until: process.env.PI_RUNNER_UNTIL || "all", from: process.env.PI_RUNNER_FROM || null, provider: process.env.PI_RUNNER_PROVIDER || "cp", dryRun: false, wfArgs: {} };
   const setRun = (v) => { a.run = v; if (a.wfArgs.lessonId === undefined) a.wfArgs.lessonId = v; if (a.wfArgs.id === undefined) a.wfArgs.id = v; };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];

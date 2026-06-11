@@ -88,6 +88,10 @@ reuse on match) so resume needs no manual `--from`.
 - **You run every command. The user runs nothing** — not setup, not status checks.
 - **Status is verified, not trusted.** "ok" requires artifacts on disk; the driver enforces it,
   and so do you when you read the digest.
+- **Verify the model before every real run.** The driver defaults to `--provider cp`; confirm `cp`
+  (or `$PI_RUNNER_PROVIDER`/`--provider`) resolves to the model you intend — check
+  `~/.pi/agent/models.json` and the run's first `message_start` event — never assume a provider added
+  under a new name is the one in use. (Full syntax: `cli.md`.)
 - **Always `--debug` while developing.** The heartbeat + stall flag + node-timeout exist because
   a silent headless hang is otherwise invisible (see provider-and-headless.md).
 - **One halt rule.** The driver stops the run on the first `error`/`blocked` node and writes

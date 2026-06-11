@@ -194,6 +194,9 @@ transforms an existing workflow; it does not author the pipeline logic.
   per-node `--model`/`--provider` override over signals the driver already computes.
 
 ## Files in this skill
+- `reference/cli.md` — the COMPLETE, exact CLI: every `run.mjs` flag, the `--from`/`--until`/`--only`
+  node-range model + worked examples, the `.env` knobs, the monitors, and the verify-the-model duty.
+  **Read this so node ranges + syntax are never guessed.**
 - `reference/architecture.md` — why the workflow runs unchanged: the four invariants, the
   observability tiers, and the one dynamic-workflow caveat. **Read this to understand the pattern.**
 - `reference/artifact-contract.md` — the Output Contract: the fourth contract layer Claude Code
