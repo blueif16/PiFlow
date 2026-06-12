@@ -36,8 +36,9 @@ Same convention as `DRIVER-PREFLIGHT`: a marker line in the node's prompt that t
 driver** parses in plain code (no extractor change — the marker rides the prompt for free).
 
 ```
-DRIVER-ARTIFACTS: <space-separated ABSOLUTE paths that MUST exist, non-empty, on exit>
-DRIVER-OWNS:      <space-separated ABSOLUTE paths/globs this node may write; /* or /** = a dir>
+DRIVER-ARTIFACTS:   <space-separated ABSOLUTE paths that MUST exist, non-empty, on exit>
+DRIVER-OWNS:        <space-separated ABSOLUTE paths/globs this node may write; /* or /** = a dir>
+DRIVER-READ-SCOPE:  <space-separated ABSOLUTE roots this node may READ; OS-enforced under --sandbox>
 ```
 
 The workflow author never hand-writes those lines. A single `contract({...})` declaration —
@@ -46,7 +47,7 @@ Definition-of-Done prose (which the model reads) **and** the two markers (which 
 
 ```js
 // in .claude/workflows/<name>.js, next to discipline()
-function contract({ artifacts = [], owns = [], note = '' }) {
+function contract({ artifacts = [], owns = [], readScope = [], note = '' }) {
   const abs = (p) => `${REPO}/${p}`
   return [
     'OUTPUT CONTRACT — you are DONE only when EVERY file below exists and is non-empty at EXACTLY ' +
@@ -54,22 +55,33 @@ function contract({ artifacts = [], owns = [], note = '' }) {
     'why — do NOT exit clean (an empty or wrong-path artifact set is a FAILURE, not an ok).',
     `DRIVER-ARTIFACTS: ${artifacts.map(abs).join(' ')}`,
     `DRIVER-OWNS: ${(owns.length ? owns : artifacts).map(abs).join(' ')}`,
+    readScope.length ? `DRIVER-READ-SCOPE: ${readScope.join(' ')}` : '',
     note ? `OWNED-PATH NOTE: ${note}` : '',
   ].filter(Boolean).join('\n')
 }
 
-// at each producing node — declare the end-product as DATA:
+// at each producing node — declare the end-product AND the read surface as DATA:
 const rPed = await agent([
   discipline(),
   'W0 — PEDAGOGY GATE. …',
   `INPUT: ${REPO}/${P.brief}.`,
-  contract({ artifacts: [P.pedagogy], note: 'pure pedagogy reasoning; touches no code.' }),
+  contract({
+    artifacts: [P.pedagogy],
+    readScope: [`${REPO}/${data}`, `${REPO}/${out}`, `${ROOT}/.agents`],
+    note: 'pure pedagogy reasoning; touches no code.',
+  }),
 ].join('\n'), { schema: NODE_RESULT })
 ```
 
 - `artifacts` — files that **MUST** exist (non-empty) when the node exits. The **hard gate**.
 - `owns` — the **only** paths the node may write (defaults to `artifacts`). A trailing `/*` or
   `/**` marks a directory the node owns.
+- `readScope` — the node's full legitimate READ surface: its own data/out dirs + the shared
+  skill/catalog roots it is pointed at. Renders `DRIVER-READ-SCOPE`. **Entries are ABSOLUTE and joined
+  AS-IS** (NOT `abs()`-prefixed — readScope roots commonly span outside `REPO`, e.g. `${ROOT}/.agents`).
+  OS-enforced under `--sandbox` (macOS Seatbelt: any read outside {toolchain ∪ scope} EPERMs, inherited
+  by child processes); inert without it. **Every producing node should declare one** — see
+  `reference/read-scope-sandbox.md`.
 - `note` — an optional extra owned-path caveat (e.g. a `LESSON-AGNOSTIC` rule).
 
 ## Driver enforcement (`run.mjs`, generic)
@@ -120,8 +132,11 @@ isolated spikes pass, but over-blocking risk (a node whose legitimate write fall
 
 ## Invariants
 
-- **Markers are ABSOLUTE paths.** `contract()` prepends `${REPO}/…`; the driver stat()s them
-  as-is. (Same rule as `DRIVER-PREFLIGHT`.)
+- **Markers are ABSOLUTE paths.** For `DRIVER-ARTIFACTS`/`DRIVER-OWNS`, `contract()` prepends
+  `${REPO}/…` from REPO-relative inputs; the driver stat()s them as-is. (Same rule as
+  `DRIVER-PREFLIGHT`.) `DRIVER-READ-SCOPE` is the exception: its `readScope` entries are **already
+  absolute** (they commonly span outside `REPO`, e.g. `${ROOT}/.agents`), so they are joined AS-IS, not
+  `abs()`-prefixed.
 - **One declaration, both outputs.** Never hand-write the prose and the markers separately — they
   would drift. `contract()` is the single source; the prose and the machine spec are the same data.
 - **Generic in the engine, declared in the workflow.** `run.mjs` parses the marker for *any*

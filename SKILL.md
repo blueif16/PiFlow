@@ -100,10 +100,12 @@ transforms an existing workflow; it does not author the pipeline logic.
 
 8. **Adopt the Output Contract (recommended — one paste).** Paste `templates/workflow-snippets/contract.js`
    into your workflow `.js` next to `discipline()`, and wrap each producing node's prompt with
-   `contract({ artifacts:[…], owns:[…] })`. Now the driver verifies each node's REQUIRED artifacts
-   independent of the self-report — a clean exit missing one is `blocked`, not a false `ok`. This is
-   already baked into the engine `run.mjs`; the snippet is the only per-workflow edit.
-   See `reference/artifact-contract.md`.
+   `contract({ artifacts:[…], owns:[…], readScope:[…] })`. Now the driver verifies each node's REQUIRED
+   artifacts independent of the self-report — a clean exit missing one is `blocked`, not a false `ok` —
+   and (under `--sandbox`, step 12) the `readScope` becomes the node's OS-enforced read boundary.
+   Declare `readScope` on **every** producing node at the same time as `artifacts`/`owns` (it is part of
+   authoring a node, not a later bolt-on). This is already baked into the engine `run.mjs`; the snippet
+   is the only per-workflow edit. See `reference/artifact-contract.md`.
 
 9. **Harden for parallel fleets (opt-in — `--worktree`).** For a multi-run fleet, add `--worktree`
    (or `PI_RUNNER_WORKTREE=1`): each run executes in its OWN git worktree (branch `pi/<id>`), so
@@ -129,16 +131,22 @@ transforms an existing workflow; it does not author the pipeline logic.
     Per-node tool gating rides the same family: `DRIVER-TOOLS` / `DRIVER-EXCLUDE-TOOLS` markers →
     `--tools`/`--exclude-tools`. Both spike-verified on qwen headless; see `reference/artifact-contract.md`.
 
-12. **Lock the read-scope with an OS sandbox (opt-in — `--sandbox`, macOS).** `--worktree` stops a node
-    *writing* outside its lane; it does NOT stop it *reading* a sibling's files (a cheap model that can't
-    find a component greps the whole tree + reads other units' source, bloating context). Add `--sandbox`
-    (or `PI_RUNNER_SANDBOX=1`): a node that DECLARES its read scope (a `DRIVER-READ-SCOPE:` marker, rendered
-    by the same `contract()` family) runs under macOS `sandbox-exec` (Seatbelt), so any read outside
-    {toolchain ∪ declared scope} returns `EPERM` — kernel-enforced and inherited by child `grep`/`find`/`cat`.
-    Default OFF and byte-identical when off; only a marked node is wrapped. Pair it with the two behavioral
-    watchdogs (`PI_RUNNER_STALL_TIMEOUT` silent-death kill, `PI_RUNNER_TOOL_REPEAT_KILL` no-progress
-    tool-thrash kill) that catch the degenerate classes the prompt can't. macOS only (a Linux fleet would
-    use bubblewrap — not wired). Engine-baked; `sandbox/read-scope.sb` is the profile. See `reference/read-scope-sandbox.md`.
+12. **Lock the read-scope — standard per-node, OS-enforced under `--sandbox` (macOS).** `--worktree`
+    stops a node *writing* outside its lane; it does NOT stop it *reading* a sibling's files (a cheap
+    model that can't find a component greps the whole tree + reads other units' source, bloating context
+    until it times out). The fix is two parts. **(a) Author-time, always:** declare a `readScope` on
+    EVERY producing node's `contract({…})` — the same tier as `artifacts`/`owns` — so each node's prompt
+    carries a `DRIVER-READ-SCOPE:` marker naming its legitimate read surface (its own data/out dirs + the
+    shared skills/catalog it reads). Leaving a node un-scoped is the bug this prevents (in the reference
+    workflow, only the composer was scoped, so a cheap model read-thrashed an un-scoped node to a
+    timeout). **(b) Fleet-time, opt-in:** run with `--sandbox` (or `PI_RUNNER_SANDBOX=1`) so a scoped
+    node runs under macOS `sandbox-exec` (Seatbelt) and any read outside {toolchain ∪ declared scope}
+    returns `EPERM` — kernel-enforced and inherited by child `grep`/`find`/`cat`. Default OFF and
+    byte-identical when off (the markers are inert text); only a marked node is wrapped. Pair it with the
+    two behavioral watchdogs (`PI_RUNNER_STALL_TIMEOUT` silent-death kill, `PI_RUNNER_TOOL_REPEAT_KILL`
+    no-progress tool-thrash kill) that catch the degenerate classes the prompt can't. macOS only (a Linux
+    fleet would use bubblewrap — not wired). Engine-baked; `sandbox/read-scope.sb` is the profile. See
+    `reference/read-scope-sandbox.md`.
 
 13. **Seed the per-node output-criteria fixture (the judging standard).** Creating a workflow's harness includes creating its **acceptance-criteria fixture** alongside the skill-system map — `<repo>/.agents/skill-system-criteria.md`, ONE entry per producing node (artifact → downstream purpose → acceptance criteria → red flags). The node set is exactly what `extract.mjs` already enumerates, so draft it with a per-node criteria-drafting workflow (one agent per node reads that node's skill + a real sample artifact + the brief, returns a structured `{purpose, criteria, redFlags}`) and write the returned entries to the fixture. This is the human-judged quality bar every future run is judged against — the complement to the mechanical Output Contract (existence/lane) and the sibling of the skill-system map (composition/diagnostics). It is a **JUDGING fixture, NEVER injected into a node's prompt** (that teaches-to-the-test and voids the clean-room signal that tells you whether the SKILL ITSELF produces good output). The `hermes-skill-system` loop then MAINTAINS it (sharpens a node's criteria whenever an edit changes what good output for that node means); edit it by hand too, whenever you decide a node should emit a different/richer shape.
 
@@ -161,14 +169,17 @@ transforms an existing workflow; it does not author the pipeline logic.
   (`DRIVER-OWNS`). The driver verifies the **required** set independent of the self-report: a clean
   exit that did not produce a required artifact is `blocked`, not `ok`. See **The Output Contract**
   below and `reference/artifact-contract.md`.
-- **Every producing node declares an Output Contract.** Requirements live in a skill `description`,
-  I/O in `## Inputs`/`## Output` prose, the RETURN shape in `schema` — but Claude validates the
-  *message*, never the *filesystem*. The artifact layer is yours: declare it once with a
-  `contract({ artifacts, owns })` helper in the workflow `.js` that renders BOTH the
-  Definition-of-Done prose AND the `DRIVER-ARTIFACTS`/`DRIVER-OWNS` markers (the generic engine
-  parses them — no extractor change, same convention as `DRIVER-PREFLIGHT`). This is the shift-left
-  root-cause fix: encode the end-product up front instead of detecting a missing one downstream.
-  Full spec + the per-stage-commit/worktree roadmap: `reference/artifact-contract.md`.
+- **Every producing node declares an Output Contract — `{ artifacts, owns, readScope }`.**
+  Requirements live in a skill `description`, I/O in `## Inputs`/`## Output` prose, the RETURN shape in
+  `schema` — but Claude validates the *message*, never the *filesystem*. The artifact layer is yours:
+  declare it once with a `contract({ artifacts, owns, readScope })` helper in the workflow `.js` that
+  renders the Definition-of-Done prose AND the `DRIVER-ARTIFACTS`/`DRIVER-OWNS`/`DRIVER-READ-SCOPE`
+  markers (the generic engine parses them — no extractor change, same convention as `DRIVER-PREFLIGHT`).
+  The **write-contract** (`artifacts`/`owns`) and the **read-scope** (`readScope`) are the SAME tier —
+  both authored at node creation time, never an afterthought. This is the shift-left root-cause fix:
+  encode the end-product AND the legitimate read surface up front instead of detecting a breach
+  downstream. Run the fleet under `--sandbox` so `readScope` is OS-enforced (inert otherwise). Full
+  spec: `reference/artifact-contract.md`; read-scope syntax: `reference/read-scope-sandbox.md`.
 - **A workflow ships with its criteria fixture.** Standing up a workflow creates
   `<repo>/.agents/skill-system-criteria.md` — the per-node, human-judged QUALITY bar (sibling of the
   skill-system map, complement to the mechanical Output Contract: the contract checks the artifact
@@ -185,9 +196,11 @@ transforms an existing workflow; it does not author the pipeline logic.
   merge-back, is erased by auto-discovered registration (units register by exporting a descriptor
   from their own file, never by hand-editing a shared list). See `reference/worktree-isolation.md`.
 - **Prompt rules are unenforceable on weak models — put the boundary in the OS.** `--worktree` isolates
-  WRITES; `--sandbox` (macOS Seatbelt, opt-in) isolates READS: a node's `DRIVER-READ-SCOPE` becomes a
-  kernel-enforced deny-all-reads-except-{toolchain ∪ scope}, inherited by every child process, so a
-  `grep /` or a sibling-source spelunk EPERMs instead of bloating context. The two layers compose
+  WRITES; `--sandbox` (macOS Seatbelt, opt-in) isolates READS: **every producing node declares a
+  `readScope` in its `contract()`** (the read tier of the write-contract), and under `--sandbox` that
+  `DRIVER-READ-SCOPE` becomes a kernel-enforced deny-all-reads-except-{toolchain ∪ scope}, inherited by
+  every child process, so a `grep /` or a sibling-source spelunk EPERMs instead of bloating context. A
+  node left un-scoped is a hole (the cheap-model read-thrash this fixes). The two layers compose
   (Seatbelt matches the symlink TARGET realpath, so the read-scope auto-follows the worktree). Its
   profile must grant the FULL runtime read surface — process cwd, any `-e` extension dir, and the
   realpath TARGET of every workspace-linked dep (`@scope/*` symlinks point OUTSIDE node_modules) — or

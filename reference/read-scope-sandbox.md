@@ -60,12 +60,42 @@ under the repo is rewritten into the worktree automatically — `--sandbox` and 
 
 ## Declaring a node's read scope (in the workflow)
 
-Emit a `DRIVER-READ-SCOPE:` line in the node's prompt with the absolute roots it legitimately reads —
-its own inputs, the shared source/lib roots, and the catalog/digest you point it at. Grant the whole
-legitimate runtime surface (a self-check that bundles the project pulls sibling source into the bundle
-graph, so the shared `src` root is unavoidable); what you withhold is every OTHER unit's *design
-inputs* (the hidden-hard-coding surface) and the wider filesystem. The motive to read a sibling should
-also be removed in the node's SKILL — the sandbox is the backstop, not the only line of defense.
+**Every producing node declares its read-scope; it is part of the contract, not an afterthought** —
+authored at node creation time exactly like `owns`/`artifacts`, in the same `contract({...})` call.
+The helper renders the `DRIVER-READ-SCOPE:` marker from a `readScope` array (the entries are absolute
+and joined AS-IS — unlike `artifacts`/`owns`, which are REPO-relative and `abs()`-prefixed):
+
+```js
+contract({
+  artifacts: [ /* … */ ],
+  owns:      [ /* … */ ],
+  readScope: [
+    `${REPO}/${data}`,     // this unit's own data dir
+    `${REPO}/${out}`,      // this unit's own out dir
+    `${ROOT}/.agents`,     // the shared skills/docs every node reads
+    // + the shared src/catalog roots THIS node actually reads (code nodes only):
+    //   `${REPO}/src`, `${REPO}/public`, `${REPO}/scripts`, `${REPO}/package.json`, …
+  ],
+})
+```
+
+**What to GRANT:** the node's own data/out dirs, the named skills/docs it reads (`${ROOT}/.agents`),
+and the shared `src`/`public`/`scripts`/catalog roots it legitimately reads (a self-check that bundles
+the project pulls sibling source into the bundle graph, so the shared `src` root is unavoidable for a
+code-touching node). **What to EXCLUDE:** every OTHER unit's *design inputs* (the hidden-hard-coding
+surface) and the wider tree. The motive to read a sibling should also be removed in the node's SKILL —
+the sandbox is the backstop, not the only line of defense.
+
+This used to be framed as something you bolted onto "the node that spelunks." That was the bug: in the
+reference workflow only the **composer** carried a `DRIVER-READ-SCOPE`, hand-rolled as a raw string
+(the helper had no `readScope` field), so every OTHER node ran unsandboxed — and a cheap model
+(MiniMax-M3) read-thrashed an un-scoped node (120 reads, `find / -name`, a contaminating proposal file
+read 5×) until it timed out. The fix is to make read-scope a first-class `contract()` field that every
+producing node fills in.
+
+> **Run the fleet with `--sandbox`** (or `PI_RUNNER_SANDBOX=1`) so the declared scopes are actually
+> enforced. Without it, the `DRIVER-READ-SCOPE` markers are inert text — present in the prompt, but no
+> OS boundary is applied. Declaring the scope is necessary; turning the sandbox on is what makes it law.
 
 ## The two behavioral watchdogs (pair with `--sandbox`)
 
