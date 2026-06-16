@@ -305,6 +305,19 @@ them, and where an edit must be reconciled against the rest. For every node:
   prompt-craft + citations: `agentic-prompt-design` §5.)
 - **Declare two things at node-creation time:** the `contract({ artifacts, owns, readScope })` (what it WRITES
   + its read surface) AND the artifact's CONSUMERS in the I/O map.
+- **Split MECHANICAL from INTELLIGENT, then push the mechanical into a DRIVER HOOK — don't leave it to the model.**
+  List the node's steps; for each ask: *"is this output a fixed function of already-frozen on-disk inputs, with no
+  judgment?"* **YES → a deterministic driver hook**, run in the driver, not the model — so it becomes a TESTED CODE
+  PATH, not a per-run gamble. Two verbs, one family: a **PRE-hook (`DRIVER-SEED`, the proven one)** STAGES inputs
+  before the model (copy a skeleton/tree → FILL-don't-COMPOSE); a **POST-hook (`DRIVER-PROJECT`/`DRIVER-MERGE`, its
+  derive-don't-recompute sibling)** DERIVES/validates outputs after the model (project a frozen spec → its runtime
+  data file, merge fragments, schema-check). **NO** (design reasoning / open-ended coding / prose authoring /
+  diagnose-and-fix) **→ the model.** Declare the deterministic part as DATA in the registry (next to the routing
+  facts), so the engine stays uniform + genre-agnostic and adding a type needs ZERO node-prompt and ZERO engine
+  edit. Aim the model's residual to be WRITE-DOMINANT + health-checkable (the write-first gate + a build/validate
+  signal cover it). *Why:* it removes the cheap-model explore-forever / mis-project thrash surface, makes mechanical
+  output un-hallucinatable, and cuts tokens — a structural invariant belongs in the harness, not in prose the model
+  can ignore. Hook spec + the `DRIVER-SEED`/contract markers: `reference/artifact-contract.md`.
 - **Design for parallelism from the I/O up — the map is where independent lanes become visible.** As you set
   each node's I/O, look for nodes whose inputs are ALL already-frozen upstream artifacts and whose `owns` set is
   DISJOINT from a sibling's — those are independent **lanes** that need not wait on each other, so run them as a
