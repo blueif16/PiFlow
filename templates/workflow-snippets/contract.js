@@ -20,14 +20,27 @@
 // the rendered `DRIVER-READ-SCOPE` is OS-enforced — any read outside {toolchain ∪ scope} EPERMs,
 // inherited by child grep/find/cat; without `--sandbox` the marker is inert (zero behavior change).
 //
+// `schema` (OPTIONAL) — the JSON-Schema the node's artifact(s) must satisfy. Renders a DRIVER-SCHEMA
+// marker the driver validates the produced DRIVER-ARTIFACTS against AFTER the node (draft-2020-12-capable
+// when a validator is installed — see run.mjs's schemaCheck; an invalid artifact is a BREACH → blocked,
+// exactly like a missing one). The POST half of the node-contract lifecycle (PRE: seed/preflight · POST:
+// artifacts existence / schema / fill-sentinel). It is a REPO-relative-or-absolute PATH joined AS-IS (a
+// schema commonly lives outside the package dir, like readScope), NOT `abs()`-prefixed.
+// `fillSentinel` (OPTIONAL) — a template-fill sentinel STRING (e.g. '<FILL:'); renders DRIVER-FILL-SENTINEL,
+// which the in-loop write-first gate (node-contract.ts, when armed) refuses to submit_result over while any
+// required artifact still contains it. The schema gate catches a leftover sentinel post-hoc anyway; this
+// just gives the model immediate feedback. Both inert when omitted.
+//
 // Full spec: reference/artifact-contract.md (+ reference/read-scope-sandbox.md for readScope).
-function contract({ artifacts = [], owns = [], readScope = [], note = '' }) {
+function contract({ artifacts = [], owns = [], readScope = [], schema = '', fillSentinel = '', note = '' }) {
   const abs = (p) => `${REPO}/${p}`
   return [
     'OUTPUT CONTRACT — you are DONE only when EVERY file below exists and is non-empty at EXACTLY its path. Write NOTHING outside the owned paths (never another run\'s files). If you cannot produce them, set status="blocked" and say why — do NOT exit clean (an empty or wrong-path artifact set is a FAILURE, not an ok).',
     `DRIVER-ARTIFACTS: ${artifacts.map(abs).join(' ')}`,
     `DRIVER-OWNS: ${(owns.length ? owns : artifacts).map(abs).join(' ')}`,
     readScope.length ? `DRIVER-READ-SCOPE: ${readScope.join(' ')}` : '',
+    schema ? `DRIVER-SCHEMA: ${schema}` : '',
+    fillSentinel ? `DRIVER-FILL-SENTINEL: ${fillSentinel}` : '',
     note ? `OWNED-PATH NOTE: ${note}` : '',
   ].filter(Boolean).join('\n')
 }
