@@ -22,3 +22,20 @@ export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from
 // Deterministic hook runner
 export { runHooks } from './hooks/index.js';
 export type { HookReport, RunHooksOpts } from './hooks/index.js';
+
+// Runner (M1 execution loop — create→stage→exec→collect→dispose; watchdogs · halt-on-failure ·
+// --from resume · run-status.json). The pi-spawn is injectable (buildCommand/execRunner) so it runs offline.
+export { runWorkflow, defaultExecRunner, defaultPiCommand, lastJsonBlock, writeStatus, artifactState, nowISO } from './runner/index.js';
+export type {
+  RunOptions,
+  RunResult,
+  ExecRunner,
+  ExecWatchdogOpts,
+  CommandBuilder,
+  CommandContext,
+  RunStatus,
+  NodeStatus,
+  NodeStatusRecord,
+  ArtifactState,
+  RunTotals,
+} from './runner/index.js';
