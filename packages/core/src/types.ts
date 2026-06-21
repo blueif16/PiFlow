@@ -171,6 +171,12 @@ export interface ExecOpts {
   env?: Record<string, string>;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
+  /**
+   * Cancellation. When this aborts, the provider MUST terminate the command and any process group it
+   * spawned (SIGTERM→SIGKILL) — the runner's watchdog drives this on a node-timeout/stall. A provider
+   * that ignores it falls back to the runner's liveness timer (which can orphan the child).
+   */
+  signal?: AbortSignal;
 }
 
 /** A handle to a background process (only on providers that implement `spawn`). */

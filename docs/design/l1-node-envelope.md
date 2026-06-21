@@ -122,7 +122,9 @@ interface Sandbox {
   downloadDir(remote: string, local: string): Promise<void>;
   dispose(): Promise<void>;
 }
-interface ExecOpts { cwd?: string; env?: Record<string, string>; onStdout?: (s: string) => void; onStderr?: (s: string) => void; }
+interface ExecOpts { cwd?: string; env?: Record<string, string>; signal?: AbortSignal; onStdout?: (s: string) => void; onStderr?: (s: string) => void; }
+// signal: the runner's watchdog aborts it on node-timeout/stall; a provider MUST then kill the command's
+// whole process group (SIGTERM→SIGKILL). Providers also close stdin (an open stdin hangs a headless CLI).
 interface ExecResult { stdout: string; stderr: string; code: number; }
 interface ProcessHandle { pid: number; wait(): Promise<ExecResult>; kill(sig?: string): void; }
 

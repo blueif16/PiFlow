@@ -51,9 +51,31 @@ export class InMemorySandbox implements Sandbox {
         cwd: opts.cwd ? this.abs(opts.cwd) : this.workdir,
         env: { ...process.env, ...this.env, ...opts.env },
         shell: true,
+        // detached → the command is its own process group leader, so on cancel we can kill the WHOLE
+        // tree (the agent AND any grandchildren it spawned), not just the shell — no orphans.
+        detached: true,
+        // Close stdin: a headless CLI with an open stdin pipe and no TTY blocks forever waiting for
+        // EOF (the documented ~10-minute pi hang). Pipe stdout/stderr for the event stream.
+        stdio: ['ignore', 'pipe', 'pipe'],
       });
       let stdout = '';
       let stderr = '';
+      let done = false;
+      const signal = opts.signal;
+      // On cancel, SIGTERM the process group then SIGKILL-escalate (`-pid` targets the group).
+      const onAbort = (): void => {
+        const pid = child.pid;
+        if (pid === undefined) return;
+        try { process.kill(-pid, 'SIGTERM'); } catch { /* already gone */ }
+        const esc = setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch { /* reaped */ } }, 2000);
+        esc.unref?.();
+      };
+      const cleanup = (): void => { signal?.removeEventListener('abort', onAbort); };
+      const finish = (r: ExecResult): void => { if (done) return; done = true; cleanup(); resolve(r); };
+      if (signal) {
+        if (signal.aborted) onAbort();
+        else signal.addEventListener('abort', onAbort, { once: true });
+      }
       child.stdout?.on('data', (d: Buffer) => {
         const s = d.toString();
         stdout += s;
@@ -64,8 +86,10 @@ export class InMemorySandbox implements Sandbox {
         stderr += s;
         opts.onStderr?.(s);
       });
-      child.on('error', (err) => resolve({ stdout, stderr: stderr + String(err), code: 1 }));
-      child.on('close', (code) => resolve({ stdout, stderr, code: code ?? 0 }));
+      child.on('error', (err) => finish({ stdout, stderr: stderr + String(err), code: 1 }));
+      // A signal-killed child reports code=null + a signal name → surface a nonzero (124) so the runner
+      // classifies it as a failure even before the watchdog's own `killed` verdict.
+      child.on('close', (code, sig) => finish({ stdout, stderr, code: code ?? (sig ? 124 : 0) }));
     });
   }
 

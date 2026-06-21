@@ -347,3 +347,44 @@ describe('writeStatus — concurrent-writer safety (atomic publish, ordered, no 
     await fs.rm(dir, { recursive: true, force: true });
   });
 });
+
+// ── real cancellation (process-group kill + closed stdin) ────────────────────────────────────────
+
+describe('runWorkflow — real cancellation (ExecOpts.signal)', () => {
+  it('kills the whole process group: a grandchild deferred write never lands', async () => {
+    const g = compile(wf([n('Slow', [], ['slow.txt'])]));
+    const outDir = await tmpOut();
+    // A HOST marker OUTSIDE the (disposed) sandbox temp dir. The stub sleeps, then would touch it — but
+    // the node-timeout aborts ExecOpts.signal, killing the process GROUP, so `sleep` (a grandchild of
+    // the shell) dies and the `touch` after it never runs. Pre-fix (abandon, no real kill) the orphaned
+    // sleep fired the touch ~1s later.
+    const marker = path.join(os.tmpdir(), `piflow-latekill-${Date.now()}.marker`);
+    const builder = (): string => `sleep 1 && touch ${marker}`;
+
+    const { status } = await runWorkflow(g, { run: 'realkill', outDir, buildCommand: builder, nodeTimeoutMs: 60, killGraceMs: 50 });
+    expect(status.nodes.slow.status).toBe('error');
+    expect(status.nodes.slow.killedTimeout).toBe(true);
+
+    // Wait well past the grandchild's 1s sleep; the marker must NOT appear (the group was reaped).
+    await new Promise((r) => setTimeout(r, 1500));
+    await expect(fs.access(marker)).rejects.toThrow();
+
+    await fs.rm(marker, { force: true }).catch(() => {});
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('closes stdin so a stdin-reading command gets EOF instead of hanging', async () => {
+    const g = compile(wf([n('Reader', [], ['r.txt'])]));
+    const outDir = await tmpOut();
+    // `cat` with no args reads stdin to EOF. With stdin closed (/dev/null) it returns immediately and
+    // the node finishes `ok`; an OPEN stdin with no TTY would hang `cat` until the timeout kills it.
+    const builder = (node: { sandbox: { output: string } }): string =>
+      `cat && mkdir -p ${node.sandbox.output} && printf '%s' x > ${node.sandbox.output}/r.txt`;
+
+    const { status } = await runWorkflow(g, { run: 'stdin', outDir, buildCommand: builder, nodeTimeoutMs: 2000 });
+    expect(status.nodes.reader.status).toBe('ok');
+    expect(status.nodes.reader.killedTimeout).toBeFalsy();
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});

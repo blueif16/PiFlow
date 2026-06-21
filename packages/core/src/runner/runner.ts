@@ -103,36 +103,34 @@ export interface RunResult {
 
 /**
  * The default exec primitive. Races `sandbox.exec` against (a) a node-timeout and (b) a silent-stall
- * detector that fires when no stdout/stderr chunk arrives for `stallMs`. On either trip it invokes
- * the kill seam and resolves the node as killed WITHOUT waiting on the (possibly hung) exec — the
- * lesson from run.mjs and the zombie-accumulation prior art: resolve the caller immediately, let the
- * SIGKILL escalation reap in the background.
+ * detector that fires when no stdout/stderr chunk arrives for `stallMs`. On a trip it ABORTS the
+ * exec's `AbortSignal` — a signal-honoring provider (incl. InMemorySandbox) kills the child's process
+ * group, so exec resolves (no orphan) and we report it as `killed`. A `killGraceMs` liveness fallback
+ * settles anyway if a provider ignores the signal, so a hung exec can never hang the run.
  */
 export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
   new Promise((resolve) => {
     let settled = false;
+    let trippedAs: null | 'timeout' | 'stall' = null;
     let lastEventAt = Date.now();
-    // The kill seam. The InMemorySandbox does not expose its child pid, so the default kill is a
-    // best-effort no-op marker (the watchdog already abandons the wait, which is what protects the
-    // run); a real provider's exec owns SIGTERM→SIGKILL of its own process group. Kept as a seam so a
-    // provider/test can wire a true kill.
-    const killSeam = (sandbox as Sandbox & { kill?: (signal: string) => void }).kill;
-    const settle = (killed: null | 'timeout' | 'stall', result: ExecResult): void => {
+    const ac = new AbortController();
+    let graceTimer: NodeJS.Timeout | undefined;
+    const settle = (result: ExecResult): void => {
       if (settled) return;
       settled = true;
       clearTimeout(timeoutTimer);
       clearInterval(stallTimer);
-      resolve({ result, killed });
+      if (graceTimer) clearTimeout(graceTimer);
+      resolve({ result, killed: trippedAs });
     };
     const trip = (kind: 'timeout' | 'stall'): void => {
-      if (settled) return;
-      try {
-        killSeam?.('SIGTERM');
-        // SIGKILL escalation timer — unref'd so it never keeps the loop alive (research brief (a)).
-        const esc = setTimeout(() => { try { killSeam?.('SIGKILL'); } catch { /* reaped */ } }, opts.killGraceMs);
-        (esc as { unref?: () => void }).unref?.();
-      } catch { /* nothing to signal on the in-memory baseline */ }
-      settle(kind, { stdout: '', stderr: `killed: ${kind}`, code: 124 });
+      if (settled || trippedAs) return;
+      trippedAs = kind;
+      try { ac.abort(); } catch { /* no-op */ } // real kill: a signal-honoring provider reaps the group
+      // Liveness fallback: if a provider ignores the signal, settle after the kill grace anyway so a
+      // hung exec never hangs the run (that path can orphan; a compliant provider's exec resolves first).
+      graceTimer = setTimeout(() => settle({ stdout: '', stderr: `killed: ${kind}`, code: 124 }), opts.killGraceMs);
+      graceTimer.unref?.();
     };
     const timeoutTimer = setTimeout(() => trip('timeout'), opts.nodeTimeoutMs);
     const stallTimer = opts.stallMs > 0
@@ -140,9 +138,9 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
       : (setInterval(() => {}, 1 << 30) as NodeJS.Timeout); // inert sentinel cleared in settle()
     const touch = (): void => { lastEventAt = Date.now(); };
     sandbox
-      .exec(cmd, { onStdout: touch, onStderr: touch })
-      .then((result) => settle(null, result))
-      .catch((err) => settle(null, { stdout: '', stderr: String(err), code: 1 }));
+      .exec(cmd, { signal: ac.signal, onStdout: touch, onStderr: touch })
+      .then((result) => settle(result))
+      .catch((err) => settle({ stdout: '', stderr: String(err), code: 1 }));
   });
 
 // ── forgiving return-parse (run.mjs lastJsonBlock 670–698) ────────────────────────────────────────
@@ -348,11 +346,10 @@ async function runNode(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecor
     // host-stat) is contained to THIS node as `error` — never a rejected lane (see LANE ISOLATION).
     return finishNode(ctx, node, rec, t0, 'error', `node failed: ${(e as Error).message}`, []);
   } finally {
-    // Dispose is best-effort: a teardown failure must not reject the lane either. NOTE — the in-memory
-    // baseline rm's the temp dir here while a watchdog-abandoned child may still be running (the kill
-    // seam is a no-op without a child pid), so that orphan writes into a deleted dir (harmless: the
-    // writes fail). Real process-group reaping is a provider concern (see the spine recommendation in
-    // docs/research/runner-childprocess-2026-06-21.md and the brief's "Defer to providers").
+    // Dispose is best-effort: a teardown failure must not reject the lane either. With a signal-
+    // honoring provider (incl. InMemorySandbox) the watchdog aborts ExecOpts.signal → the child's
+    // process group is killed → exec resolves before we reach here, so there is NO orphan/dispose race.
+    // The only residual orphan is a provider that ignores the signal (the liveness-fallback path).
     try {
       await sandbox.dispose();
     } catch { /* teardown failure is non-fatal — the node verdict already stands */ }
