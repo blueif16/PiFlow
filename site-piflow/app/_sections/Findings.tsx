@@ -2,6 +2,7 @@
 
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { cn } from "@/lib/utils";
+import { Motif } from "@/components/iso/Motif";
 
 /* Error-amplification by architecture — synthesized from published
    scaling-agent research, NOT Pi Flow's own measurements. */
@@ -19,7 +20,11 @@ const SCALE = MAX_BAR_PX / 17.2;
 
 export default function Findings() {
   return (
-    <section id="findings" className="mx-auto w-full max-w-6xl px-6 py-28">
+    <section id="findings" className="relative isolate mx-auto w-full max-w-6xl overflow-hidden px-6 py-28">
+      <Motif
+        src="/motifs/g11.svg"
+        className="absolute right-[-2%] top-[14%] -z-10 h-[440px] w-[440px] opacity-[0.10]"
+      />
       {/* Header — editorial, left-set */}
       <div className="reveal max-w-2xl">
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">Findings</p>

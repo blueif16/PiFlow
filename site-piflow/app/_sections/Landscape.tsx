@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { Motif } from "@/components/iso/Motif";
 
 type System = {
   name: string;
@@ -79,7 +80,11 @@ function MapChip({ s }: { s: System }) {
 
 export default function Landscape() {
   return (
-    <section id="landscape" className="mx-auto w-full max-w-6xl px-6 py-28">
+    <section id="landscape" className="relative isolate mx-auto w-full max-w-6xl overflow-hidden px-6 py-28">
+      <Motif
+        src="/motifs/g44.svg"
+        className="absolute bottom-[6%] left-[-4%] -z-10 h-[360px] w-[360px] opacity-[0.09]"
+      />
       <div className="reveal max-w-2xl">
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
           Where it sits

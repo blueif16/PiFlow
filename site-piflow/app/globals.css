@@ -223,6 +223,25 @@ body {
 .iso-glow { filter: drop-shadow(0 0 7px rgba(61, 242, 167, 0.45)) drop-shadow(0 0 2px rgba(61, 242, 167, 0.6)); }
 
 /* ============================================================
+   Motif — recolor an external SVG via alpha-mask + tint bg, then
+   animate with a VARIED motion (spin/pulse) for visual variety.
+   ============================================================ */
+.motif {
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain;
+  mask-mode: alpha;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spin-slow { animation: motif-spin 44s linear infinite; }
+  .spin-rev  { animation: motif-spin 60s linear infinite reverse; }
+  .pulse-soft { animation: motif-pulse 7s ease-in-out infinite; }
+}
+@keyframes motif-spin { to { transform: rotate(360deg); } }
+@keyframes motif-pulse { 0%, 100% { opacity: var(--pmin, 0.3); } 50% { opacity: var(--pmax, 0.55); } }
+
+/* ============================================================
    Hover-expand row — three cards; hover/focus one, squeeze others.
    ============================================================ */
 .exp-row { display: flex; gap: 14px; }

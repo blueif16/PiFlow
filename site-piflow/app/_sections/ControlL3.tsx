@@ -1,4 +1,5 @@
 import { Marquee } from "@/components/ui/marquee";
+import { Motif } from "@/components/iso/Motif";
 
 /* One accent hue, three opacities = three block "types".
    var(--accent) is reserved for the differentiator (Hermes). */
@@ -42,8 +43,19 @@ function Block({ label, action, stripe }: { label: string; action: string; strip
 export default function ControlL3() {
   return (
     <section id="control" className="relative overflow-hidden py-28">
+      <div
+        aria-hidden
+        className="absolute right-[3%] top-[44%] z-0 hidden -translate-y-1/2 lg:block"
+      >
+        <Motif
+          src="/motifs/g9.svg"
+          motion="spin-slow"
+          className="h-[470px] w-[470px] opacity-[0.14]"
+        />
+      </div>
+
       {/* Copy */}
-      <div className="reveal mx-auto w-full max-w-6xl px-6">
+      <div className="reveal relative z-10 mx-auto w-full max-w-6xl px-6">
         <p className="font-mono text-xs uppercase tracking-[0.18em] text-fg-faint">
           L3 · Control plane
         </p>
@@ -60,7 +72,7 @@ export default function ControlL3() {
       {/* Two continuous decks. Full-bleed rail with edge fades so the blocks read as
           infinitely extensible; the second deck peeks from below the bottom mask. */}
       <div
-        className="relative mt-16 w-full select-none"
+        className="relative z-10 mt-16 w-full select-none"
         style={{
           WebkitMaskImage:
             "linear-gradient(to right, transparent, #000 12%, #000 88%, transparent)",
@@ -89,7 +101,7 @@ export default function ControlL3() {
         </div>
       </div>
 
-      <p className="reveal mx-auto mt-6 w-full max-w-6xl px-6 font-mono text-xs text-fg-faint">
+      <p className="reveal relative z-10 mx-auto mt-6 w-full max-w-6xl px-6 font-mono text-xs text-fg-faint">
         background listener — reacts, never polls.
       </p>
     </section>
