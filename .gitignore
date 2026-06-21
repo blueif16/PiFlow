@@ -4,3 +4,6 @@
 node_modules/
 dist/
 *.tsbuildinfo
+
+# SVGs untracked for now (illustration library paused). Already-tracked motifs stay tracked.
+*.svg
