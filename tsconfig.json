@@ -1,0 +1,7 @@
+{
+  "// note": "Solution file for `tsc -b`. References each package; add new packages here.",
+  "files": [],
+  "references": [
+    { "path": "./packages/core" }
+  ]
+}
