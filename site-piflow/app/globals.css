@@ -220,7 +220,7 @@ body {
 @keyframes iso-float { from { transform: translateY(3px); } to { transform: translateY(-5px); } }
 
 /* Accent cubes/edges get a real glow (the "expensive" lift). Static — safe always-on. */
-.iso-glow { filter: drop-shadow(0 0 4px rgba(61, 242, 167, 0.38)); }
+.iso-glow { filter: drop-shadow(0 0 7px rgba(61, 242, 167, 0.45)) drop-shadow(0 0 2px rgba(61, 242, 167, 0.6)); }
 
 /* ============================================================
    Hover-expand row — three cards; hover/focus one, squeeze others.

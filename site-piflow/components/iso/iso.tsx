@@ -19,6 +19,28 @@ function hexA(hex: string, a: number): string {
   return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
 
+/* ---- Shared glossy face gradients (objectBoundingBox → one
+        definition works for every cube; identical across scenes). - */
+function IsoDefs() {
+  return (
+    <defs>
+      <linearGradient id="iso-top" x1="0" y1="0" x2="0.3" y2="1">
+        <stop offset="0" stopColor="#d2ffee" stopOpacity="0.55" />
+        <stop offset="0.4" stopColor={ACCENT} stopOpacity="0.34" />
+        <stop offset="1" stopColor={ACCENT} stopOpacity="0.12" />
+      </linearGradient>
+      <linearGradient id="iso-right" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor={ACCENT} stopOpacity="0.3" />
+        <stop offset="1" stopColor={ACCENT} stopOpacity="0.06" />
+      </linearGradient>
+      <linearGradient id="iso-left" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stopColor={ACCENT} stopOpacity="0.15" />
+        <stop offset="1" stopColor={ACCENT} stopOpacity="0.03" />
+      </linearGradient>
+    </defs>
+  );
+}
+
 /* ---- Scene wrapper ---------------------------------------- */
 export function IsoScene({
   viewBox,
@@ -37,6 +59,7 @@ export function IsoScene({
       preserveAspectRatio="xMidYMid meet"
       xmlns="http://www.w3.org/2000/svg"
     >
+      <IsoDefs />
       {children}
     </svg>
   );
@@ -69,9 +92,16 @@ export function IsoBox({
 
   let fTop = "none", fLeft = "none", fRight = "none";
   if (variant === "glow") {
-    fTop = hexA(accent, topAlpha ?? 0.28);
-    fLeft = hexA(accent, 0.08);
-    fRight = hexA(accent, 0.16);
+    if (accent === ACCENT) {
+      // glossy: per-face gradients with a glassy top highlight
+      fTop = "url(#iso-top)";
+      fLeft = "url(#iso-left)";
+      fRight = "url(#iso-right)";
+    } else {
+      fTop = hexA(accent, topAlpha ?? 0.28);
+      fLeft = hexA(accent, 0.08);
+      fRight = hexA(accent, 0.16);
+    }
   } else if (variant === "surface") {
     fTop = hexA("#ffffff", 0.06);
     fLeft = "rgba(0,0,0,0.30)";
