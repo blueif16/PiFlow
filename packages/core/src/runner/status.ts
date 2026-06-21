@@ -2,8 +2,10 @@
 // schema + writeStatus 639–668), kept faithful enough that a viz/dashboard can read it unchanged.
 //
 // The status is the SINGLE source of truth a watcher polls: a node is `ok` only when its declared
-// artifacts exist ON DISK (the driver stat()s them — "verified, not trusted"). The writer is
-// debounced-free and atomic-enough for the in-process tests (a plain pretty-printed write).
+// artifacts exist ON DISK (the driver stat()s them — "verified, not trusted"). Because parallel lanes
+// and the run loop all write this one file, the writer SERIALIZES writes per dir and publishes each
+// ATOMICALLY (temp file + rename) so concurrent writers never interleave and a polling reader never
+// sees a torn file (see writeStatus).
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -70,11 +72,43 @@ export interface RunStatus {
 
 export const nowISO = (): string => new Date().toISOString();
 
-/** Write the run status to `<dir>/run-status.json` (pretty-printed; mkdir -p first). */
-export async function writeStatus(dir: string, status: RunStatus): Promise<void> {
+// SERIALIZED + ATOMIC writer. The status file is the SINGLE source of truth a watcher polls (see the
+// header), AND it is written from PARALLEL lanes (runWorkflow's per-stage Promise.all) plus the run
+// loop — concurrent writers. Two hazards the naive `await fs.writeFile` has:
+//   1. INTERLEAVING — two overlapping async writes to the SAME path are not ordered, so a later
+//      `writeStatus` can land on disk BEFORE an earlier one's bytes finish, leaving a stale record
+//      (run.mjs avoided this for free: it is single-threaded + synchronous `writeFileSync`).
+//   2. TORN READS — `fs.writeFile` is not atomic; a concurrent reader (the viz/dashboard) can observe
+//      a half-written, unparseable file (reproduced empirically: ~3/472 reads torn under load).
+// Fix: a per-directory promise chain serializes writes (so they never overlap → last-write-wins is
+// real), and each write goes to a unique temp file then `rename`s into place (atomic on POSIX/NTFS),
+// so a reader sees only a complete prior or complete next file — never a partial one.
+const writeChains = new Map<string, Promise<void>>();
+let tmpSeq = 0;
+
+/**
+ * Write the run status to `<dir>/run-status.json` (pretty-printed; mkdir -p first). Writes to a given
+ * dir are SERIALIZED and each is ATOMIC (temp-file + rename), so parallel lanes + a polling watcher
+ * never interleave or read a torn file.
+ */
+export function writeStatus(dir: string, status: RunStatus): Promise<void> {
   status.updatedAt = nowISO();
-  await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(path.join(dir, 'run-status.json'), JSON.stringify(status, null, 2));
+  // SNAPSHOT the bytes NOW (synchronously), before queueing: `status` is a shared, still-mutating
+  // object, so serializing only the file write is not enough — we must freeze WHAT this call writes at
+  // call time, or a queued write would later serialize a future mutation and reorder records on disk.
+  const body = JSON.stringify(status, null, 2);
+  const prev = writeChains.get(dir) ?? Promise.resolve();
+  const next = prev
+    .catch(() => {}) // a prior write's failure must not poison the chain
+    .then(async () => {
+      await fs.mkdir(dir, { recursive: true });
+      const finalPath = path.join(dir, 'run-status.json');
+      const tmpPath = path.join(dir, `.run-status.${process.pid}.${tmpSeq++}.tmp`);
+      await fs.writeFile(tmpPath, body);
+      await fs.rename(tmpPath, finalPath); // atomic publish — a reader never sees a partial file
+    });
+  writeChains.set(dir, next);
+  return next;
 }
 
 /** Stat a host path → { path, exists, bytes }. Never throws (missing ⇒ exists:false). */

@@ -246,14 +246,25 @@ async function runNode(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecor
     return finishNode(ctx, node, rec, t0, 'error', `tool resolution failed: ${(e as Error).message}`, []);
   }
 
-  const sandbox = await ctx.provider.create({
-    readScope: node.sandbox.read,
-    outputDir: node.sandbox.output,
-    workdir: node.sandbox.workspace,
-    image: node.sandbox.image,
-    env: node.sandbox.env,
-    timeoutMs: node.sandbox.timeoutMs,
-  });
+  // LANE ISOLATION (run.mjs runNode 851–1176 always RESOLVES to a record, never rejects): standing up
+  // the sandbox can throw (provider.create on a cloud backend: image pull / quota / network). That
+  // throw is OUTSIDE the try/finally below, so unguarded it would reject this lane's promise and —
+  // since the stage uses Promise.all — fail-fast the WHOLE run, discarding the sibling lanes' already-
+  // completed work (MDN "Promise.all fail-fast"; javascript.info "Dangerous Promise.all": an uncaught
+  // rejection can crash a Node process). Mark this node `error` and let the run halt cleanly instead.
+  let sandbox: Sandbox;
+  try {
+    sandbox = await ctx.provider.create({
+      readScope: node.sandbox.read,
+      outputDir: node.sandbox.output,
+      workdir: node.sandbox.workspace,
+      image: node.sandbox.image,
+      env: node.sandbox.env,
+      timeoutMs: node.sandbox.timeoutMs,
+    });
+  } catch (e) {
+    return finishNode(ctx, node, rec, t0, 'error', `sandbox create failed: ${(e as Error).message}`, []);
+  }
 
   try {
     // STAGE io.reads from the host run dir INTO the sandbox at the same relative path (filesystem-as-
@@ -332,13 +343,24 @@ async function runNode(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecor
       ? `killed (${killed})`
       : parsed?.summary ?? result.stdout.trim().slice(-200);
     return finishNode(ctx, node, rec, t0, st, summary, artifacts, issues);
+  } catch (e) {
+    // Anything thrown AFTER the sandbox exists (staging a read, the exec primitive, downloadDir, the
+    // host-stat) is contained to THIS node as `error` — never a rejected lane (see LANE ISOLATION).
+    return finishNode(ctx, node, rec, t0, 'error', `node failed: ${(e as Error).message}`, []);
   } finally {
-    await sandbox.dispose();
+    // Dispose is best-effort: a teardown failure must not reject the lane either. NOTE — the in-memory
+    // baseline rm's the temp dir here while a watchdog-abandoned child may still be running (the kill
+    // seam is a no-op without a child pid), so that orphan writes into a deleted dir (harmless: the
+    // writes fail). Real process-group reaping is a provider concern (see the spine recommendation in
+    // docs/research/runner-childprocess-2026-06-21.md and the brief's "Defer to providers").
+    try {
+      await sandbox.dispose();
+    } catch { /* teardown failure is non-fatal — the node verdict already stands */ }
   }
 }
 
 /** Stamp a node's terminal fields, write status, and return the record. */
-function finishNode(
+async function finishNode(
   ctx: RunContext,
   node: NodeSpec,
   rec: NodeStatusRecord,
@@ -347,14 +369,17 @@ function finishNode(
   summary: string,
   artifacts: ArtifactState[],
   issues: string[] = [],
-): NodeStatusRecord {
+): Promise<NodeStatusRecord> {
   rec.status = status;
   rec.endedAt = nowISO();
   rec.durationMs = Date.now() - t0;
   rec.artifacts = artifacts;
   rec.issues = issues;
   rec.summary = summary;
-  void writeStatus(ctx.outDir, ctx.status);
+  // AWAIT the write (was a fire-and-forget `void`): a node's terminal record must be durable on disk
+  // before its lane resolves, so the halt decision + final rollup never race an in-flight write. The
+  // write is serialized + atomic (see writeStatus), so awaiting here cannot deadlock parallel lanes.
+  await writeStatus(ctx.outDir, ctx.status);
   return rec;
 }
 

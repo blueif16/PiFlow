@@ -88,3 +88,38 @@ Sources: Node.js `child_process` docs (v24/v26); `nexus-substrate/nexus-agents` 
 execa `docs/termination.md`; AppSignal "AbortController" 2025-02; Jsonic "JSON Streaming" 2026-05;
 thenodebook "Standard I/O" 2026-02; `nodejs/node#7184`; SO "parse output line by line" (9781214);
 r/node (zombie/`tree-kill`, partial-line buffering, in-memory long-running-fn threads).
+
+## Review findings (M1 runner, 2026-06-21) — fixed in the runner + spine recommendations
+
+Adversarial review of the landed M1 runner (`packages/core/src/runner/*`) against this brief and
+`run.mjs`. Three correctness bugs were fixed IN the runner (each with a regression test that fails
+without the fix); two need a frozen-spine change and are left as recommendations.
+
+**Fixed (runner-local, faithful to run.mjs):**
+- **Lane isolation.** `provider.create()` (and the post-create body) could throw OUTSIDE `runNode`'s
+  try, so a single parallel lane's failure rejected the stage's `Promise.all` and crashed the WHOLE
+  run, discarding the sibling lanes' completed work. `run.mjs`'s `runNode` (851–1176) ALWAYS resolves
+  to a record and never rejects its lane. Fixed by guarding `create()` and wrapping the body so any
+  throw becomes an `error` record; the run then halts cleanly. (MDN "Promise.all fail-fast";
+  javascript.info "Dangerous Promise.all": an uncaught rejection can crash a Node process.)
+- **Concurrent status writes.** Parallel lanes + the loop all write the one `run-status.json` via
+  un-ordered, non-atomic `fs.writeFile`, and `finishNode` used a fire-and-forget `void writeStatus`.
+  A polling watcher saw torn/partial files (reproduced: ~3/472 reads) and intermediate records could
+  reorder. `run.mjs` got this for free (single-threaded synchronous `writeFileSync`). Fixed by a
+  per-dir serialize-chain + atomic temp-file-then-`rename` publish, and by awaiting the write in
+  `finishNode`. (OTel run-record consistency under concurrent writers.)
+
+**Spine recommendations (NOT made — frozen `types.ts` / `sandbox/index.ts`):**
+- **Kill seam needs a real handle (no-zombie / dispose race).** After a watchdog trip the runner
+  abandons the wait and `dispose()` rm's the temp dir while the child may still be running — on the
+  in-memory baseline the kill is a no-op (no pid), so the orphan keeps running (writing into a deleted
+  dir; harmless but unreaped). The proven fix (this brief §(a): systemd `KillMode`, dumb-init session
+  kill, `tree-kill`) needs a process handle. RECOMMEND: add an optional `kill(signal)`/`pid` to
+  `Sandbox` (or have `exec` accept an `AbortSignal` on `ExecOpts`) so the seam can SIGTERM→SIGKILL the
+  child's process group and `dispose()` can await its exit before rm. Until then the no-op is
+  honestly contained + documented in `runNode`'s finally.
+- **Close stdin on the spawn (headless hang).** `provider-and-headless.md`'s #1 invariant — a headless
+  CLI with an open stdin pipe and no TTY hangs forever — is unmet: `InMemorySandbox.exec` spawns with
+  default stdio (stdin piped/open), and the command builder (a string) cannot set it. RECOMMEND:
+  `InMemorySandbox.exec` (and every real provider) spawn with `stdio: ["ignore", "pipe", "pipe"]`.
+  Harmless for the self-exiting test stubs; load-bearing for a live `pi` spawn.

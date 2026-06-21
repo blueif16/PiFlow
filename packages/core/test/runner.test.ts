@@ -2,15 +2,17 @@ import { describe, it, expect } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { compile } from '../src/index.js';
+import { compile, InMemorySandboxProvider } from '../src/index.js';
 import type { NodeIntent, WorkflowSpec } from '../src/index.js';
 import {
   runWorkflow,
   defaultExecRunner,
   defaultPiCommand,
+  writeStatus,
   type ExecRunner,
+  type RunStatus,
 } from '../src/runner/index.js';
-import type { Sandbox } from '../src/types.js';
+import type { Sandbox, SandboxProvider, CreateOpts } from '../src/types.js';
 
 // ── helpers ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -230,5 +232,118 @@ describe('defaultPiCommand — production headless flags', () => {
     expect(cmd).toContain('--model m1');
     expect(cmd).toContain('--tools read,write');
     expect(cmd).toMatch(/@'_pi\/prompt\.md'$/);
+  });
+});
+
+// ── 5. lane isolation: a throw in one parallel lane must NOT crash the whole run ──────────────────
+
+describe('runWorkflow — lane isolation (parallel-lane failures are contained, not fail-fast)', () => {
+  it('contains a sandbox-create throw in one lane as `error` and still resolves with the other lane done', async () => {
+    // Two independent producers run as one parallel stage. The provider throws on the 2nd create() —
+    // i.e. one lane fails to even stand up its sandbox. With the bug, that throw escapes runNode, the
+    // stage's Promise.all rejects, and runWorkflow REJECTS — discarding Alpha's completed work and the
+    // halt/finalize. The fix marks Beta `error` and the run halts cleanly (run.mjs's runNode never
+    // rejects its lane).
+    const g = compile(wf([n('Alpha', [], ['alpha.txt']), n('Beta', [], ['beta.txt'])]));
+    expect(g.stages[0]).toMatchObject({ parallel: true });
+    const outDir = await tmpOut();
+
+    let creates = 0;
+    const base = new InMemorySandboxProvider();
+    const flaky: SandboxProvider = {
+      kind: 'inmemory',
+      create(opts: CreateOpts): Promise<Sandbox> {
+        creates++;
+        if (creates === 2) throw new Error('provider boom in lane 2');
+        return base.create(opts);
+      },
+    };
+
+    // Must RESOLVE (not throw). With the bug this await rejects and the test fails.
+    const { status } = await runWorkflow(g, { run: 'lane', outDir, provider: flaky, buildCommand: stubBuilder() });
+
+    expect(status.done).toBe(true);
+    expect(status.ok).toBe(false); // the failed lane halts the run cleanly
+    const verdicts = Object.values(status.nodes).map((x) => x.status).sort();
+    // exactly one node errored, the other completed ok — siblings' work was NOT discarded.
+    expect(verdicts).toEqual(['error', 'ok']);
+    const errored = Object.values(status.nodes).find((x) => x.status === 'error');
+    expect(errored?.summary).toMatch(/sandbox create failed/i);
+
+    // The terminal status is DURABLE on disk (finishNode awaits the write) and equals memory.
+    const onDisk = JSON.parse(await fs.readFile(path.join(outDir, 'run-status.json'), 'utf8'));
+    expect(onDisk.done).toBe(true);
+    expect(onDisk.ok).toBe(false);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('contains a throw from an injected execRunner in one lane (post-create failure) as `error`', async () => {
+    // The exec primitive throwing (vs resolving) after the sandbox exists must also be contained to the
+    // node, never reject the lane. Covers the `catch` around the post-create body.
+    const g = compile(wf([n('P', [], ['p.txt']), n('Q', [], ['q.txt'])]));
+    const outDir = await tmpOut();
+
+    let n0 = 0;
+    const explodingExec: ExecRunner = async (sandbox, cmd, opts) => {
+      n0++;
+      if (n0 === 1) throw new Error('exec primitive blew up');
+      return defaultExecRunner(sandbox, cmd, opts);
+    };
+
+    const { status } = await runWorkflow(g, { run: 'lane2', outDir, buildCommand: stubBuilder(), execRunner: explodingExec });
+    expect(status.done).toBe(true);
+    expect(status.ok).toBe(false);
+    expect(Object.values(status.nodes).filter((x) => x.status === 'error')).toHaveLength(1);
+    expect(JSON.stringify(status.nodes)).toMatch(/node failed/i);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
+// ── 6. status writer: serialized + atomic under concurrent writers (no torn reads, last-write-wins) ─
+
+describe('writeStatus — concurrent-writer safety (atomic publish, ordered, no torn reads)', () => {
+  it('never yields a torn/partial file to a concurrent reader and lands the last-enqueued value', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-status-'));
+    const file = path.join(dir, 'run-status.json');
+    const mk = (i: number): RunStatus => ({
+      run: 'r', startedAt: 'x', updatedAt: 'x', done: false, ok: null, durationMs: i, stage: null, totals: null,
+      // a large payload so a non-atomic write spans multiple syscalls (maximizes the torn-read window).
+      nodes: Object.fromEntries(
+        Array.from({ length: 400 }, (_, k) => [
+          `n${k}`, { id: `n${k}`, label: `L${k}`, status: 'ok' as const, artifacts: [], issues: ['x'.repeat(64)], summary: 's'.repeat(200) },
+        ]),
+      ),
+    });
+
+    // A reader polling the file concurrently must NEVER see unparseable bytes (the watcher invariant).
+    let torn = 0;
+    let reads = 0;
+    let stop = false;
+    const reader = (async () => {
+      while (!stop) {
+        reads++;
+        try { JSON.parse(await fs.readFile(file, 'utf8')); } catch (e) {
+          // ENOENT before the first publish is fine; a parse error on present bytes is a TORN read.
+          if ((e as NodeJS.ErrnoException).code !== 'ENOENT') torn++;
+        }
+      }
+    })();
+
+    // Fire many overlapping writes (mimicking parallel lanes + the loop). The LAST enqueued is i=199.
+    const writes: Promise<void>[] = [];
+    for (let i = 0; i < 200; i++) writes.push(writeStatus(dir, mk(i)));
+    await Promise.all(writes);
+    stop = true;
+    await reader;
+
+    expect(reads).toBeGreaterThan(0);
+    expect(torn).toBe(0); // atomic temp+rename ⇒ a reader sees only whole files
+    // Serialized chain ⇒ the last-ENQUEUED value is the one on disk (ordering preserved).
+    const finalOnDisk = JSON.parse(await fs.readFile(file, 'utf8'));
+    expect(finalOnDisk.durationMs).toBe(199);
+
+    await fs.rm(dir, { recursive: true, force: true });
   });
 });
