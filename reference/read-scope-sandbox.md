@@ -1,7 +1,7 @@
 # Read-scope sandbox (`--sandbox`, macOS) — kernel-enforced READING LAW
 
 `--worktree` (see `worktree-isolation.md`) makes a node's *writes* physically isolated. It does
-**not** stop a node *reading* files outside its lane. A cheap model that can't find a component will
+**not** stop a node *reading* files outside its lane. A non-Claude model that can't find a component will
 `grep -rn` the whole repo and `cat` other units' source "for reference" — bloating its context (one
 real composer node read 3 sibling units' source and hit 116k tokens, then stalled). A prompt-level
 "only read your own inputs" rule is unenforceable on a weak model. `--sandbox` moves that boundary
@@ -88,7 +88,7 @@ the sandbox is the backstop, not the only line of defense.
 
 This used to be framed as something you bolted onto "the node that spelunks." That was the bug: in the
 reference workflow only the **composer** carried a `DRIVER-READ-SCOPE`, hand-rolled as a raw string
-(the helper had no `readScope` field), so every OTHER node ran unsandboxed — and a cheap model
+(the helper had no `readScope` field), so every OTHER node ran unsandboxed — and a non-Claude model
 (MiniMax-M3) read-thrashed an un-scoped node (120 reads, `find / -name`, a contaminating proposal file
 read 5×) until it timed out. The fix is to make read-scope a first-class `contract()` field that every
 producing node fills in.

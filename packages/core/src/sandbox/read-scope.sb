@@ -1,0 +1,68 @@
+(version 1)
+;; ===========================================================================================
+;; @piflow/core SeatbeltSandbox READ-SCOPE profile -- macOS Seatbelt (sandbox-exec).
+;;
+;; This is the @piflow/core port of templates/pi-runner/sandbox/read-scope.sb. The SeatbeltSandbox
+;; provider (sandbox/seatbelt.ts buildSandboxProfile) renders a per-exec copy of this template with
+;; the home, tmpdir, and declared-scope tokens substituted, then runs sandbox-exec -f <copy> sh -c <cmd>.
+;;
+;; Two hard rules for editing this file (DO NOT BREAK THEM):
+;;   1. Comments are PURE ASCII. The SBPL/TinyScheme reader miscounts multibyte UTF-8 (em-dashes,
+;;      ellipses) and then parses comment text as code (an "unbound variable" error).
+;;   2. NEVER write a driver placeholder token in a comment. The provider string-substitutes those
+;;      tokens; a multi-line scope value spilled into a comment becomes live code and breaks parsing.
+;;      Each token below appears ONCE, only at its rule site.
+;;
+;; WHY: a non-Claude model ignores a prompt-level READING LAW and spelunks files outside its lane (it
+;; grepped the whole repo for a phantom component and read other units source, bloating context, then
+;; stalled). Prompt rules are unenforceable on weak models, so the scope boundary must live in the OS.
+;; Seatbelt is kernel-enforced, INHERITS to every child process (so a spawned grep/find/cat is bound
+;; too) and cannot be lifted from inside the sandbox.
+;;
+;; POLICY: allow everything EXCEPT file reads; deny ALL file reads; then re-allow exactly (1) the
+;; toolchain/system roots a node + node + npm need to run and (2) the per-exec DECLARED scope the
+;; provider injects below. A read of the wider tree (another unit, or a grep from the filesystem root)
+;; returns Operation-not-permitted, while the workdir, the declared read scope, and node_modules read fine.
+;;
+;; SCOPE: reads only (the incident was a read-scope failure). exec and network are left open (allow
+;; default) so the toolchain is unaffected; tighten those later if wanted.
+;; ===========================================================================================
+
+(allow default)
+
+;; Deny every file read up front, then immediately re-allow METADATA everywhere (last match wins).
+;; Metadata = stat/traverse, which the toolchain needs to resolve paths (node getcwd / dyld); denying
+;; it EPERMs uv_cwd and node never boots. DATA (content) stays denied globally and is re-granted only
+;; for the scoped subpaths below -- and content is exactly what a wandering read leaks: cat/grep read
+;; file data, ls/find readdir reads directory data, so both stay blocked for out-of-scope paths.
+(deny file-read*)
+(allow file-read-metadata)
+
+;; --- toolchain / system roots: node, npm, the dyld shared cache, temp ---
+(allow file-read*
+  (subpath "/usr")
+  (subpath "/bin")
+  (subpath "/sbin")
+  (subpath "/System")
+  (subpath "/Library")
+  (subpath "/opt")
+  (subpath "/private/var")
+  (subpath "/private/tmp")
+  (subpath "/private/etc")
+  (subpath "/dev")
+  (subpath "@TMPDIR@")
+  (subpath "@HOME@/.pi")
+  (subpath "@HOME@/.npm")
+  (subpath "@HOME@/.cache")
+  (subpath "@HOME@/.config")
+  (subpath "@HOME@/.nvm")
+  (literal "/")
+  (literal "/etc")
+  (literal "/tmp")
+  (literal "/var"))
+
+;; --- per-exec DECLARED read scope (provider-injected from CreateOpts.readScope + the workdir) ---
+;; the node's workdir + its declared read roots + node_modules. Anything not listed here (sibling
+;; units, other out dirs, the wider repo) stays denied.
+(allow file-read*
+@SCOPE_ALLOWS@)

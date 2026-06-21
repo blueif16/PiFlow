@@ -1,6 +1,6 @@
 # Worktree isolation (opt-in physical isolation for parallel runs)
 
-When a fleet of runs share ONE working tree, a cheap model in run A can wander into run B's files —
+When a fleet of runs share ONE working tree, a non-Claude model in run A can wander into run B's files —
 read them as "reference", or worse, write into them. The Output Contract (`artifact-contract.md`)
 makes the *silent-failure* half loud (a node that produced nothing for its own lane fails as
 `blocked`). Worktree isolation closes the other half: it makes the *wander itself impossible* by
@@ -55,7 +55,7 @@ robustness, at zero added code/config.
 
 **GOTCHA if you DO adopt it with a `projectDir`-style workflow.** The remap rewrites only
 `BASE_ROOT`-absolute paths *in the prompt text* (`setupWorktree` + the line-~423 rewrite) — never the
-cheap model's *runtime self-reports*. So a workflow that uses a RELATIVE `projectDir`, or whose model
+non-Claude model's *runtime self-reports*. So a workflow that uses a RELATIVE `projectDir`, or whose model
 self-reports project-relative paths, hits false `blocked`: the two driver resolvers disagree
 (`artifactState` tries RUN_CWD then ROOT; `artifactStateAbs` does a bare `statSync`), and
 `declaredMissing` can override a *satisfied* `DRIVER-ARTIFACTS` contract. Minimal generalizing fix

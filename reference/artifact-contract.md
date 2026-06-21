@@ -19,7 +19,7 @@ workflow already uses all three:
 The native structured-output mechanism validates the model's **returned message**, never the
 **filesystem**. Anthropic's own guidance puts artifact-on-disk verification at the orchestrator
 layer (`fs.existsSync`, a preflight check node). So `outputArtifacts` in a node's return is a
-**self-report** — and a self-report from a derailed cheap model is worthless precisely when you need
+**self-report** — and a self-report from a derailed non-Claude model is worthless precisely when you need
 it: it can claim `[]`, name the wrong path, or (the real incident) wander into a *sibling lesson's*
 file, write nothing for its own, and still exit clean. The driver had nothing to compare against,
 because it only ever checked *what the node claimed it wrote*, never *what the node was required to
@@ -147,7 +147,7 @@ check/preflight/gate nodes legitimately produce nothing, and a node may declare 
 ## The post-node schema gate (generic, opt-in — `DRIVER-SCHEMA`)
 
 The existence gate proves an artifact *is there*. It cannot prove the artifact is *well-formed* — a
-cheap model that returns a clean `ok` and writes a real file can still leave it the wrong shape: a
+non-Claude model that returns a clean `ok` and writes a real file can still leave it the wrong shape: a
 missing required key, a wrong type, or a pre-seeded template skeleton whose `<FILL:>` leaves were never
 replaced. That defect surfaces only one or two nodes downstream, when a consumer chokes on the malformed
 input — the exact late-binding failure the contract exists to pull forward. **The schema gate is the
@@ -195,7 +195,7 @@ non-breaking.
    the args against the TypeBox schema (`{node,status,outputArtifacts,summary,issues,pipelineFindings}`)
    and `terminate:true` ends the turn. The structured payload rides the `tool_execution_end` json
    event as `result.details`; the driver reads it there (`submittedResult`) **in preference to** the
-   fenced-JSON parser — so the cheap model can no longer botch the ```json fence (the single most-
+   fenced-JSON parser — so the non-Claude model can no longer botch the ```json fence (the single most-
    patched run.mjs surface: `98fcdd3 → 89fe3ac`). If the model didn't call the tool, the driver falls
    back to the parser exactly as before. **Spike-verified (2026-06-09):** qwen3.7-max calls it
    reliably headless; `details` land at `ev.result.details` (the exact field the driver reads).
@@ -214,7 +214,7 @@ isolated spikes pass, but over-blocking risk (a node whose legitimate write fall
 ## Per-node tool gating as a behavior LOCK (`DRIVER-TOOLS` / `DRIVER-EXCLUDE-TOOLS`)
 
 A node's `tools` list (rendered as `DRIVER-TOOLS` → pi `--tools`) is usually read as a *capability*
-grant — "what the node is allowed to do." On a cheap/weak executor it is more powerful than that: **the
+grant — "what the node is allowed to do." On a non-Claude/weak executor it is more powerful than that: **the
 tool set is the node's ACTION SHAPE, and cutting it to the minimum FORCES the action you want.** A weak
 model fills an open action space with its shortest-effort interpretation — when that interpretation is
 "explore more / think more / edit-match-fail-and-retry," no amount of prompt prose pulls it back onto the
@@ -233,7 +233,7 @@ afford the wrong shape**, so the right shape is the *only* exit.
   that leaves the intended action as the path of least resistance.
 
 *Worked instance (game-omni HARDEN).* HARDEN composes a large `blueprint.json` from a reference chain.
-With the full toolset (`read, ls, grep, find, edit, write, bash, submit_result`) the cheap executor
+With the full toolset (`read, ls, grep, find, edit, write, bash, submit_result`) the non-Claude executor
 (MiniMax-M3 on pi) **explored forever** — it read a dozen files, ran repeated `grep`/`bash` over the
 tree, composed in its head, and was killed by the stall guard having written **zero** files across two
 live runs. Removing the explore tools (`ls/grep/find/bash`) AND `edit` left **`read, write,

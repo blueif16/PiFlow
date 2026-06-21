@@ -14,7 +14,7 @@ Claude Code — so future iterations have the context, not just the mechanics. F
 - A **headless coding-agent CLI** (read / bash / edit / write tools) that works against the files
   in its cwd. We invoke it non-interactively, **one process per unit of work**.
 - We run it on **non-Claude, OpenAI-compatible "coding-plan" models** (DashScope qwen, GLM, Kimi,
-  DeepSeek, OpenRouter, local vLLM, …) — cheap subscription inference, not Claude.
+  DeepSeek, OpenRouter, local vLLM, …) — efficient subscription inference, not Claude.
 - In `pi-runner` it is the **per-node executor**: the deterministic driver owns the graph; pi runs
   one node (one wave prompt) and coordinates with other nodes purely through the **filesystem**. It
   is a drop-in replacement for a Claude Workflow `agent()` at the *execution* layer.
@@ -44,8 +44,8 @@ pi -p --mode json -a --no-session --offline --no-extensions \
   reported artifacts on disk** — `ok` is granted only if the files exist (**verified, not trusted**).
 
 ## Advantages (why pi for this)
-- **Cost** — runs on cheap non-Claude coding-plan inference. The whole point: keep the
-  *orchestration* on Claude (one cheap driver) and ship the *execution* (the expensive token mass —
+- **Cost** — runs on efficient non-Claude coding-plan inference. The whole point: keep the
+  *orchestration* on Claude (one efficient driver) and ship the *execution* (the expensive token mass —
   N multi-KB wave prompts) to a coding-plan model at ~plan cost.
 - **Model-swappable with zero drift** — identical prompts + identical DAG across any model; switch
   by editing `.env`. A clean A/B of model ids where the only variable is the model.
@@ -53,13 +53,13 @@ pi -p --mode json -a --no-session --offline --no-extensions \
   determinism (stage order, parallel lanes, halt-on-failure, watchdog) and stream live status.
 - **Filesystem-coordinated** — pi nodes hand off through files exactly as Claude Workflow agents do,
   so pi is a *drop-in* executor; the coordination contract never changes between Claude and pi.
-- **Reasoning toggle per model** (`PI_CP_REASONING`) — run cheap/non-reasoning to shake out
+- **Reasoning toggle per model** (`PI_CP_REASONING`) — run efficient/non-reasoning to shake out
   mechanics, flip on (or move to a stronger id) for quality once graph + prompts are proven.
 
 ## Limitations / sharp edges
 - **No schema-forced return** → must use the return-protocol block + on-disk verification; a model
   that forgets the block yields `parsed=null` (driver flags "no return JSON block").
-- **Quality is model-dependent** — cheap coding-plan models are weaker than Claude (more protocol
+- **Quality is model-dependent** — non-Claude coding-plan models are weaker than Claude (more protocol
   misses, weaker adherence to long discipline preambles). Ladder up for hard waves.
 - **Headless hang class** — an **open stdin pipe** (no TTY) blocks forever waiting for EOF; this
   caused a silent **~10-minute startup hang**. Mitigation is mandatory:
@@ -83,9 +83,9 @@ timeout, return a verified result). They differ only in the *face* presented.
 - **Face A — DAG executor (BUILT: `pi-runner/`).** Driver extracts the Workflow's prompts+DAG
   (execute-and-record), spawns one pi per node, owns stage order / parallel lanes / halt / watchdog,
   verifies status on disk. The **efficient path for a whole pipeline** — orchestration cost stays on
-  one cheap Node driver, not N Claude agents.
+  one efficient Node driver, not N Claude agents.
 - **Face B — single-task subagent (`PROPOSAL`).** A thin Claude subagent (`agents/pi-task.md`,
-  `tools: Bash`) forwarding one bounded task → `pi-task.mjs` broker → one headless pi. The cheap
+  `tools: Bash`) forwarding one bounded task → `pi-task.mjs` broker → one headless pi. The efficient
   counterpart to `codex:codex-rescue` (premium GPT-5-codex second pass). ~90% of the code exists:
   the broker is `run.mjs`'s `runNode()` minus the DAG. Extract a shared `spawnPiNode()` core and
   give it both faces.
@@ -101,9 +101,9 @@ status/result/cancel, hooks) that `spawn()`s the `codex` CLI; (3) the `codex` CL
 | --- | --- | --- | --- |
 | Vehicle | Claude **subagent** (Agent-native) | external **driver**, bypasses Agent tool | Claude subagent (Bash forwarder) |
 | Scope | one bounded task | whole multi-node DAG | one bounded task |
-| Model | premium GPT-5-codex | cheap coding-plan | cheap coding-plan |
+| Model | premium GPT-5-codex | non-Claude coding-plan | non-Claude coding-plan |
 | Lifecycle | bg/fg, resume, status, cancel, hooks | per-run status + watchdog | slim bg/status/result (`PROPOSAL`) |
-| Role | premium second pass / rescue | cheap pipeline fleet | cheap second pass / handoff |
+| Role | premium second pass / rescue | non-Claude pipeline fleet | non-Claude second pass / handoff |
 
 **The efficiency rule this yields:** do **not** route a DAG through Claude subagents (e.g. a
 workflow node `agent(prompt, {agentType:'pi-task'})`). Each node would still spin up a sonnet
@@ -114,10 +114,10 @@ the external driver.
 ## Future-iteration backlog
 - **Shared core** — extract `spawnPiNode()` (headless spawn + JSON-stream parse + return-protocol +
   artifact verify) so the DAG driver and a future `pi-task` share one implementation.
-- **`pi-task` subagent (Face B)** — `pi-task.mjs` + `agents/pi-task.md`: pi as a cheap codex-rescue.
+- **`pi-task` subagent (Face B)** — `pi-task.mjs` + `agents/pi-task.md`: pi as an efficient codex-rescue.
 - **Slim job registry** — optional bg + status + result + resume for `pi-task`, à la codex-companion.
 - **Per-node model routing** — the Workflow already supports a per-`agent` `model`; map node
-  label/agentType → a model id (cheapest for mechanical waves, stronger for pedagogy/compose).
+  label/agentType → a model id (most efficient for mechanical waves, stronger for pedagogy/compose).
 - **Dynamic fan-out in extraction** — shape the `GENERIC` stub or a two-pass driver that reads a
   prior phase's on-disk output to compute the item list, so result-driven pipelines run faithfully.
 - **DAG resume** — the MANUAL half shipped: `--from`/`--only` skip a frozen prefix and reuse its

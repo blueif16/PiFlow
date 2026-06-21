@@ -2,18 +2,18 @@
 name: transform-workflow-to-pi
 description: >-
   Take any Claude Code Workflow (a `.claude/workflows/*.js` script that uses agent()/parallel()/
-  pipeline()/phase()) and run the IDENTICAL pipeline cheaply on a fleet of pi agents
+  pipeline()/phase()) and run the IDENTICAL pipeline efficiently on a fleet of pi agents
   (pi.dev / earendil-works/pi) driven by non-Claude coding-plan models — with Claude Code as the
   single console and monitor. Use when someone wants to run a proven Workflow at lower cost / at
-  scale, "run my workflow on pi", "run this on a cheap model", "pi-runner", "offload the workflow
-  to cheaper agents", or to stand up the pi-runner harness in a new repo. Ships copy-paste
+  scale, "run my workflow on pi", "run this on a non-Claude model", "pi-runner", "offload the workflow
+  to more efficient agents", or to stand up the pi-runner harness in a new repo. Ships copy-paste
   templates (extract.mjs, run.mjs, provider extension, .env) so any project can adopt it.
 ---
 
 # Transform a Claude Code Workflow → pi agents
 
 **One-line model:** the Claude Code Workflow `.js` is the single source of truth; pi-runner
-*extracts* the exact realized prompts + DAG from that same file and replays them, one cheap `pi`
+*extracts* the exact realized prompts + DAG from that same file and replays them, one efficient `pi`
 process per node, while Claude Code owns the graph and monitors `run-status.json`. **No port, no
 codegen, no hand-sync, no drift.**
 
@@ -27,7 +27,7 @@ Claude Code (you) ── 1 driver per instance ─► run.mjs (owns the DAG)
 
 ## When this applies
 - You have a Workflow you've **already proven on Claude** (it runs via the `Workflow` tool) and
-  want to run it for cheap / at scale.
+  want to run it efficiently / at scale.
 - The workflow is **pipeline-shaped**: a fixed set of waves over one input, coordinating through
   the filesystem. (Data-driven fan-out needs one extra step — see `reference/architecture.md`
   "Dynamic workflows".)
@@ -118,17 +118,17 @@ transforms an existing workflow; it does not author the pipeline logic.
 
 9. **Harden for parallel fleets (opt-in — `--worktree`).** For a multi-run fleet, add `--worktree`
    (or `PI_RUNNER_WORKTREE=1`): each run executes in its OWN git worktree (branch `pi/<id>`), so
-   concurrent runs are PHYSICALLY isolated — a cheap model cannot see or clobber another run's files.
+   concurrent runs are PHYSICALLY isolated — a non-Claude model cannot see or clobber another run's files.
    Pass the run's input via `--arg`/`--brief` (the worktree is a clean `HEAD` checkout). Merge-back
    is a conflict-free union IF your project doesn't hand-edit a shared registration list — see the
    auto-discovery enabler (`templates/examples/auto-discover-registry.example.mjs`) +
    `reference/worktree-isolation.md`. Also engine-baked; `--worktree` is the only switch.
 
-10. **Arm the escalation gate (opt-in — `PI_RUNNER_ESCALATE=1`).** A cheap model runs every node; on a
+10. **Arm the escalation gate (opt-in — `PI_RUNNER_ESCALATE=1`).** A non-Claude model runs every node; on a
     **verified** failure (artifact-contract breach / stuck-loop / timeout / degenerate — never self-
     confidence) the driver consults a stronger, ideally **cross-family** model ONCE, fed the failure
     evidence. Wiring is `.env` only: `PI_RUNNER_ESCALATE_MODEL` (+ optional `PI_RUNNER_ESCALATE_PROVIDER`),
-    `PI_RUNNER_MAX_RETRIES`. Pick a cross-family consult — a provider whose cheap default is already its
+    `PI_RUNNER_MAX_RETRIES`. Pick a cross-family consult — a provider whose non-Claude default is already its
     top tier has no headroom (DashScope `cp`: `qwen3.7-max` is the ceiling → escalate to `minimax/MiniMax-M3`).
     `DRIVER-NO-ESCALATE` opts a pure gate out. Engine-baked; driver-side, no pi extension. See `reference/escalation.md`.
 
@@ -139,8 +139,8 @@ transforms an existing workflow; it does not author the pipeline logic.
     `tool_call` block (BLOCKS an out-of-lane `write`/`edit` before it lands, from the node's `DRIVER-OWNS`).
     Per-node tool gating rides the same family: `DRIVER-TOOLS` / `DRIVER-EXCLUDE-TOOLS` markers →
     `--tools`/`--exclude-tools`. Both spike-verified on qwen headless; see `reference/artifact-contract.md`.
-    **Tool-gating doubles as a cheap-model BEHAVIOR LOCK, not only a write-safety rail.** When prompt-craft
-    alone won't move a weak executor, cut its tools to FORCE the action shape: a cheap model fills a fresh
+    **Tool-gating doubles as a non-Claude-model BEHAVIOR LOCK, not only a write-safety rail.** When prompt-craft
+    alone won't move a weak executor, cut its tools to FORCE the action shape: a non-Claude model fills a fresh
     structured artifact far more reliably by whole-file `write` than by exact-match `edit`, so EXCLUDING
     `edit`/read-chain tools until `write` is the only affordance is what finally made MiniMax WRITE a complete
     `blueprint.json` instead of composing it in-head and returning it inline (two prompt-only redesigns had
@@ -149,13 +149,13 @@ transforms an existing workflow; it does not author the pipeline logic.
     invariant belongs in the harness, not in more prose the model can ignore.
 
 12. **Lock the read-scope — standard per-node, OS-enforced under `--sandbox` (macOS).** `--worktree`
-    stops a node *writing* outside its lane; it does NOT stop it *reading* a sibling's files (a cheap
+    stops a node *writing* outside its lane; it does NOT stop it *reading* a sibling's files (a non-Claude
     model that can't find a component greps the whole tree + reads other units' source, bloating context
     until it times out). The fix is two parts. **(a) Author-time, always:** declare a `readScope` on
     EVERY producing node's `contract({…})` — the same tier as `artifacts`/`owns` — so each node's prompt
     carries a `DRIVER-READ-SCOPE:` marker naming its legitimate read surface (its own data/out dirs + the
     shared skills/catalog it reads). Leaving a node un-scoped is the bug this prevents (in the reference
-    workflow, only the composer was scoped, so a cheap model read-thrashed an un-scoped node to a
+    workflow, only the composer was scoped, so a non-Claude model read-thrashed an un-scoped node to a
     timeout). **(b) Fleet-time, opt-in:** run with `--sandbox` (or `PI_RUNNER_SANDBOX=1`) so a scoped
     node runs under macOS `sandbox-exec` (Seatbelt) and any read outside {toolchain ∪ declared scope}
     returns `EPERM` — kernel-enforced and inherited by child `grep`/`find`/`cat`. Default OFF and
@@ -229,7 +229,7 @@ transforms an existing workflow; it does not author the pipeline logic.
   `readScope` in its `contract()`** (the read tier of the write-contract), and under `--sandbox` that
   `DRIVER-READ-SCOPE` becomes a kernel-enforced deny-all-reads-except-{toolchain ∪ scope}, inherited by
   every child process, so a `grep /` or a sibling-source spelunk EPERMs instead of bloating context. A
-  node left un-scoped is a hole (the cheap-model read-thrash this fixes). The two layers compose
+  node left un-scoped is a hole (the non-Claude-model read-thrash this fixes). The two layers compose
   (Seatbelt matches the symlink TARGET realpath, so the read-scope auto-follows the worktree). Its
   profile must grant the FULL runtime read surface — process cwd, any `-e` extension dir, and the
   realpath TARGET of every workspace-linked dep (`@scope/*` symlinks point OUTSIDE node_modules) — or
@@ -237,7 +237,7 @@ transforms an existing workflow; it does not author the pipeline logic.
 - **Hand-roll the orchestration; reach for pi-native only at the interpretation surfaces.** The
   driver's own deterministic plumbing (the DAG, filesystem coordination, artifact `stat()`, worktree)
   is YOURS — pi is minimal by design (no sub-agents, no native typed-return) and *expects* you to own
-  it; keep it. Reach for a pi-native mechanism ONLY where the driver must INTERPRET the cheap model's
+  it; keep it. Reach for a pi-native mechanism ONLY where the driver must INTERPRET the non-Claude model's
   free-form output — that is where harness fragility concentrates (the return-block parser was the
   single most-patched surface). pi's purpose-built seams there: `submit_result` (typed return) and the
   `tool_call` block (in-loop owned-paths) — both opt-in via `PI_RUNNER_CONTRACT_EXT`, both keep the
@@ -299,7 +299,7 @@ them, and where an edit must be reconciled against the rest. For every node:
 - **Format the output for its CONSUMER, not by default.** Strict typed JSON ONLY at a machine boundary (a
   parser / schema / the driver). PROSE/Markdown for an LLM-reasoning hand-off (a *middle product* the next
   model THINKS over): reason-in-prose, structure LAST — strict JSON on a reasoning hand-off taxes reasoning
-  ~5–15% and ~35% tokens, worst on cheap models, and inverts CoT when a decision field precedes its rationale.
+  ~5–15% and ~35% tokens, worst on non-Claude models, and inverts CoT when a decision field precedes its rationale.
   Push the schema boundary as LATE as possible; keep a small fenced-JSON tail only for the fields a parser
   reads. Merge/denormalize for a single downstream reasoner; split only for parallel agents. (Full
   prompt-craft + citations: `agentic-prompt-design` §5.)
@@ -315,7 +315,7 @@ them, and where an edit must be reconciled against the rest. For every node:
   diagnose-and-fix) **→ the model.** Declare the deterministic part as DATA in the registry (next to the routing
   facts), so the engine stays uniform + genre-agnostic and adding a type needs ZERO node-prompt and ZERO engine
   edit. Aim the model's residual to be WRITE-DOMINANT + health-checkable (the write-first gate + a build/validate
-  signal cover it). *Why:* it removes the cheap-model explore-forever / mis-project thrash surface, makes mechanical
+  signal cover it). *Why:* it removes the non-Claude-model explore-forever / mis-project thrash surface, makes mechanical
   output un-hallucinatable, and cuts tokens — a structural invariant belongs in the harness, not in prose the model
   can ignore. Hook spec + the `DRIVER-SEED`/contract markers: `reference/artifact-contract.md`.
 - **Design for parallelism from the I/O up — the map is where independent lanes become visible.** As you set
@@ -335,7 +335,7 @@ them, and where an edit must be reconciled against the rest. For every node:
 skill-system map (composition) and the criteria fixture (quality). It is the producer→consumer ledger keyed by
 ARTIFACT: for each on-disk artifact, which node PRODUCES it, which nodes CONSUME it, and HOW (strict parse vs
 LLM read — because *that* is a format change's blast radius). It is the interface contract of a
-filesystem-coordinated pipeline, and the lookup that makes the reconcile-consumers law cheap: before changing a
+filesystem-coordinated pipeline, and the lookup that makes the reconcile-consumers law efficient: before changing a
 node's output, read the artifact's consumer row and reconcile every one; after, verify no consumer reads the
 stale shape. Derive it once from the node read-lines; update it on the SAME trigger as the map (any change to a
 node's read/write set). When an agent edits a node or its skill, it CHECKS IN here, fixes the downstream

@@ -7,7 +7,7 @@
 ## 1. One sentence
 
 A workflow is a **graph of full-agent nodes coordinated through the filesystem**, spliced by **control nodes**
-that plan / optimize / debug / gate at node boundaries. Cheap `pi` processes run the nodes; a deterministic
+that plan / optimize / debug / gate at node boundaries. Efficient `pi` processes run the nodes; a deterministic
 Node driver owns the graph; a learning loop improves it. *(substrate §1, §2)*
 
 ## 2. Two node kinds — the core abstraction (substrate §2)
@@ -95,7 +95,7 @@ clean-context verify at the handoff · per-node ground-truth oracle · by-refere
 ## 8. The gaps to build (ordered in [`../ROADMAP.md`](../ROADMAP.md))
 
 - **Box-and-arrow DAG renderer** over `viz-model.buildModel()` — data layer exists, renderer is absent in this
-  repo (`tui/` is template-only). Cheap, high-value, useful regardless of the fork. *(substrate §8)*
+  repo (`tui/` is template-only). Efficient, high-value, useful regardless of the fork. *(substrate §8)*
 - **COMPOSE auto-discovery** — infer per-node tools/credentials from a node's skill; emit `workflow.json`. *(§4)*
 - **The middle loop** — progressive structure elaboration across runs of one task. *(§6)*
 - **Typed schema validation at every handoff** + **claim-provenance tags** (verified/inferred/inherited) —

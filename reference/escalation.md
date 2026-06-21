@@ -1,9 +1,9 @@
 # Escalation gate (advisor inversion)
 
-A cheap model runs every node; on a **verified** failure the driver consults a stronger, ideally
-different-family model **once**, fed the cheap attempt's failure evidence. This is the *advisor
-inversion*, not a generic try-cheap-first cascade: the strong model is invoked only on a cheaply-
-verifiable failure, so the "cheap floor" is never wasted (the failed attempt's evidence *feeds* the
+A non-Claude model runs every node; on a **verified** failure the driver consults a stronger, ideally
+different-family model **once**, fed the non-Claude attempt's failure evidence. This is the *advisor
+inversion*, not a generic try-efficient-first cascade: the strong model is invoked only on an efficiently-
+verifiable failure, so the "efficient floor" is never wasted (the failed attempt's evidence *feeds* the
 consult). Research basis: `research/llm-escalation-triggers-2026-06-26.md` (the regime where consult
 pays off: long loops where the strong model only consults + escalation gated on an artifact-exists
 signal). Engine: `run.mjs`, generic. Per-repo selection: wiring `.env`. Consult model: `models.json`.
@@ -25,7 +25,7 @@ not ask the model "are you sure").
 | `n.contractMissing.length` — required artifact verified missing | capability/contract | **ESCALATE** (ground-truth trigger) |
 | `n.killedRepeat` — stuck-loop | capability | **ESCALATE** (same-model retry just loops again) |
 | `n.killedTimeout` — over budget | capability | **ESCALATE** |
-| `exitCode≠0` + stderr ∈ /rate-limit·ECONN·429·5xx·network/ | transient | **RETRY_SAME** (cheap; infra, not capability) |
+| `exitCode≠0` + stderr ∈ /rate-limit·ECONN·429·5xx·network/ | transient | **RETRY_SAME** (efficient; infra, not capability) |
 | `!n.parsedOk` — no return block | degenerate | retry-same once → then **ESCALATE** |
 | any other failure | capability | **ESCALATE** |
 
@@ -44,8 +44,8 @@ PI_RUNNER_ESCALATE_MODEL=MiniMax-M3  # the consult model id (lives in ~/.pi/agen
 PI_RUNNER_MAX_RETRIES=1              # same-model transient retries before escalating
 ```
 
-**Pick a CROSS-FAMILY consult.** A provider whose cheap default is already its top tier has no upward
-headroom (e.g. DashScope `cp`: `qwen3.7-max` is the ceiling, `qwen3.7-plus` is cheaper) — so escalate
+**Pick a CROSS-FAMILY consult.** A provider whose non-Claude default is already its top tier has no upward
+headroom (e.g. DashScope `cp`: `qwen3.7-max` is the ceiling, `qwen3.7-plus` is more efficient) — so escalate
 to a *second provider* with a reasoning model. The reference repo uses `minimax/MiniMax-M3`
 (reasoning, 1M ctx), already in `models.json`. Cross-family also breaks the correlated blind spots
 that make a same-family retry useless.
@@ -65,11 +65,11 @@ skips the gate.
 
 `n.escalated` + `n.attempts` is a first-class capture signal: **a wave that escalates every run is a
 skill/prompt flaw, not a model flaw.** Feed escalation-rate-per-wave into the loop → fix the skill so
-the cheap model succeeds, or pin that wave to the stronger model. The gate doubles as the
+the non-Claude model succeeds, or pin that wave to the stronger model. The gate doubles as the
 instrumentation that tells the self-improvement loop *where to look*.
 
 ## Open / tune-later
 
 - Same-model transient retry vs straight-to-escalate: start `MAX_RETRIES=1`, tune from `n.attempts`.
 - A `killedTimeout` re-run currently reuses the same node budget; a larger consult timeout is a future knob.
-- Does the cheap provider honor prefix caching / batch discounts? Measure before assuming.
+- Does the non-Claude provider honor prefix caching / batch discounts? Measure before assuming.

@@ -308,7 +308,7 @@ export async function buildModel({ workflowPath, statusPath, wfArgs = {}, out = 
 
 // ── multi-run / namespace discovery (the TUI monitor's list layer) ─────────────
 // A NAMESPACE is the outermost divider — one project root. Its THREADS are that
-// project's runs (out/<id>/run-status.json). summarizeRun is CHEAP (no extract): it
+// project's runs (out/<id>/run-status.json). summarizeRun is EFFICIENT (no extract): it
 // powers the namespace/thread columns; only drilling into a thread calls buildModel.
 function envKeyOf(file, key) {
   try {

@@ -1,6 +1,6 @@
 # Orchestration — Claude Code is the console; the user runs nothing
 
-The point of this transform is **cheap execution under Claude Code's supervision**. Claude Code
+The point of this transform is **efficient execution under Claude Code's supervision**. Claude Code
 (you, the orchestrator) is the single console and monitor. You run every command, you read every
 status, you know the exact live state at all times. The user is never handed a command and never
 asked "is it still running?".

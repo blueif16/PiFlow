@@ -155,7 +155,7 @@ node pi-runner/extract.mjs
 node pi-runner/run.mjs --run g1 --arg prompt="…" --until verify-1 --dry-run
 node pi-runner/run.mjs --run g1 --arg prompt="…" --until verify-1 --debug   # background; then watch.mjs
 
-# 2) fix a node, retest cheaply, then propagate (the edit→retest→propagate loop)
+# 2) fix a node, retest efficiently, then propagate (the edit→retest→propagate loop)
 node pi-runner/run.mjs --run g1 --arg projectDir=out/g1 --only <fixed-node> --debug   # one node, frozen upstream
 node pi-runner/run.mjs --run g1 --arg projectDir=out/g1 --from <fixed-node> --debug   # then the downstream tail
 

@@ -1,0 +1,26 @@
+{
+  "name": "piflow-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pi Flow — a self-designing, durable, self-improving orchestration substrate (TypeScript SDK).",
+  "license": "MIT",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

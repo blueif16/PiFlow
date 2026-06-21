@@ -1,0 +1,310 @@
+# SVG library index (298 files)
+
+Local pack saved to `public/svg-library/` for reuse. Browse `_contact-sheet.png`.
+ART family is generally off-brand for a dark dev-tool; GRAPHS (technical) + MANDALA (radial/geometric) are the useful families.
+
+## GRAPHS (62)
+- Recurso 1GRAPHS.svg
+- Recurso 2GRAPHS.svg
+- Recurso 3GRAPHS.svg
+- Recurso 4GRAPHS.svg
+- Recurso 5GRAPHS.svg
+- Recurso 6GRAPHS.svg
+- Recurso 7GRAPHS.svg
+- Recurso 8GRAPHS.svg
+- Recurso 9GRAPHS.svg
+- Recurso 10GRAPHS.svg
+- Recurso 11GRAPHS.svg
+- Recurso 12GRAPHS.svg
+- Recurso 13GRAPHS.svg
+- Recurso 14GRAPHS.svg
+- Recurso 15GRAPHS.svg
+- Recurso 16GRAPHS.svg
+- Recurso 17GRAPHS.svg
+- Recurso 18GRAPHS.svg
+- Recurso 19GRAPHS.svg
+- Recurso 20GRAPHS.svg
+- Recurso 21GRAPHS.svg
+- Recurso 22GRAPHS.svg
+- Recurso 23GRAPHS.svg
+- Recurso 24GRAPHS.svg
+- Recurso 25GRAPHS.svg
+- Recurso 26GRAPHS.svg
+- Recurso 27GRAPHS.svg
+- Recurso 28GRAPHS.svg
+- Recurso 29GRAPHS.svg
+- Recurso 30GRAPHS.svg
+- Recurso 31GRAPHS.svg
+- Recurso 32GRAPHS.svg
+- Recurso 33GRAPHS.svg
+- Recurso 34GRAPHS.svg
+- Recurso 35GRAPHS.svg
+- Recurso 36GRAPHS.svg
+- Recurso 37GRAPHS.svg
+- Recurso 38GRAPHS.svg
+- Recurso 39GRAPHS.svg
+- Recurso 40GRAPHS.svg
+- Recurso 41GRAPHS.svg
+- Recurso 42GRAPHS.svg
+- Recurso 43GRAPHS.svg
+- Recurso 44GRAPHS.svg
+- Recurso 45GRAPHS.svg
+- Recurso 46GRAPHS.svg
+- Recurso 47GRAPHS.svg
+- Recurso 48GRAPHS.svg
+- Recurso 49GRAPHS.svg
+- Recurso 50GRAPHS.svg
+- Recurso 51GRAPHS.svg
+- Recurso 143GRAPHS.svg
+- Recurso 144GRAPHS.svg
+- Recurso 145GRAPHS.svg
+- Recurso 146GRAPHS.svg
+- Recurso 147GRAPHS.svg
+- Recurso 148GRAPHS.svg
+- Recurso 149GRAPHS.svg
+- Recurso 150GRAPHS.svg
+- Recurso 151GRAPHS.svg
+- Recurso 152GRAPHS.svg
+- Recurso 153GRAPHS.svg
+
+## MANDALA (112)
+- Recurso 1MANDALA.svg
+- Recurso 2MANDALA.svg
+- Recurso 3MANDALA.svg
+- Recurso 4MANDALA.svg
+- Recurso 5MANDALA.svg
+- Recurso 6MANDALA.svg
+- Recurso 7MANDALA.svg
+- Recurso 8MANDALA.svg
+- Recurso 9MANDALA.svg
+- Recurso 10MANDALA.svg
+- Recurso 11MANDALA.svg
+- Recurso 12MANDALA.svg
+- Recurso 13MANDALA.svg
+- Recurso 14MANDALA.svg
+- Recurso 15MANDALA.svg
+- Recurso 16MANDALA.svg
+- Recurso 17MANDALA.svg
+- Recurso 18MANDALA.svg
+- Recurso 19MANDALA.svg
+- Recurso 20MANDALA.svg
+- Recurso 21MANDALA.svg
+- Recurso 22MANDALA.svg
+- Recurso 23MANDALA.svg
+- Recurso 24MANDALA.svg
+- Recurso 25MANDALA.svg
+- Recurso 26MANDALA.svg
+- Recurso 27MANDALA.svg
+- Recurso 28MANDALA.svg
+- Recurso 29MANDALA.svg
+- Recurso 30MANDALA.svg
+- Recurso 31MANDALA.svg
+- Recurso 32MANDALA.svg
+- Recurso 33MANDALA.svg
+- Recurso 34MANDALA.svg
+- Recurso 35MANDALA.svg
+- Recurso 36MANDALA.svg
+- Recurso 37MANDALA.svg
+- Recurso 38MANDALA.svg
+- Recurso 39MANDALA.svg
+- Recurso 40MANDALA.svg
+- Recurso 41MANDALA.svg
+- Recurso 42MANDALA.svg
+- Recurso 43MANDALA.svg
+- Recurso 44MANDALA.svg
+- Recurso 45MANDALA.svg
+- Recurso 46MANDALA.svg
+- Recurso 47MANDALA.svg
+- Recurso 48MANDALA.svg
+- Recurso 49MANDALA.svg
+- Recurso 50MANDALA.svg
+- Recurso 51MANDALA.svg
+- Recurso 52MANDALA.svg
+- Recurso 53MANDALA.svg
+- Recurso 54MANDALA.svg
+- Recurso 55MANDALA.svg
+- Recurso 56MANDALA.svg
+- Recurso 57MANDALA.svg
+- Recurso 58MANDALA.svg
+- Recurso 59MANDALA.svg
+- Recurso 60MANDALA.svg
+- Recurso 61MANDALA.svg
+- Recurso 62MANDALA.svg
+- Recurso 63MANDALA.svg
+- Recurso 64MANDALA.svg
+- Recurso 65MANDALA.svg
+- Recurso 66MANDALA.svg
+- Recurso 67MANDALA.svg
+- Recurso 68MANDALA.svg
+- Recurso 69MANDALA.svg
+- Recurso 70MANDALA.svg
+- Recurso 71MANDALA.svg
+- Recurso 72MANDALA.svg
+- Recurso 73MANDALA.svg
+- Recurso 74MANDALA.svg
+- Recurso 75MANDALA.svg
+- Recurso 76MANDALA.svg
+- Recurso 77MANDALA.svg
+- Recurso 78MANDALA.svg
+- Recurso 79MANDALA.svg
+- Recurso 80MANDALA.svg
+- Recurso 81MANDALA.svg
+- Recurso 82MANDALA.svg
+- Recurso 83MANDALA.svg
+- Recurso 84MANDALA.svg
+- Recurso 85MANDALA.svg
+- Recurso 86MANDALA.svg
+- Recurso 87MANDALA.svg
+- Recurso 88MANDALA.svg
+- Recurso 89MANDALA.svg
+- Recurso 90MANDALA.svg
+- Recurso 91MANDALA.svg
+- Recurso 92MANDALA.svg
+- Recurso 93MANDALA.svg
+- Recurso 94MANDALA.svg
+- Recurso 95MANDALA.svg
+- Recurso 96MANDALA.svg
+- Recurso 97MANDALA.svg
+- Recurso 98MANDALA.svg
+- Recurso 99MANDALA.svg
+- Recurso 100MANDALA.svg
+- Recurso 101MANDALA.svg
+- Recurso 102MANDALA.svg
+- Recurso 103MANDALA.svg
+- Recurso 104MANDALA.svg
+- Recurso 105MANDALA.svg
+- Recurso 106MANDALA.svg
+- Recurso 107MANDALA.svg
+- Recurso 108MANDALA.svg
+- Recurso 109MANDALA.svg
+- Recurso 110MANDALA.svg
+- Recurso 111MANDALA.svg
+- Recurso 112MANDALA.svg
+
+## ART (61)
+- Recurso 1ART.svg
+- Recurso 2ART.svg
+- Recurso 3ART.svg
+- Recurso 4ART.svg
+- Recurso 5ART.svg
+- Recurso 6ART.svg
+- Recurso 7ART.svg
+- Recurso 8ART.svg
+- Recurso 9ART.svg
+- Recurso 10ART.svg
+- Recurso 11ART.svg
+- Recurso 12ART.svg
+- Recurso 13ART.svg
+- Recurso 14ART.svg
+- Recurso 15ART.svg
+- Recurso 16ART.svg
+- Recurso 17ART.svg
+- Recurso 18ART.svg
+- Recurso 19ART.svg
+- Recurso 20ART.svg
+- Recurso 21ART.svg
+- Recurso 22ART.svg
+- Recurso 23ART.svg
+- Recurso 24ART.svg
+- Recurso 25ART.svg
+- Recurso 26ART.svg
+- Recurso 27ART.svg
+- Recurso 28ART.svg
+- Recurso 29ART.svg
+- Recurso 30ART.svg
+- Recurso 31ART.svg
+- Recurso 32ART.svg
+- Recurso 33ART.svg
+- Recurso 34ART.svg
+- Recurso 35ART.svg
+- Recurso 36ART.svg
+- Recurso 37ART.svg
+- Recurso 38ART.svg
+- Recurso 39ART.svg
+- Recurso 40ART.svg
+- Recurso 41ART.svg
+- Recurso 42ART.svg
+- Recurso 43ART.svg
+- Recurso 44ART.svg
+- Recurso 45ART.svg
+- Recurso 46ART.svg
+- Recurso 47ART.svg
+- Recurso 48ART.svg
+- Recurso 49ART.svg
+- Recurso 50ART.svg
+- Recurso 51ART.svg
+- Recurso 52ART.svg
+- Recurso 53ART.svg
+- Recurso 54ART.svg
+- Recurso 55ART.svg
+- Recurso 56ART.svg
+- Recurso 57ART.svg
+- Recurso 58ART.svg
+- Recurso 59ART.svg
+- Recurso 60ART.svg
+- Recurso 61ART.svg
+
+## OTHER (63)
+- Recurso 1MODERN ICON.svg
+- Recurso 2MODERN ICON.svg
+- Recurso 3MODERN ICON.svg
+- Recurso 4MODERN ICON.svg
+- Recurso 5MODERN ICON.svg
+- Recurso 6MODERN ICON.svg
+- Recurso 7MODERN ICON.svg
+- Recurso 8MODERN ICON.svg
+- Recurso 9MODERN ICON.svg
+- Recurso 10MODERN ICON.svg
+- Recurso 11MODERN ICON.svg
+- Recurso 12MODERN ICON.svg
+- Recurso 13MODERN ICON.svg
+- Recurso 14MODERN ICON.svg
+- Recurso 15MODERN ICON.svg
+- Recurso 16MODERN ICON.svg
+- Recurso 17MODERN ICON.svg
+- Recurso 18MODERN ICON.svg
+- Recurso 19MODERN ICON.svg
+- Recurso 20MODERN ICON.svg
+- Recurso 21MODERN ICON.svg
+- Recurso 22MODERN ICON.svg
+- Recurso 23MODERN ICON.svg
+- Recurso 24MODERN ICON.svg
+- Recurso 25MODERN ICON.svg
+- Recurso 26MODERN ICON.svg
+- Recurso 27MODERN ICON.svg
+- Recurso 28MODERN ICON.svg
+- Recurso 29MODERN ICON.svg
+- Recurso 30MODERN ICON.svg
+- Recurso 31MODERN ICON.svg
+- Recurso 32MODERN ICON.svg
+- Recurso 33MODERN ICON.svg
+- Recurso 34MODERN ICON.svg
+- Recurso 35MODERN ICON.svg
+- Recurso 36MODERN ICON.svg
+- Recurso 37MODERN ICON.svg
+- Recurso 38MODERN ICON.svg
+- Recurso 39MODERN ICON.svg
+- Recurso 40MODERN ICON.svg
+- Recurso 41MODERN ICON.svg
+- Recurso 42MODERN ICON.svg
+- Recurso 43MODERN ICON.svg
+- Recurso 44MODERN ICON.svg
+- Recurso 45MODERN ICON.svg
+- Recurso 46MODERN ICON.svg
+- Recurso 47MODERN ICON.svg
+- Recurso 48MODERN ICON.svg
+- Recurso 49MODERN ICON.svg
+- Recurso 50MODERN ICON.svg
+- Recurso 51MODERN ICON.svg
+- Recurso 52MODERN ICON.svg
+- Recurso 53MODERN ICON.svg
+- Recurso 54MODERN ICON.svg
+- Recurso 55MODERN ICON.svg
+- Recurso 56MODERN ICON.svg
+- Recurso 57MODERN ICON.svg
+- Recurso 58MODERN ICON.svg
+- Recurso 59MODERN ICON.svg
+- Recurso 60MODERN ICON.svg
+- Recurso 61MODERN ICON.svg
+- Recurso 62MODERN ICON.svg
+- Recurso 63MODERN ICON.svg

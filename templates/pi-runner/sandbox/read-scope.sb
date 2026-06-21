@@ -9,7 +9,7 @@
 ;;      tokens; a multi-line scope value spilled into a comment becomes live code and breaks parsing.
 ;;      Each token below appears ONCE, only at its rule site.
 ;;
-;; WHY: a cheap model ignores a prompt-level READING LAW and spelunks files outside its lane (it
+;; WHY: a non-Claude model ignores a prompt-level READING LAW and spelunks files outside its lane (it
 ;; grepped the whole repo for a phantom component and read 3 OTHER lessons source, bloating context
 ;; to 116k tokens, then stalled). Prompt rules are unenforceable on weak models, so the scope boundary
 ;; must live in the OS. Seatbelt is kernel-enforced, INHERITS to every child process (so a spawned

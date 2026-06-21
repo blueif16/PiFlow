@@ -6,7 +6,7 @@
  * It gives the headless `-p` driver two things a plain stdout-scrape cannot:
  *
  *   1. submit_result — a TYPED, terminating return tool. The node ENDS by CALLING it; pi validates
- *      the args against the schema, so the cheap model can't botch a ```json fence (the single most-
+ *      the args against the schema, so the non-Claude model can't botch a ```json fence (the single most-
  *      patched surface in run.mjs: 98fcdd3 → 89fe3ac). The structured `details` reach the driver on
  *      the `tool_execution_end` json event; `terminate:true` saves the extra follow-up LLM turn.
  *      The driver still keeps its fenced-JSON parser as a fallback, so this is strictly non-breaking.

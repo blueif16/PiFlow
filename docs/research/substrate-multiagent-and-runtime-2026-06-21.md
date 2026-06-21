@@ -4,7 +4,7 @@ _source tags: [R]=Reddit (apify macrocosmos) • [E]=Exa web. Inline citations n
 
 > **Canon home:** Pi Flow repo `docs/research/` (originated in `game-omni`, 2026-06-21; symlinked back). The evidence base behind `docs/design/orchestration-substrate.md`.
 
-> **How to read this.** Two questions drove the fan-out: (1) is chaining many small/cheap agents into a
+> **How to read this.** Two questions drove the fan-out: (1) is chaining many small/efficient agents into a
 > workflow an actual practice, and how does it compare to one big agent — the "is OpenCloud just a giant PI?"
 > intuition; (2) what language/runtime fits a long-running orchestrator with background listeners — Rust vs
 > TS/JS, and can Rust be the listener/supervisor while pi + the DAG stay in JS. Claims are practitioner-blog
@@ -27,7 +27,7 @@ _source tags: [R]=Reddit (apify macrocosmos) • [E]=Exa web. Inline citations n
   amplify errors **17.2×** vs a single agent; a *centralized* orchestrator contains it to **4.4×**. [E zartis,
   "Science of Scaling Agent Systems"] We are centralized (one DAG owns routing) — keep it.
 - **The cost tax is real and is our moat's target.** Multi-agent ≈ **4–15× tokens** [E anthropic], "$3–8 per
-  document," "bills triple from coordination overhead" [R]. Our cheap-fleet economics is the answer — this is
+  document," "bills triple from coordination overhead" [R]. Our efficient-fleet economics is the answer — this is
   the one number the substrate must keep beating.
 - **Language verdict: stay in TypeScript/Node for the orchestrator AND the DAG.** The orchestrator is
   IO-bound glue (spawn pi, watch files, poll status); the bottleneck is the LLM/pi child, not the loop, so
@@ -135,7 +135,7 @@ filesystem-handoff: we already pass artifacts *by file reference*, not by pastin
   budget a **single agent matched or beat** the multi-agent setup. [E readysolutions]
 - Decision criterion (Bhatt et al., *When Should We Orchestrate Multiple Agents?*): orchestration only pays
   *"if there are performance or cost differentials between agents."* [E readysolutions] → our mix of a frontier
-  COMPOSE/planner + a cheap pi producer fleet + clean-context verify gates *is* exactly such a differential.
+  COMPOSE/planner + a non-Claude pi producer fleet + clean-context verify gates *is* exactly such a differential.
 
 ### Durable execution — the substrate everyone is converging on
 - *"Temporal raised $300M at a $5B valuation (2026-02-17), 9.1T lifetime action executions, 1.86T from
@@ -251,7 +251,7 @@ engineer-months per hot path."* [E levelup.gitconnected, llmbestpractices]
    (Cognition-v2, milebits, the scaling papers) says our exact design — centralized DAG, single-threaded
    writes, clean-context verify nodes, file-based high-fidelity handoff — is the *winning* shape; a peer-to-peer
    swarm is "mostly a distraction." Reposition §11 white-space accordingly: the moat is **centralized,
-   code-defined orchestration of cheap full-agent nodes with per-node oracles**, not agent count.
+   code-defined orchestration of non-Claude full-agent nodes with per-node oracles**, not agent count.
 
 ## Numbers worth verifying (cited secondhand — confirm at source before quoting in the note)
 - Anthropic **90.2%** uplift; **4× / 15×** token multipliers — primary (anthropic.com), trustworthy. [E]

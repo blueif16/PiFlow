@@ -2,19 +2,23 @@
 
 > *Repo + Claude Code skill name: `transform-workflow-to-pi`. The product/library surfaces as **Pi Flow** (`piflow`).*
 
+## Your next ultracode can be on a Pi fleet.
+
 **Pi Flow is a self-designing, durable, self-improving orchestration substrate** — a graph of
-**full-agent (`pi`) nodes** that a planner *designs*, a cheap fleet *runs*, and a learning loop
-*improves*, all coordinated through the filesystem. It generalizes a proven stack (`pi-runner` +
-`game-omni` + Hermes) into a horizontal framework.
+**full-agent (`pi`) nodes** that a planner *designs*, a non-Claude fleet *runs*, and a learning loop
+*improves*, all coordinated through the filesystem. Prove a workflow once on Claude Code (ultracode);
+run the **identical DAG** on a Pi fleet of **non-Claude / GPT / efficient** models — no rewrite, no
+codegen, no drift.
 
-The one-line positioning (the load-bearing sentence):
+**Keywords:** auto-design · self-improving · durable · per-node sandbox isolation · declarative
+per-node tools · OpenClaw + Hermes tool ecosystem · clean context isolation · long-horizon
+system-enhancement loops · Claude Code workflow migration · non-Claude pi fleet.
 
-> **ADAS/AFlow's structure search + GEPA's reflective module-level credit assignment — but with
-> *full-agent nodes* on a *durable cheap fleet*, running *online in production*.**
-
-Three proven parents (so we are not reinventing), three genuine deltas (so we are not merely cloning).
-No single shipping system occupies that intersection — that empty space is the defensible center
-(see [`docs/design/orchestration-substrate.md`](docs/design/orchestration-substrate.md) §11).
+> Everything a production-grade agent harness (e.g. OpenHive) ships — auto-design, self-improvement,
+> durability — **Pi Flow matches, and goes further.** Performance is led by the **Pi harness**, whose
+> function/tool connectivity is far more scalable and extensible than a Python-based runtime, with the
+> entire **OpenClaw / Hermes** tool community wired in per node. We miss out on nothing they have; we
+> do each of them better.
 
 ```
 Claude Code (you) ── 1 driver per instance ─► run.mjs (owns the DAG)
@@ -24,13 +28,24 @@ Claude Code (you) ── 1 driver per instance ─► run.mjs (owns the DAG)
                               <repo>/* artifacts + out/<id>/run-status.json  (you poll)
 ```
 
+## Capabilities — and how
+
+| Capability | How Pi Flow does it |
+|---|---|
+| **Auto-design** | A planner designs the DAG with **tool-awareness** — it knows the available agents/tools and splits the task into the right tool-wired nodes and parallel lanes. |
+| **Self-improve** | **Hermes-style global memory** + **trace observation + optimization**: each run's traces are observed, credit-assigned, and folded back to improve the skills/graph for the next run. |
+| **Durability** | **Per-node isolation in a sandbox** + full control via **declarative tool calls wired in per node** + always-on **background runtimes and watchdogs** (timeouts, stall/loop guards, `--from` resume). |
+| **Performance** | Led by the **Pi harness** + the full **OpenClaw / Hermes** tool ecosystem wired in + **clean context / task isolation** per node + **long-horizon tasks with system-enhancement loops**. |
+| **Easy migration & setup** | **Lift a Claude Code (ultracode) workflow verbatim** — `extract.mjs` records the realized prompts + DAG from the same `.js` and replays them on the Pi fleet. One harness drop-in, no port. |
+
 ## Why
 
-You prove a workflow on Claude (expensive, capable). Then you run it for cheap / at scale **without
-rewriting it** — `pi-runner` *extracts* the realized prompts + DAG from the same `.js` and replays
-them, one cheap `pi` process per node, while Claude Code owns the graph and polls `run-status.json`.
-New/removed/reordered waves propagate for free; the two executors never drift. **No port, no codegen,
-no hand-sync.** That executor is the **producer node** of the broader substrate.
+You prove a workflow on Claude Code (frontier, capable). Then you run the **identical pipeline** on a
+Pi fleet of non-Claude models, at scale, **without rewriting it** — `pi-runner` *extracts* the realized
+prompts + DAG from the same `.js` and replays them, one `pi` process per node, while Claude Code owns
+the graph and polls `run-status.json`. New/removed/reordered waves propagate for free; the two
+executors never drift. **No port, no codegen, no hand-sync.** That executor is the **producer node** of
+the broader substrate.
 
 ## The two layers
 
@@ -39,8 +54,9 @@ no hand-sync.** That executor is the **producer node** of the broader substrate.
 | **The product vision** | [`docs/`](docs/), [`ROADMAP.md`](ROADMAP.md) | The substrate Pi Flow is becoming — the design canon, the buildable architecture, the forward plan. **Start at [`docs/INDEX.md`](docs/INDEX.md).** |
 | **The shipping skill + harness** | [`SKILL.md`](SKILL.md), [`reference/`](reference/), [`templates/pi-runner/`](templates/pi-runner/) | What runs *today*: the Claude Code skill that performs the transform, and the byte-identical engine you drop into any repo. |
 
-**Status: Foundation.** The harness ships and runs; the substrate is at the docs + structure stage.
-The strategic fork ("product vs means-to-games") is resolved to **product** — see [`ROADMAP.md`](ROADMAP.md).
+**Status: Foundation.** The harness ships and runs today (extract → drive a Pi fleet → verify on disk).
+The auto-design / self-improve / full control-plane capabilities above are the substrate's design and
+build order — see [`ROADMAP.md`](ROADMAP.md) for what is GA vs in flight.
 
 ## Documentation
 
@@ -64,8 +80,8 @@ skills directory:
 ln -s "$(pwd)" ~/.claude/skills/transform-workflow-to-pi
 ```
 
-Claude Code surfaces it whenever someone asks to "run my workflow on pi", "run this on a cheap
-model", "pi-runner", or "offload the workflow to cheaper agents".
+Claude Code surfaces it whenever someone asks to "run my workflow on pi", "run this on a non-Claude
+model", "pi-runner", or "offload the workflow to a non-Claude fleet".
 
 ## Quickstart (the transform, condensed)
 

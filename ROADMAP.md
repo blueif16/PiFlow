@@ -15,7 +15,7 @@ if we hold the §11 intersection tightly and borrow everything else** (§10). Th
 contract; do not out-engineer a solved primitive.
 
 The corollary discipline from §12 still binds: **do not drift into the horizontal build without choosing each
-piece against §10.** Build order below is sequenced so the cheapest, fork-independent wins land first.
+piece against §10.** Build order below is sequenced so the most efficient, fork-independent wins land first.
 
 ## The defensible center we are building toward (substrate §11)
 
@@ -23,7 +23,7 @@ piece against §10.** Build order below is sequenced so the cheapest, fork-indep
    *bad node SKILL (edit skill)* vs *bad chain SHAPE (rewire)*. Nobody routes both axes from one trace.
 2. **Online + durable + full-agent-node optimization** — the empty intersection (§10): every optimizer is
    offline/ephemeral/frontier; every durable runtime doesn't self-optimize.
-3. **Cheap-fleet economics as a design *objective*** — find the structure that wins on a cheap fleet.
+3. **Efficient-fleet economics as a design *objective*** — find the structure that wins on an efficient fleet.
 4. **A persisted, versioned, git-logged archive of *discovered structures*** ("what worked for task-class X").
 5. **A control agent that generates → verifies → human-approves → durably registers a new tool/node/hook** — the
    §11.5 white-space. Guardrails keep it off the 17.2× path: seam-only, sandboxed, bounded fan-out + circuit
@@ -31,7 +31,7 @@ piece against §10.** Build order below is sequenced so the cheapest, fork-indep
 
 ## Build order
 
-### Near-term — cheap, high-value, fork-independent
+### Near-term — efficient, high-value, fork-independent
 - [ ] **Box-and-arrow DAG renderer** over `viz-model.buildModel()` (substrate §8, §14.1). The data layer
       (stages, lanes, phases, Gantt, pathways) already exists; this is *a renderer away, not a data-model away*.
       The operator surface the funded competitors already ship. Surfaces as `piflow viz <run>`.
@@ -81,7 +81,7 @@ law) and the product surfaces through the [`SKILL.md`](SKILL.md) + docs.
 
 ## Guardrails (the §6 / §13 "don'ts" — non-negotiable)
 
-- **Never pitch this as a swarm.** The moat is *centralized, code-defined orchestration of cheap full-agent
+- **Never pitch this as a swarm.** The moat is *centralized, code-defined orchestration of non-Claude full-agent
   nodes with per-node oracles* — **not** agent count. Peer-to-peer mesh is "mostly a distraction" and the
   measured difference between working and not (17.2× vs 4.4× error amplification). *(substrate §11, research TL;DR)*
 - **Adaptive structure lives at seams (between runs), never inside a journaled run.** Resist self-rewriting live
@@ -89,7 +89,7 @@ law) and the product surfaces through the [`SKILL.md`](SKILL.md) + docs.
 - **Don't polyglot the glue.** The orchestrator is IO-bound; a Rust/Go layer earns its keep *only* as a
   crash-isolated sidecar (newline-JSON stdio, never napi-rs FFI) for a hardened always-on supervisor, and only on
   a *measured* Node-stability problem — prefer Go there. *(substrate §10 language row, §13)*
-- **Cost is the number to keep beating.** Multi-agent ≈ 4–15× tokens; the cheap fleet + node-timeout/watchdogs
+- **Cost is the number to keep beating.** Multi-agent ≈ 4–15× tokens; the efficient fleet + node-timeout/watchdogs
   is the floor — keep it. *(research brief)*
 - **Cap sub-orchestrator depth deliberately.** "One layer works, two might help, three is bureaucracy." *(substrate §13)*
 - **Credit-assignment quality is the ceiling.** Every new node-type needs its oracle authored at creation time. *(substrate §13)*

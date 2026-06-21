@@ -1,0 +1,334 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   Pi Flow — design system
+   Tier 2 · Atmospheric · Agnostic. One accent, surface ladder,
+   hairlines, grain always-on, aurora caged to hero + CTA.
+   The single source of premium is the tokens, not the effects.
+   ============================================================ */
+:root {
+  /* Canvas — near-black, never #000 */
+  --canvas: #0a0a0a;
+
+  /* Foreground */
+  --fg: #ededed;
+  --fg-muted: #a1a1a1;
+  --fg-faint: #6b6b6b;
+
+  /* The ONE accent hue — electric green. CTA / status / focus / pulses only. */
+  --accent: #3df2a7;
+  --accent-ink: #04140d;            /* readable text on a solid accent fill */
+  --accent-60: rgba(61, 242, 167, 0.6);
+  --accent-30: rgba(61, 242, 167, 0.3);
+  --accent-glow: rgba(61, 242, 167, 0.18);
+
+  /* Surface ladder — raised panels (not drop shadows) */
+  --surface-1: #0f1011;
+  --surface-2: #141516;
+  --surface-3: #18191a;
+  --surface-4: #1d1e20;
+
+  /* Hairline borders — weightless, present */
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-2: rgba(255, 255, 255, 0.14);
+}
+
+/* Map tokens into the Tailwind v4 theme so utilities can reach them. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-faint: var(--fg-faint);
+  --color-accent: var(--accent);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-4: var(--surface-4);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --animate-orbit: orbit calc(var(--duration)*1s) linear infinite;
+  --animate-marquee: marquee var(--duration) infinite linear;
+  --animate-marquee-vertical: marquee-vertical var(--duration) linear infinite;
+  @keyframes orbit {
+  0% {
+    transform: rotate(calc(var(--angle) * 1deg)) translateY(calc(var(--radius) * 1px)) rotate(calc(var(--angle) * -1deg));
+    }
+  100% {
+    transform: rotate(calc(var(--angle) * 1deg + 360deg)) translateY(calc(var(--radius) * 1px)) rotate(calc((var(--angle) * -1deg) - 360deg));
+    }
+  }
+  @keyframes marquee {
+  from {
+    transform: translateX(0);
+    }
+  to {
+    transform: translateX(calc(-100% - var(--gap)));
+    }
+  }
+  @keyframes marquee-vertical {
+  from {
+    transform: translateY(0);
+    }
+  to {
+    transform: translateY(calc(-100% - var(--gap)));
+    }
+  }
+}
+
+html {
+  background: var(--canvas);
+  scroll-behavior: smooth;
+}
+body {
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Accent focus ring — the one other place the hue is allowed. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* ============================================================
+   Grain — the always-on premium texture (the one constant).
+   ============================================================ */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* ============================================================
+   Aurora — the ONE ambient background. Hero + CTA only.
+   Single-hue, low opacity, blurred; animates TRANSFORM only.
+   ============================================================ */
+.aurora {
+  position: absolute;
+  inset: -30% -10% auto -10%;
+  height: 150%;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(70px);
+  opacity: 0.5;
+  background:
+    radial-gradient(38% 50% at 28% 30%, rgba(61, 242, 167, 0.22), transparent 70%),
+    radial-gradient(34% 46% at 72% 38%, rgba(61, 242, 167, 0.12), transparent 70%),
+    radial-gradient(48% 60% at 50% 82%, rgba(61, 242, 167, 0.08), transparent 72%);
+  animation: aurora-drift 26s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift {
+  from { transform: translate3d(-3%, -1%, 0) scale(1.05) rotate(-2deg); }
+  to   { transform: translate3d(3%, 2%, 0) scale(1.14) rotate(2deg); }
+}
+
+/* ============================================================
+   Dot-grid — "engineered substrate" texture + parallax depth.
+   ============================================================ */
+.dotgrid {
+  position: absolute;
+  inset: -25% 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 30px 30px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 30%, transparent 75%);
+}
+
+/* ============================================================
+   Scroll reveal — native scroll-driven, @supports-guarded so
+   unsupported browsers (and reduced motion) just SHOW content.
+   ============================================================ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      animation: reveal-in linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 32%;
+    }
+    .dotgrid {
+      animation: dot-parallax linear both;
+      animation-timeline: view();
+      animation-range: cover;
+    }
+    .draw {
+      stroke-dasharray: var(--len, 1000);
+      stroke-dashoffset: var(--len, 1000);
+      animation: draw-on linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 45%;
+    }
+    .bar-grow {
+      transform: scaleY(0);
+      transform-origin: bottom;
+      animation: bar-grow linear both;
+      animation-timeline: view();
+      animation-range: entry 10% cover 40%;
+    }
+  }
+}
+@keyframes reveal-in { to { opacity: 1; transform: none; } }
+@keyframes dot-parallax { from { transform: translateY(-7%); } to { transform: translateY(7%); } }
+@keyframes draw-on { to { stroke-dashoffset: 0; } }
+@keyframes bar-grow { to { transform: scaleY(1); } }
+
+/* The ONE signature text reveal — hero block on load. */
+@media (prefers-reduced-motion: no-preference) {
+  .blur-in { animation: blur-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+@keyframes blur-in {
+  from { opacity: 0; filter: blur(12px); transform: translateY(12px); }
+  to   { opacity: 1; filter: blur(0); transform: none; }
+}
+
+/* ============================================================
+   Flowing current — accent pulse traveling an SVG path.
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .flow {
+    stroke-dasharray: 9 250;
+    animation: flow-travel 3.4s linear infinite;
+    filter: drop-shadow(0 0 4px rgba(61, 242, 167, 0.5));
+  }
+  .station-glow { animation: station-pulse 6s ease-in-out infinite; }
+}
+@keyframes flow-travel { to { stroke-dashoffset: -259; } }
+@keyframes station-pulse { 0%, 100% { opacity: 0.5; } 30% { opacity: 1; } }
+
+/* ============================================================
+   Iso illustration motion — gentle bob for floating scenes.
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  .iso-float { animation: iso-float 7s ease-in-out infinite alternate; }
+  .iso-float-slow { animation: iso-float 11s ease-in-out infinite alternate; }
+}
+@keyframes iso-float { from { transform: translateY(3px); } to { transform: translateY(-5px); } }
+
+/* Accent cubes/edges get a real glow (the "expensive" lift). Static — safe always-on. */
+.iso-glow { filter: drop-shadow(0 0 7px rgba(61, 242, 167, 0.45)) drop-shadow(0 0 2px rgba(61, 242, 167, 0.6)); }
+
+/* ============================================================
+   Motif — recolor an external SVG via alpha-mask + tint bg, then
+   animate with a VARIED motion (spin/pulse) for visual variety.
+   ============================================================ */
+.motif {
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain; mask-size: contain;
+  mask-mode: alpha;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spin-slow { animation: motif-spin 44s linear infinite; }
+  .spin-rev  { animation: motif-spin 60s linear infinite reverse; }
+  .pulse-soft { animation: motif-pulse 7s ease-in-out infinite; }
+}
+@keyframes motif-spin { to { transform: rotate(360deg); } }
+@keyframes motif-pulse { 0%, 100% { opacity: var(--pmin, 0.3); } 50% { opacity: var(--pmax, 0.55); } }
+
+/* ============================================================
+   Hover-expand row — three cards; hover/focus one, squeeze others.
+   ============================================================ */
+.exp-row { display: flex; gap: 14px; }
+.exp-card {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  transition: flex-grow 0.45s cubic-bezier(0.22, 1, 0.36, 1),
+              border-color 0.3s ease, background 0.3s ease;
+}
+.exp-card .exp-body { opacity: 0; transition: opacity 0.35s ease 0.08s; }
+.exp-row:hover .exp-card,
+.exp-row:focus-within .exp-card { flex-grow: 0.8; }
+.exp-row:hover .exp-card:hover,
+.exp-row:focus-within .exp-card:focus-within { flex-grow: 2.5; }
+.exp-card:hover .exp-body,
+.exp-card:focus-within .exp-body { opacity: 1; }
+
+/* ============================================================
+   Code editor mockup (hero) — window chrome + caret + chip.
+   ============================================================ */
+.editor {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+.editor-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--surface-4); }
+.caret {
+  display: inline-block;
+  width: 8px;
+  height: 1.05em;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  margin-left: 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .caret { animation: caret-blink 1.1s steps(1) infinite; }
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
+
+/* ============================================================
+   Nav — transparent over hero, solidifies on scroll (no JS).
+   ============================================================ */
+.nav { border-bottom: 1px solid transparent; background: transparent; }
+@supports (animation-timeline: scroll()) {
+  .nav {
+    animation: nav-solidify linear both;
+    animation-timeline: scroll(root);
+    animation-range: 0 140px;
+  }
+}
+@keyframes nav-solidify {
+  to {
+    background: rgba(10, 10, 10, 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom-color: var(--hairline);
+  }
+}
+
+/* Card lift on hover (surface step + hairline brighten). */
+.lift { transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease; }
+.lift:hover { transform: translateY(-3px); border-color: var(--hairline-2); background: var(--surface-2); }
+
+/* ============================================================
+   Reduced motion — kill ambient/loop motion; keep content.
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .aurora, .flow, .blur-in, .caret, .station-glow { animation: none !important; }
+  .exp-card, .lift { transition: none !important; }
+}
+
+/* ============================================================
+   React Flow — theme it as a dark, non-interactive illustration.
+   ============================================================ */
+.react-flow__attribution { display: none !important; }
+.react-flow__handle { opacity: 0 !important; pointer-events: none !important; }
+.react-flow__edge-path { stroke: var(--hairline-2); }
+.react-flow__node { font-family: var(--font-sans); }
+.react-flow__background { opacity: 0.5; }
+.react-flow { background: transparent !important; }

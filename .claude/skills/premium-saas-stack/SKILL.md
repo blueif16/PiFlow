@@ -34,7 +34,7 @@ into "generic dark theme with a glow on it."
 DRIFT — stop and treat it as a registry change (justify it, then add it to the menu), never a silent one-off.**
 A second hard rule: **restraint budgets are part of the menu** (e.g. one accent, ≤2 ambient effects per
 viewport). Exceeding a budget is the same as escaping scope. This is what keeps "recompose freely" from
-degrading into "kitchen-sink and cheap."
+degrading into "kitchen-sink and generic."
 
 ## Decision procedure (the output)
 Produce a concrete stack by resolving, in order:

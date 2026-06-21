@@ -3,9 +3,9 @@
 The whole transform rests on one observation: **a Claude Code Workflow script is already a
 precise, executable specification of a multi-agent DAG.** It declares — in plain JS — every
 agent prompt, every parallel lane, every phase, and how nodes hand work to each other (through
-the filesystem). The expensive part is *running* those prompts on Claude. The cheap part is the
+the filesystem). The expensive part is *running* those prompts on Claude. The efficient part is the
 *structure*. pi-runner keeps the structure on Claude Code's side and ships only the per-node
-execution to a cheap model.
+execution to a non-Claude model.
 
 So you do not "port" anything. You **extract** the realized prompts from the same `.js` the
 Claude Code Workflow tool runs, and replay them one `pi` process per node.
@@ -75,12 +75,12 @@ node is `ok` only if the files it claims to have written actually exist and are 
 Missing artifact ⇒ `blocked`, regardless of what the model said. (Same "measure, don't assume"
 discipline the Workflow's schema validation gives you for free on Claude.)
 
-## Observability — three tiers, cheapest first
+## Observability — three tiers, most efficient first
 1. **`run-status.json`** (the digest) — per-node `{status, durationMs, toolCalls, toolBreakdown,
    thinking{deltas,chars,spanMs}, tokens{input,output,billable,contextPeak,cost}, eventCount,
    summary, issues, pipelineFindings, artifacts[]}`, refreshed continuously. The whole run at a
    glance. This is what the Claude Code orchestrator polls. All of it is distilled live from the
-   stream, so it is present in BOTH debug and production mode (cheap — no big files involved).
+   stream, so it is present in BOTH debug and production mode (efficient — no big files involved).
 2. **Per-node prompt** (`out/<id>/_pi/<node>.prompt.md`, always) + the **forensic archive**
    (`<node>.events.jsonl` + `<node>.debug.log`, **`--debug` only**) — drop here when a node looks wrong.
 3. **`events.jsonl`** (ground truth) — every pi event for reproduction. **DEBUG-ONLY**, and **slimmed

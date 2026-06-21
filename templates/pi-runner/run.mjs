@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// pi-runner driver — runs a Claude Code Workflow by spawning one `pi` per node, on a cheap
+// pi-runner driver — runs a Claude Code Workflow by spawning one `pi` per node, on an efficient
 // non-Claude coding-plan model, orchestrated entirely from Claude Code (the user runs nothing).
 //
 // SOURCE OF TRUTH = your `.claude/workflows/<name>.js` (the Claude Code Workflow). This driver
@@ -87,7 +87,7 @@ loadDefaults();
 //                    model. Set it (e.g. "MiniMax-M3") to pin THIS repo's model alongside PI_RUNNER_PROVIDER.
 // PI_RUNNER_NODE_TIMEOUT  optional default node hard-kill seconds (--node-timeout overrides).
 //                    Set generously: heavy nodes (long TTS / build / render steps) run long on a
-//                    cheap coding-plan model. Default 1800 (30 min); 600 was too tight.
+//                    non-Claude coding-plan model. Default 1800 (30 min); 600 was too tight.
 // PI_RUNNER_ESCALATE  "1" to enable the escalation gate (default off). On a VERIFIED failure, consult
 //                    PI_RUNNER_ESCALATE_MODEL (optionally on PI_RUNNER_ESCALATE_PROVIDER) once, after
 //                    PI_RUNNER_MAX_RETRIES (default 1) same-model transient retries. Consult model
@@ -146,7 +146,7 @@ const HEARTBEAT_MS = DEBUG ? 4000 : 10000;
 const STALL_WARN_S = 45;
 const NODE_TIMEOUT_S =
   args.nodeTimeout || Number(process.env.PI_RUNNER_NODE_TIMEOUT) || 1800;
-// Stuck-loop guard: some cheap models get stuck emitting the SAME delta over and over. If one
+// Stuck-loop guard: some non-Claude models get stuck emitting the SAME delta over and over. If one
 // non-trivial delta repeats this many times in a row the node is looping (not progressing), so it's
 // killed early instead of burning to the node-timeout. 0 disables. NOTE: this is NOT what makes a raw
 // transcript huge — that is pi re-embedding the whole accumulated message on every delta (those lines
@@ -159,7 +159,7 @@ const REPEAT_KILL = process.env.PI_RUNNER_REPEAT_KILL !== undefined ? Number(pro
 // long silent bash (TTS / render) legitimately emits nothing for minutes, so it must NOT count as a
 // stall. Must be < node-timeout to matter. 0 disables. (STALL_WARN_S above still only WARNS.)
 const STALL_TIMEOUT_S = process.env.PI_RUNNER_STALL_TIMEOUT !== undefined ? Number(process.env.PI_RUNNER_STALL_TIMEOUT) : 300;
-// No-progress tool-thrash guard: a cheap model that can't find something re-runs the SAME read/grep/
+// No-progress tool-thrash guard: a non-Claude model that can't find something re-runs the SAME read/grep/
 // find/ls (identical toolName+args) over and over, writing nothing, until the node-timeout — the
 // composer spelunk that motivated this fired identical `grep -rn` ×7 and `ls …|head` ×9 with ZERO files
 // written. If one (toolName+args) signature repeats this many times with NO write/edit in between, kill.
@@ -169,8 +169,8 @@ const TOOL_REPEAT_KILL = process.env.PI_RUNNER_TOOL_REPEAT_KILL !== undefined ? 
 
 // ESCALATION (advisor inversion) — opt-in. On a VERIFIED failure (artifact-contract breach, stuck
 // loop, timeout, degenerate output — NEVER self-confidence) consult a stronger, ideally different-
-// family model ONCE, fed the cheap attempt's failure evidence (not a blind retry). Transient infra
-// noise gets a cheap same-model retry; a missing UPSTREAM input halts (escalation can't manufacture
+// family model ONCE, fed the non-Claude attempt's failure evidence (not a blind retry). Transient infra
+// noise gets an efficient same-model retry; a missing UPSTREAM input halts (escalation can't manufacture
 // it). All per-repo selection is wiring in .env; the consult model lives in ~/.pi/agent/models.json.
 // Spec: reference/escalation.md. (cp's qwen3.7-max is already its top tier → escalate CROSS-family.)
 const ESCALATE = /^(1|true|on)$/i.test(process.env.PI_RUNNER_ESCALATE || "");
@@ -312,7 +312,7 @@ function ensureDir(d) { return fs.mkdirSync(d, { recursive: true }); }
 const nowISO = () => new Date().toISOString();
 const slug = (label, i) => (label || `node-${i}`).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 // PROJECT_BASE — the workflow's output root (the `projectDir` arg) resolved to absolute (and into
-// the worktree if active). Cheap models often self-report paths RELATIVE TO THIS dir (e.g. "src/x")
+// the worktree if active). Non-Claude models often self-report paths RELATIVE TO THIS dir (e.g. "src/x")
 // rather than to RUN_CWD/ROOT, so the forgiving resolvers below try it as an extra base — else a
 // node that genuinely wrote its files (esp. a no-DRIVER-ARTIFACTS node judged only by self-report)
 // gets a false "missing" → false `blocked`. No-op when no projectDir arg is passed (generic:
@@ -341,7 +341,7 @@ function artifactState(p) {
 
 // A pure file-existence CHECK node (e.g. workflow preflight) declares its required paths via a
 // `DRIVER-PREFLIGHT: <space-separated absolute paths>` line in its prompt. The driver resolves it
-// in plain code — NO pi spawn — killing the cheap-model failure mode where a glorified `ls` grinds
+// in plain code — NO pi spawn — killing the non-Claude-model failure mode where a glorified `ls` grinds
 // to the node-timeout. The dev Workflow runtime forbids fs in the script (so it uses an agent
 // there); the pi driver does not. Generic: any workflow can opt a check node in with this marker.
 function driverPreflightPaths(prompt) {
@@ -668,7 +668,7 @@ function writeStatus() {
 }
 
 function lastJsonBlock(text) {
-  // Robustly recover the node's return object. Cheap models botch the ```json FENCE (drop the close,
+  // Robustly recover the node's return object. Non-Claude models botch the ```json FENCE (drop the close,
   // omit the language tag, or emit the object bare) even when the JSON itself is valid — so a strict
   // fenced-only parse false-fails a node that actually did its work. Try, in order: a closed ```json
   // block, an UNCLOSED opening fence, then the last balanced {...} that parses AND looks like a node
@@ -794,10 +794,10 @@ async function runNode(node, opts = {}) {
 
   ensureDir(promptDir);
   const promptFile = path.join(promptDir, `${node.id}.prompt.md`);
-  // promptPrefix carries the escalation CONSULT preamble (the prior cheap attempt's failure evidence)
+  // promptPrefix carries the escalation CONSULT preamble (the prior non-Claude attempt's failure evidence)
   // on a re-run; empty on attempt 0.
   fs.writeFileSync(promptFile, (opts.promptPrefix || "") + node.prompt + returnProtocol(node.label));
-  // Per-node TOOL GATING (DRIVER-TOOLS / DRIVER-EXCLUDE-TOOLS markers): shrink the cheap model's
+  // Per-node TOOL GATING (DRIVER-TOOLS / DRIVER-EXCLUDE-TOOLS markers): shrink the non-Claude model's
   // surface so a check node can't wander/write. Default (no marker) = full toolset, unchanged.
   const toolAllow = markerPaths(node.prompt, "DRIVER-TOOLS");
   const toolDeny = markerPaths(node.prompt, "DRIVER-EXCLUDE-TOOLS");
@@ -852,7 +852,7 @@ async function runNode(node, opts = {}) {
     let assistantText = "", stderr = "", toolCalls = 0, eventCount = 0;
     let lastEventAt = Date.now(), lastWrite = 0, finished = false;
     // Distilled per-node telemetry — computed live from the stream, lands in the digest in BOTH
-    // modes (cheap). These are the SIGNAL that the raw archive below buries in bulk.
+    // modes (efficient). These are the SIGNAL that the raw archive below buries in bulk.
     const toolBreakdown = {};                                       // toolName -> count
     let thinkingChars = 0, thinkingDeltas = 0, thinkFirstAt = 0, thinkLastAt = 0;
     let lastDelta = null, repeatRun = 0;                            // consecutive identical-delta run (stuck-loop guard)
@@ -864,7 +864,7 @@ async function runNode(node, opts = {}) {
     // the point the driver RECEIVES each line. We stamp every event with a node-relative `_t` ms (and
     // the slimmed archive line also gets an absolute `_rt`), then pair tool_execution_start→end by the
     // native `toolCallId` and turn_start/message_start→message_end for turns — accumulating ONE compact
-    // per-node timeline. All driver-side, all additive (no pi change). Lands in BOTH modes (cheap;
+    // per-node timeline. All driver-side, all additive (no pi change). Lands in BOTH modes (efficient;
     // bounded by tool-call + turn count, not by delta volume), so production keeps the x-ray too.
     const tlTools = [];                                  // [{ id, name, tStartMs, durMs }] — pi tool calls, start→end paired by toolCallId
     const tlTurns = [];                                  // [{ tStartMs, durMs, tokIn, tokOut, tokBillable }] — model turns, start→message_end
@@ -1195,7 +1195,7 @@ function classifyFailure(n) {
   if (!n.parsedOk) return "DEGENERATE";                                  // no return block — retry once, then escalate
   return "ESCALATE";                                                     // any other capability failure
 }
-// The consult is NOT blind: prepend the cheap attempt's VERIFIED failure evidence (not a score).
+// The consult is NOT blind: prepend the non-Claude attempt's VERIFIED failure evidence (not a score).
 function consultPreamble(n) {
   const cls = (n.contractMissing && n.contractMissing.length) ? "contract"
     : (n.schemaInvalidPaths && n.schemaInvalidPaths.length) ? "schema"
@@ -1211,21 +1211,21 @@ function consultPreamble(n) {
   if (!n.parsedOk) ev.push("produced no parseable return-protocol block");
   if (n.stderrTail) ev.push(`stderr: ${n.stderrTail.slice(-160)}`);
   return [
-    "CONSULT — a cheaper model attempted this node and FAILED; do not repeat its mistake.",
+    "CONSULT — a more efficient model attempted this node and FAILED; do not repeat its mistake.",
     `Failure class: ${cls}`,
     `Evidence: ${ev.join(" | ") || "(none captured)"}`,
     "Produce EVERY required artifact and end with the return-protocol JSON block.",
     "", "",
   ].join("\n");
 }
-// Wrapper the stage loop calls instead of runNode: attempt 0 on the cheap default; on a VERIFIED
+// Wrapper the stage loop calls instead of runNode: attempt 0 on the non-Claude default; on a VERIFIED
 // failure, a bounded same-model retry for transient infra noise, else ONE cross-family consult fed
 // the failure evidence. Records n.attempts[] + n.escalated for observability (a wave that escalates
 // every run is a SKILL flaw, not a model flaw → feed Hermes). No-op (returns attempt 0) unless
 // PI_RUNNER_ESCALATE is on. Needs NO pi extension — it is a per-node --model/--provider override.
 async function runNodeWithEscalation(node) {
   const snap = (x) => ({ model: x.modelUsed, provider: x.providerUsed, status: x.status, durationMs: x.durationMs, tokens: x.tokens });
-  let n = await runNode(node);                                            // attempt 0 — cheap default
+  let n = await runNode(node);                                            // attempt 0 — non-Claude default
   if (!ESCALATE || args.dryRun) return n;
   const attempts = [snap(n)];
   let retriesLeft = MAX_RETRIES, escalatedYet = false;

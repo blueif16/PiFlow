@@ -21,7 +21,7 @@
 ## 1. One-line positioning (the load-bearing sentence)
 
 > **ADAS/AFlow's structure search + GEPA's reflective module-level credit assignment — but with
-> *full-agent nodes* on a *durable cheap fleet*, running *online in production*.**
+> *full-agent nodes* on a *durable efficient fleet*, running *online in production*.**
 
 This names the three proven parents (so we are not reinventing) and the three genuine deltas (so we are not
 merely cloning). No single system we found occupies that intersection (§9). Every individual piece is
@@ -110,7 +110,7 @@ closed-source; the pi primitive itself is the load-bearing, verifiable part. Ref
 - **Pluggable control blocks**: a **debug block** (diagnose → decide rerun / stop / patch) and a **Hermes
   block** (durable, generalizing fix to the owning skill/chain) form an **escalation ladder** — debug in
   front, Hermes behind it for the deep fix. This is the generalization of the escalation gate we already have
-  (cheap retry → cross-family consult → watchdog kill).
+  (efficient retry → cross-family consult → watchdog kill).
 - **HARD CONSTRAINT — hot-edits happen at seams, not mid-run.** A run cannot redesign itself mid-flight — but
   *two different mechanics* enforce this at the two layers, and the gap matters (audit, 2026-06-21): the
   **Claude-Code Workflow script** is genuinely journaled/deterministic (`Date.now`/`Math.random` literally
@@ -198,7 +198,7 @@ literature's fixes are almost exactly our existing laws, which is why we sit nea
 - **MISSING the renderer in this repo:** the Ink TUI (`viz.mjs`) and `tui/` are template-only and absent here;
   there is **no graphical box-and-arrow DAG view**. `status.mjs` (text) + `watch.mjs` (sentinel) are wired.
 - **Implication:** a live box-and-arrow view of the mesh (where seams/control-nodes light up) is **a renderer
-  away, not a data-model away** — `buildModel()` already emits the boxes/lanes/edges/Gantt. This is a cheap,
+  away, not a data-model away** — `buildModel()` already emits the boxes/lanes/edges/Gantt. This is an efficient,
   high-value build, and the operator surface the funded competitors already ship (§9.D).
 
 ---
@@ -272,9 +272,9 @@ self-improvement of the graph.**
 | **Durability** | **BORROW** — sit on / adopt journaled-replay semantics (Temporal/DBOS/Restate-style); do **not** ship filesystem/same-session resume as the durability story for irreversible side effects. | Per-step checkpointing is "a weaker guarantee than exactly-once journaled replay"; for anything irreversible "you want a dedicated durable layer underneath." |
 | **Structure search** | **BORROW** — adopt **AFlow's MCTS / Trace's OPTO** as the COMPOSE-loop search operator + acceptance test. | A planner that "designs the structure" with no principled search operator is weaker than these proven algorithms. |
 | **Credit assignment** | **BORROW the mechanism, BENCHMARK against it** — Hermes should adopt GEPA's reflective module-level credit assignment + **per-module local rewards (Optimas)**, and measure against `dspy.GEPA`. | If full-agent-node complexity can't beat prompt-only GEPA on a shared benchmark, the complexity isn't paying for itself. |
-| **Observability** | **BUILD (cheap)** — a box-and-arrow DAG renderer over `viz-model.buildModel()`. | Data layer already exists; the operator surface is table stakes the competitors ship. |
+| **Observability** | **BUILD (efficient)** — a box-and-arrow DAG renderer over `viz-model.buildModel()`. | Data layer already exists; the operator surface is table stakes the competitors ship. |
 | **Full-agent nodes** | **OWN** — pi/Claude-Code-class nodes with their own env/tools/skill. | ADAS/AFlow/GEPA/Trace nodes are LLM calls or text variables, not full agents. |
-| **Cheap-fleet economics** | **OWN** — make "win on a cheap-model fleet" a first-class *design objective*. | The academic line treats compute as free; this inverts the economics (the pi-runner thesis). |
+| **Efficient-fleet economics** | **OWN** — make "win on an efficient-model fleet" a first-class *design objective*. | The academic line treats compute as free; this inverts the economics (the pi-runner thesis). |
 | **Online + durable self-optimization** | **OWN** — improve the graph *while running durably in production*. | Every optimizer is offline/ephemeral/frontier; every durable runtime doesn't self-optimize. The intersection is empty. |
 | **Implementation language** | **STAY TypeScript/Node** for the orchestrator + DAG; a **Rust/Go layer ONLY as a future crash-isolated sidecar** for the always-on supervisor (§5), never the glue, and only on a *measured* Node-stability problem (prefer Go there — intu/Temporal-server precedent). | The orchestrator is **IO-bound** (spawn pi · watch files · poll status); the LLM child dominates, so Rust's perf is wasted while compile-time + FFI crash-coupling + polyglot ops bite. The serious durable engines confirm the pattern: Temporal *server*=Go, Temporal *Core SDK*=Rust, Restate *engine*=Rust — Rust lives ONLY in a **shared correctness-critical core**, never the per-language glue. So "write it in Rust?" ≡ "build our own durable core?" — and the row above already says BORROW that. Evidence: the 2026-06-21 research brief. |
 
@@ -289,7 +289,7 @@ self-improvement of the graph.**
 > distraction."* Centralized orchestration is the measured difference between working and not (decentralized
 > meshes amplify errors **17.2×** vs **4.4×** centralized). **That convergence IS our design** — a centralized
 > DAG, file-based high-fidelity handoff (Cognition Principle 1: "share full traces, not just messages"), a
-> produce-then-verify law. So the moat is **centralized, code-defined orchestration of cheap full-agent nodes
+> produce-then-verify law. So the moat is **centralized, code-defined orchestration of non-Claude full-agent nodes
 > with per-node oracles — NOT agent count.** Never pitch this as a swarm; the "many small agents" intuition is
 > a *means* (context isolation per node), not the value.
 
@@ -297,7 +297,7 @@ self-improvement of the graph.**
    *"bad node SKILL (edit skill) vs bad chain SHAPE (rewire)"*. Exactly Hermes' "route to the canonical source
    owner." GEPA is prompt-only; AFlow is topology-only; **nobody routes both axes from one trace.**
 2. **Online + durable + full-agent-node optimization** — the empty intersection (§10). The defensible center.
-3. **Cheap-fleet economics as a design *objective*** — find the structure that wins on a cheap fleet.
+3. **Efficient-fleet economics as a design *objective*** — find the structure that wins on an efficient fleet.
 4. **A persisted, versioned, git-logged archive of *discovered structures*** (not facts, à la Letta) — ADAS's
    archive dies with the run; Devin's playbooks only gesture at it. "Structures that worked for task-class X"
    is a real moat, and `git`-as-log is already our Hermes convention.
@@ -342,7 +342,7 @@ build without choosing it.**
 - **Determinism vs adaptivity.** Adaptive structure must live at seams (between runs), never inside a journaled
   run. Resist "self-rewriting live run."
 - **Cost.** Multi-agent is ~15× tokens (Anthropic) and "no built-in cost floor" is ultracode's top complaint;
-  the cheap fleet + node-timeout/watchdogs is our floor — keep it.
+  the efficient fleet + node-timeout/watchdogs is our floor — keep it.
 - **Second-system scope creep.** This note exists partly to prevent it (the fork in §12).
 - **Polyglot temptation.** "Rewrite the hot loop in Rust" is the wrong instinct for IO-bound glue — the LLM
   child, not the orchestrator loop, is the bottleneck. A Rust/Go layer earns its keep ONLY as a crash-isolated
@@ -354,7 +354,7 @@ build without choosing it.**
 
 ## 14. Suggested first steps (only after §12 is answered)
 
-1. **Renderer over `viz-model.buildModel()`** — the box-and-arrow DAG view (cheap, useful regardless of fork).
+1. **Renderer over `viz-model.buildModel()`** — the box-and-arrow DAG view (efficient, useful regardless of fork).
 2. **A COMPOSE prototype** — a planner phase (in Claude Code) that emits a `workflow.json` (DAG + per-node
    tools + credential list) for one task class; borrow AFlow's search shape.
 3. **Hermes ⟶ GEPA alignment** — reframe the Hermes loop in GEPA's module-credit-assignment terms; pick a
