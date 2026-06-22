@@ -5,6 +5,8 @@ export { runWorkflow, defaultExecRunner, lastJsonBlock } from './runner.js';
 export type { RunOptions, RunResult, ExecRunner, ExecWatchdogOpts } from './runner.js';
 export { defaultPiCommand } from './command.js';
 export type { CommandBuilder, CommandContext } from './command.js';
+export { validateArtifactSchemas, defaultSchemaValidator } from './schema.js';
+export type { SchemaValidator, SchemaCheckResult } from './schema.js';
 export { writeStatus, artifactState, nowISO } from './status.js';
 export type {
   RunStatus,

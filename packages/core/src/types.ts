@@ -91,6 +91,47 @@ export interface ArtifactReq {
   schema?: string;
 }
 
+// ── INTEGRITY CONTRACT: detection (checks) ⊥ consequence (policy) ⊥ return-handshake ──────────────
+// A node declares its integrity CHECKS (pure predicates over its artifacts) SEPARATELY from the
+// verdict→ACTION POLICY, so detection and consequence stay disentangled — flip an action without
+// touching a check, or add a check without touching the policy. ALL fields are optional/additive: a
+// node that declares none behaves exactly as before. Ported from the `run.mjs` unified node contract.
+
+/** A pure predicate kind run over a single artifact's bytes. Unknown kinds degrade to a warn (skip). */
+export type CheckKind =
+  | 'exists'        // the file is present
+  | 'non-empty'     // size > 0
+  | 'regex-absent'  // param (a regex string) does NOT match (e.g. an unfilled <FILL:> sentinel is gone)
+  | 'regex-present' // param matches
+  | 'json-parses'   // the bytes are valid JSON
+  | 'field-present' // param (a dotted path) resolves to a non-null value in the parsed JSON
+  | 'count-floor'   // param { path, min }: the array at `path` has ≥ `min` items
+  | 'fenced-tail';  // param { lang?, field?, minItems? }: the last fenced block parses and has ≥ minItems
+
+/** The outcome of one check. `pass` is clean; otherwise the check's `severity`. */
+export type Verdict = 'pass' | 'warn' | 'fail';
+
+/** What a non-pass verdict DOES to the node. (`retry-once`/`subagent-fix` are reserved; treated as block.) */
+export type PolicyAction = 'block' | 'warn' | 'stop';
+
+/** Verdict→action map (consequence). Default: fail→block, warn→warn. Keyed by the non-pass verdicts. */
+export type Policy = Partial<Record<Exclude<Verdict, 'pass'>, PolicyAction>>;
+
+/** Whether the node's fenced-JSON return handshake is required or advisory. */
+export type ReturnMode = 'optional' | 'required';
+
+/** One declarative integrity check over an artifact (detection only — never judges GOODNESS). */
+export interface Check {
+  /** The predicate to run (see CheckKind). An unknown kind is skipped with a warn. */
+  kind: CheckKind | string;
+  /** Artifact path the check reads, relative to the run dir. */
+  path?: string;
+  /** Kind-specific parameter: a regex string, a dotted field path, `{ path, min }`, or `{ lang, field, minItems }`. */
+  param?: unknown;
+  /** The verdict on failure (default 'fail'). */
+  severity?: 'fail' | 'warn';
+}
+
 /**
  * The data contract. Edges are INFERRED from this: a node that `reads` a file another `produces`
  * gets an edge. `declared ⊇ actual` — undeclared reads/writes are a breach.
@@ -106,6 +147,17 @@ export interface NodeIO {
   dependsOn?: string[];
   /** Required outputs that gate the node's success. */
   artifacts: ArtifactReq[];
+  /** Declarative integrity checks over the artifacts (detection). Empty/undefined ⇒ none. */
+  checks?: Check[];
+  /** Verdict→action policy for failed checks (consequence). Undefined ⇒ the default (fail→block). */
+  policy?: Policy;
+  /** Return-handshake mode. Default: 'optional' when `artifacts` is non-empty, else 'required'. */
+  returnMode?: ReturnMode;
+  /**
+   * A sentinel string (e.g. `<FILL:`) that, if STILL present in a required artifact, marks it
+   * incomplete — the engine adds an auto `regex-absent` completeness check per artifact. Undefined ⇒ off.
+   */
+  fillSentinel?: string;
 }
 
 // 3 ── HOOK (deterministic; never an LLM) ──────────────────────────────────────

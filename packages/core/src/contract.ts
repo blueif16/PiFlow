@@ -2,7 +2,7 @@
 // reads to learn the node's artifacts / owned paths / read-scope / tools / seeds. Ported from the
 // `run.mjs` marker grammar; round-trippable (emit → parse → emit).
 
-import type { NodeSpec, ResolveResult } from './types.js';
+import type { NodeSpec, ResolveResult, Check, Policy, ReturnMode } from './types.js';
 
 /** The structured marker set carried in (or extracted from) a node prompt. */
 export interface ContractMarkers {
@@ -13,10 +13,33 @@ export interface ContractMarkers {
   excludeTools?: string[];
   seed?: { to: string; from: string }[];
   schema?: { path: string; schema: string }[];
+  /** Declarative integrity checks (detection). Carried base64-on-one-line to hold arbitrary regex/params. */
+  checks?: Check[];
+  /** Verdict→action policy (consequence). Carried base64-on-one-line. */
+  policy?: Policy;
+  /** Return-handshake mode override. */
+  returnMode?: ReturnMode;
+  /** Incompleteness sentinel string (drives the auto completeness check). */
+  fillSentinel?: string;
 }
 
 const spaceList = (s: string): string[] => s.split(/\s+/).filter(Boolean);
 const commaList = (s: string): string[] => s.split(',').map((x) => x.trim()).filter(Boolean);
+
+/** Encode a JSON value as base64-on-one-line (collision-free: holds regex/params/spaces). */
+const encodeB64 = (v: unknown): string => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');
+/** Decode a base64-on-one-line marker; tolerate an inline-JSON value (a hand-authored marker). */
+function decodeB64(raw: string): unknown {
+  try {
+    return JSON.parse(Buffer.from(raw.trim(), 'base64').toString('utf8'));
+  } catch {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+}
 
 function firstValue(prompt: string, key: string): string | null {
   const m = prompt.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'));
@@ -44,6 +67,10 @@ export function emitMarkers(m: ContractMarkers): string {
   if (m.excludeTools?.length) lines.push(`DRIVER-EXCLUDE-TOOLS: ${m.excludeTools.join(',')}`);
   for (const s of m.seed ?? []) lines.push(`DRIVER-SEED: ${s.to} <= ${s.from}`);
   for (const s of m.schema ?? []) lines.push(`DRIVER-SCHEMA: ${s.path} <= ${s.schema}`);
+  if (m.checks?.length) lines.push(`DRIVER-CHECKS: ${encodeB64(m.checks)}`);
+  if (m.policy && Object.keys(m.policy).length) lines.push(`DRIVER-POLICY: ${encodeB64(m.policy)}`);
+  if (m.returnMode) lines.push(`DRIVER-RETURN: ${m.returnMode}`);
+  if (m.fillSentinel) lines.push(`DRIVER-FILL-SENTINEL: ${m.fillSentinel}`);
   return lines.join('\n');
 }
 
@@ -69,6 +96,20 @@ export function parseMarkers(prompt: string): ContractMarkers {
     .map((a) => (a ? { path: a.to, schema: a.from } : null))
     .filter((x): x is { path: string; schema: string } => x !== null);
   if (schemas.length) out.schema = schemas;
+  const checksRaw = firstValue(prompt, 'DRIVER-CHECKS');
+  if (checksRaw !== null) {
+    const c = decodeB64(checksRaw);
+    if (Array.isArray(c)) out.checks = c as Check[];
+  }
+  const policyRaw = firstValue(prompt, 'DRIVER-POLICY');
+  if (policyRaw !== null) {
+    const p = decodeB64(policyRaw);
+    if (p && typeof p === 'object' && !Array.isArray(p)) out.policy = p as Policy;
+  }
+  const ret = firstValue(prompt, 'DRIVER-RETURN');
+  if (ret === 'optional' || ret === 'required') out.returnMode = ret;
+  const fill = firstValue(prompt, 'DRIVER-FILL-SENTINEL');
+  if (fill !== null) out.fillSentinel = fill;
   return out;
 }
 
@@ -84,5 +125,9 @@ export function markersFromNode(node: NodeSpec, resolved?: ResolveResult): Contr
   if (node.sandbox.write.length) m.owns = node.sandbox.write;
   if (node.sandbox.read.length) m.readScope = node.sandbox.read;
   if (resolved?.piTools.length) m.tools = resolved.piTools;
+  if (node.io.checks?.length) m.checks = node.io.checks;
+  if (node.io.policy && Object.keys(node.io.policy).length) m.policy = node.io.policy;
+  if (node.io.returnMode) m.returnMode = node.io.returnMode;
+  if (node.io.fillSentinel) m.fillSentinel = node.io.fillSentinel;
   return m;
 }

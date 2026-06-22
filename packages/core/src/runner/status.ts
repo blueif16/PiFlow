@@ -9,6 +9,8 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import type { ReturnMode } from '../types.js';
+import type { CheckResult } from '../checks.js';
 
 /** Per-node status enum (run.mjs ladder): the terminal verdict the driver assigns each node. */
 export type NodeStatus =
@@ -44,6 +46,16 @@ export interface NodeStatusRecord {
   killedStall?: boolean;
   exitCode?: number;
   command?: string;
+  /** Declarative integrity-check results (explicit ∪ auto fill-sentinel), when any were run. */
+  checks?: CheckResult[];
+  /** The effective return-handshake mode this node was judged under ('optional' | 'required'). */
+  returnMode?: ReturnMode;
+  /** Artifacts present but VIOLATING their declared schema (a contract breach → blocked). */
+  schemaInvalid?: { path: string; errors: string[] }[];
+  /** How many artifacts the schema gate actually validated. */
+  schemaChecked?: number;
+  /** Why the schema gate skipped (no validator / unreadable schema), if it did. */
+  schemaSkipped?: string;
 }
 
 /** Run-level rollup at completion. */

@@ -57,6 +57,29 @@ function stubBuilder(producePaths?: (node: { id: string }) => string[]) {
   };
 }
 
+/**
+ * A builder that writes EXACT bytes to each artifact (so a test can drive the schema/checks/sentinel
+ * gates), and optionally emits a PARSEABLE return block. Content must be single-quote-free (it is
+ * shell-single-quoted); newlines/backticks are fine. `emitReturn` defaults false (artifact-backed
+ * nodes prove via the file); when true it emits a fence the forgiving parser recovers.
+ */
+function contentBuilder(contentFn: (node: { id: string; io: { artifacts: { path: string }[] }; sandbox: { output: string } }) => Record<string, string>, opts: { emitReturn?: boolean; status?: string } = {}) {
+  return (node: { id: string; io: { artifacts: { path: string }[] }; sandbox: { output: string } }): string => {
+    const out = node.sandbox.output;
+    const contents = contentFn(node);
+    const writes = Object.entries(contents)
+      .map(([p, c]) => {
+        const dest = `${out}/${p}`;
+        const dir = dest.includes('/') ? dest.slice(0, dest.lastIndexOf('/')) : '.';
+        return `mkdir -p ${dir} && printf '%s' '${c}' > ${dest}`;
+      })
+      .join(' && ');
+    const ret = opts.emitReturn ? `printf '%s' '\`\`\`json{"status":"${opts.status ?? 'ok'}"}\`\`\`'` : '';
+    const cmd = [writes, ret].filter(Boolean).join(' && ');
+    return cmd || 'true';
+  };
+}
+
 // ── 1. end-to-end ───────────────────────────────────────────────────────────────────────────────
 
 describe('runWorkflow — end-to-end on InMemorySandboxProvider (no live pi)', () => {
@@ -404,6 +427,115 @@ describe('runWorkflow — run scope (the openRun lifecycle for worktree/cloud pr
     expect(status.nodes.up.status).toBe('blocked');
     expect(disposeCalls).toBe(1); // finally-block teardown fired despite the failure
 
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
+// ── unified node contract: the schema gate, integrity checks, fill-sentinel, generalized handshake ─
+
+describe('runWorkflow — post-node SCHEMA gate (DRIVER-SCHEMA / ArtifactReq.schema)', () => {
+  // A deterministic injected validator (no ajv dependency): "speed" must be a number.
+  const validate = (_schema: object, data: unknown): { ok: boolean; errors: string[] } => {
+    const ok = typeof (data as { speed?: unknown }).speed === 'number';
+    return { ok, errors: ok ? [] : ['/speed must be a number'] };
+  };
+
+  it('BLOCKS a present-but-schema-invalid artifact (driver-verified breach, beats the self-report)', async () => {
+    const g = compile(wf([n('Make', [], [], { io: { reads: [], produces: ['a.json'], artifacts: [{ path: 'a.json', schema: 'schema.json' }] } })]));
+    const outDir = await tmpOut();
+    await fs.writeFile(path.join(outDir, 'schema.json'), '{}'); // present + readable; the injected validator decides
+
+    // Writes a STRING speed → invalid; emits an "ok" return so only the schema gate can fail it.
+    const builder = contentBuilder(() => ({ 'a.json': '{"speed":"fast"}' }), { emitReturn: true, status: 'ok' });
+    const { status } = await runWorkflow(g, { run: 'schema-bad', outDir, buildCommand: builder, validateSchema: validate });
+
+    expect(status.nodes.make.status).toBe('blocked');
+    expect(status.nodes.make.issues.join(' ')).toMatch(/violate the declared schema/i);
+    expect(status.nodes.make.schemaInvalid?.[0]).toMatchObject({ path: 'a.json' });
+    expect(status.ok).toBe(false);
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('passes a schema-VALID artifact', async () => {
+    const g = compile(wf([n('Make', [], [], { io: { reads: [], produces: ['a.json'], artifacts: [{ path: 'a.json', schema: 'schema.json' }] } })]));
+    const outDir = await tmpOut();
+    await fs.writeFile(path.join(outDir, 'schema.json'), '{}');
+    const builder = contentBuilder(() => ({ 'a.json': '{"speed":220}' }));
+    const { status } = await runWorkflow(g, { run: 'schema-ok', outDir, buildCommand: builder, validateSchema: validate });
+    expect(status.nodes.make.status).toBe('ok');
+    expect(status.nodes.make.schemaChecked).toBe(1);
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
+describe('runWorkflow — DRIVER-FILL-SENTINEL completeness check', () => {
+  it('BLOCKS a required artifact that STILL contains the fill sentinel (incomplete), passes a clean one', async () => {
+    const node = (over = {}): NodeIntent => ({ label: 'Harden', prompt: 'harden', tools: {}, io: { reads: [], produces: ['spec.json'], artifacts: [{ path: 'spec.json' }], fillSentinel: '<FILL:' }, ...over });
+
+    // (a) sentinel still present → blocked
+    let outDir = await tmpOut();
+    let { status } = await runWorkflow(compile(wf([node()])), { run: 'fill-bad', outDir, buildCommand: contentBuilder(() => ({ 'spec.json': '{"speed":"<FILL:number>"}' })) });
+    expect(status.nodes.harden.status).toBe('blocked');
+    expect(status.nodes.harden.issues.join(' ')).toMatch(/integrity check FAILED/i);
+    await fs.rm(outDir, { recursive: true, force: true });
+
+    // (b) sentinel resolved → ok
+    outDir = await tmpOut();
+    ({ status } = await runWorkflow(compile(wf([node()])), { run: 'fill-ok', outDir, buildCommand: contentBuilder(() => ({ 'spec.json': '{"speed":220}' })) }));
+    expect(status.nodes.harden.status).toBe('ok');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
+describe('runWorkflow — declarative integrity checks + verdict→action policy', () => {
+  it('BLOCKS on a failing block-severity check (truncated fenced tail)', async () => {
+    const node: NodeIntent = { label: 'Gdd', prompt: 'gdd', tools: {}, io: { reads: [], produces: ['gdd.md'], artifacts: [{ path: 'gdd.md' }], checks: [{ kind: 'fenced-tail', path: 'gdd.md', param: { minItems: 1 } }] } };
+    const outDir = await tmpOut();
+    // No fenced JSON tail at all → the fenced-tail check fails at block severity.
+    const { status } = await runWorkflow(compile(wf([node])), { run: 'tail-bad', outDir, buildCommand: contentBuilder(() => ({ 'gdd.md': 'a design doc with no machine tail' })) });
+    expect(status.nodes.gdd.status).toBe('blocked');
+    expect(status.nodes.gdd.checks?.find((c) => c.kind === 'fenced-tail')?.verdict).toBe('fail');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('does NOT block when policy downgrades the failing check to a warn (detection ⊥ consequence)', async () => {
+    const node: NodeIntent = { label: 'Gdd', prompt: 'gdd', tools: {}, io: { reads: [], produces: ['x.json'], artifacts: [{ path: 'x.json' }], checks: [{ kind: 'count-floor', path: 'x.json', param: { path: 'items', min: 5 } }], policy: { fail: 'warn' } } };
+    const outDir = await tmpOut();
+    // items has 1 (< 5) → the check fails, but policy maps fail→warn, so the node stays ok with a warn issue.
+    const { status } = await runWorkflow(compile(wf([node])), { run: 'policy-warn', outDir, buildCommand: contentBuilder(() => ({ 'x.json': '{"items":[1]}' })) });
+    expect(status.nodes.gdd.status).toBe('ok');
+    expect(status.nodes.gdd.issues.join(' ')).toMatch(/integrity warn/i);
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
+describe('runWorkflow — generalized return handshake (the W1 fix)', () => {
+  it('an artifact-backed node is OK even with NO return block (handshake is advisory when artifacts exist)', async () => {
+    const g = compile(wf([n('Build', [], ['out.txt'])]));
+    const outDir = await tmpOut();
+    // Writes the artifact but emits NO return block.
+    const { status } = await runWorkflow(g, { run: 'no-handshake-arts', outDir, buildCommand: contentBuilder(() => ({ 'out.txt': 'done' }), { emitReturn: false }) });
+    expect(status.nodes.build.status).toBe('ok');
+    expect(status.nodes.build.returnMode).toBe('optional');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a ZERO-artifact gate node with NO return block is ERROR (handshake required when nothing else proves work)', async () => {
+    const gate: NodeIntent = { label: 'Gate', prompt: 'gate', tools: {}, io: { reads: [], produces: [], artifacts: [] } };
+    const outDir = await tmpOut();
+    // No artifact, no return → the only proof-of-work is the handshake, which is required here.
+    const { status } = await runWorkflow(compile(wf([gate])), { run: 'gate-no-ret', outDir, buildCommand: contentBuilder(() => ({}), { emitReturn: false }) });
+    expect(status.nodes.gate.status).toBe('error');
+    expect(status.nodes.gate.returnMode).toBe('required');
+    expect(status.nodes.gate.issues.join(' ')).toMatch(/return:required/i);
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('the same zero-artifact gate node is OK when it DOES emit a return block', async () => {
+    const gate: NodeIntent = { label: 'Gate', prompt: 'gate', tools: {}, io: { reads: [], produces: [], artifacts: [] } };
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(compile(wf([gate])), { run: 'gate-ret', outDir, buildCommand: contentBuilder(() => ({}), { emitReturn: true, status: 'ok' }) });
+    expect(status.nodes.gate.status).toBe('ok');
     await fs.rm(outDir, { recursive: true, force: true });
   });
 });

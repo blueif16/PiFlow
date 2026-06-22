@@ -13,6 +13,10 @@ export { compile, tryCompile, validate, inferEdges, stagesOf, slugify, WorkflowE
 export { emitMarkers, parseMarkers, markersFromNode } from './contract.js';
 export type { ContractMarkers } from './contract.js';
 
+// Integrity-check engine (detection ⊥ consequence): predicates, fill-sentinel, verdict→action policy
+export { CHECK_KINDS, evaluateChecks, effectiveChecks, actionForVerdict, lastFencedBlock, escapeRegex } from './checks.js';
+export type { CheckResult, FileBytes } from './checks.js';
+
 // Tool registry (namespace:name → bare pi names)
 export { DefaultToolRegistry, BUILTIN_TOOLS } from './tools/registry.js';
 // Ingestion: MCP tools/list → ToolEntry[] (the effortless catalog fill)
@@ -54,6 +58,9 @@ export type { HookReport, RunHooksOpts } from './hooks/index.js';
 // Runner (M1 execution loop — create→stage→exec→collect→dispose; watchdogs · halt-on-failure ·
 // --from resume · run-status.json). The pi-spawn is injectable (buildCommand/execRunner) so it runs offline.
 export { runWorkflow, defaultExecRunner, defaultPiCommand, lastJsonBlock, writeStatus, artifactState, nowISO } from './runner/index.js';
+// Post-node schema gate (injectable validator seam + best-effort ajv-2020 default)
+export { validateArtifactSchemas, defaultSchemaValidator } from './runner/index.js';
+export type { SchemaValidator, SchemaCheckResult } from './runner/index.js';
 export type {
   RunOptions,
   RunResult,

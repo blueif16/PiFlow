@@ -12,7 +12,7 @@
 // escalation ladder, real process-group reaping (a provider concern). See docs/research/
 // runner-childprocess-2026-06-21.md.
 
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type {
   Workflow,
@@ -30,6 +30,8 @@ import { DefaultToolRegistry } from '../tools/registry.js';
 import { verifyToolBinding } from '../tools/verify.js';
 import { InMemorySandboxProvider } from '../sandbox/index.js';
 import { markersFromNode, emitMarkers } from '../contract.js';
+import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } from '../checks.js';
+import { validateArtifactSchemas, defaultSchemaValidator, type SchemaValidator } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { defaultPiCommand, type CommandBuilder } from './command.js';
 import {
@@ -96,6 +98,11 @@ export interface RunOptions {
   from?: string;
   /** Resume window: run up to the last stage whose phase/label/id contains this (inclusive). */
   until?: string;
+  /**
+   * Schema validator for the post-node schema gate. Omit ⇒ a best-effort ajv-2020 default (skips with
+   * a warning if ajv is absent); pass `null` to disable the gate; pass a fn to inject one (tests do this).
+   */
+  validateSchema?: SchemaValidator | null;
 }
 
 /** The result of a run: the final status record + the host run dir it was written to. */
@@ -216,6 +223,8 @@ interface RunContext {
   model?: string;
   watchdog: ExecWatchdogOpts;
   status: RunStatus;
+  /** Resolved schema validator (default ajv-2020 / injected / null=disabled) for the schema gate. */
+  validateSchema: SchemaValidator | null;
 }
 
 /** Read a host-side input file as bytes (for staging a downstream node's reads). */
@@ -329,8 +338,48 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     );
     const missing = artifacts.filter((a) => !a.exists).map((a) => a.path);
 
-    // The status ladder (run.mjs 1118–1125): kill/nonzero ⇒ error; missing required ⇒ blocked
-    // (driver-verified, beats any self-report); else honor a non-ok self-report; else ok.
+    // POST-NODE SCHEMA GATE: a present-but-invalid artifact (vs its declared draft-2020-12 schema) is a
+    // contract breach, driver-verified — exactly like a missing one. Skips (advisory) when no schema is
+    // declared or no validator resolved (run.mjs schemaCheck).
+    const schema = await validateArtifactSchemas(node.io.artifacts, {
+      outDir: ctx.outDir,
+      roots: [ctx.outDir, scope.root],
+      validate: ctx.validateSchema,
+    });
+    if (schema.invalid.length) rec.schemaInvalid = schema.invalid;
+    if (schema.checked) rec.schemaChecked = schema.checked;
+    if (schema.skipped) rec.schemaSkipped = schema.skipped;
+
+    // DECLARATIVE INTEGRITY CHECKS (explicit ∪ the auto fill-sentinel completeness check) folded through
+    // the verdict→action POLICY (detection ⊥ consequence). A failed check at block severity is a breach.
+    const readBytes = (rel: string): FileBytes => {
+      try {
+        const absPath = path.resolve(ctx.outDir, rel);
+        return { bytes: readFileSync(absPath, 'utf8'), size: statSync(absPath).size };
+      } catch {
+        return { bytes: null, size: 0 };
+      }
+    };
+    const checkResults = evaluateChecks(
+      effectiveChecks(node.io.checks, node.io.fillSentinel, node.io.artifacts.map((a) => a.path)),
+      readBytes,
+    );
+    if (checkResults.length) rec.checks = checkResults;
+    const failedChecks = checkResults.filter((c) => c.verdict !== 'pass');
+    const blockingChecks = failedChecks.filter((c) => actionForVerdict(c.verdict as 'fail' | 'warn', node.io.policy) !== 'warn');
+    const warningChecks = failedChecks.filter((c) => actionForVerdict(c.verdict as 'fail' | 'warn', node.io.policy) === 'warn');
+
+    // GENERALIZED RETURN HANDSHAKE: a node that declares a (satisfied) artifact contract proves its work
+    // by the FILE on disk, so a missing return block is advisory (optional). A node that declares NO
+    // artifact (its structured return IS its only output) still REQUIRES the handshake. `returnMode`
+    // overrides per node. This releases the redundant-handshake false-error (the W1-class defect) while
+    // real corruption is still caught by the missing/schema/checks gates above.
+    const returnMode = node.io.returnMode ?? (node.io.artifacts.length ? 'optional' : 'required');
+    rec.returnMode = returnMode;
+
+    // The status ladder (run.mjs 1876–1883): kill/nonzero ⇒ error; then the driver-verified contract
+    // breaches (missing → schema-invalid → blocking integrity check), each beating any self-report; then
+    // a non-ok self-report is honored; then a MISSING handshake errors ONLY when it was required; else ok.
     const parsed = lastJsonBlock(result.stdout);
     let st: NodeStatusRecord['status'];
     const issues: string[] = [];
@@ -341,11 +390,22 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     } else if (missing.length) {
       st = 'blocked';
       issues.push(`contract breach — required artifact(s) missing: ${missing.join(', ')}`);
+    } else if (schema.invalid.length) {
+      st = 'blocked';
+      issues.push(`contract breach — artifact(s) violate the declared schema: ${schema.invalid.map((x) => `${x.path} [${x.errors.join('; ')}]`).join(' | ')}`);
+    } else if (blockingChecks.length) {
+      st = 'blocked';
+      issues.push(`integrity check FAILED — ${blockingChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
     } else if (parsed?.status && parsed.status !== 'ok') {
       st = parsed.status === 'gap' || parsed.status === 'blocked' ? parsed.status : 'gap';
+    } else if (!parsed && returnMode === 'required') {
+      st = 'error';
+      issues.push('no return-protocol block parsed from output (return:required)');
     } else {
       st = 'ok';
     }
+    if (warningChecks.length) issues.push(`integrity warn — ${warningChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
+    if (schema.skipped) issues.push(`schema gate skipped — ${schema.skipped}`);
     if (parsed?.issues?.length) issues.push(...parsed.issues);
 
     // POST hooks — fire with the node's outcome; a blocking failure downgrades the node to error.
@@ -432,6 +492,8 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   const outDir = path.resolve(opts.outDir ?? path.join('out', run));
   const repoRoot = opts.repoRoot ?? process.cwd();
   const provider = opts.provider ?? new InMemorySandboxProvider();
+  // Resolve the schema validator ONCE: explicit (incl. null=disabled) wins; else the best-effort ajv default.
+  const validateSchema = opts.validateSchema !== undefined ? opts.validateSchema : await defaultSchemaValidator();
   const ctx: RunContext = {
     wf,
     outDir,
@@ -440,6 +502,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     execRunner: opts.execRunner ?? defaultExecRunner,
     providerName: opts.providerName ?? 'cp',
     model: opts.model,
+    validateSchema,
     watchdog: {
       nodeTimeoutMs: opts.nodeTimeoutMs ?? 1_800_000,
       stallMs: opts.stallMs ?? 0,

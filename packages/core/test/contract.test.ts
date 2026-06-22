@@ -25,6 +25,26 @@ describe('DRIVER-* marker codec', () => {
     const prompt = `Do the thing.\n\nDRIVER-ARTIFACTS: out/x.json\nDRIVER-TOOLS: read,write\n\nThanks.`;
     expect(parseMarkers(prompt)).toEqual({ artifacts: ['out/x.json'], tools: ['read', 'write'] });
   });
+
+  it('round-trips the unified-contract markers (checks/policy/returnMode/fillSentinel)', () => {
+    const m: ContractMarkers = {
+      artifacts: ['spec/blueprint.json'],
+      checks: [
+        { kind: 'count-floor', path: 'spec/blueprint.json', param: { path: 'milestones', min: 3 }, severity: 'fail' },
+        { kind: 'regex-absent', path: 'spec/blueprint.json', param: '<FILL:', severity: 'fail' },
+      ],
+      policy: { fail: 'block', warn: 'warn' },
+      returnMode: 'optional',
+      fillSentinel: '<FILL:',
+    };
+    // base64-on-one-line survives a round-trip (the param objects/regex come back identical).
+    expect(parseMarkers(emitMarkers(m))).toEqual(m);
+  });
+
+  it('DRIVER-CHECKS tolerates an inline-JSON value (a hand-authored marker, not base64)', () => {
+    const prompt = `DRIVER-CHECKS: [{"kind":"non-empty","path":"out/a.json"}]`;
+    expect(parseMarkers(prompt)).toEqual({ checks: [{ kind: 'non-empty', path: 'out/a.json' }] });
+  });
 });
 
 describe('markersFromNode', () => {
@@ -56,6 +76,35 @@ describe('markersFromNode', () => {
       tools: ['read', 'bash'],
     });
     // and it round-trips through the codec
+    expect(parseMarkers(emitMarkers(markers))).toEqual(markers);
+  });
+
+  it('derives checks/policy/returnMode/fillSentinel from a node that declares them', () => {
+    const spec: WorkflowSpec = {
+      meta: { name: 't', description: 'd' },
+      nodes: [
+        {
+          label: 'Harden',
+          prompt: 'harden it',
+          tools: {},
+          io: {
+            reads: [],
+            produces: ['spec/blueprint.json'],
+            artifacts: [{ path: 'spec/blueprint.json' }],
+            checks: [{ kind: 'count-floor', path: 'spec/blueprint.json', param: { path: 'milestones', min: 3 } }],
+            policy: { fail: 'block' },
+            returnMode: 'optional',
+            fillSentinel: '<FILL:',
+          },
+        },
+      ],
+    };
+    const node = compile(spec).nodes['harden'];
+    const markers = markersFromNode(node!, { piTools: [] });
+    expect(markers.checks).toEqual([{ kind: 'count-floor', path: 'spec/blueprint.json', param: { path: 'milestones', min: 3 } }]);
+    expect(markers.policy).toEqual({ fail: 'block' });
+    expect(markers.returnMode).toBe('optional');
+    expect(markers.fillSentinel).toBe('<FILL:');
     expect(parseMarkers(emitMarkers(markers))).toEqual(markers);
   });
 });
