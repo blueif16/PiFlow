@@ -15,6 +15,16 @@
 //
 // `execute` routes to the bridge by ADDRESS: `callTool("mcp.github:create_issue", params, …)`. The
 // bridge (the deferred MCP/sdk runtime seam) owns the actual transport; this compiler owns the binding.
+//
+// CODE MODE (deferred optimization — NOT wired). Today we bind EVERY selected tool's schema into the
+// generated `-e`: fine for a handful, but a large catalog (many `oc.*`/`mcp.*` tools) bloats the model
+// prompt. The industry answer (Cloudflare/Anthropic) is "code mode" — expose only `exec`/`wait` and let
+// the model write code that searches + calls tools via a hidden catalog (94–99% tool-token cut; data
+// stays out of the model). OpenClaw ships its own code mode, but it is NOT importable (welded to its
+// agent runtime). Two ways to get it if catalog size ever bites: (a) DELEGATE a tool-heavy sub-task to an
+// OpenClaw agent turn (its model runs code mode) via the gateway agent RPC / `/v1/chat/completions`; or
+// (b) BUILD our own exec/catalog/snapshot surface here over the MCP client, borrowing only the OSS
+// `quickjs-wasi`. Evidence: docs/research/sandbox-tool-wiring-2026-06-22.md.
 
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
