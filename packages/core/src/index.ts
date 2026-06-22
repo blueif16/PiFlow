@@ -18,6 +18,9 @@ export { DefaultToolRegistry, BUILTIN_TOOLS, PENDING_EXTENSION } from './tools/r
 // Ingestion: MCP tools/list → ToolEntry[] (the effortless catalog fill)
 export { mcpToolsToEntries } from './tools/ingest.js';
 export type { McpToolListing, McpIngestOpts } from './tools/ingest.js';
+// Compile: ToolEntry[] → generated `-e` extension source (the declarative wiring)
+export { compileToolExtension, planTools, renderExtension, DEFAULT_BRIDGE_MODULE } from './tools/compile.js';
+export type { CompiledExtension, PlannedTool, CompileOpts } from './tools/compile.js';
 
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
