@@ -301,40 +301,13 @@ export class SeatbeltSandboxProvider implements SandboxProvider {
   }
 }
 
-// ── WORKTREE (secondary goal) — typed stub + FLAG ─────────────────────────────────────────────────
+// ── WORKTREE — now LANDED elsewhere (per-run git WRITE isolation) ──────────────────────────────────
 //
-// FLAG (not wired this pass): a `WorktreeSandboxProvider` for per-run git WRITE isolation — a port of
-// run.mjs setupWorktree/finishWorktree (400–460). It would, in create(): make a fresh per-run git
-// worktree (branch pi/<run>, checked out at HEAD) in a sibling `.pi-worktrees/<run>` OUTSIDE the repo,
-// symlink node_modules from the main checkout for every tracked package (the worktree is HEAD-clean, so
-// gitignored node_modules is absent), and run the node INSIDE it so N concurrent runs are PHYSICALLY
-// write-isolated (a node in one run cannot clobber another's files). In dispose()/finish: commit the
-// worktree to its branch, copy the deliverable (out/<run>) back to the MAIN tree (out/ is gitignored, so
-// it would vanish with the worktree), then `git worktree remove` (branch persists for a human-gated merge).
+// The `WorktreeSandboxProvider` (per-run git worktree on branch pi/<run>, a port of run.mjs
+// setupWorktree/finishWorktree) now lives in `./worktree.ts` — it was promoted once the run-level seam
+// it needed (RunScope/openRun on types.ts) landed and got wired through the runner.
 //
-// It is NOT implemented here because it needs run-scoped wiring the CreateOpts contract does not yet
-// carry: a stable `run` id (to name the branch + the .pi-worktrees dir), the base repo ROOT vs the cwd
-// REL (to rewrite hardcoded paths BASE_ROOT→wtRoot), and a finish hook on the WHOLE run (not per-node
-// dispose — the worktree spans all of a run's nodes, but a provider creates one Sandbox per node). Wiring
-// those is a spine touch (a run-level provider lifecycle, or a `run`/`repoRoot` field on CreateOpts),
-// which this pass must NOT make (frozen spine). The class below documents the shape and HALTs clearly so
-// nothing silently runs unisolated; promote it once the run-level seam exists.
-//
-// Composability note: --worktree and --sandbox COMPOSE in run.mjs — the BASE_ROOT→wtRoot rewrite runs
-// before scope extraction, and Seatbelt grants the node_modules symlink TARGET realpath, so a Seatbelt
-// read scope auto-follows into the worktree. A future WorktreeSandboxProvider can therefore delegate exec
-// to a SeatbeltSandbox whose workdir is the worktree.
-
-export class WorktreeSandboxProvider implements SandboxProvider {
-  readonly kind: SandboxProviderKind = 'worktree';
-  create(): Promise<Sandbox> {
-    return Promise.reject(
-      new Error(
-        "WorktreeSandboxProvider is a typed stub (see seatbelt.ts FLAG): per-run git WRITE isolation " +
-          "(port of run.mjs setupWorktree/finishWorktree) needs a run-level provider lifecycle + a " +
-          "`run`/`repoRoot` seam on CreateOpts that the frozen spine does not yet carry. Use " +
-          "SeatbeltSandboxProvider for read-scope isolation; promote this once the run-level seam exists.",
-      ),
-    );
-  }
-}
+// Composability note (KEPT): --worktree and --sandbox COMPOSE in run.mjs — the BASE_ROOT→wtRoot rewrite
+// runs before scope extraction, and Seatbelt grants the node_modules symlink TARGET realpath, so a
+// Seatbelt read scope auto-follows into the worktree. A future composed provider can therefore delegate
+// exec to a SeatbeltSandbox whose workdir is the WorktreeRunScope's worktree.

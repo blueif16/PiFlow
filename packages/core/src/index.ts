@@ -27,8 +27,10 @@ export type { BindReport } from './tools/verify.js';
 
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
-// Seatbelt read-scope provider (macOS) + worktree stub (ROADMAP M1)
-export { SeatbeltSandbox, SeatbeltSandboxProvider, WorktreeSandboxProvider, buildSeatbeltProfile } from './sandbox/seatbelt.js';
+// Seatbelt read-scope provider (macOS)
+export { SeatbeltSandbox, SeatbeltSandboxProvider, buildSeatbeltProfile } from './sandbox/seatbelt.js';
+// Worktree per-run git WRITE-isolation provider (run-scoped: branch pi/<run> + sibling .pi-worktrees/<run>)
+export { WorktreeSandbox, WorktreeSandboxProvider } from './sandbox/worktree.js';
 // Daytona cloud provider (run-scoped VM lifecycle) + its dependency-inversion SDK seam.
 export { DaytonaSandbox, DaytonaSandboxProvider } from './sandbox/daytona.js';
 export type {
