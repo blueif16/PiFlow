@@ -12,7 +12,7 @@ import {
   type ExecRunner,
   type RunStatus,
 } from '../src/runner/index.js';
-import type { Sandbox, SandboxProvider, CreateOpts } from '../src/types.js';
+import type { Sandbox, SandboxProvider, CreateOpts, OpenRunOpts } from '../src/types.js';
 
 // ── helpers ───────────────────────────────────────────────────────────────────────────────────────
 
@@ -303,6 +303,106 @@ describe('runWorkflow — tool binding (the per-node pre-check + the generated -
     expect(ext!.data).toContain('name: "github_create_issue"');
     expect(ext!.data).toContain('from "@piflow/tool-bridge"');
     expect(ext!.data).toContain('callTool("mcp.github:create_issue"');
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
+// ── run scope: openRun lifecycle (worktree/cloud share ONE resource across a run) ─────────────────
+
+describe('runWorkflow — run scope (the openRun lifecycle for worktree/cloud providers)', () => {
+  it('opens the scope ONCE, routes every node sandbox through it, and disposes it once, last', async () => {
+    const g = compile(
+      wf([n('A', [], ['a.txt']), n('B', [], ['b.txt']), n('C', ['a.txt', 'b.txt'], ['c.txt'])]),
+    );
+    const outDir = await tmpOut();
+
+    const base = new InMemorySandboxProvider();
+    const events: string[] = [];
+    let openRunCalls = 0;
+    let providerCreateCalls = 0; // the bare per-node provider.create — MUST stay 0 when openRun exists
+    let scopeCreateCalls = 0;
+    let disposeCalls = 0;
+    let openRunArgs: OpenRunOpts | null = null;
+
+    const provider: SandboxProvider = {
+      kind: 'worktree',
+      create(opts: CreateOpts): Promise<Sandbox> {
+        providerCreateCalls++; // if the runner bypasses the scope, this fires instead of scope.create
+        return base.create(opts);
+      },
+      async openRun(opts: OpenRunOpts) {
+        openRunCalls++;
+        openRunArgs = opts;
+        events.push('openRun');
+        return {
+          root: `/wt/${opts.run}`,
+          create: (o: CreateOpts): Promise<Sandbox> => {
+            scopeCreateCalls++;
+            events.push('create');
+            return base.create(o);
+          },
+          dispose: async (): Promise<void> => {
+            disposeCalls++;
+            events.push('dispose');
+          },
+        };
+      },
+    };
+
+    const { status } = await runWorkflow(g, {
+      run: 'scoped',
+      outDir,
+      repoRoot: '/some/repo',
+      provider,
+      buildCommand: stubBuilder(),
+    });
+
+    expect(status.ok).toBe(true);
+    expect(openRunCalls).toBe(1); // ONE shared resource per run, not per node
+    expect(openRunArgs!.run).toBe('scoped'); // run identity is threaded in
+    expect(openRunArgs!.repoRoot).toBe('/some/repo');
+    expect(openRunArgs!.outDir).toBe(outDir);
+    expect(scopeCreateCalls).toBe(3); // each node's sandbox came FROM the scope
+    expect(providerCreateCalls).toBe(0); // …never the bare provider.create — it was routed through scope
+    expect(disposeCalls).toBe(1); // torn down exactly once
+    // openRun is first, dispose is the very LAST event (run-level teardown after every node).
+    expect(events[0]).toBe('openRun');
+    expect(events[events.length - 1]).toBe('dispose');
+    expect(events.filter((e) => e === 'create')).toHaveLength(3);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('disposes the run scope even when a node fails (teardown runs in finally)', async () => {
+    const g = compile(wf([n('Up', [], ['up.txt'])]));
+    const outDir = await tmpOut();
+
+    const base = new InMemorySandboxProvider();
+    let disposeCalls = 0;
+    const provider: SandboxProvider = {
+      kind: 'worktree',
+      create: (opts: CreateOpts): Promise<Sandbox> => base.create(opts),
+      async openRun() {
+        return {
+          root: '/wt',
+          create: (o: CreateOpts): Promise<Sandbox> => base.create(o),
+          dispose: async (): Promise<void> => { disposeCalls++; },
+        };
+      },
+    };
+
+    // `Up` produces nothing → blocked → the run halts; the scope MUST still be disposed.
+    const { status } = await runWorkflow(g, {
+      run: 'scoped-fail',
+      outDir,
+      provider,
+      buildCommand: stubBuilder(() => []),
+    });
+
+    expect(status.ok).toBe(false);
+    expect(status.nodes.up.status).toBe('blocked');
+    expect(disposeCalls).toBe(1); // finally-block teardown fired despite the failure
 
     await fs.rm(outDir, { recursive: true, force: true });
   });

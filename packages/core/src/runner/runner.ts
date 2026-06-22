@@ -20,6 +20,8 @@ import type {
   Stage,
   SandboxProvider,
   Sandbox,
+  RunScope,
+  OpenRunOpts,
   ToolRegistry,
   ResolveResult,
   ExecResult,
@@ -70,6 +72,8 @@ export interface RunOptions {
   run?: string;
   /** Host-side run dir — the filesystem-as-contract namespace across sandboxes. Default `out/<run>`. */
   outDir?: string;
+  /** Base checkout root for a run-scoped provider (worktree-path source / prompt-rewrite anchor). Default cwd. */
+  repoRoot?: string;
   /** Sandbox backend. Default the in-memory reference provider. */
   provider?: SandboxProvider;
   /** Tool registry to resolve each node's selection. Default builtin registry. */
@@ -205,7 +209,6 @@ function selectWindow(wf: Workflow, from?: string, until?: string): { fromIdx: n
 interface RunContext {
   wf: Workflow;
   outDir: string;
-  provider: SandboxProvider;
   registry: ToolRegistry;
   buildCommand: CommandBuilder;
   execRunner: ExecRunner;
@@ -231,7 +234,7 @@ async function readHostFile(ctx: RunContext, rel: string): Promise<Uint8Array | 
  * built command under the watchdog → downloadDir(output)→host → verify io.artifacts by host-stat →
  * POST hooks → dispose → write status.
  */
-async function runNode(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecord> {
+async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promise<NodeStatusRecord> {
   const rec = ctx.status.nodes[node.id];
   rec.status = 'running';
   rec.startedAt = nowISO();
@@ -255,14 +258,14 @@ async function runNode(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecor
   }
 
   // LANE ISOLATION (run.mjs runNode 851–1176 always RESOLVES to a record, never rejects): standing up
-  // the sandbox can throw (provider.create on a cloud backend: image pull / quota / network). That
+  // the sandbox can throw (scope.create on a cloud backend: image pull / quota / network). That
   // throw is OUTSIDE the try/finally below, so unguarded it would reject this lane's promise and —
   // since the stage uses Promise.all — fail-fast the WHOLE run, discarding the sibling lanes' already-
   // completed work (MDN "Promise.all fail-fast"; javascript.info "Dangerous Promise.all": an uncaught
   // rejection can crash a Node process). Mark this node `error` and let the run halt cleanly instead.
   let sandbox: Sandbox;
   try {
-    sandbox = await ctx.provider.create({
+    sandbox = await scope.create({
       readScope: node.sandbox.read,
       outputDir: node.sandbox.output,
       workdir: node.sandbox.workspace,
@@ -398,6 +401,24 @@ async function finishNode(
   return rec;
 }
 
+// ── run scope: per-run resource lifecycle (worktree/cloud) or a trivial per-node forwarder ─────────
+
+/**
+ * Open the run scope. A provider that shares ONE backing resource across a run (worktree/cloud)
+ * implements `openRun`; we use it. A provider with no shared resource (inmemory/seatbelt) OMITS it —
+ * we synthesize a TRIVIAL scope whose `create` forwards straight to `provider.create` (each node still
+ * gets its own sandbox, disposed per node in runNode's `finally`) and whose run-level `dispose` is a
+ * no-op. So local runs stay byte-identical to the pre-seam path.
+ */
+async function openRunScope(provider: SandboxProvider, opts: OpenRunOpts): Promise<RunScope> {
+  if (provider.openRun) return provider.openRun(opts);
+  return {
+    root: opts.repoRoot,
+    create: (createOpts) => provider.create(createOpts),
+    dispose: async () => { /* no shared resource — per-node dispose is the only teardown */ },
+  };
+}
+
 // ── the run loop ─────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -409,10 +430,11 @@ async function finishNode(
 export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<RunResult> {
   const run = opts.run ?? 'run';
   const outDir = path.resolve(opts.outDir ?? path.join('out', run));
+  const repoRoot = opts.repoRoot ?? process.cwd();
+  const provider = opts.provider ?? new InMemorySandboxProvider();
   const ctx: RunContext = {
     wf,
     outDir,
-    provider: opts.provider ?? new InMemorySandboxProvider(),
     registry: opts.registry ?? new DefaultToolRegistry(),
     buildCommand: opts.buildCommand ?? defaultPiCommand,
     execRunner: opts.execRunner ?? defaultExecRunner,
@@ -484,27 +506,52 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     }
   }
 
-  let halted = false;
-  for (let i = 0; i < selected.length && !halted; i++) {
-    const s = selected[i];
-    ctx.status.stage = { index: fromIdx + i + 1, total: wf.stages.length, nodeIds: s.nodeIds };
+  // Open the run scope AFTER the resume preflight (so a preflight bail never boots a VM / makes a
+  // worktree). A provider with a shared per-run resource (worktree/cloud) sets it up here; a local
+  // provider gets the trivial forwarding scope. A setup failure fails the run cleanly via a synthetic
+  // `__runscope__` node (mirroring `__resume__`) — there is no lane to attribute it to yet.
+  let scope: RunScope;
+  try {
+    scope = await openRunScope(provider, { run, repoRoot, outDir });
+  } catch (e) {
+    ctx.status.done = true;
+    ctx.status.ok = false;
+    ctx.status.durationMs = Date.now() - t0;
+    ctx.status.nodes['__runscope__'] = {
+      id: '__runscope__', label: 'run scope setup', status: 'error', artifacts: [],
+      issues: [`run scope setup failed: ${(e as Error).message}`],
+    };
     await writeStatus(outDir, ctx.status);
-
-    // Parallel lanes within a stage (run.mjs 1313).
-    const results = await Promise.all(s.nodeIds.map((id) => runNode(ctx, wf.nodes[id])));
-
-    // HALT-on-failure (run.mjs 1315–1322): first error/blocked stops the run; downstream never runs.
-    if (results.some((r) => r.status === 'error' || r.status === 'blocked')) halted = true;
+    return { status: ctx.status, outDir };
   }
 
-  ctx.status.stage = null;
-  ctx.status.done = true;
-  ctx.status.durationMs = Date.now() - t0;
-  const vals = Object.values(ctx.status.nodes).filter((n) => n.id !== '__resume__');
-  const failed = vals.filter((n) => n.status === 'error' || n.status === 'blocked').length;
-  const okCount = vals.filter((n) => n.status === 'ok' || n.status === 'reused').length;
-  ctx.status.ok = !halted && failed === 0;
-  ctx.status.totals = { nodes: vals.length, ok: okCount, failed };
-  await writeStatus(outDir, ctx.status);
+  let halted = false;
+  try {
+    for (let i = 0; i < selected.length && !halted; i++) {
+      const s = selected[i];
+      ctx.status.stage = { index: fromIdx + i + 1, total: wf.stages.length, nodeIds: s.nodeIds };
+      await writeStatus(outDir, ctx.status);
+
+      // Parallel lanes within a stage (run.mjs 1313).
+      const results = await Promise.all(s.nodeIds.map((id) => runNode(ctx, wf.nodes[id], scope)));
+
+      // HALT-on-failure (run.mjs 1315–1322): first error/blocked stops the run; downstream never runs.
+      if (results.some((r) => r.status === 'error' || r.status === 'blocked')) halted = true;
+    }
+
+    ctx.status.stage = null;
+    ctx.status.done = true;
+    ctx.status.durationMs = Date.now() - t0;
+    const vals = Object.values(ctx.status.nodes).filter((n) => n.id !== '__resume__');
+    const failed = vals.filter((n) => n.status === 'error' || n.status === 'blocked').length;
+    const okCount = vals.filter((n) => n.status === 'ok' || n.status === 'reused').length;
+    ctx.status.ok = !halted && failed === 0;
+    ctx.status.totals = { nodes: vals.length, ok: okCount, failed };
+    await writeStatus(outDir, ctx.status);
+  } finally {
+    // Run-level teardown — commit+copy-back (worktree) / collect+destroy (cloud). Best-effort: a
+    // teardown failure must not mask the run verdict already written above.
+    try { await scope.dispose(); } catch { /* non-fatal */ }
+  }
   return { status: ctx.status, outDir };
 }
