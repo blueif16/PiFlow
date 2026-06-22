@@ -46,7 +46,10 @@ hooks · contract** — and each compiles down to a `pi` invocation.
    `piName`s; the registry resolves `ns:name` → bare names (conflict-guarded) → `--tools` + an optional generated
    `-e` extension. Three sources — builtin · sdk · mcp — resolve through one namespace.
 8. **Verified, not trusted.** Every node ends with a contract; required artifacts are `stat()`d + schema-validated;
-   **declared ⊇ actual** reads/writes (Bazel-style; undeclared access is a breach).
+   **declared ⊇ actual** reads/writes (Bazel-style; undeclared access is a breach). The same gate runs *before*
+   a node too: a **tool bind pre-check** confirms every address the node declared resolves to a unique bare pi
+   name — a missing tool or a flat-namespace collision (which pi silently drops) `blocks` the node before any
+   sandbox/`pi` spawn, so a node never runs lacking a capability it declared (`@piflow/core/tools/verify.ts`).
 9. **Idempotent + resumable.** Hooks and nodes **skip-when-fresh** (artifact-stat / hash); `--from` resume. A
    hook's declared `inputs`/`outputs` *are* both its DAG edge and its resume key.
 10. **Borrow, don't rebuild; own the intersection.** The spine is fixed; **providers, tool sources, and hook kinds
@@ -174,9 +177,11 @@ interface Workflow {
 ## The provider-agnostic node lifecycle
 
 ```
+verifyToolBinding(tools, registry)                       // PRE-NODE bind check — block on miss/collision
 create(readScope, outputDir, workdir, env, timeoutMs)   // pick impl by sandbox.provider
   → putFiles(stage io.reads + pre-hook seeds)            // pre-hooks run here  (today: DRIVER-SEED)
-  → exec("pi -p --mode json … @prompt", --tools <resolved>)  → { stdout, stderr, code }
+  → writeFile(_pi/tools.ts, resolve().extension)         // stage the GENERATED -e (binds sdk/mcp tools)
+  → exec("pi … --tools <resolved> -e _pi/tools.ts @prompt")  → { stdout, stderr, code }
   → downloadDir(outputDir) + readFile(artifacts)         // collect; verify io.artifacts (DRIVER-ARTIFACTS/SCHEMA)
                                                          // post-hooks run here (today: DRIVER-MERGE/PROJECT)
   → dispose()
@@ -187,11 +192,25 @@ create(readScope, outputDir, workdir, env, timeoutMs)   // pick impl by sandbox.
 **Frozen (this spine):** the schema above · `compile`/edge-inference/validation · the contract-marker codec · an
 `InMemorySandbox` reference impl · a builtin `ToolRegistry` (+ `resolve`/`search`) · a deterministic hook runner.
 
-**Deferred (horizontal fill):** Seatbelt/worktree/Daytona/E2B `SandboxProvider` impls · the MCP bridge + the
-generated-`-e` compiler for `sdk`/`mcp` tools · OpenClaw/community **tool population + a persisted searchable
-catalog** · the COMPOSE planner (structured-output + validate→repair; weak-model schema-fill rules:
-*rationale-before-committed fields*, *keep optionals optional*) · the full runner (spawn lifecycle, watchdogs,
-escalation, `--from` resume) · the `@piflow/viz` renderer · the `piflow` CLI.
+**Landed since freeze (2026-06-21, horizontal fill on the frozen spine):** the **generated-`-e` compiler**
+(`tools/compile.ts` — `resolve()` emits real `registerTool` source per `sdk`/`mcp` tool; execute routes to a
+bridge BY ADDRESS) · **MCP→`ToolEntry` ingestion** (`tools/ingest.ts` — `tools/list`/`server.json` mapped 1:1,
+the "effortless catalog fill") · the **per-node bind pre-check** (`tools/verify.ts`, wired into the runner) ·
+runner staging of the generated extension. The colon-namespace addressing, conflict-prefixing, and the
+`--tools`/`-e` compile target all hold unchanged.
+
+**Deferred (horizontal fill):** Seatbelt/worktree/Daytona/E2B `SandboxProvider` impls · the **MCP/sdk bridge
+RUNTIME** (`@piflow/tool-bridge` — the `callTool(address, params)` the generated `-e` imports: connection /
+lifecycle / JSON-RPC transport; pi has no native MCP, so this is the one remaining seam between *binding* a tool
+and *calling* it) · a **persisted searchable catalog** + freshness/trust (M4; see
+`../research/tool-registry-maintenance-2026-06-21.md`) · the COMPOSE planner (structured-output + validate→repair;
+weak-model schema-fill rules: *rationale-before-committed fields*, *keep optionals optional*) · the full runner
+(escalation ladder, stuck-delta/tool-thrash kills) · the `@piflow/viz` renderer · the `piflow` CLI.
+
+> **One open question for the bridge step (needs a live `pi` smoke-test, deliberately not run here):** the
+> generated `-e` embeds each tool's JSON-Schema `parameters` wrapped in TypeBox `Type.Unsafe(...)` — verify pi
+> accepts it and advertises the shape to the model as expected; if strict TypeBox is required, swap the single
+> `renderTool` parameters line (the compiler is isolated for exactly this).
 
 > **Open reconciliation:** the tools brief reports OpenClaw is *open-source*, contradicting the canon's
 > "closed-core" note (`orchestration-substrate.md` §4). Verify before amending the canon; it does not affect this
