@@ -15,6 +15,9 @@ export type { ContractMarkers } from './contract.js';
 
 // Tool registry (namespace:name → bare pi names)
 export { DefaultToolRegistry, BUILTIN_TOOLS, PENDING_EXTENSION } from './tools/registry.js';
+// Ingestion: MCP tools/list → ToolEntry[] (the effortless catalog fill)
+export { mcpToolsToEntries } from './tools/ingest.js';
+export type { McpToolListing, McpIngestOpts } from './tools/ingest.js';
 
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
