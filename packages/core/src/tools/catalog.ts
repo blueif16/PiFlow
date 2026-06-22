@@ -4,14 +4,18 @@
 // "metadata as reviewable source" model) and loaded into a DefaultToolRegistry ALONGSIDE the pi builtins,
 // so the design agent / a node can DISCOVER (search) and SELECT them by `namespace:name`.
 //
-// Today the catalog holds the OpenClaw `sdk` reference seed (`oc.calc:add`) — a real, PURE, end-to-end-
-// proven plugin tool whose NATIVE execute is bound into the generated `-e` (no gateway). We deliberately
-// persist only a FEW: community breadth ("however much") is added later by `openClawPluginToEntries`
-// (tools/ingest.ts) over a crawl of the OpenClaw plugin ecosystem, which yields SKELETON entries (the
-// shipped `openclaw.plugin.json` is names-only) whose execute path is the same sdk lane.
+// The catalog holds TWO tiers:
+//   1. the OpenClaw `sdk` reference seed (`oc.calc:add`) — a real, PURE, end-to-end-proven plugin tool
+//      whose NATIVE execute is bound into the generated `-e` (no gateway); and
+//   2. the COMMUNITY catalog (openclaw-community.ts) — a curated handful of REAL tool-bearing OpenClaw
+//      plugins from a pinned crawl of the ecosystem, persisted as SKELETON, gateway-coupled entries (the
+//      shipped `openclaw.plugin.json` is names-only) that are DISCOVERABLE but not standalone-executable.
+// Both tiers are produced via `openClawPluginToEntries` (tools/ingest.ts) — the seed inline, the community
+// breadth ("however much") from the crawl.
 
 import type { ToolEntry } from '../types.js';
 import { DefaultToolRegistry, BUILTIN_TOOLS } from './registry.js';
+import { OPENCLAW_COMMUNITY_CATALOG } from './openclaw-community.js';
 
 /**
  * The persisted catalog. The OpenClaw sdk reference seed: `oc.calc:add`, pinned via `origin.ref` to the
@@ -35,9 +39,15 @@ export const OPENCLAW_SEED_CATALOG: ToolEntry[] = [
   },
 ];
 
-/** The persisted catalog entries (a fresh copy so callers can mutate without corrupting the seed). */
+/**
+ * The persisted catalog: the executable seed (`oc.calc:add`) + the curated community tier. Returns a fresh
+ * copy of every entry (with its own `tags` array) so callers can mutate without corrupting the source.
+ */
 export function loadCatalog(): ToolEntry[] {
-  return OPENCLAW_SEED_CATALOG.map((e) => ({ ...e }));
+  return [...OPENCLAW_SEED_CATALOG, ...OPENCLAW_COMMUNITY_CATALOG].map((e) => ({
+    ...e,
+    tags: e.tags ? [...e.tags] : undefined,
+  }));
 }
 
 /**

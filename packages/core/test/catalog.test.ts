@@ -7,7 +7,9 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { execSync } from 'node:child_process';
 import { seededRegistry, OPENCLAW_SEED_CATALOG, loadCatalog } from '../src/tools/catalog.js';
+import { OPENCLAW_COMMUNITY_CATALOG } from '../src/tools/openclaw-community.js';
 import { captureOpenClawTools } from '../src/tools/openclaw-shim.js';
+import { planTools, compileToolExtension } from '../src/tools/compile.js';
 import calcSeed from '../src/seeds/calc.js';
 
 describe('tool catalog — seeded registry (builtins + the persisted OpenClaw seed)', () => {
@@ -28,11 +30,54 @@ describe('tool catalog — seeded registry (builtins + the persisted OpenClaw se
     expect(reg.search('openclaw', { source: 'sdk' }).map((e) => e.address)).toContain('oc.calc:add');
   });
 
-  it('loadCatalog returns the persisted entries (a copy, not the shared array)', () => {
+  it('loadCatalog returns BOTH tiers (executable seed + community), as a deep-enough copy', () => {
     const a = loadCatalog();
-    expect(a.map((e) => e.address)).toEqual(OPENCLAW_SEED_CATALOG.map((e) => e.address));
+    const addrs = a.map((e) => e.address);
+    expect(addrs).toContain('oc.calc:add'); // tier 1: the executable seed
+    expect(addrs).toContain('oc.firecrawl:firecrawl_search'); // tier 2: a community entry
+    expect(a.length).toBe(OPENCLAW_SEED_CATALOG.length + OPENCLAW_COMMUNITY_CATALOG.length);
+    // copy at the array level AND the tags level — mutating the returned value must not leak into source.
     a.push({ address: 'x:y', source: 'sdk', piName: 'x_y', description: '' });
-    expect(loadCatalog().some((e) => e.address === 'x:y')).toBe(false); // copy — mutation didn't leak
+    a.find((e) => e.address === 'oc.calc:add')!.tags!.push('MUTATED');
+    expect(loadCatalog().some((e) => e.address === 'x:y')).toBe(false);
+    expect(loadCatalog().find((e) => e.address === 'oc.calc:add')!.tags).not.toContain('MUTATED');
+  });
+});
+
+describe('OpenClaw COMMUNITY catalog — discoverable, gateway-coupled skeleton entries', () => {
+  it('seeds REAL crawled plugins, discoverable by tool name, category tag, and coupling tag', () => {
+    const reg = seededRegistry();
+    // by tool name (address): the firecrawl + memory plugins are present
+    expect(reg.search('firecrawl', { source: 'sdk' }).map((e) => e.address)).toContain('oc.firecrawl:firecrawl_search');
+    expect(reg.search('memory', { source: 'sdk' }).map((e) => e.address)).toEqual(
+      expect.arrayContaining(['oc.memory-core:memory_get', 'oc.memory-lancedb:memory_recall']),
+    );
+    // by coupling tag: EVERY community entry is tagged gateway-coupled (none is standalone-executable)
+    const coupled = reg.search('gateway-coupled', { source: 'sdk' }).map((e) => e.address);
+    expect(coupled).toEqual(expect.arrayContaining(OPENCLAW_COMMUNITY_CATALOG.map((e) => e.address)));
+    expect(coupled).not.toContain('oc.calc:add'); // the pure seed is NOT gateway-coupled
+  });
+
+  it('records a git-source provenance pin and never fabricates a per-tool schema', () => {
+    for (const e of OPENCLAW_COMMUNITY_CATALOG) {
+      expect(e.source).toBe('sdk');
+      expect(e.origin).toEqual({ kind: 'openclaw-plugin', ref: expect.stringMatching(/^openclaw@.+#extensions\//) });
+      expect(e.parameters).toBeUndefined(); // names-only manifest → NO invented schema
+      expect(e.tags).toContain('gateway-coupled');
+    }
+  });
+
+  it('classifies a community entry as NON-native: the git-source pin is not bound/bundled as a module', () => {
+    const fire = OPENCLAW_COMMUNITY_CATALOG.find((e) => e.address === 'oc.firecrawl:firecrawl_search')!;
+    // the `#`-fragment git-source pin must NOT resolve to an importable module (else resolve would try to
+    // `import "openclaw"` and drag the whole gateway into the bundle) — pluginModule stays undefined.
+    expect(planTools([fire])[0].pluginModule).toBeUndefined();
+    const src = compileToolExtension([fire]).source;
+    expect(src).not.toContain('__ocPlugin'); // no native plugin import
+    expect(src).not.toContain('captureOpenClawTools'); // not the native-bind path
+    // the executable seed, by contrast, DOES carry an importable native module (the pure-tool path).
+    const calc = OPENCLAW_SEED_CATALOG.find((e) => e.address === 'oc.calc:add')!;
+    expect(planTools([calc])[0].pluginModule).toBe('@piflow/core/seeds/calc');
   });
 });
 

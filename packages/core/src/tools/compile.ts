@@ -79,13 +79,21 @@ function rawNameOf(address: string): string {
 }
 
 /**
- * Turn an `origin.ref` into an IMPORTABLE plugin module specifier. The ref records a pin (`<pkg>@<ver>`
- * or a relative/source path); for the generated `import` we need the bare package name, so we strip a
- * trailing `@<version>` — WITHOUT eating a leading scope (`@openclaw/memory-core@2026.6.8` → `@openclaw/
- * memory-core`). A path-like ref (`./fixtures/x.js`, `/abs`) or a ref with no version passes through.
+ * Turn an `origin.ref` into an IMPORTABLE plugin module specifier, or `undefined` when the ref does NOT
+ * name a standalone-importable module. The ref records a pin: an npm pin (`<pkg>@<ver>`) or a relative/
+ * source path are importable; a GIT-SOURCE pin (`<repo>@<commit>#extensions/<name>`, the form the OpenClaw
+ * sourcing brief defines for in-repo plugins) is NOT — that fragment points at a path inside a monorepo,
+ * not an installed package, so a bare `import` of it would resolve to the wrong package (or drag in the
+ * whole gateway) and the tool is gateway-coupled / discoverable-only anyway. So:
+ *   - a ref containing `#` → `undefined` (git-source pin; the tool routes through the bridge, not a native
+ *     bind — see {@link isNativeSdk}), never a bogus `import`.
+ *   - otherwise strip a trailing `@<version>` WITHOUT eating a leading scope
+ *     (`@openclaw/memory-core@2026.6.8` → `@openclaw/memory-core`); a path-like or version-less ref passes
+ *     through.
  */
 function pluginModuleFromRef(ref: string | undefined): string | undefined {
   if (!ref) return undefined;
+  if (ref.includes('#')) return undefined; // git-source pin → not a standalone-importable module
   // a version suffix is `@<ver>` AFTER the package name (i.e. an `@` that is not the leading scope `@`).
   const at = ref.lastIndexOf('@');
   if (at > 0) return ref.slice(0, at);
