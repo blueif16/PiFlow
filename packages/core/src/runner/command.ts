@@ -26,6 +26,12 @@ export interface CommandContext {
   model?: string;
   /** Provider name passed to `pi --provider` (default 'cp'). */
   provider?: string;
+  /**
+   * In-sandbox path to the generated tool `-e` extension, when the node selected sdk/mcp tools. The
+   * runner stages `ResolveResult.extension` (source) to this path; passed as `pi -e <file>`. Absent
+   * when the node uses only builtins.
+   */
+  extensionFile?: string;
 }
 
 /** Shell-quote a single token (the prompt path / extension path may contain spaces). */
@@ -40,8 +46,8 @@ function q(s: string): string {
  * event stream, auto-approve tools, ephemeral), `--offline` (suppress pi's startup network chatter;
  * the model call still works), `--no-extensions` (+ explicit `-e` still loads), `--no-context-files`
  * (a node runs on ONLY the driver's prompt — no repo AGENTS.md/CLAUDE.md leak), `--provider cp`,
- * `--model` only when pinned, `--tools <resolved.piTools joined by ,>`, `-e <resolved.extension>`
- * when sdk/mcp tools were selected, and the prompt as `@<file>`. The caller closes stdin (the runner
+ * `--model` only when pinned, `--tools <resolved.piTools joined by ,>`, `-e <ctx.extensionFile>`
+ * when the runner staged a generated tool extension, and the prompt as `@<file>`. Closes stdin (the runner
  * does — an open stdin pipe with no TTY hangs a headless CLI forever).
  */
 export const defaultPiCommand: CommandBuilder = (node, resolved, ctx) => {
@@ -53,7 +59,7 @@ export const defaultPiCommand: CommandBuilder = (node, resolved, ctx) => {
   ];
   if (ctx.model) parts.push('--model', ctx.model);
   if (resolved.piTools.length) parts.push('--tools', resolved.piTools.join(','));
-  if (resolved.extension) parts.push('-e', q(resolved.extension));
+  if (ctx.extensionFile) parts.push('-e', q(ctx.extensionFile));
   parts.push(`@${q(ctx.promptFile)}`);
   return parts.join(' ');
 };

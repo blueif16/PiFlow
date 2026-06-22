@@ -204,11 +204,49 @@ export interface Sandbox {
   dispose(): Promise<void>;
 }
 
+/**
+ * Run-level context for a provider that shares ONE backing resource across all of a run's nodes
+ * (a git worktree, a cloud VM). The per-node `CreateOpts` carries no run identity; this supplies it.
+ * `run` names the branch/dir/VM label, `repoRoot` is the base checkout the resource is seeded from
+ * AND the anchor a worktree provider rewrites node-prompt paths against (`BASE_ROOT→worktree`).
+ */
+export interface OpenRunOpts {
+  /** Stable run id — names branch `pi/<run>`, `.pi-worktrees/<run>`, or the cloud VM label. */
+  run: string;
+  /** Base checkout root: the sibling-worktree path source + the prompt-rewrite anchor. */
+  repoRoot: string;
+  /** Host run dir (the filesystem-as-contract namespace) — where run-level collection lands. */
+  outDir: string;
+}
+
+/**
+ * A run-scoped sandbox lifecycle — the seam the per-node `create→dispose` could not express (a
+ * worktree/VM spans ALL of a run's nodes, but a provider makes one Sandbox per node). `openRun`
+ * returns one: the runner makes every node's sandbox via `create` (INSIDE the shared resource) and
+ * tears the whole resource down ONCE via `dispose` after the last node.
+ */
+export interface RunScope {
+  /** Effective execution root for this run (worktree path / VM mount; `repoRoot` for the local scope). */
+  readonly root: string;
+  /** Make one node's sandbox inside the run resource (same contract as `SandboxProvider.create`). */
+  create(opts: CreateOpts): Promise<Sandbox>;
+  /** Run-level teardown — commit+copy-back (worktree) / collect+destroy (cloud). Best-effort. */
+  dispose(): Promise<void>;
+}
+
 /** A backend that can create sandboxes (inmemory/seatbelt/worktree/daytona/e2b). */
 export interface SandboxProvider {
   /** The kind this provider implements (matches `SandboxSpec.provider`). */
   readonly kind: SandboxProviderKind;
   create(opts: CreateOpts): Promise<Sandbox>;
+  /**
+   * Optional run-level lifecycle. Providers that share ONE resource across a run (worktree/cloud)
+   * implement this: open the resource and return a `RunScope` whose `create` makes per-node sandboxes
+   * inside it and whose `dispose` tears it down once. Providers with no shared resource
+   * (inmemory/seatbelt) OMIT it — the runner falls back to a trivial scope that forwards `create` and
+   * leaves per-node `dispose` as the only teardown, so their runs stay byte-identical.
+   */
+  openRun?(opts: OpenRunOpts): Promise<RunScope>;
 }
 
 // ── TOOL REGISTRY (horizontal seam — the searchable catalog) ──────────────────
@@ -237,7 +275,11 @@ export interface ToolEntry {
 export interface ResolveResult {
   /** Bare names for `pi --tools`. */
   piTools: string[];
-  /** Path to a generated `-e` extension bundling sdk/mcp tools, if any are selected. */
+  /**
+   * Generated `-e` extension SOURCE that binds the selected sdk/mcp tools (each `registerTool`'d).
+   * The runner stages it to a file and passes that path to `pi -e`. Undefined when only builtins
+   * are selected (pi exposes those natively, so no extension is needed).
+   */
   extension?: string;
 }
 

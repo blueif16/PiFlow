@@ -4,6 +4,7 @@
 // require a generated `-e` extension, flagged here via `ResolveResult.extension`.
 
 import type { ToolEntry, ToolRegistry, ToolSelection, ResolveResult, ToolSource } from '../types.js';
+import { compileToolExtension } from './compile.js';
 
 /** pi's native built-in tools, addressed under `fs:` / `sh:`. */
 export const BUILTIN_TOOLS: ToolEntry[] = [
@@ -15,9 +16,6 @@ export const BUILTIN_TOOLS: ToolEntry[] = [
   { address: 'fs:ls', source: 'builtin', piName: 'ls', description: 'List a directory.', origin: { kind: 'native' } },
   { address: 'sh:bash', source: 'builtin', piName: 'bash', description: 'Run a shell command.', origin: { kind: 'native' } },
 ];
-
-/** Marker put on `ResolveResult.extension` until the generated-`-e` compiler lands (ROADMAP M2). */
-export const PENDING_EXTENSION = '<generated -e extension pending: ROADMAP M2>';
 
 export class DefaultToolRegistry implements ToolRegistry {
   private readonly byAddress = new Map<string, ToolEntry>();
@@ -45,16 +43,21 @@ export class DefaultToolRegistry implements ToolRegistry {
     const allow = sel.allow && sel.allow.length ? sel.allow : BUILTIN_TOOLS.map((t) => t.address);
     const deny = new Set(sel.deny ?? []);
     const piTools: string[] = [];
-    let needsExtension = false;
+    const nonBuiltin: ToolEntry[] = [];
+    const seenNonBuiltin = new Set<string>();
     for (const address of allow) {
       if (deny.has(address)) continue;
       const e = this.byAddress.get(address);
       if (!e) throw new Error(`unknown tool address: "${address}" (register it before resolving)`);
       if (!piTools.includes(e.piName)) piTools.push(e.piName);
-      if (e.source !== 'builtin') needsExtension = true;
+      if (e.source !== 'builtin' && !seenNonBuiltin.has(e.address)) {
+        seenNonBuiltin.add(e.address);
+        nonBuiltin.push(e);
+      }
     }
     const result: ResolveResult = { piTools };
-    if (needsExtension) result.extension = PENDING_EXTENSION;
+    // sdk/mcp tools have no native pi support — compile a generated `-e` extension that binds them.
+    if (nonBuiltin.length) result.extension = compileToolExtension(nonBuiltin).source;
     return result;
   }
 

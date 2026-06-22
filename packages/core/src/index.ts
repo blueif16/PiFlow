@@ -14,7 +14,7 @@ export { emitMarkers, parseMarkers, markersFromNode } from './contract.js';
 export type { ContractMarkers } from './contract.js';
 
 // Tool registry (namespace:name → bare pi names)
-export { DefaultToolRegistry, BUILTIN_TOOLS, PENDING_EXTENSION } from './tools/registry.js';
+export { DefaultToolRegistry, BUILTIN_TOOLS } from './tools/registry.js';
 // Ingestion: MCP tools/list → ToolEntry[] (the effortless catalog fill)
 export { mcpToolsToEntries } from './tools/ingest.js';
 export type { McpToolListing, McpIngestOpts } from './tools/ingest.js';
