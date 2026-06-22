@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { compile, InMemorySandboxProvider } from '../src/index.js';
+import { compile, InMemorySandboxProvider, DefaultToolRegistry, mcpToolsToEntries } from '../src/index.js';
 import type { NodeIntent, WorkflowSpec } from '../src/index.js';
 import {
   runWorkflow,
@@ -232,6 +232,79 @@ describe('defaultPiCommand — production headless flags', () => {
     expect(cmd).toContain('--model m1');
     expect(cmd).toContain('--tools read,write');
     expect(cmd).toMatch(/@'_pi\/prompt\.md'$/);
+  });
+});
+
+// ── tool wiring: bind pre-check + generated -e extension staged for outside tools ─────────────────
+
+describe('runWorkflow — tool binding (the per-node pre-check + the generated -e extension)', () => {
+  it('BLOCKS a node that declares a tool absent from the catalog, before spawning pi', async () => {
+    // The node asks for an MCP tool nobody registered → it cannot bind → blocked before any pi spawn.
+    const g = compile(wf([n('Solo', [], ['s.txt'], { tools: { allow: ['mcp.slack:post_message'] } })]));
+    const outDir = await tmpOut();
+
+    let built = false;
+    const builder = (node: { sandbox: { output: string } }): string => {
+      built = true; // would mean we tried to build a pi command → the bind gate failed to stop us
+      return `mkdir -p ${node.sandbox.output} && printf x > ${node.sandbox.output}/s.txt`;
+    };
+
+    const { status } = await runWorkflow(g, { run: 'bind-miss', outDir, buildCommand: builder });
+
+    expect(status.nodes.solo.status).toBe('blocked');
+    expect(status.nodes.solo.issues.join(' ')).toMatch(/mcp\.slack:post_message/);
+    expect(built).toBe(false); // pi was NEVER spawned — the gate fired first
+    expect(status.ok).toBe(false);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('stages the GENERATED extension and passes it via -e for a declared MCP tool', async () => {
+    // Register an MCP tool (the effortless fetch), then a node binds it alongside a builtin.
+    const registry = new DefaultToolRegistry();
+    for (const e of mcpToolsToEntries('github', [{ name: 'create_issue', description: 'Open an issue.' }])) {
+      registry.register(e);
+    }
+    const g = compile(wf([n('Issue', [], ['out.txt'], { tools: { allow: ['fs:write', 'mcp.github:create_issue'] } })]));
+    const outDir = await tmpOut();
+
+    // Record every file staged into the sandbox so we can prove the generated extension landed.
+    const writes: { path: string; data: string }[] = [];
+    const base = new InMemorySandboxProvider();
+    const recording: SandboxProvider = {
+      kind: 'inmemory',
+      async create(opts: CreateOpts): Promise<Sandbox> {
+        const sb = await base.create(opts);
+        const orig = sb.writeFile.bind(sb);
+        sb.writeFile = async (p: string, d: Uint8Array | string) => {
+          writes.push({ path: p, data: typeof d === 'string' ? d : Buffer.from(d).toString('utf8') });
+          return orig(p, d);
+        };
+        return sb;
+      },
+    };
+
+    // The builder both CAPTURES the real headless command and writes the artifact (so the node is ok).
+    let captured = '';
+    const builder = (node: Parameters<typeof defaultPiCommand>[0], resolved: Parameters<typeof defaultPiCommand>[1], ctx: Parameters<typeof defaultPiCommand>[2]): string => {
+      captured = defaultPiCommand(node, resolved, ctx);
+      return `mkdir -p ${node.sandbox.output} && printf x > ${node.sandbox.output}/out.txt`;
+    };
+
+    const { status } = await runWorkflow(g, { run: 'wire', outDir, provider: recording, registry, buildCommand: builder });
+
+    expect(status.nodes.issue.status).toBe('ok');
+    // the allowlist carries the builtin AND the prefixed MCP bare name; -e points at the staged file.
+    expect(captured).toContain('--tools write,github_create_issue');
+    expect(captured).toContain("-e '_pi/tools.ts'");
+    // the generated extension was actually staged, and it BINDS the declared tool (registerTool + bridge).
+    const ext = writes.find((w) => w.path === '_pi/tools.ts');
+    expect(ext).toBeTruthy();
+    expect(ext!.data).toContain('name: "github_create_issue"');
+    expect(ext!.data).toContain('from "@piflow/tool-bridge"');
+    expect(ext!.data).toContain('callTool("mcp.github:create_issue"');
+
+    await fs.rm(outDir, { recursive: true, force: true });
   });
 });
 

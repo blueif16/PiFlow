@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DefaultToolRegistry, PENDING_EXTENSION } from '../src/index.js';
+import { DefaultToolRegistry } from '../src/index.js';
 
 describe('DefaultToolRegistry.resolve', () => {
   it('maps builtin addresses to bare pi names', () => {
@@ -23,17 +23,24 @@ describe('DefaultToolRegistry.resolve', () => {
     expect(() => r.resolve({ allow: ['nope:tool'] })).toThrow(/unknown tool address/);
   });
 
-  it('flags a generated extension for sdk tools and conflict-guards the bare name', () => {
+  it('generates a real -e extension that binds sdk tools, and conflict-guards the bare name', () => {
     const r = new DefaultToolRegistry();
     r.register({ address: 'web:search', source: 'sdk', piName: 'search', description: 'web search' });
     const res = r.resolve({ allow: ['web:search'] });
     expect(res.piTools).toEqual(['search']);
-    expect(res.extension).toBe(PENDING_EXTENSION);
+    // not a placeholder anymore — resolve emits loadable extension source that registers the tool.
+    expect(res.extension).toContain('registerTool');
+    expect(res.extension).toContain('name: "search"');
 
     // an sdk tool whose piName collides with a builtin must be prefixed, never shadow the builtin
     r.register({ address: 'http:read', source: 'sdk', piName: 'read', description: 'http read' });
     expect(r.resolve({ allow: ['http:read'] }).piTools).toEqual(['sdk_read']);
     expect(r.resolve({ allow: ['fs:read'] }).piTools).toEqual(['read']);
+  });
+
+  it('emits NO extension when a selection is all builtins', () => {
+    const r = new DefaultToolRegistry();
+    expect(r.resolve({ allow: ['fs:read', 'sh:bash'] }).extension).toBeUndefined();
   });
 });
 

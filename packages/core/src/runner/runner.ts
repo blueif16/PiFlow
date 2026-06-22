@@ -25,6 +25,7 @@ import type {
   ExecResult,
 } from '../types.js';
 import { DefaultToolRegistry } from '../tools/registry.js';
+import { verifyToolBinding } from '../tools/verify.js';
 import { InMemorySandboxProvider } from '../sandbox/index.js';
 import { markersFromNode, emitMarkers } from '../contract.js';
 import { runHooks } from '../hooks/index.js';
@@ -237,6 +238,15 @@ async function runNode(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecor
   const t0 = Date.now();
   await writeStatus(ctx.outDir, ctx.status);
 
+  // PRE-NODE BIND CHECK ("Verified, not trusted", spine #8): the node DECLARED its toolset; confirm
+  // it actually GETS every declared function — each address binds to a unique bare name — BEFORE we
+  // stand up a sandbox or spawn pi. A miss (declared tool not in the catalog) or a collision (two
+  // tools sharing one bare name, which pi silently skips) is a contract breach → `blocked`.
+  const bind = verifyToolBinding(node.tools, ctx.registry.list());
+  if (!bind.ok) {
+    return finishNode(ctx, node, rec, t0, 'blocked', `tool bind check failed: ${bind.issues.join('; ')}`, [], bind.issues);
+  }
+
   let resolved: ResolveResult;
   try {
     resolved = ctx.registry.resolve(node.tools);
@@ -278,6 +288,14 @@ async function runNode(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecor
     const promptFile = '_pi/prompt.md';
     await sandbox.writeFile(promptFile, node.prompt + (markers ? `\n\n${markers}` : ''));
 
+    // Stage the generated tool `-e` extension (binds the node's declared sdk/mcp tools) and pass its
+    // in-sandbox path to the command builder. Absent when the node selected only builtins.
+    let extensionFile: string | undefined;
+    if (resolved.extension) {
+      extensionFile = '_pi/tools.ts';
+      await sandbox.writeFile(extensionFile, resolved.extension);
+    }
+
     // PRE hooks (deterministic plumbing — stage inputs / seeds). A blocking failure throws → error.
     const hookCtx = { workspace: node.sandbox.workspace, inputs: node.io.reads, outputs: node.io.produces };
     try {
@@ -286,7 +304,7 @@ async function runNode(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecor
       return finishNode(ctx, node, rec, t0, 'error', `pre-hook failed: ${(e as Error).message}`, []);
     }
 
-    const cmd = ctx.buildCommand(node, resolved, { promptFile, model: ctx.model, provider: ctx.providerName });
+    const cmd = ctx.buildCommand(node, resolved, { promptFile, model: ctx.model, provider: ctx.providerName, extensionFile });
     rec.command = cmd;
 
     const nodeTimeoutMs = node.sandbox.timeoutMs ?? ctx.watchdog.nodeTimeoutMs;
