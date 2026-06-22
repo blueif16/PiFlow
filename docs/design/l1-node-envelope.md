@@ -192,20 +192,33 @@ create(readScope, outputDir, workdir, env, timeoutMs)   // pick impl by sandbox.
 **Frozen (this spine):** the schema above · `compile`/edge-inference/validation · the contract-marker codec · an
 `InMemorySandbox` reference impl · a builtin `ToolRegistry` (+ `resolve`/`search`) · a deterministic hook runner.
 
-**Landed since freeze (2026-06-21, horizontal fill on the frozen spine):** the **generated-`-e` compiler**
-(`tools/compile.ts` — `resolve()` emits real `registerTool` source per `sdk`/`mcp` tool; execute routes to a
-bridge BY ADDRESS) · **MCP→`ToolEntry` ingestion** (`tools/ingest.ts` — `tools/list`/`server.json` mapped 1:1,
-the "effortless catalog fill") · the **per-node bind pre-check** (`tools/verify.ts`, wired into the runner) ·
-runner staging of the generated extension. The colon-namespace addressing, conflict-prefixing, and the
-`--tools`/`-e` compile target all hold unchanged.
+**Landed since freeze (2026-06-21, horizontal fill on the frozen spine):**
+- **Tools.** The **generated-`-e` compiler** (`tools/compile.ts` — `resolve()` emits real `registerTool` source
+  per `sdk`/`mcp` tool; execute routes to a bridge BY ADDRESS) · **MCP→`ToolEntry` ingestion** (`tools/ingest.ts`
+  — `tools/list`/`server.json` mapped 1:1, the "effortless catalog fill") · the **per-node bind pre-check**
+  (`tools/verify.ts`, wired into the runner) · runner staging of the generated extension · the **`@piflow/tool-bridge`
+  MCP transport RUNTIME** (`callTool(address, params)` the generated `-e` imports: connection / lifecycle / JSON-RPC).
+  The colon-namespace addressing, conflict-prefixing, and the `--tools`/`-e` compile target all hold unchanged.
+- **Runner.** The full per-node lifecycle (`runner/` — create→stage `io.reads`→exec the built command→`downloadDir`
+  collect→host-stat `io.artifacts` verify→hooks→dispose) · node-timeout + silent-stall **watchdogs** routed through
+  one kill seam (SIGTERM→SIGKILL grace, real process-group reap via `ExecOpts.signal`) · **halt-on-failure** ·
+  `--from`/`--until` **resume** (artifact-stat preflight) · **lane isolation** (a lane throw can't fail-fast the run) ·
+  serialized + atomic `run-status.json`.
+- **Sandbox.** The **`RunScope`/`openRun` run-scoped lifecycle** seam (`types.ts`; wired in the runner — providers that
+  share ONE resource across a run boot it once / tear it down once, with a trivial per-node forwarder for those that
+  don't) · the **Seatbelt read-scope `SandboxProvider`** (`sandbox/seatbelt.ts` — per-exec `sandbox-exec` profile from
+  the declared `read[]`, kernel-enforced EPERM on darwin; unsandboxed + warn-once off darwin) · a **Daytona cloud
+  `SandboxProvider` DRAFT** (`sandbox/daytona.ts`) against the RunScope seam — **not wired** (no `@daytonaio/sdk` dep;
+  a local `DaytonaSdk` interface stands in), but **contract-parity tested** against `InMemorySandbox` via a fake,
+  real-fs-backed SDK (`test/sandbox-cloud-parity.test.ts`) so local↔cloud share the same lifecycle/contract.
 
-**Deferred (horizontal fill):** Seatbelt/worktree/Daytona/E2B `SandboxProvider` impls · the **MCP/sdk bridge
-RUNTIME** (`@piflow/tool-bridge` — the `callTool(address, params)` the generated `-e` imports: connection /
-lifecycle / JSON-RPC transport; pi has no native MCP, so this is the one remaining seam between *binding* a tool
-and *calling* it) · a **persisted searchable catalog** + freshness/trust (M4; see
-`../research/tool-registry-maintenance-2026-06-21.md`) · the COMPOSE planner (structured-output + validate→repair;
-weak-model schema-fill rules: *rationale-before-committed fields*, *keep optionals optional*) · the full runner
-(escalation ladder, stuck-delta/tool-thrash kills) · the `@piflow/viz` renderer · the `piflow` CLI.
+**Deferred (horizontal fill):** the **Worktree** `SandboxProvider` (typed stub today — the run-level seam it needed
+now exists via `RunScope`, so it is promotable) · **live Daytona wiring** (`npm i @daytonaio/sdk`, delete the local
+interface, register the provider against a real key) + the **E2B** provider · a **persisted searchable catalog** +
+freshness/trust (M4; see `../research/tool-registry-maintenance-2026-06-21.md`) · the COMPOSE planner (structured-output
++ validate→repair; weak-model schema-fill rules: *rationale-before-committed fields*, *keep optionals optional*) ·
+runner **escalation ladder** + stuck-delta/tool-thrash kills · the `@piflow/viz` renderer · the `piflow` CLI ·
+**a live `pi` smoke-test** (below) — the one thing the offline test harness deliberately cannot cover.
 
 > **One open question for the bridge step (needs a live `pi` smoke-test, deliberately not run here):** the
 > generated `-e` embeds each tool's JSON-Schema `parameters` wrapped in TypeBox `Type.Unsafe(...)` — verify pi
