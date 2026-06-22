@@ -19,6 +19,7 @@
     "@modelcontextprotocol/server-everything": "^2026.1.26",
     "@modelcontextprotocol/server-memory": "^2026.1.26",
     "@types/node": "^24.0.0",
+    "openclaw": "^2026.6.9",
     "typescript": "^5.7.0",
     "vitest": "^4.0.0"
   },
