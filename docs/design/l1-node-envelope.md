@@ -207,14 +207,17 @@ create(readScope, outputDir, workdir, env, timeoutMs)   // pick impl by sandbox.
 - **Sandbox.** The **`RunScope`/`openRun` run-scoped lifecycle** seam (`types.ts`; wired in the runner — providers that
   share ONE resource across a run boot it once / tear it down once, with a trivial per-node forwarder for those that
   don't) · the **Seatbelt read-scope `SandboxProvider`** (`sandbox/seatbelt.ts` — per-exec `sandbox-exec` profile from
-  the declared `read[]`, kernel-enforced EPERM on darwin; unsandboxed + warn-once off darwin) · a **Daytona cloud
-  `SandboxProvider` DRAFT** (`sandbox/daytona.ts`) against the RunScope seam — **not wired** (no `@daytonaio/sdk` dep;
-  a local `DaytonaSdk` interface stands in), but **contract-parity tested** against `InMemorySandbox` via a fake,
-  real-fs-backed SDK (`test/sandbox-cloud-parity.test.ts`) so local↔cloud share the same lifecycle/contract.
+  the declared `read[]`, kernel-enforced EPERM on darwin; unsandboxed + warn-once off darwin) · the **Daytona cloud
+  `SandboxProvider`** (`sandbox/daytona.ts`) against the RunScope seam — **LIVE-WIRED via an adapter**: the provider
+  stays dependency-free against a `DaytonaSdk` seam, and `sandbox/daytona-sdk.ts` (the ONLY module importing
+  `@daytona/sdk@0.185.0`) maps the real client on via `realDaytonaSdk()` + the `createDaytonaProvider()` factory
+  (signatures grounded in `../research/daytona-sdk-2026-06-21.md`). Still **contract-parity tested** against
+  `InMemorySandbox` via a fake, real-fs-backed SDK (`test/sandbox-cloud-parity.test.ts`) so local↔cloud share the
+  same lifecycle/contract. (One live API-key smoke-test stays deliberately uncovered by the offline harness.)
 
 **Deferred (horizontal fill):** the **Worktree** `SandboxProvider` (typed stub today — the run-level seam it needed
-now exists via `RunScope`, so it is promotable) · **live Daytona wiring** (`npm i @daytonaio/sdk`, delete the local
-interface, register the provider against a real key) + the **E2B** provider · a **persisted searchable catalog** +
+now exists via `RunScope`, so it is promotable) · the **E2B** provider (the Daytona adapter is the template) · a
+**persisted searchable catalog** +
 freshness/trust (M4; see `../research/tool-registry-maintenance-2026-06-21.md`) · the COMPOSE planner (structured-output
 + validate→repair; weak-model schema-fill rules: *rationale-before-committed fields*, *keep optionals optional*) ·
 runner **escalation ladder** + stuck-delta/tool-thrash kills · the `@piflow/viz` renderer · the `piflow` CLI ·
