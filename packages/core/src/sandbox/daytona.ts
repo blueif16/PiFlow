@@ -113,9 +113,12 @@ export interface DaytonaProcess {
     req: { command: string; runAsync?: boolean },
   ): Promise<DaytonaSessionCommand>;
   /**
-   * STREAMING form of the session-command logs: invokes `onStdout`/`onStderr` per chunk and resolves
-   * VOID when the command ENDS. The callbacks own the bytes (the real streaming overload returns
-   * `Promise<void>`, NOT a `{stdout,stderr}` object). The cancellable, streaming exec path.
+   * STREAMING form of the session-command logs: invokes `onStdout`/`onStderr` per chunk. The callbacks
+   * own the bytes (the real streaming overload returns `Promise<void>`, NOT a `{stdout,stderr}` object).
+   * CRITICAL (live-verified): this promise resolves VOID only when the underlying `?follow=true` log
+   * socket CLOSES — i.e. on SESSION TEARDOWN — NOT when the runAsync command exits. Awaiting it as a
+   * completion signal hangs forever. Callers learn completion via `getSessionCommand` (below) instead,
+   * and await this only to flush trailing bytes after they tear the session down.
    */
   getSessionCommandLogs(
     sessionId: string,
@@ -159,6 +162,18 @@ function toBytes(data: Uint8Array | string): Uint8Array {
 
 /** A monotonically-unique session id per exec (Daytona sessions are per-shell, not per-cmd). */
 let sessionSeq = 0;
+
+/** Sleep `ms` — used to space out the completion poll in `execSession`. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Completion-poll backoff bounds for the streaming session exec (see `execSession`): start tight so a
+ * fast command returns promptly, back off to a cap so a long-running node doesn't hammer the control plane.
+ */
+const SESSION_POLL_MIN_MS = 100;
+const SESSION_POLL_MAX_MS = 2000;
 
 // ── the per-node sandbox VIEW (NOT a VM — a view into the shared run VM) ─────────
 
@@ -272,12 +287,19 @@ export class DaytonaSandbox implements Sandbox {
    * runner's killGrace liveness fallback (runner.ts defaultExecRunner) is what ultimately bounds a
    * hung exec.
    *
-   * Output: the real `getSessionCommandLogs(id, cmdId, onStdout, onStderr)` STREAMING overload resolves
-   * VOID — the callbacks own the bytes. So we wrap the caller's `onStdout`/`onStderr` to ALSO accumulate
-   * into local buffers, giving a faithful `{stdout, stderr}` even though the SDK returns nothing.
-   * Exit code: recovered via `getSessionCommand(id, cmdId)` AFTER the logs promise resolves (the only
-   * way to learn a finished `runAsync` command's real code). On abort, or if that lookup can't answer,
-   * we fall back to 124 (runner kill convention) / 1.
+   * Completion (LIVE-VERIFIED FIX): the streaming `getSessionCommandLogs` promise does NOT resolve when
+   * the runAsync command exits — it follows a `?follow=true` log socket that closes only on session
+   * teardown, so awaiting it for completion hangs forever (this is the bug the offline fake couldn't
+   * catch). So we stream logs in the BACKGROUND (callbacks fire per chunk in real time → the runner's
+   * stall detector keeps seeing output), and learn completion by POLLING `getSessionCommand(id, cmdId)`
+   * until its `exitCode` is populated — the only signal a finished runAsync command gives. Once done we
+   * tear the session down (closing the log socket) and await the background stream so trailing bytes are
+   * flushed. The poll is bounded by the runner's node-timeout/stall watchdog (it aborts → loop exits).
+   *
+   * Output: the streaming overload returns void — the callbacks own the bytes — so we wrap the caller's
+   * `onStdout`/`onStderr` to ALSO accumulate into local buffers, giving a faithful `{stdout, stderr}`.
+   * Exit code: from the completion poll. On abort, or if the lookup can't answer, we fall back to
+   * 124 (runner kill convention) / 1.
    */
   private async execSession(
     cmd: string,
@@ -295,11 +317,20 @@ export class DaytonaSandbox implements Sandbox {
 
     await this.vm.process.createSession(sessionId);
     let aborted = false;
+    let sessionGone = false;
+    // Idempotent teardown — closes the streaming log socket (so the background `streaming` promise below
+    // resolves) and stops a still-running command. Safe from the abort handler, the happy path, and the
+    // finally block; it deletes the session at most once.
+    const closeSession = async (): Promise<void> => {
+      if (sessionGone) return;
+      sessionGone = true;
+      await this.vm.process.deleteSession(sessionId).catch(() => { /* already gone */ });
+    };
     const onAbort = (): void => {
       aborted = true;
       // Best-effort interrupt — tearing the session down stops the running command. This is a SOFT
       // cancel, not the seam's promised SIGTERM→SIGKILL process-group kill (research note §5).
-      this.vm.process.deleteSession(sessionId).catch(() => { /* already gone */ });
+      void closeSession();
     };
     const signal = opts.signal;
     if (signal) {
@@ -315,36 +346,44 @@ export class DaytonaSandbox implements Sandbox {
     const collectStderr = (chunk: string): void => { stderr += chunk; opts.onStderr?.(chunk); };
 
     try {
-      // runAsync starts the command and returns a cmdId; we then stream its logs to completion.
+      // runAsync starts the command and returns a cmdId.
       const started = await this.vm.process.executeSessionCommand(sessionId, {
         command: wrapped,
         runAsync: true,
       });
       const cmdId = started.cmdId ?? '';
-      // Streaming form — callbacks fire per chunk; resolves (void) when the command ENDS.
-      await this.vm.process.getSessionCommandLogs(sessionId, cmdId, collectStdout, collectStderr);
-      // Real exit code: query the finished command. An aborted run reports 124 (runner kill
-      // convention); if the post-finish lookup can't answer (e.g. session already torn down), 1.
-      let code: number;
-      if (aborted) {
-        code = 124;
-      } else {
-        try {
-          const info = await this.vm.process.getSessionCommand(sessionId, cmdId);
-          code = info.exitCode ?? 0;
-        } catch {
-          code = 1;
-        }
+
+      // Stream the command's logs in the BACKGROUND. Its callbacks fire per chunk in real time (feeding
+      // the runner's stall detector); we do NOT await it for completion (it only resolves on session
+      // teardown, never on command exit). We await it later, AFTER teardown, to flush trailing bytes. A
+      // late rejection (socket cut on teardown/abort) is expected — swallow it.
+      const streaming = Promise.resolve(
+        this.vm.process.getSessionCommandLogs(sessionId, cmdId, collectStdout, collectStderr),
+      ).catch(() => { /* socket closed on teardown/abort */ });
+
+      // Learn completion by polling getSessionCommand for a populated exitCode (the only signal a
+      // finished runAsync command gives). Backoff-spaced; bounded by the runner's watchdog → abort.
+      let code: number | undefined;
+      let wait = SESSION_POLL_MIN_MS;
+      while (!aborted) {
+        const info = await this.vm.process.getSessionCommand(sessionId, cmdId);
+        if (info.exitCode != null) { code = info.exitCode; break; }
+        await delay(wait);
+        wait = Math.min(wait * 2, SESSION_POLL_MAX_MS);
       }
-      return { stdout, stderr, code };
+
+      // Tear the session down (closes the log socket → `streaming` resolves), then await the stream so
+      // any trailing bytes land in our buffers before we return.
+      await closeSession();
+      await streaming;
+
+      // Aborted runs report 124 (runner kill convention); otherwise the polled code (0 if unknown).
+      return { stdout, stderr, code: aborted ? 124 : (code ?? 0) };
     } catch (err) {
       return { stdout, stderr: stderr || String(err), code: aborted ? 124 : 1 };
     } finally {
       if (signal) signal.removeEventListener('abort', onAbort);
-      if (!aborted) {
-        // Clean up the session (the abort path already deleted it).
-        await this.vm.process.deleteSession(sessionId).catch(() => { /* already gone */ });
-      }
+      await closeSession();
     }
   }
 
