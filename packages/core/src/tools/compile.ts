@@ -28,15 +28,13 @@ export const DEFAULT_BRIDGE_MODULE = '@piflow/tool-bridge';
 /**
  * Module the generated extension imports the OpenClaw capture-shim (`captureOpenClawTools`) from.
  *
- * CROSS-LANE NOTE: the shim lives in `@piflow/core`, but core's `exports` map currently exposes only
- * `"."`, so bundling a PINNED sdk tool via this default pulls the WHOLE core barrel (esbuild + daytona)
- * into the staged extension — multi-MB bloat. To keep a real pinned-sdk bundle LEAN, add a subpath
- * export `"./tools/openclaw-shim": "./dist/tools/openclaw-shim.js"` to `packages/core/package.json`
- * (NOT in this lane's owned set) and set `CompileOpts.shimModule` to `@piflow/core/tools/openclaw-shim`.
- * Unpinned sdk tools (no plugin module) route through the bridge and never import the shim, so they are
- * unaffected; the mcp lane is unaffected. The compiler/tests are correct either way.
+ * LEAN-BUNDLE: the shim is exposed via the dedicated subpath export `@piflow/core/tools/openclaw-shim`
+ * (packages/core `exports`), so bundling a PINNED sdk tool inlines ONLY the shim — a few KB — instead of
+ * the whole `@piflow/core` barrel (esbuild + daytona ≈ 2.6 MB) that the bare `"."` entry would drag in.
+ * Override via `CompileOpts.shimModule` (e.g. a relative path in a fixture test). Unpinned sdk tools (no
+ * plugin module) route through the bridge and never import the shim; the mcp lane is unaffected.
  */
-export const DEFAULT_SHIM_MODULE = '@piflow/core';
+export const DEFAULT_SHIM_MODULE = '@piflow/core/tools/openclaw-shim';
 
 /** Compiler knobs. */
 export interface CompileOpts {

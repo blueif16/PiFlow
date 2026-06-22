@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./tools/openclaw-shim": {
+      "types": "./dist/tools/openclaw-shim.d.ts",
+      "import": "./dist/tools/openclaw-shim.js"
+    },
+    "./seeds/calc": {
+      "types": "./dist/seeds/calc.d.ts",
+      "import": "./dist/seeds/calc.js"
     }
   },
   "main": "./dist/index.js",
