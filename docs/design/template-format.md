@@ -18,11 +18,16 @@ seed.
 template/
   workflow.json            # the DAG manifest (§5)
   refs.json                # workspace refs (optional): skills dirs, registry paths, product-scaffold source
-  nodes/<id>/
-    node.json              # the node definition (§3)
-    prompt.md              # the prompt TEMPLATE: prose + ${WORKSPACE}/${RUN}/${state.*} tokens + a skill pointer
+  nodes/<id>/              # the COPYABLE per-node skeleton — IDENTICAL shape to the runtime folder
+    node.json              # the node definition (§3): deps · tools · mcp · contract · hooks (one file, §11)
+    prompt.md              # the prompt TEMPLATE: prose body + ${WORKSPACE}/${RUN}/${state.*} tokens + a skill pointer
+    io.json                # run-only stub, ships EMPTY ({}) so the cp brings it (§10 bucket 4)
+    events.jsonl           # run-only stub, ships EMPTY
+  .pi/state.json           # run-only stub, ships EMPTY ({}) — the RunState skeleton
 ```
-The per-node folder is the SAME shape as the runtime `${RUN}/.pi/nodes/<id>/` — authoring ≅ runtime.
+The per-node folder is the SAME shape as the runtime `${RUN}/.pi/nodes/<id>/` (§10) — authoring ≅ runtime, so a
+run is a near-literal copy. The empty `io.json`/`events.jsonl`/`state.json` stubs ride along in the skeleton
+(committed empty) so a run folder is uniform + complete from t=0; execution fills them in place.
 
 ## 3. The node definition (`node.json`) — contract-as-DATA
 ```jsonc
@@ -98,14 +103,56 @@ recorded node → a `node.json` (DAG + prompt) and the human/skill authors the "
 (tools / mcp / contract-as-data / hooks / refs). Output: the template. The `.js` is then discarded — **no
 two-way bridge, no Claude-Workflow execution** (D8).
 
-## 10. Relationship to the runtime (D7/D9)
-Authoring `template/nodes/<id>/` ≅ runtime `${RUN}/.pi/nodes/<id>/`. `init(${RUN})` instantiates a thread by
-rendering each node's realized `prompt.md`/`tools.ts`/`mcp.json` into the run's `.pi/nodes/<id>/`, then writing
-`io.json` (resolved reads · verified writes · promotes) as the node executes — so a run is a generated instance
-of the template, and any node's I/O is retrievable from its folder without knowing the node.
+## 10. Instantiation (init-RUN) — ONE per-node schema, template ≅ run (a near-literal copy)
+The template's `nodes/<id>/` folder and the runtime `${RUN}/.pi/nodes/<id>/` folder are the **same schema** — a
+run is a near-literal COPY of the template, so every run shows ONE clear, complete structure and all tooling
+(I/O discovery, run↔template diff, resume) stays generic with zero per-node knowledge. `init(${RUN})` sorts each
+node's files into four buckets:
+
+1. **Pure copy (verbatim, template→run byte-identical).** `node.json` + the PROSE body of `prompt.md`.
+2. **Token-resolve (intrinsic, deterministic).** `${RUN}`→the run dir, `${WORKSPACE}`→the canonical tree;
+   `${state.*}` left DEFERRED (resolved at node launch from `state.json`). A string substitution — as safe as a
+   copy; the ONLY thing that can't be a blind copy, because the run lives at a new path.
+3. **Derive the marker tail — RECOMMENDED: render at instantiation.** The `DRIVER-*` markers + DoD prose are a
+   pure function of `node.json`'s `contract`/`tools`/`hooks`: `markersFromNode(node)` (the codec — the tested
+   inverse of `parseMarkers`). init-RUN APPENDS the freshly-rendered block to the copied prose body. So
+   `node.json` stays the ONE source for the contract; the markers are never hand-authored and **cannot drift**.
+   *(Alternative (b): pre-render the markers into a COMMITTED `prompt.md` so instantiation is a pure `cp`, gated
+   by a `build`/`check` lockfile step — choose only if an un-failable runtime copy outweighs carrying a second
+   representation of the contract + a drift gate. Default to render-at-instantiation.)*
+4. **Run-only files — shipped EMPTY in the skeleton, filled by execution.** `io.json` (`{}`), `events.jsonl`
+   (empty), and the run-level `${RUN}/.pi/state.json` (`{}` / seeded channels) ride along in the copyable
+   structure so the run folder is COMPLETE from t=0 — no conditional file creation, one uniform shape every
+   time. Execution writes into them in place (`io.json` ← resolved reads · verified writes · promotes;
+   `events.jsonl` ← the behavior stream; `state.json` ← the barrier-merged channels).
+
+So init-RUN is: `cp -r template/nodes → ${RUN}/.pi/nodes` · resolve tokens · append `markersFromNode` · (the
+empty run-only stubs are already there). A handful of deterministic, individually-testable steps — not
+open-ended logic. A run is a generated instance of the template, and any node's I/O is retrievable from its
+folder without knowing the node.
+
+> **Per-run variants (NOT built — recorded as a future knob the copy model unlocks).** Because each run is its
+> OWN copy, runs can carry SLIGHT per-run tweaks — e.g. run A's `prompt.md` prose has tweak X, run B's has tweak
+> Y — while the contract (rendered from the same `node.json`) is held CONSTANT. Launch a batch of runs with
+> different tweaks in parallel and compare outcomes to see which direction to improve the system (prompt-craft
+> A/B; could also vary `node.json` itself for a contract/tooling A/B). A clean built-in experiment substrate. Not
+> implemented — kept here as the intended use.
 
 ## 11. Decisions & open items
 - **`mcp` + `return` — RESOLVED: INLINE in `node.json`** (one self-contained per-node def; no sidecar files).
+- **`tools` + `mcp` — RESOLVED: one `node.json`, SEPARATE FIELDS; NO exploded `tools.ts`/`mcp.json` files.** Both
+  live as keys in the single `node.json` and the driver consumes both from it (this supersedes the `tools.ts
+  mcp.json` sketch in the D7 layout). They stay SEPARATE fields because they're acquired differently — `tools`
+  is mostly pi-native, `mcp` carries external-gateway config — so the resolver can source each its own way; but
+  don't over-separate beyond co-located fields.
+- **Instantiation (init-RUN) — RESOLVED: §10's four buckets.** Template ≅ run is ONE schema; instantiation is a
+  near-literal copy + token-resolve + `markersFromNode` render. **Derive path = (a) render at instantiation**
+  (one source in `node.json`, no drift); (b) pre-render+gate is the documented alternative only.
+- **Run-only files (`io.json`/`events.jsonl`/`state.json`) — RESOLVED: ship EMPTY stubs in the copyable
+  skeleton** so the run folder is uniform + complete from t=0; execution fills them in place (no conditional
+  creation).
+- **Per-run variants — NOTED, not built** (§10): each run is its own copy, so per-run prompt/`node.json` tweaks
+  enable a parallel A/B experiment substrate. A future knob; recorded, not implemented.
 - **`deepMerge` array policy — RESOLVED: arrays REPLACE** (treated as leaves); `append` is the explicit concat
   reducer (per U6a, `6518272`).
 - **Token syntax — RECOMMENDED `{{ … }}`** (Mustache/Jinja-style: `{{ state.archetype }}`, `{{ WORKSPACE }}`,

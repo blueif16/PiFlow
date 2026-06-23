@@ -230,10 +230,11 @@ ${RUN}/                         # per-thread workspace (= projectBase); the engi
   .pi/                          # ENGINE-OWNED metadata namespace — IDENTICAL in every project
     state.json                  # the RunState channels (D6 per-thread checkpoint)
     run.json                    # the run-status digest (per-node status / timing / tokens)
-    nodes/<id>/                 # each node's DEDICATED named path
-      io.json                   # ALWAYS-RETRIEVABLE: { reads[], writes[], promotes[], status, timing }
-      prompt.md  tools.ts  mcp.json   # realized execution inputs (U1's per-node staging, homed here)
-      events.jsonl              # behavior stream (debug)
+    nodes/<id>/                 # each node's DEDICATED named path — ONE schema, = the template's nodes/<id>/
+      node.json                 # COPIED verbatim from the template (deps · tools · mcp · contract · hooks)
+      prompt.md                 # COPIED prose body + the markersFromNode tail rendered at init-RUN (template-format §10)
+      io.json                   # run-only, ships EMPTY: { reads[], writes[], promotes[], status, timing }
+      events.jsonl              # run-only, ships EMPTY: behavior stream (debug)
 ```
 
 **`io.json` — the per-node ledger (the deliverable).** After every node the engine writes a uniform record:
