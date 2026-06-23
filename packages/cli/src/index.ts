@@ -7,3 +7,6 @@
 export { renderStatus, runStatusCli } from './status.js';
 export { watchRun, runWatchCli } from './watch.js';
 export type { WatchResult, WatchOpts, WatchReason } from './watch.js';
+export { extractTemplate, renderDag, runExtractCli } from './extract.js';
+export { runTemplate, dryRunPlan, parseRunArgs, runRunCli } from './run.js';
+export type { RunDeps, ParsedRunArgs } from './run.js';

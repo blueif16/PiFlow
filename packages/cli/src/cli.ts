@@ -16,13 +16,28 @@
 import { runLogsCli } from '@piflow/core';
 import { runStatusCli } from './status.js';
 import { runWatchCli } from './watch.js';
+import { runExtractCli } from './extract.js';
+import { runRunCli } from './run.js';
 
-const HELP = `piflow — observe a pi-flow run over the .pi/ run layout
+const HELP = `piflow — drive + observe a pi-flow run over the .pi/ run layout
 
 USAGE
-  piflow status <rundir> [--every <s>]   per-node table + stage/rollup (verified on disk)
-  piflow watch  <rundir> [--notify]      silent sentinel — one line on done / fail / dead-stall
-  piflow logs   [dir|run] [options]      stream / replay / diagnose per-node event archives
+  piflow run     <templateDir> [--dry-run] [--run <id>] [--arg k=v ...]  drive a template run
+  piflow extract <templateDir>           free DAG preview (node count + parallel lanes; no model)
+  piflow status  <rundir> [--every <s>]  per-node table + stage/rollup (verified on disk)
+  piflow watch   <rundir> [--notify]     silent sentinel — one line on done / fail / dead-stall
+  piflow logs    [dir|run] [options]     stream / replay / diagnose per-node event archives
+
+RUN
+  <templateDir> an authored template/ dir (meta.json + nodes/*/). Required.
+  --dry-run     build + print the realized per-node pi command(s); invoke NO model (free).
+  --run <id>    the instance id (keys out/<id>); aliases --id. Required for a live run.
+  --arg k=v     a workflow arg → args.k (repeatable).
+  --workspace <p>  the read-only {{WORKSPACE}} root (skills/templates/registry); default cwd.
+  --from / --until <substr>  resume / truncate the stage window.
+
+EXTRACT
+  <templateDir> an authored template/ dir. Prints stages + parallel lanes. FREE (no model).
 
 STATUS
   <rundir>      a run dir holding .pi/run.json. Default '.'.
@@ -41,6 +56,12 @@ LOGS (from @piflow/core)
 async function main(): Promise<void> {
   const [sub, ...rest] = process.argv.slice(2);
   switch (sub) {
+    case 'run':
+      await runRunCli(rest);
+      break;
+    case 'extract':
+      await runExtractCli(rest);
+      break;
     case 'status':
       await runStatusCli(rest);
       break;
