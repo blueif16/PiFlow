@@ -14,6 +14,10 @@ export { compile, tryCompile, validate, inferEdges, stagesOf, slugify, WorkflowE
 export { extractWorkflow } from './workflow/extract.js';
 export type { ExtractedRecord, ExtractedStage, ExtractedMeta, ExtractResult } from './workflow/extract.js';
 
+// RunState (D6): the per-thread channel object + its reducers + the only state I/O. `RunState`/`Reducer`
+// types come via `export * from './types.js'` above. The `${state}` resolver / `promote` op land in U7.
+export { applyReducer, mergeUpdate, loadState, persistState } from './workflow/state.js';
+
 // Contract-marker codec (DRIVER-*)
 export { emitMarkers, parseMarkers, markersFromNode } from './contract.js';
 export type { ContractMarkers } from './contract.js';
@@ -121,3 +125,18 @@ export {
   hasToolFindings,
 } from './runner/index.js';
 export type { PiEvent, EventSink, FollowOpts, NodeDiagnosis, NodeToolAudit } from './runner/index.js';
+// Per-run `.pi/` layout (D7): the engine-owned, project-identical path helpers + the io.json ledger
+// writer. Pure path joins (opaque `run` base — core never hardcodes `.piflow/<wf>/runs/`) except
+// writeNodeIo. `NodeIo` type comes via `export * from './types.js'` above.
+export {
+  piDir,
+  stateFile,
+  runJsonFile,
+  nodeDir,
+  nodeIoFile,
+  nodePromptFile,
+  nodeToolsFile,
+  nodeMcpFile,
+  nodeEventsFile,
+  writeNodeIo,
+} from './runner/layout.js';

@@ -50,4 +50,19 @@ describe('runHooks', () => {
     const reports = await runHooks([warn], ctx, { outcome: 'success' });
     expect(reports[0]).toMatchObject({ id: 'warn', ran: true, ok: false, error: 'nope' });
   });
+
+  it("hands the hook fn a projectBase — defaulting to the workspace when opts omits it", async () => {
+    let seen: HookContext | undefined;
+    const h = hook({ run: async (hctx: HookContext) => void (seen = hctx) });
+    await runHooks([h], ctx, { outcome: 'success' });
+    expect(seen?.projectBase).toBe(ctx.workspace); // default = workspace (the ${RUN} fallback)
+  });
+
+  it("uses opts.projectBase as the ${RUN} root when given (≠ workspace)", async () => {
+    let seen: HookContext | undefined;
+    const h = hook({ run: async (hctx: HookContext) => void (seen = hctx) });
+    await runHooks([h], ctx, { outcome: 'success', projectBase: '/runs/abc' });
+    expect(seen?.projectBase).toBe('/runs/abc');
+    expect(seen?.workspace).toBe(ctx.workspace); // workspace is unchanged — they are distinct roots
+  });
 });

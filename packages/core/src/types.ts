@@ -167,9 +167,48 @@ export type HookWhen = 'always' | 'on-success' | 'on-failure';
 
 /** Context handed to an in-process hook fn (declared paths only — sandbox internals stay out). */
 export interface HookContext {
+  /** The `${WORKSPACE}` logical root — where the node's code/build runs. */
   workspace: string;
+  /**
+   * The `${RUN}` logical root — the per-run OUTPUT base (an opaque dir; the runner passes it). Core
+   * NEVER hardcodes the consumer's `.piflow/<wf>/runs/<id>/` convention. OPTIONAL; `runHooks`
+   * defaults it to `workspace` when the caller omits it.
+   */
+  projectBase?: string;
   inputs: string[];
   outputs: string[];
+}
+
+// 3.5 ── RUN STATE (D6) + the per-node I/O ledger (D7) ──────────────────────────
+
+/**
+ * The per-thread RunState — a LangGraph-style channel object. Each top-level key is a channel; values
+ * are arbitrary. The node NEVER writes this directly — the driver merges a node's promoted update via
+ * the channel's reducer at the stage barrier (`${RUN}/.pi/state.json` is the per-run checkpoint).
+ */
+export type RunState = Record<string, unknown>;
+
+/**
+ * Per-channel merge reducer. `set` = overwrite (DEFAULT, last-write); `append` = list concat (operands
+ * coerced to arrays); `deepMerge` = recursive plain-object merge (arrays REPLACE — treated as leaves).
+ */
+export type Reducer = 'set' | 'append' | 'deepMerge';
+
+/** The per-node I/O ledger record (`${RUN}/.pi/nodes/<id>/io.json`) — uniform across every project. */
+export interface NodeIo {
+  id: string;
+  label?: string;
+  phase?: string;
+  /** Inputs the node read (resolved paths), each optionally tagged with HOW it was sourced. */
+  reads: { path: string; via?: string }[];
+  /** Outputs the node wrote — `verified` is the on-disk existence check; `bytes` the size. */
+  writes: { path: string; verified: boolean; bytes?: number }[];
+  /** RunState channels this node promoted into, with the merged value + the reducer used. */
+  promotes: { to: string; merge: string; value: unknown }[];
+  status: string;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
 }
 
 /**

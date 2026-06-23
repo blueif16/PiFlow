@@ -19,6 +19,8 @@ export interface HookReport {
 export interface RunHooksOpts {
   /** The node's outcome — selects which `when` hooks fire. */
   outcome: 'success' | 'failure';
+  /** The `${RUN}` output root handed to each hook's `HookContext`. Defaults to `ctx.workspace`. */
+  projectBase?: string;
   /** Runs a shell-string hook; default spawns `bash -c` in the workspace. */
   runShell?: (cmd: string, ctx: HookContext) => Promise<{ code: number; stderr: string }>;
   /** Returns a path's mtime in ms, or null if missing; default uses fs. */
@@ -64,6 +66,7 @@ export async function runHooks(hooks: Hook[] | undefined, ctx: HookContext, opts
   const reports: HookReport[] = [];
   const mtime = opts.mtime ?? defaultMtime;
   const shell = opts.runShell ?? ((cmd: string) => defaultShell(ctx.workspace, cmd));
+  const projectBase = opts.projectBase ?? ctx.workspace; // ${RUN} defaults to the workspace root
   for (const hook of hooks ?? []) {
     if (!fires(hook, opts.outcome)) {
       reports.push({ id: hook.id, ran: false, skipped: 'when', ok: true });
@@ -73,7 +76,7 @@ export async function runHooks(hooks: Hook[] | undefined, ctx: HookContext, opts
       reports.push({ id: hook.id, ran: false, skipped: 'idempotent', ok: true });
       continue;
     }
-    const hctx: HookContext = { workspace: ctx.workspace, inputs: hook.inputs, outputs: hook.outputs };
+    const hctx: HookContext = { workspace: ctx.workspace, projectBase, inputs: hook.inputs, outputs: hook.outputs };
     let ok = true;
     let error: string | undefined;
     try {
