@@ -19,6 +19,13 @@ export type { ExtractedRecord, ExtractedStage, ExtractedMeta, ExtractResult } fr
 // meta.json / the generated workflow.json against these fail-closed at author time.
 export { nodeSchema, metaSchema, workflowSchema } from './workflow/template/schema/index.js';
 
+// The template LOADER / compile gate (T2): `loadTemplate(dir) → WorkflowSpec` (template-format.md §8) —
+// the workflow's `tsc`. Scans nodes/*/, chains deps into the DAG, runs the fail-closed §8 static-check
+// suite, renders each node's DRIVER-* marker tail, (re)writes the generated workflow.json lock, and
+// returns the in-memory WorkflowSpec the existing `compile`/`runWorkflow` consume.
+export { loadTemplate, TemplateError } from './workflow/template/loader.js';
+export type { LoadTemplateOpts } from './workflow/template/loader.js';
+
 // RunState (D6): the per-thread channel object + its reducers + the only state I/O. `RunState`/`Reducer`
 // types come via `export * from './types.js'` above. The `${state}` resolver / `promote` op land in U7.
 export { applyReducer, mergeUpdate, loadState, persistState } from './workflow/state.js';
