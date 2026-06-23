@@ -1,4 +1,12 @@
-# Architecture — why a Claude Code Workflow runs unchanged on pi
+# Architecture — why a structured workflow runs as a pi fleet
+
+> **Premise updated (D8, 2026-06-23) — full reframe pending (handoff).** The SOURCE OF TRUTH is now the
+> structured workflow TEMPLATE (`.piflow/<wf>/template/`), NOT the Claude `.js`; the `.js` is a ONE-TIME INGEST
+> seed handled by the init skill, and there is **no Claude-Workflow execution target**. Read the framing below
+> as the INGEST path: "`extract.mjs` each run" → "the init skill ingests a `.js` ONCE, then `loadTemplate →
+> WorkflowSpec` each run." The structural invariants it describes (driver owns the graph · verified-not-trusted ·
+> filesystem coordination · static-DAG / values-not-routing) are UNCHANGED and still correct. See
+> `docs/design/sdk-canonical-build-plan.md` D6–D9 + `docs/design/template-format.md`.
 
 The whole transform rests on one observation: **a Claude Code Workflow script is already a
 precise, executable specification of a multi-agent DAG.** It declares — in plain JS — every

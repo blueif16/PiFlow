@@ -1,52 +1,52 @@
 ---
 name: transform-workflow-to-pi
 description: >-
-  Take any Claude Code Workflow (a `.claude/workflows/*.js` script that uses agent()/parallel()/
-  pipeline()/phase()) and run the IDENTICAL pipeline efficiently on a fleet of pi agents
-  (pi.dev / earendil-works/pi) driven by non-Claude coding-plan models — with Claude Code as the
-  single console and monitor. The generic engine ships as the `@piflow/core` SDK; a project installs it
-  and drops in a thin consumer (`templates/pi-runner/`) that wires its workflow + deterministic hooks into
-  `runWorkflow`, then monitors with `piflow logs`. Use when someone wants to run a proven Workflow at
-  lower cost / at scale, "run my workflow on pi", "run this on a non-Claude model", "pi-runner", "offload
-  the workflow to more efficient agents", or to stand up the pi-runner harness in a new repo.
+  Pi Flow — author and run a structured workflow (a DAG of producer/verify nodes coordinating through the
+  filesystem) as a fleet of efficient pi agents (pi.dev / earendil-works/pi) driven by non-Claude coding-plan
+  models, with Claude Code as the single console and monitor. The source of truth is a structured workflow
+  TEMPLATE (`.piflow/<wf>/template/`); the `@piflow/core` SDK loads it into a WorkflowSpec and runs it one `pi`
+  per node, then monitors with `piflow logs`. A Claude Code Workflow `.js` is an OPTIONAL one-time INGEST seed
+  handled by the init skill — never a maintained second source. Use to author a pi-flow workflow, stand up the
+  runner in a repo, run a workflow on pi at lower cost / at scale, "run my workflow on pi", "run this on a
+  non-Claude model", "pi-runner", "offload the workflow to more efficient agents", or to ingest an existing
+  Claude `.js` workflow into a template.
 ---
 
-# Transform a Claude Code Workflow → pi agents
+# Pi Flow — author & run a structured workflow on a pi fleet
 
-**One-line model:** the Claude Code Workflow `.js` is the single source of truth; the **`@piflow/core` SDK**
-*extracts* the exact realized prompts + DAG from that same file and replays them, one efficient `pi` process
-per node, while Claude Code owns the graph and monitors the run. **No port, no codegen, no hand-sync, no
-drift.**
+**One-line model:** the **structured workflow template** (`.piflow/<wf>/template/`) is the single source of
+truth; the **`@piflow/core` SDK** loads it into a `WorkflowSpec` and runs it, one efficient `pi` process per
+node, while Claude Code owns the graph and monitors the run. A Claude Code Workflow `.js` is an OPTIONAL
+one-time INGEST seed — the init skill lifts it into a template, then it is discarded. **One authored template:
+no codegen, no hand-sync, no drift, no second source.**
 
 ```
-Claude Code (you) ── 1 driver per instance ─► pi-runner/sdk/run.mjs
-                                               │ config → bridge → compile → runWorkflow  (@piflow/core)
-                                               │ extract.mjs runs workflow.js under recording stubs
-                                               │ → exact prompts + parallel lanes + per-node hooks
-                                               ▼  one `pi` per node (non-Claude coding-plan model)
-        <repo>/* artifacts + run-status.json (state) + _pi/<id>.events.jsonl (behavior) ─► `piflow logs`
+init skill ──(ingest a .js ONCE │ or author fresh)──► .piflow/<wf>/template/   ← the SOURCE OF TRUTH
+                                                              │ @piflow/core: loadTemplate → WorkflowSpec → compile → runWorkflow
+                                                              ▼ one `pi` per node (non-Claude coding-plan model)
+   .piflow/<wf>/runs/<id>/{ product · .pi/state.json · .pi/nodes/<id>/io.json } ──► `piflow logs`
 ```
 
 ## When this applies
-- You have a Workflow you've **already proven on Claude** (it runs via the `Workflow` tool) and
-  want to run it efficiently / at scale.
-- The workflow is **pipeline-shaped**: a fixed set of waves over one input, coordinating through
-  the filesystem. (Data-driven fan-out needs one extra step — see `reference/architecture.md`
-  "Dynamic workflows".)
-- You want Claude Code to stay the operator: it runs everything, the user runs nothing.
+- You want to **author and run a pipeline-shaped workflow** — a fixed DAG of waves over one input,
+  coordinating through the filesystem — as an efficient pi fleet, with Claude Code as the operator (it runs
+  everything, the user runs nothing).
+- The workflow source is a **structured template** (`.piflow/<wf>/template/`); you either author it fresh or
+  INGEST an existing Claude `.js` once via the init skill.
+- Data-driven fan-out (which/how many nodes from a prior result) is the one caveat — keep the DAG static; state
+  channels flow VALUES, not routing (see `reference/architecture.md` "Dynamic workflows" + RunState, decision D6).
 
-If there is **no** workflow yet, write and prove one with the `Workflow` tool first. This skill
-transforms an existing workflow; it does not author the pipeline logic.
-
-## The transform — adopt the SDK consumer
+## Standing up & running a workflow
 The engine is the **`@piflow/core`** package; a project does NOT copy an engine, it installs the package and
 drops in a thin consumer. **The canonical per-project layout, the file→mission map, and the full adopt steps
 are in `reference/sdk-consumer.md` — read it first.** The flow:
 
-1. **Confirm the source of truth.** Exactly one `.claude/workflows/<name>.js`; it begins with
-   `export const meta = {…}` (a pure literal); its body uses only the Workflow hooks
-   (`agent`/`parallel`/`pipeline`/`phase`/`log`/`args`/`budget`). You **edit and prove the workflow on
-   Claude**; pi inherits it. Never edit pi's copy of a prompt — there is no copy.
+1. **Confirm the source of truth — the template.** The workflow lives as a structured template at
+   `.piflow/<wf>/template/` (DAG manifest + per-node defs as data + refs — see `docs/design/template-format.md`),
+   built by the **init skill**, whose triage either INGESTS an existing Claude `.js` once (`extractWorkflow`
+   lifts its DAG+prompts; you author the rest) or RECONSTRUCTS fresh. You edit the TEMPLATE; there is no
+   maintained `.js`, no second source, no copy. (Today's `PI_RUNNER_WORKFLOW` still points at a `.js` pending
+   the loader — the migration target is the template dir; see `docs/design/sdk-canonical-build-plan.md` D8.)
 
 2. **Set the credential ONCE in pi's global config** (per machine, not per repo). The model + key live in
    pi's native `~/.pi/agent/models.json`, which pi resolves for EVERY project — so no product needs its own
@@ -103,8 +103,9 @@ are in `reference/sdk-consumer.md` — read it first.** The flow:
   per-node human-judged quality bar (NEVER injected into a prompt). Maintained by `hermes-skill-system`.
 
 ## The laws (do not violate)
-- **Single source of truth = the workflow `.js`.** Improve a wave by editing its prompt/skill in
-  the workflow and re-proving on Claude; pi runs the new prompts automatically. Zero hand-sync.
+- **Single source of truth = the structured template.** Improve a wave by editing its node def / its skill in
+  the template (`.piflow/<wf>/template/`); the engine loads the change automatically. The Claude `.js` is an
+  init-only INGEST seed, discarded after — NEVER a maintained second source. Zero hand-sync.
 - **The engine is the `@piflow/core` package, not a per-repo copy.** The generic consumer glue
   (`sdk/`, `hooks/`, `extract.mjs`, `logs.mjs`) stays **byte-identical across repos** — 100% of per-repo
   specifics live in `.env` + `package.json` (wiring) + your `hooks/` (your ops), and the credential lives
@@ -113,9 +114,11 @@ are in `reference/sdk-consumer.md` — read it first.** The flow:
   re-introducing the drift this whole pattern exists to prevent — push it into `.env`/`package.json`/`hooks/`
   instead. (The Tier-2 glue still ships in the template only because `@piflow/core` has named gaps; it is
   slated to graduate into the package — see `reference/sdk-consumer.md`.)
-- **Extraction, not codegen.** `extract.mjs` runs the workflow under recording stubs and captures
-  the exact prompts + grouping; `bridge.mjs` maps that to a compilable `WorkflowSpec`. New/removed/reordered
-  waves propagate for free.
+- **Ingest once, then author — not codegen, not a live bridge.** To MIGRATE an existing Claude `.js`,
+  `extractWorkflow` runs it under recording stubs and captures the exact prompts + DAG ONCE; the init skill maps
+  that into the template, and the `.js` is discarded. Thereafter the engine loads the TEMPLATE directly
+  (`loadTemplate → WorkflowSpec`). There is no two-way bridge and no Claude-Workflow execution target — pi + the
+  human + the verify harness are the proving ground.
 - **Driver owns the graph; pi owns the node.** Plain code decides stage order + parallel lanes +
   halt-on-failure; the model never decides control flow. Nodes coordinate via the filesystem.
 - **The workflow orchestrates; the SKILL carries the craft — never duplicate craft into a node body.**
@@ -140,9 +143,9 @@ are in `reference/sdk-consumer.md` — read it first.** The flow:
 - **Every producing node declares an Output Contract — `{ artifacts, owns, readScope }`.**
   Requirements live in a skill `description`, I/O in `## Inputs`/`## Output` prose, the RETURN shape in
   `schema` — but Claude validates the *message*, never the *filesystem*. The artifact layer is yours:
-  declare it once with a `contract({ artifacts, owns, readScope })` helper in the workflow `.js` that
+  declare it once as the `contract { artifacts, owns, readScope }` fields in each node def; the engine
   renders the Definition-of-Done prose AND the `DRIVER-ARTIFACTS`/`DRIVER-OWNS`/`DRIVER-READ-SCOPE`
-  markers (the generic codec in `@piflow/core` parses them). The **write-contract** (`artifacts`/`owns`)
+  markers from them (the generic codec in `@piflow/core` parses them back). The **write-contract** (`artifacts`/`owns`)
   and the **read-scope** (`readScope`) are the SAME tier — both authored at node creation time, never an
   afterthought. Run the fleet under `SeatbeltSandboxProvider` so `readScope` is OS-enforced (inert otherwise).
   Full spec: `reference/artifact-contract.md`; read-scope syntax: `reference/read-scope-sandbox.md`.
@@ -300,9 +303,8 @@ every one; after, verify no consumer reads the stale shape.
   design canon — see `docs/INDEX.md`.)
 
 ## Reference implementation
-The proven **SDK-consumer** instance is **game-omni's `pi-runner/sdk/`** — the layout these templates were
-forward-ported from, running `.claude/workflows/game-omni-v1.6.js` on `@piflow/core` (extract → bridge →
-compile → `runWorkflow` on the in-place `LocalSandboxProvider`, with `hooks/` bound in). The original
-battle-tested **monolith** instance lives in the `animation-test` repo (the `lesson-build` workflow → 14
-nodes / 10 stages) and matches `templates/legacy/run.mjs`; it is the pre-SDK reference. When in doubt about a
-detail, those repos are the worked examples.
+The worked SDK instance is **game-omni**: its `.claude/workflows/game-omni-v1.6.js` is the INGEST SEED being
+migrated into a `.piflow/game-omni/template/` (the `extractWorkflow` → init-skill path); `pi-runner/sdk/` runs
+`@piflow/core` on the in-place `LocalSandboxProvider` with `hooks/` bound in. The original battle-tested
+**monolith** lives in the `animation-test` repo (`lesson-build` → 14 nodes / 10 stages, matching
+`templates/legacy/run.mjs`) — the pre-SDK reference. When in doubt, those repos are the worked examples.
