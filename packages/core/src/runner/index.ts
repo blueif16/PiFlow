@@ -3,6 +3,13 @@
 
 export { runWorkflow, defaultExecRunner, lastJsonBlock, selectedBridgedTool } from './runner.js';
 export type { RunOptions, RunResult, ExecRunner, ExecWatchdogOpts } from './runner.js';
+// The env-AGNOSTIC run entry (D5): a plain resolved-config object → compile → run. The bridge stays
+// consumer-injected (workflowSpec | buildWorkflowSpec). `loadConfig` resolves the env into this config.
+export { runFromConfig } from './entry.js';
+export type { ResolvedRunConfig } from './entry.js';
+// loadConfig: resolve PI_RUNNER_* env + parsed args → the run-opts subset runFromConfig consumes (env lives HERE).
+export { loadConfig } from './config.js';
+export type { ConfigArgs, LoadConfigInput, ResolvedRunOpts } from './config.js';
 // The scoped-token / sealing-broker seam (defined in ../types.js; re-exported so a host wiring a broker
 // alongside the runner finds it here too).
 export { defaultSecretResolver } from '../types.js';

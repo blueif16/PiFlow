@@ -124,6 +124,14 @@ export type { HookReport, RunHooksOpts } from './hooks/index.js';
 // Runner (M1 execution loop — create→stage→exec→collect→dispose; watchdogs · halt-on-failure ·
 // --from resume · run-status.json). The pi-spawn is injectable (buildCommand/execRunner) so it runs offline.
 export { runWorkflow, defaultExecRunner, defaultPiCommand, lastJsonBlock, writeStatus, artifactState, nowISO } from './runner/index.js';
+// The env-AGNOSTIC run entry (D5): a plain resolved-config object (workflowSpec | buildWorkflowSpec +
+// run opts) → compile → run. The bridge is consumer-injected; env resolution lives in `loadConfig`.
+export { runFromConfig } from './runner/index.js';
+export type { ResolvedRunConfig } from './runner/index.js';
+// loadConfig — the env layer (D5): PI_RUNNER_* env + parsed args → the run-opts object runFromConfig
+// consumes (arg > env > default; timeouts seconds→ms). The ONLY place env is parsed; runFromConfig is pure.
+export { loadConfig } from './runner/index.js';
+export type { ConfigArgs, LoadConfigInput, ResolvedRunOpts } from './runner/index.js';
 // Post-node schema gate (injectable validator seam + best-effort ajv-2020 default)
 export { validateArtifactSchemas, defaultSchemaValidator } from './runner/index.js';
 export type { SchemaValidator, SchemaCheckResult } from './runner/index.js';
