@@ -1,0 +1,29 @@
+{
+  "name": "@piflow/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pi Flow CLI — the docker-style front door to a run. `piflow status` (per-node table + stage/rollup) and `piflow watch` (a silent-until-it-matters sentinel) read the engine-owned `.pi/` run layout via @piflow/core's path helpers; `logs` is re-exported from core (one front door).",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "piflow": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@piflow/core": "*"
+  }
+}
