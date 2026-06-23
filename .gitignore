@@ -7,3 +7,4 @@ dist/
 
 # SVGs untracked for now (illustration library paused). Already-tracked motifs stay tracked.
 *.svg
+.tasks/HANDOFF-*.md
