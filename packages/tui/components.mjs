@@ -8,9 +8,11 @@ import htm from 'htm';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
-// MIGRATED: the data-acquisition layer now reads the `.pi/` run layout (./model.mjs) instead of the
-// legacy out/<id> digest + registry/scan (../viz-model.mjs). The view layer below is unchanged.
-import { discoverNamespaces, buildModel, tailNodeOutput } from './model.mjs';
+// MIGRATED: the data-acquisition layer is now a THIN ADAPTER over the SHARED observability source
+// (@piflow/core/observe, via ./model.mjs) — `buildModel`/`discoverNamespaces` map a `readRunModel`
+// snapshot into this view shape; `subscribeRun` folds the live `watchRun` node-event stream into the
+// per-node text tail. The TUI opens NO `.pi/` file itself. The view layer below is unchanged.
+import { discoverNamespaces, buildModel, subscribeRun } from './model.mjs';
 import { StageDag, runToMermaid, dagViewport, scrollStart } from './dag.mjs';
 
 export const html = htm.bind(React.createElement);
@@ -74,6 +76,20 @@ function viewport(len, sel, size) {
   if (len <= size) return [0, len];
   const start = Math.max(0, Math.min(sel - Math.floor(size / 2), len - size));
   return [start, start + size];
+}
+
+// Fold the live per-node accumulators (from the shared watchRun node-event stream) into the adapted
+// model's nodes — toolCalls · toolBreakdown · thinking chars · eventCount. These cosmetics have no
+// snapshot source (they are NOT in the shared RunModel); they are DERIVED from the stream, in-place.
+function foldLiveIntoModel(model, byNode) {
+  for (const [id, acc] of Object.entries(byNode || {})) {
+    const n = model.nodes[id];
+    if (!n) continue;
+    n.toolCalls = acc.toolCalls || n.toolCalls || 0;
+    n.eventCount = acc.eventCount || n.eventCount || 0;
+    if (acc.toolBreakdown && Object.keys(acc.toolBreakdown).length) n.toolBreakdown = acc.toolBreakdown;
+    if (acc.thinkChars) n.thinking = { chars: acc.thinkChars };
+  }
 }
 
 // ── pure render helpers (called inline; not React components, so no hook rules) ──
@@ -348,31 +364,50 @@ export function App({ config }) {
   const nssRef = useRef([]);
   nssRef.current = nss;
 
+  // Live per-run accumulators folded from the SHARED watchRun node-event stream (subscribeRun): runDir →
+  // { byNode: { id → { text, toolCalls, thinkChars, toolBreakdown } } }. The tail + tool/think cosmetics
+  // are DERIVED from the stream, never re-read from `.pi/` files.
+  const live = useRef(new Map());
+
   const refresh = useCallback(async () => {
     // A transient discover failure (or a momentary empty read while a run writes its files) must NOT blank
     // the whole UI — that empty frame was a periodic flash. Keep the last good list instead.
     let namespaces = null;
-    try { namespaces = discoverNamespaces(config); } catch { /* transient — keep last good */ }
+    try { namespaces = await discoverNamespaces(config); } catch { /* transient — keep last good */ }
     if (namespaces && namespaces.length) setNss(namespaces);
     const list = namespaces && namespaces.length ? namespaces : nssRef.current;
     const ns = list[Math.min(ni, Math.max(0, list.length - 1))];
     const thr = ns?.threads[Math.min(ti, Math.max(0, (ns?.threads.length || 1) - 1))];
     if (!ns || !thr) { setDetail(null); return; }
     try {
-      // MIGRATED data reads: a `.pi/` run dir is self-describing — buildModel + tailNodeOutput read
-      // straight from `thr.runDir` (no workflowPath/statusPath/out: the registry/static-DAG layer is gone).
+      // MIGRATED: buildModel adapts a `readRunModel(thr.runDir)` snapshot — the shared reader; no bespoke
+      // `.pi/` read. The live text tail is folded in from the subscribeRun stream (the `live` ref).
       const model = await buildModel({ runDir: thr.runDir, run: thr.run });
+      const byNode = live.current.get(thr.runDir)?.byNode || {};
+      foldLiveIntoModel(model, byNode);
       const order = model.stages.flatMap((st) => st.nodeIds);
       const selId = order[Math.min(di, Math.max(0, order.length - 1))];
       const node = model.nodes[selId];
       const outNode = node && node.status === 'running' ? selId : (model.pathways.running[0] || selId);
-      const to = tailNodeOutput({ runDir: thr.runDir, node: outNode });
+      const to = byNode[outNode]?.text || null;
       cache.current.set(thr.statusPath, model);
-      if (sel.current.ni === ni && sel.current.ti === ti) setDetail({ key: thr.statusPath, model, tail: to?.tail || null });
+      if (sel.current.ni === ni && sel.current.ti === ti) setDetail({ key: thr.statusPath, model, tail: to });
     } catch (err) {
       setDetail({ key: thr.statusPath, model: null, err: String(err && err.message || err) });
     }
   }, [config, ni, ti, di]);
+
+  // Subscribe to the SHARED live stream for the current run dir; fold each node-event into `live`. The
+  // subscription re-arms when the selected run dir changes; the periodic refresh above reads its result.
+  const curRunDir = nss[ni]?.threads[ti]?.runDir || config.runDir;
+  useEffect(() => {
+    if (!curRunDir) return undefined;
+    const stop = subscribeRun({
+      runDir: curRunDir, run: undefined, pollMs: (config.every || 2) * 1000,
+      onTail: (byNode) => { live.current.set(curRunDir, { byNode }); },
+    });
+    return stop;
+  }, [curRunDir, config.every]);
 
   // Keep a live ref to refresh so the periodic interval below stays mounted across navigation (it depends
   // only on config.every). Recreating the interval on every keypress was extra churn behind the flicker.

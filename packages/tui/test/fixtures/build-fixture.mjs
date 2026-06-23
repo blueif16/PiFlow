@@ -111,7 +111,15 @@ export async function buildFixture(dir, run = 'demo') {
     await fs.writeFile(nodeIoFile(runDir, id), JSON.stringify(rec, null, 2));
   }
 
-  // A couple of events.jsonl lines for ONE node (the running w1-design) — the live tail source.
+  // MATERIALIZE the declared artifacts the shared reader VERIFIES on disk (verified-not-trusted): a node
+  // whose declared write is PRESENT reads `ok`/keeps its status; an ABSENT one reads `blocked`. w0's
+  // spec/classification.json exists (→ ok); w1-assets' public/assets/ASSETS.md stays ABSENT (→ blocked).
+  await writeArtifact(runDir, 'spec/classification.json', '{"archetype":"platformer"}');
+  // (spec/gdd.md for the running w1-design is unverified anyway; leave absent — running passes through.)
+
+  // A couple of events.jsonl lines for ONE node (the running w1-design) — the post-hoc archive. The LIVE
+  // tail is streamed by watchRun (only lines appended AFTER the snapshot); tests that exercise the live
+  // path append their own lines after subscribing (mirroring a run writing as it goes).
   const evLines = [
     { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'designing the ' } },
     { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'core loop…' } },
@@ -119,6 +127,13 @@ export async function buildFixture(dir, run = 'demo') {
   await fs.writeFile(nodeEventsFile(runDir, 'w1-design'), evLines);
 
   return runDir;
+}
+
+/** Write one artifact file under the run dir (so the shared reader's on-disk verification sees it). */
+async function writeArtifact(runDir, rel, body) {
+  const abs = path.resolve(runDir, rel);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.writeFile(abs, body);
 }
 
 // Allow `node build-fixture.mjs <dir>` for the manual smoke check.
