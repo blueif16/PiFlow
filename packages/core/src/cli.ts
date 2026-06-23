@@ -14,7 +14,7 @@ const HELP = `piflow — observe a pi-flow run (docker-logs for a workflow)
 USAGE
   piflow logs [dir|run] [options]      stream / replay / diagnose a run
 
-  dir|run   a run dir (holds run-status.json) or a bare id (→ out/<id>). Default '.'.
+  dir|run   a run dir (holds .pi/run.json) or a bare id (→ out/<id>). Default '.'.
 
 OPTIONS (logs)
   -f, --follow     attach live: stream every started node, roll forward until the run is done
@@ -29,8 +29,8 @@ EXAMPLES
   piflow logs out/myrun --summary   # one-glance diagnosis after it finishes
   piflow logs out/myrun --node w0   # replay one node, distilled
 
-Per-node event archives live at <dir>/_pi/<id>.events.jsonl (written when RunOptions.recordEvents is on,
-the default). See docs/observability.md.\n`;
+Per-node event archives live at <dir>/.pi/nodes/<id>/events.jsonl (written when RunOptions.recordEvents
+is on, the default). See docs/observability.md.\n`;
 
 async function main(): Promise<void> {
   const [sub, ...rest] = process.argv.slice(2);

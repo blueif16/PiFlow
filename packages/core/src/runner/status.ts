@@ -1,5 +1,6 @@
-// The run-status record — a future-viz-friendly mirror of the engine's `run-status.json` (run.mjs
-// schema + writeStatus 639–668), kept faithful enough that a viz/dashboard can read it unchanged.
+// The run-status record — a future-viz-friendly mirror of the engine's run-status digest (run.mjs
+// schema + writeStatus 639–668), now published as `.pi/run.json` (D7 layout) — kept faithful enough
+// that a viz/dashboard can read it unchanged.
 //
 // The status is the SINGLE source of truth a watcher polls: a node is `ok` only when its declared
 // artifacts exist ON DISK (the driver stat()s them — "verified, not trusted"). Because parallel lanes
@@ -102,8 +103,8 @@ let tmpSeq = 0;
 /**
  * Write the run status to the CANONICAL `<dir>/.pi/run.json` (D7 layout; pretty-printed; mkdir -p the
  * `.pi/` namespace first). This IS the single source of truth the observe pipeline (readRunModel /
- * watchRun) and the cli/tui consumers poll — they read `runJsonFile(dir)`, never the legacy
- * `run-status.json`. Writes to a given dir are SERIALIZED and each is ATOMIC (temp-file + rename in the
+ * watchRun) and the cli/tui consumers poll — they read `runJsonFile(dir)`, the canonical `.pi/run.json`
+ * digest. Writes to a given dir are SERIALIZED and each is ATOMIC (temp-file + rename in the
  * SAME `.pi/` dir, so the rename is intra-filesystem), so parallel lanes + a polling watcher never
  * interleave or read a torn file.
  */

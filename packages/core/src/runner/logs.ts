@@ -1,20 +1,27 @@
-// `docker logs` for a workflow run. Reads the per-node event archives (`<outDir>/_pi/<id>.events
-// .jsonl`, written by ./events.ts) + `run-status.json` and renders them as a concise, scannable
-// stream — a one-shot replay, or a live `-f` follow that attaches to the run and streams every node
-// as it advances. The DISTILLER turns the raw `pi --mode json` firehose into one line per meaningful
-// action (a tool call + its target, a thinking/text summary, errors), so a run's behaviour is legible
-// at a glance — and, crucially, a node that emits TEXT instead of CALLING a write tool (the cheap-
-// model "never-write" failure) shows up immediately as a `␃ says` line with no `▸ write` beside it.
+// `docker logs` for a workflow run. Reads the per-node event archives (the canonical
+// `.pi/nodes/<id>/events.jsonl`, written by ./events.ts) + `.pi/run.json` (the run-status digest) and
+// renders them as a concise, scannable stream — a one-shot replay, or a live `-f` follow that attaches
+// to the run and streams every node as it advances. The DISTILLER turns the raw `pi --mode json`
+// firehose into one line per meaningful action (a tool call + its target, a thinking/text summary,
+// errors), so a run's behaviour is legible at a glance — and, crucially, a node that emits TEXT instead
+// of CALLING a write tool (the cheap-model "never-write" failure) shows up immediately as a `␃ says`
+// line with no `▸ write` beside it.
+//
+// All paths come from @piflow/core's `.pi/` layout helpers (the SAME ones observe/{read,watch}.ts and
+// the NodeRecorder write side use) — one layout, one source of truth, never a hardcoded path.
 
 import { readFileSync, existsSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import path from 'node:path';
+import { nodeEventsFile, runJsonFile } from './layout.js';
 import type { PiEvent } from './events.js';
 
+/** A node's event archive — the canonical `.pi/nodes/<id>/events.jsonl` (re-export of the layout helper). */
 export function eventsPath(outDir: string, nodeId: string): string {
-  return path.join(outDir, '_pi', `${nodeId}.events.jsonl`);
+  return nodeEventsFile(outDir, nodeId);
 }
+/** The run-status digest — the canonical `.pi/run.json` (re-export of the layout helper). */
 export function statusFilePath(outDir: string): string {
-  return path.join(outDir, 'run-status.json');
+  return runJsonFile(outDir);
 }
 
 /** pi nests the per-token event either under `assistantMessageEvent` or (older) `event`. */
@@ -289,7 +296,7 @@ export async function followRun(outDir: string, opts: FollowOpts = {}): Promise<
 }
 
 // ── CLI ───────────────────────────────────────────────────────────────────────────────────────────
-// Resolve a positional that is EITHER a run dir (holds run-status.json) OR a bare run id (→ out/<id>).
+// Resolve a positional that is EITHER a run dir (holds the .pi/ layout) OR a bare run id (→ out/<id>).
 function resolveOutDir(arg: string | undefined): string {
   const a = arg && arg.trim() ? arg : '.';
   if (existsSync(statusFilePath(a))) return path.resolve(a);
@@ -317,7 +324,7 @@ export async function runLogsCli(argv: string[]): Promise<void> {
   }
   const outDir = resolveOutDir(dir);
   if (!existsSync(statusFilePath(outDir))) {
-    process.stderr.write(`piflow logs: no run-status.json under ${outDir}\n`);
+    process.stderr.write(`piflow logs: no .pi/run.json under ${outDir}\n`);
     process.exitCode = 1;
     return;
   }

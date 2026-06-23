@@ -4,17 +4,24 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { NodeRecorder, recordingSandbox, slimEvent, type PiEvent } from '../src/runner/events.js';
 import { distillEvents, parseEventsFile, eventsPath, diagnoseRun } from '../src/runner/logs.js';
+import { nodeEventsFile, runJsonFile } from '../src/runner/layout.js';
+import { existsSync } from 'node:fs';
 import { auditWorkflow } from '../src/runner/audit.js';
 import { tailAppend } from '../src/sandbox/capture.js';
 import type { Sandbox, ExecOpts, ExecResult, Workflow } from '../src/types.js';
 
-// Write a fixture run dir: run-status.json + per-node _pi/<id>.events.jsonl.
+// Write a fixture run dir on the canonical `.pi/` layout: `.pi/run.json` + per-node
+// `.pi/nodes/<id>/events.jsonl` — built through the SAME layout helpers the reader uses (never a
+// hardcoded path), so the test exercises the exact paths the engine writes.
 function fixtureRun(status: unknown, events: Record<string, PiEvent[]>): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'piflow-run-'));
-  writeFileSync(path.join(dir, 'run-status.json'), JSON.stringify(status));
-  mkdirSync(path.join(dir, '_pi'), { recursive: true });
+  const rj = runJsonFile(dir);
+  mkdirSync(path.dirname(rj), { recursive: true });
+  writeFileSync(rj, JSON.stringify(status));
   for (const [id, evs] of Object.entries(events)) {
-    writeFileSync(path.join(dir, '_pi', `${id}.events.jsonl`), evs.map((e) => JSON.stringify(e)).join('\n') + '\n');
+    const ef = nodeEventsFile(dir, id);
+    mkdirSync(path.dirname(ef), { recursive: true });
+    writeFileSync(ef, evs.map((e) => JSON.stringify(e)).join('\n') + '\n');
   }
   return dir;
 }
@@ -198,5 +205,25 @@ describe('NodeRecorder + recordingSandbox — the capture seam', () => {
     const evs = parseEventsFile(eventsPath(dir, 'n'));
     expect(evs).toHaveLength(1);
     expect(evs[0].toolName).toBe('read');
+  });
+
+  // THE write-side wiring this branch closes: the recorder must append to the CANONICAL
+  // `.pi/nodes/<id>/events.jsonl` (the SAME `nodeEventsFile` that observe/watch.ts TAILS), so a live run
+  // streams node-events end-to-end. Before the re-point the recorder wrote the legacy `_pi/<id>.events
+  // .jsonl`, which `watchRun` never reads → a permanently empty live event stream. RED until the path moves.
+  it('writes per-node events to the canonical .pi/nodes/<id>/events.jsonl (the path watchRun tails)', async () => {
+    const dir = tmp();
+    const rec = new NodeRecorder(dir, 'w0-classify');
+    rec.feedStdout('{"type":"tool_execution_start","toolName":"write","args":{"path":"spec/x.json"}}\n');
+    await rec.close();
+    // (1) the file lands at the layout helper's path — the one observe/watch.ts polls.
+    const canonical = nodeEventsFile(dir, 'w0-classify');
+    expect(existsSync(canonical)).toBe(true);
+    // (2) it is NOT at the legacy `_pi/<id>.events.jsonl` location anymore.
+    expect(existsSync(path.join(dir, '_pi', 'w0-classify.events.jsonl'))).toBe(false);
+    // (3) the content round-trips and is what the watcher would read.
+    const evs = parseEventsFile(canonical);
+    expect(evs).toHaveLength(1);
+    expect(evs[0]).toMatchObject({ type: 'tool_execution_start', toolName: 'write' });
   });
 });

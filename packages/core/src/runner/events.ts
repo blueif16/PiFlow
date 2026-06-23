@@ -1,8 +1,9 @@
 // Per-node event-stream capture — the observability backbone. The runner taps each node's agent
 // stdout (the `pi --mode json` event stream), SLIMS it (drops the heavy cumulative message
 // snapshots + truncates large tool results), stamps a node-relative clock, and appends one JSON
-// event per line to `<outDir>/_pi/<nodeId>.events.jsonl`. That archive is what makes a run
-// observable post-hoc and tail-able live (see ./logs.ts) — `docker logs` for a workflow run.
+// event per line to the canonical `.pi/nodes/<id>/events.jsonl` (the `nodeEventsFile` layout helper).
+// That archive is what makes a run observable post-hoc and tail-able live — the SAME path the shared
+// observe stream (observe/watch.ts) tails and the `piflow logs` reader (./logs.ts) replays.
 //
 // It is execRunner-AGNOSTIC: the runner wraps the Sandbox with `recordingSandbox` BEFORE handing it
 // to the (injectable) execRunner, so the tap survives any custom exec primitive. The wrap CHAINS the
@@ -11,6 +12,7 @@
 
 import { createWriteStream, mkdirSync, type WriteStream } from 'node:fs';
 import path from 'node:path';
+import { nodeEventsFile } from './layout.js';
 import type { Sandbox, ExecOpts, ExecResult, ProcessHandle } from '../types.js';
 
 /** A pi `--mode json` event — loosely shaped on purpose (we forward, we don't own the schema). */
@@ -108,9 +110,12 @@ export class NodeRecorder {
 
   private ensure(): WriteStream {
     if (this.stream) return this.stream;
-    const dir = path.join(this.outDir, '_pi');
-    mkdirSync(dir, { recursive: true });
-    this.stream = createWriteStream(path.join(dir, `${this.nodeId}.events.jsonl`));
+    // Append to the CANONICAL `.pi/nodes/<id>/events.jsonl` — the SAME `nodeEventsFile` path
+    // observe/watch.ts tails — so a live run streams node-events end-to-end (closing the write side
+    // that writeStatus already opened for `.pi/run.json`).
+    const file = nodeEventsFile(this.outDir, this.nodeId);
+    mkdirSync(path.dirname(file), { recursive: true });
+    this.stream = createWriteStream(file);
     return this.stream;
   }
 
