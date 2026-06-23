@@ -57,6 +57,40 @@ describe('DRIVER-* marker codec', () => {
     const prompt = `DRIVER-CHECKS: [{"kind":"non-empty","path":"out/a.json"}]`;
     expect(parseMarkers(prompt)).toEqual({ checks: [{ kind: 'non-empty', path: 'out/a.json' }] });
   });
+
+  // U7 — the `promote` POST-op marker (DRIVER-PROMOTE), a sibling of DRIVER-SEED. One line per promote:
+  // `DRIVER-PROMOTE: <channel> <= <from> [merge=<reducer>]`. The default reducer is `set` (omitted on emit).
+  it('round-trips DRIVER-PROMOTE markers (artifact + @return sources, all three reducers)', () => {
+    const m: ContractMarkers = {
+      artifacts: ['spec/classification.json'],
+      promote: [
+        { from: 'spec/classification.json:archetype', to: 'archetype', merge: 'set' },
+        { from: '@return:milestones', to: 'milestones', merge: 'append' },
+        { from: '@return:cfg', to: 'cfg', merge: 'deepMerge' },
+      ],
+    };
+    expect(parseMarkers(emitMarkers(m))).toEqual(m);
+  });
+
+  it('DRIVER-PROMOTE defaults an omitted reducer to set on parse', () => {
+    // The W0 canonical case: `promote: [{ from: 'spec/classification.json:archetype', to: 'archetype' }]`.
+    const parsed = parseMarkers('DRIVER-PROMOTE: archetype <= spec/classification.json:archetype');
+    expect(parsed.promote).toEqual([
+      { from: 'spec/classification.json:archetype', to: 'archetype', merge: 'set' },
+    ]);
+  });
+
+  it('emitMarkers omits merge=set (the default) but emits an explicit append/deepMerge', () => {
+    const out = emitMarkers({
+      promote: [
+        { from: 'a.json:x', to: 'x', merge: 'set' },
+        { from: '@return:y', to: 'y', merge: 'append' },
+      ],
+    });
+    expect(out).toContain('DRIVER-PROMOTE: x <= a.json:x');
+    expect(out).not.toContain('x <= a.json:x merge=set'); // default reducer not written
+    expect(out).toContain('DRIVER-PROMOTE: y <= @return:y merge=append');
+  });
 });
 
 describe('markersFromNode', () => {

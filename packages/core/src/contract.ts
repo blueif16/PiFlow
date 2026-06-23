@@ -2,7 +2,8 @@
 // reads to learn the node's artifacts / owned paths / read-scope / tools / seeds. Ported from the
 // `run.mjs` marker grammar; round-trippable (emit → parse → emit).
 
-import type { NodeSpec, ResolveResult, Check, ChecksPrePost, Policy, ReturnMode } from './types.js';
+import type { NodeSpec, ResolveResult, Check, ChecksPrePost, Policy, ReturnMode, Reducer } from './types.js';
+import type { PromoteSpec } from './workflow/ops/promote.js';
 
 // ── POLICY VOCABULARY (decided T3) ─────────────────────────────────────────────────────────────────
 // The §3-prose policy actions (`block | retry | escalate`) and the RUNTIME `PolicyAction` enum
@@ -23,6 +24,12 @@ export interface ContractMarkers {
   tools?: string[];
   excludeTools?: string[];
   seed?: { to: string; from: string }[];
+  /**
+   * The U7 `promote` POST-op (D6): lift a node output into a RunState channel via the channel reducer.
+   * Emitted one-per-line as `DRIVER-PROMOTE: <to> <= <from> [merge=<reducer>]` (the default `set` reducer
+   * is omitted). The driver runs these AFTER the node and merges each into `${RUN}/.pi/state.json`.
+   */
+  promote?: PromoteSpec[];
   schema?: { path: string; schema: string }[];
   /** Declarative integrity checks (detection). Carried base64-on-one-line to hold arbitrary regex/params. */
   checks?: Check[];
@@ -83,6 +90,20 @@ function parseArrow(s: string): { to: string; from: string } | null {
   return m ? { to: m[1].trim(), from: m[2].trim() } : null;
 }
 
+const REDUCERS = new Set<Reducer>(['set', 'append', 'deepMerge']);
+
+/** Parse one `DRIVER-PROMOTE: <to> <= <from> [merge=<reducer>]` line into a PromoteSpec (default merge=set). */
+function parsePromoteLine(s: string): PromoteSpec | null {
+  const a = parseArrow(s);
+  if (!a) return null;
+  // The `from` carries an optional trailing ` merge=<reducer>` — split it off (the `from` itself may hold a
+  // colon, e.g. `spec/x.json:archetype`, so anchor on the ` merge=` suffix, not the first token).
+  const mm = a.from.match(/^(.*?)\s+merge=([A-Za-z]+)\s*$/);
+  const from = (mm ? mm[1] : a.from).trim();
+  const reducer = mm && REDUCERS.has(mm[2] as Reducer) ? (mm[2] as Reducer) : 'set';
+  return { to: a.to, from, merge: reducer };
+}
+
 /** Render markers to text (the block appended to a node prompt). */
 export function emitMarkers(m: ContractMarkers): string {
   const lines: string[] = [];
@@ -92,6 +113,8 @@ export function emitMarkers(m: ContractMarkers): string {
   if (m.tools?.length) lines.push(`DRIVER-TOOLS: ${m.tools.join(',')}`);
   if (m.excludeTools?.length) lines.push(`DRIVER-EXCLUDE-TOOLS: ${m.excludeTools.join(',')}`);
   for (const s of m.seed ?? []) lines.push(`DRIVER-SEED: ${s.to} <= ${s.from}`);
+  for (const p of m.promote ?? [])
+    lines.push(`DRIVER-PROMOTE: ${p.to} <= ${p.from}${p.merge && p.merge !== 'set' ? ` merge=${p.merge}` : ''}`);
   for (const s of m.schema ?? []) lines.push(`DRIVER-SCHEMA: ${s.path} <= ${s.schema}`);
   if (m.checks?.length) lines.push(`DRIVER-CHECKS: ${encodeB64(m.checks)}`);
   if (m.checksPrePost && (m.checksPrePost.pre?.length || m.checksPrePost.post?.length))
@@ -121,6 +144,10 @@ export function parseMarkers(prompt: string): ContractMarkers {
     .map(parseArrow)
     .filter((x): x is { to: string; from: string } => x !== null);
   if (seeds.length) out.seed = seeds;
+  const promotes = allValues(prompt, 'DRIVER-PROMOTE')
+    .map(parsePromoteLine)
+    .filter((x): x is PromoteSpec => x !== null);
+  if (promotes.length) out.promote = promotes;
   const schemas = allValues(prompt, 'DRIVER-SCHEMA')
     .map(parseArrow)
     .map((a) => (a ? { path: a.to, schema: a.from } : null))

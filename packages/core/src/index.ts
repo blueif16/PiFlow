@@ -44,6 +44,12 @@ export type { ProjectionResult } from './workflow/ops/project.js';
 export { applyMergeOp, runMerge } from './workflow/ops/merge.js';
 export type { MergeResult, MergeSpec } from './workflow/ops/merge.js';
 
+// U7 — the `promote` POST-op (lift a node output into a RunState channel via the reducer) + the
+// stage-barrier merge (serial+deterministic parallel-promote merge; a `set` channel with two concurrent
+// writers is a flagged ConflictError — LangGraph InvalidUpdateError semantics).
+export { parsePromote, extractPromoteValue, applyPromotes, barrierMerge, ConflictError } from './workflow/ops/promote.js';
+export type { PromoteSpec, ResolvedPromote, PromoteCtx, NodeUpdate } from './workflow/ops/promote.js';
+
 // Contract-marker codec (DRIVER-*)
 export { emitMarkers, parseMarkers, markersFromNode } from './contract.js';
 export type { ContractMarkers } from './contract.js';

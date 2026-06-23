@@ -75,3 +75,18 @@ describe('resolveAll — uniform application across a marker list', () => {
     ]);
   });
 });
+
+describe('relocation-invariance — the resolver SUPERSEDES the retired BASE_ROOT→wtRoot regex', () => {
+  it('the SAME {{RUN}}/{{WORKSPACE}} markers resolve under two DIFFERENT physical roots — no text rewrite', () => {
+    // The retired model re-rooted a worktree thread with a `BASE_ROOT→wtRoot` string regex on the prompt
+    // (which broke on relative / remote paths). Here the IDENTICAL marker set resolves correctly whether the
+    // thread runs IN-PLACE or relocated to a worktree/remote root — re-rooting is just "resolve two roots".
+    const markers = ['{{RUN}}/spec/blueprint.json', '{{WORKSPACE}}/templates/genres.json'];
+    const inPlace = resolveAll(markers, { run: '/repo/out/game', workspace: '/repo' });
+    const worktree = resolveAll(markers, { run: '/wt/pi-abc/out/game', workspace: '/wt/pi-abc' });
+    const remote = resolveAll(markers, { run: '/vm/run', workspace: '/vm/canon' });
+    expect(inPlace).toEqual(['/repo/out/game/spec/blueprint.json', '/repo/templates/genres.json']);
+    expect(worktree).toEqual(['/wt/pi-abc/out/game/spec/blueprint.json', '/wt/pi-abc/templates/genres.json']);
+    expect(remote).toEqual(['/vm/run/spec/blueprint.json', '/vm/canon/templates/genres.json']);
+  });
+});

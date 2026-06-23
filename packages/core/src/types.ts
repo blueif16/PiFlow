@@ -324,8 +324,11 @@ export interface Sandbox {
 /**
  * Run-level context for a provider that shares ONE backing resource across all of a run's nodes
  * (a git worktree, a cloud VM). The per-node `CreateOpts` carries no run identity; this supplies it.
- * `run` names the branch/dir/VM label, `repoRoot` is the base checkout the resource is seeded from
- * AND the anchor a worktree provider rewrites node-prompt paths against (`BASE_ROOT→worktree`).
+ * `run` names the branch/dir/VM label, `repoRoot` is the base checkout the resource is seeded from.
+ * (Historically `repoRoot` was also the anchor for a `BASE_ROOT→worktree` prompt-path text-rewrite; that
+ * string-regex re-rooting is RETIRED by the U7 logical-root resolver — a `{{RUN}}`/`{{WORKSPACE}}`-rooted
+ * reference is relocation-invariant by construction, so a provider only resolves the two roots, never
+ * rewrites prompts. See `workflow/resolver.ts`.)
  */
 export interface OpenRunOpts {
   /** Stable run id — names branch `pi/<run>`, `.pi-worktrees/<run>`, or the cloud VM label. */
