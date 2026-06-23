@@ -20,11 +20,14 @@
 // loud-throwing stub so any unexpected reach surfaces instead of silently no-oping. Later steps
 // (S1 breadth, S2 provider-wire, S3 the `runEmbeddedAgent` seam) extend this same driver.
 
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { type SecretResolver, defaultSecretResolver } from '../types.js';
+import { defaultPiCommand } from '../runner/command.js';
+import { type NodeSpec, type ResolveResult, type SecretResolver, defaultSecretResolver } from '../types.js';
 import { resolveEntry, type OpenClawPluginEntry } from './openclaw-shim.js';
 
 /** A captured `registerTool` call: the FACTORY `(ctx) => tool` and the opts (e.g. `{ names: [...] }`). */
@@ -92,6 +95,13 @@ export interface HostOpenClawToolParams {
    * route is skipped (the tool then hits its own "needs a key" gate, never a fabricated value).
    */
   secretResolver?: SecretResolver;
+  /**
+   * The INJECTABLE pi-spawn seam used by `runtime.agent.runEmbeddedAgent` (S3). The default
+   * (`defaultRunPiCommand`) really spawns the nested headless pi; a test injects a fake that returns a
+   * recorded-shape pi stdout so the deterministic case never spawns a subprocess. Only consumed by tools
+   * whose execute reaches `runEmbeddedAgent` (e.g. `llm-task`); keyless tools never touch it.
+   */
+  runPiCommand?: RunPiCommand;
 }
 
 const noop = (): void => {};
@@ -181,13 +191,227 @@ function loudRuntimeStub(pathSoFar: string): unknown {
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// S3 — THE AGENT SEAM. `runtime.agent.runEmbeddedAgent` is the ONE deep-runtime service an OpenClaw tool
+// (`llm-task`) reaches at EXECUTE time. The doc's "no duplicate runtime" claim (openclaw-substrate-
+// adoption.md "Wiring plan"): pi supplies the agent loop; we translate ONLY at this seam. We DROP
+// OpenClaw's internalized `embedded-agent-*.js` loop entirely and bind the seam to the SAME headless pi CLI
+// the runner already shells out to (`defaultPiCommand`, runner/command.ts:53) — a nested pi run, parsed
+// back into OpenClaw's `EmbeddedAgentRunResult` shape. CLI-backed (doc S3 option B): zero new deps.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The subset of OpenClaw `RunEmbeddedAgentParams` the adapter consumes (llm-task uses ~13 of ~150). */
+export interface RunEmbeddedAgentParamsSubset {
+  prompt: string;
+  /** The agent workspace; used as the nested pi run's cwd. */
+  workspaceDir?: string;
+  /** Pin the model (`pi --model`). When absent, pi's provider default is used. */
+  model?: string;
+  /** Provider for `pi --provider` (default 'cp', matching the runner). */
+  provider?: string;
+  /** Hard wall-clock cap for the nested run (ms). */
+  timeoutMs?: number;
+  /** llm-task always passes `true` (LLM-only). True ⇒ NO `--tools` flag on the nested pi. */
+  disableTools?: boolean;
+  // The rest of RunEmbeddedAgentParams (sessionId/sessionFile/runId/streamParams/…) is accepted but unused
+  // by the CLI-backed adapter — pi owns the session lifecycle internally.
+  [k: string]: unknown;
+}
+
+/** The `{ text?, isError?, isReasoning?, mediaUrl? }` payloads + `meta` shape llm-task reads (and the SDK). */
+export interface EmbeddedAgentRunResultShape {
+  payloads?: Array<{ text?: string; isError?: boolean; isReasoning?: boolean; mediaUrl?: string }>;
+  meta: { durationMs: number; [k: string]: unknown };
+}
+
+/**
+ * The INJECTABLE pi-spawn seam. Runs the headless pi `command` (built by the adapter) and returns its
+ * buffered result. The DEFAULT (`defaultRunPiCommand`) is a real `child_process.spawn` under `shell: true`
+ * with a hard timeout; a test supplies a fake that returns a recorded-shape pi stdout. This is the SAME
+ * boundary the runner's `ExecRunner` isolates — kept as its own seam so the deterministic test never
+ * spawns a real subprocess.
+ */
+export type RunPiCommand = (req: {
+  command: string;
+  cwd: string;
+  timeoutMs: number;
+}) => Promise<{ stdout: string; stderr: string; code: number | null }>;
+
+/** The real pi-spawn: run `command` under a shell with a hard timeout; buffer stdout/stderr. */
+export const defaultRunPiCommand: RunPiCommand = (req) =>
+  new Promise((resolveP) => {
+    const child = spawn(req.command, {
+      cwd: req.cwd,
+      shell: true,
+      stdio: ['ignore', 'pipe', 'pipe'], // closed stdin (a headless CLI with an open stdin + no TTY hangs)
+    });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const settle = (code: number | null): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolveP({ stdout, stderr, code });
+    };
+    const timer = setTimeout(() => {
+      try { child.kill('SIGKILL'); } catch { /* no-op */ }
+      settle(124); // timeout exit, matching the runner's watchdog convention
+    }, req.timeoutMs);
+    timer.unref?.();
+    child.stdout?.on('data', (d) => { stdout += d; });
+    child.stderr?.on('data', (d) => { stderr += d; });
+    child.on('error', (e) => { stderr += String(e); settle(1); });
+    child.on('close', (code) => settle(code));
+  });
+
+/**
+ * Extract the FINAL assistant text from pi's `--mode json` stdout (a per-line JSON event stream — recorded
+ * shape: session → agent_start → … → message_end/turn_end/agent_end, each carrying an assistant `message`
+ * whose `content[]` mixes `{type:'thinking'}` and `{type:'text'}` parts). We take the LAST event that
+ * carries a full assistant message and join its `text` parts (excluding `thinking`) — that is the model's
+ * answer. This is NOT the runner's `lastJsonBlock` (which recovers a `{status,summary}` return-handshake);
+ * llm-task wants the model's RAW text answer (a bare JSON value), so the two parsers are deliberately
+ * distinct. Returns '' when no assistant text is present.
+ */
+export function finalAssistantTextFromPiJson(stdout: string): string {
+  if (!stdout) return '';
+  let lastText = '';
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let ev: unknown;
+    try { ev = JSON.parse(trimmed); } catch { continue; } // tolerate non-JSON noise lines
+    // A complete assistant message can live on `message` (message_end/turn_end) or the last of `messages`
+    // (agent_end). Prefer whichever the line carries; later lines overwrite earlier (terminal wins).
+    const msg = pickAssistantMessage(ev);
+    if (!msg) continue;
+    const content = (msg as { content?: unknown }).content;
+    if (!Array.isArray(content)) continue;
+    const text = content
+      .filter((p): p is { type?: string; text?: string } => Boolean(p) && typeof p === 'object')
+      .filter((p) => p.type === 'text' && typeof p.text === 'string')
+      .map((p) => p.text as string)
+      .join('');
+    if (text) lastText = text;
+  }
+  return lastText.trim();
+}
+
+/** From one pi event, return the assistant `message` it carries (from `message` or last of `messages`), if any. */
+function pickAssistantMessage(ev: unknown): unknown {
+  if (!ev || typeof ev !== 'object') return undefined;
+  const e = ev as { message?: unknown; messages?: unknown };
+  const isAssistant = (m: unknown): boolean =>
+    Boolean(m) && typeof m === 'object' && (m as { role?: unknown }).role === 'assistant';
+  if (isAssistant(e.message)) return e.message;
+  if (Array.isArray(e.messages)) {
+    for (let i = e.messages.length - 1; i >= 0; i--) if (isAssistant(e.messages[i])) return e.messages[i];
+  }
+  return undefined;
+}
+
+/**
+ * THE ADAPTER. Map an OpenClaw `runEmbeddedAgent` call → a nested headless `pi` run → an
+ * `EmbeddedAgentRunResult`. Stage `prompt` as a `@file`, build the command with the runner's
+ * `defaultPiCommand` (reused — NOT re-implemented; `disableTools` ⇒ no `--tools`), run it via the injectable
+ * `runPi`, parse the final assistant text out of pi's JSON event stream → `payloads:[{text}]`. On a non-zero
+ * exit OR an unparseable/empty stream, return `payloads:[{ text:<diagnostic>, isError:true }]` (NOT a throw
+ * that crashes the tool) so the caller (llm-task) sees a structured error. `meta.durationMs` is always set.
+ */
+export async function runEmbeddedAgentViaPi(
+  params: RunEmbeddedAgentParamsSubset,
+  runPi: RunPiCommand = defaultRunPiCommand,
+): Promise<EmbeddedAgentRunResultShape> {
+  const t0 = Date.now();
+  const provider = typeof params.provider === 'string' && params.provider ? params.provider : 'cp';
+  const timeoutMs = typeof params.timeoutMs === 'number' && params.timeoutMs > 0 ? params.timeoutMs : 1_800_000;
+
+  const err = (text: string): EmbeddedAgentRunResultShape => ({
+    payloads: [{ text, isError: true }],
+    meta: { durationMs: Date.now() - t0 },
+  });
+
+  // Stage the prompt into a temp dir so the nested pi reads it as `@<file>` (a headless invariant — multi-KB
+  // prompts are robust as a file ref, brittle as an argv string). Cleaned up in `finally`.
+  const stageDir = mkdtempSync(join(tmpdir(), 'oc-s3-embed-'));
+  const promptFile = join(stageDir, 'prompt.md');
+  // cwd for the nested run: the agent workspace IF it exists on disk, else the stage dir (a missing
+  // workspaceDir must NOT crash the run — an LLM-only nested pi reads only the staged prompt, and
+  // `spawn` ENOENTs instantly on a non-existent cwd). llm-task derives workspaceDir from config and the
+  // host's tests pass throwaway `/tmp/...` paths that need not exist, so we degrade gracefully.
+  const cwd =
+    params.workspaceDir && params.workspaceDir.length && existsSync(params.workspaceDir)
+      ? params.workspaceDir
+      : stageDir;
+  try {
+    writeFileSync(promptFile, params.prompt ?? '', 'utf8');
+
+    // Reuse the runner's command builder. `disableTools` ⇒ no selected tools ⇒ no `-e`, no `--tools`. We feed
+    // a minimal synthetic node/resolved (the builder reads only `resolved.piTools` + `ctx`).
+    const node = {} as unknown as NodeSpec;
+    const resolved: ResolveResult = { piTools: [] };
+    const command = defaultPiCommand(node, resolved, {
+      promptFile,
+      model: typeof params.model === 'string' && params.model ? params.model : undefined,
+      provider,
+    });
+
+    const { stdout, stderr, code } = await runPi({ command, cwd, timeoutMs });
+    if (code !== 0) {
+      return err(`pi exited ${code ?? 'null'}${stderr ? `: ${stderr.trim().slice(-400)}` : ''}`);
+    }
+    const text = finalAssistantTextFromPiJson(stdout);
+    if (!text) {
+      return err(`pi produced no assistant text${stderr ? `: ${stderr.trim().slice(-400)}` : ''}`);
+    }
+    return { payloads: [{ text }], meta: { durationMs: Date.now() - t0 } };
+  } catch (e) {
+    return err(`runEmbeddedAgent adapter failed: ${(e as Error).message}`);
+  } finally {
+    try { rmSync(stageDir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }
+  }
+}
+
+/**
+ * Build the `runtime.agent` object: `runEmbeddedAgent` bound to the pi adapter (closing over the injectable
+ * `runPi`), and EVERYTHING ELSE a loud-throwing stub (`runtime.agent.subagent`, `session.*`, `defaults`,
+ * `resolveThinkingPolicy`, …). S3 wires exactly ONE method — an un-wired reach still surfaces its exact path.
+ */
+function makeRuntimeAgent(runPi: RunPiCommand): unknown {
+  const runEmbeddedAgent = (params: RunEmbeddedAgentParamsSubset): Promise<EmbeddedAgentRunResultShape> =>
+    runEmbeddedAgentViaPi(params, runPi);
+  return new Proxy(
+    () => {
+      throw new Error('openclaw-host: unsupported runtime call `runtime.agent()` (only runEmbeddedAgent is wired)');
+    },
+    {
+      get(_t, prop) {
+        if (prop === 'runEmbeddedAgent') return runEmbeddedAgent;
+        if (typeof prop === 'symbol') return undefined;
+        // Anything else under runtime.agent.* throws loudly with its path (S3 scope: one method only).
+        return loudRuntimeStub(`runtime.agent.${String(prop)}`);
+      },
+    },
+  );
+}
+
+/** Test-only constructor for the wired `runtime.agent` object (so a test can assert the loud-throw guard). */
+export function makeRuntimeAgentForTest(runPi: RunPiCommand): unknown {
+  return makeRuntimeAgent(runPi);
+}
+
 /**
  * Build the host `api` an OpenClaw plugin's `register(api)` receives, plus the `captured` factories its
  * `registerTool` pushes into. The `runtime` is real where `memory-core` needs it at register time
- * (`state.openKeyedStore`, `config.current`) and a loud-throwing stub elsewhere. Every non-tool
- * registration verb is a graceful no-op (per the doc: stubbing them still registers + runs the tool).
+ * (`state.openKeyedStore`, `config.current`) and a loud-throwing stub elsewhere — EXCEPT `runtime.agent`,
+ * whose `runEmbeddedAgent` is now bound to the pi adapter (S3). Every non-tool registration verb is a
+ * graceful no-op (per the doc: stubbing them still registers + runs the tool).
  */
-function makeHostApi(cfg: Record<string, unknown>): { api: Record<string, unknown>; captured: CapturedFactory[] } {
+function makeHostApi(
+  cfg: Record<string, unknown>,
+  runPi: RunPiCommand = defaultRunPiCommand,
+): { api: Record<string, unknown>; captured: CapturedFactory[] } {
   const captured: CapturedFactory[] = [];
   const logger = { info: noop, warn: noop, error: noop, debug: noop, log: noop };
 
@@ -197,8 +421,10 @@ function makeHostApi(cfg: Record<string, unknown>): { api: Record<string, unknow
       openSyncKeyedStore: () => makeInMemoryKeyedStore(),
     },
     config: { current: () => cfg },
+    // S3: `runtime.agent.runEmbeddedAgent` is bound to the pi adapter; every OTHER `runtime.agent.*` path
+    // (subagent/session/defaults/resolveThinkingPolicy/…) still throws loudly with its exact path.
+    agent: makeRuntimeAgent(runPi),
     // Anything else under runtime.* that a plugin reaches throws loudly with its path.
-    agent: loudRuntimeStub('runtime.agent'),
     subagent: loudRuntimeStub('runtime.subagent'),
   };
 
@@ -284,7 +510,7 @@ export async function hostOpenClawTool(args: HostOpenClawToolParams): Promise<un
     );
   }
 
-  const { api, captured } = makeHostApi(cfg);
+  const { api, captured } = makeHostApi(cfg, args.runPiCommand ?? defaultRunPiCommand);
 
   // 1. Run the plugin's real register(api) — synchronous; stores factories + capability/embedding/CLI.
   entry.register(api as never);
