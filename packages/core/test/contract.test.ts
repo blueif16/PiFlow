@@ -26,6 +26,18 @@ describe('DRIVER-* marker codec', () => {
     expect(parseMarkers(prompt)).toEqual({ artifacts: ['out/x.json'], tools: ['read', 'write'] });
   });
 
+  // DRIVER-TOOLS is authored SPACE-separated in the wild (run.mjs's markerPaths splits on whitespace,
+  // like every other DRIVER-* marker), not just comma. Parsing it comma-only collapses the whole list
+  // to ONE token → pi binds only the first tool and treats the rest as positional args → the node can't
+  // write → the gate-3 W0 "never-write". The parser must tokenize on whitespace AND comma.
+  it('tokenizes DRIVER-TOOLS on whitespace as well as commas', () => {
+    expect(parseMarkers('DRIVER-TOOLS: read ls write bash submit_result').tools)
+      .toEqual(['read', 'ls', 'write', 'bash', 'submit_result']);
+    expect(parseMarkers('DRIVER-EXCLUDE-TOOLS: write   bash').excludeTools).toEqual(['write', 'bash']);
+    // mixed / comma still works (emitMarkers writes commas) — round-trip preserved
+    expect(parseMarkers('DRIVER-TOOLS: read, ls,  bash').tools).toEqual(['read', 'ls', 'bash']);
+  });
+
   it('round-trips the unified-contract markers (checks/policy/returnMode/fillSentinel)', () => {
     const m: ContractMarkers = {
       artifacts: ['spec/blueprint.json'],

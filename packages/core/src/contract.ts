@@ -25,6 +25,11 @@ export interface ContractMarkers {
 
 const spaceList = (s: string): string[] => s.split(/\s+/).filter(Boolean);
 const commaList = (s: string): string[] => s.split(',').map((x) => x.trim()).filter(Boolean);
+// Tools are authored either comma- OR space-separated (emitMarkers writes commas; hand-authored
+// workflows + run.mjs's markerPaths use whitespace, like every other DRIVER-* marker). Tokenize on
+// BOTH so a space-separated `DRIVER-TOOLS: read write bash` doesn't collapse to one token (which makes
+// pi bind only the first tool and treat the rest as positional args — the gate-3 W0 never-write).
+const tokenList = (s: string): string[] => s.split(/[\s,]+/).filter(Boolean);
 
 /** Encode a JSON value as base64-on-one-line (collision-free: holds regex/params/spaces). */
 const encodeB64 = (v: unknown): string => Buffer.from(JSON.stringify(v), 'utf8').toString('base64');
@@ -84,9 +89,9 @@ export function parseMarkers(prompt: string): ContractMarkers {
   const rs = firstValue(prompt, 'DRIVER-READ-SCOPE');
   if (rs !== null) out.readScope = spaceList(rs);
   const tools = firstValue(prompt, 'DRIVER-TOOLS');
-  if (tools !== null) out.tools = commaList(tools);
+  if (tools !== null) out.tools = tokenList(tools);
   const ex = firstValue(prompt, 'DRIVER-EXCLUDE-TOOLS');
-  if (ex !== null) out.excludeTools = commaList(ex);
+  if (ex !== null) out.excludeTools = tokenList(ex);
   const seeds = allValues(prompt, 'DRIVER-SEED')
     .map(parseArrow)
     .filter((x): x is { to: string; from: string } => x !== null);
