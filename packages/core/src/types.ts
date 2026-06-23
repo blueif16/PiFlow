@@ -356,6 +356,11 @@ export interface ResolveResult {
    * are selected (pi exposes those natively, so no extension is needed).
    */
   extension?: string;
+  /**
+   * Bare names pi should EXCLUDE — derived from the selection's deny list (the command builder emits
+   * these as `--exclude-tools`). Undefined/absent when nothing is denied.
+   */
+  excludeTools?: string[];
 }
 
 /** The catalog: register tools, resolve a selection to pi flags, search, and enumerate. */

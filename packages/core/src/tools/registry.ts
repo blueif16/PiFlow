@@ -20,6 +20,11 @@ export const BUILTIN_TOOLS: ToolEntry[] = [
 export class DefaultToolRegistry implements ToolRegistry {
   private readonly byAddress = new Map<string, ToolEntry>();
   private readonly piNames = new Set<string>();
+  // Bare-name index: a builtin's bare `piName` (the name pi sees, e.g. `read`) aliases to its entry, so
+  // a marker-authored selection — `parseMarkers` writes BARE names into `tools.allow` — resolves WITHOUT
+  // a `namespace:` address. Builtins only: sdk/mcp bare names are conflict-prefixed and not the marker
+  // vocabulary, so they keep requiring their `ns:name` address.
+  private readonly builtinByPiName = new Map<string, ToolEntry>();
 
   constructor(seed: ToolEntry[] = BUILTIN_TOOLS) {
     for (const e of seed) this.register(e);
@@ -33,22 +38,36 @@ export class DefaultToolRegistry implements ToolRegistry {
     if (entry.source !== 'builtin' && collides) {
       piName = `${entry.source}_${piName}`.replace(/[^a-zA-Z0-9_]/g, '_');
     }
-    if (existing) this.piNames.delete(existing.piName);
+    if (existing) {
+      this.piNames.delete(existing.piName);
+      if (existing.source === 'builtin') this.builtinByPiName.delete(existing.piName);
+    }
     const stored: ToolEntry = { ...entry, piName };
     this.byAddress.set(stored.address, stored);
     this.piNames.add(piName);
+    if (stored.source === 'builtin') this.builtinByPiName.set(stored.piName, stored);
+  }
+
+  /** Resolve one selection token to its entry: a `namespace:name` address, or a BARE builtin piName. */
+  private entryFor(token: string): ToolEntry | undefined {
+    return this.byAddress.get(token) ?? this.builtinByPiName.get(token);
   }
 
   resolve(sel: ToolSelection): ResolveResult {
     const allow = sel.allow && sel.allow.length ? sel.allow : BUILTIN_TOOLS.map((t) => t.address);
-    const deny = new Set(sel.deny ?? []);
+    const denyTokens = sel.deny ?? [];
+    // A deny token is itself a bare-or-namespaced address; match it against an allow token's entry by the
+    // entry it resolves to, so `deny:['edit']` removes `fs:edit` (and vice versa) — they alias one tool.
+    const deny = new Set(denyTokens);
+    const denyEntries = new Set(denyTokens.map((t) => this.entryFor(t)?.address).filter(Boolean) as string[]);
     const piTools: string[] = [];
     const nonBuiltin: ToolEntry[] = [];
     const seenNonBuiltin = new Set<string>();
     for (const address of allow) {
       if (deny.has(address)) continue;
-      const e = this.byAddress.get(address);
+      const e = this.entryFor(address);
       if (!e) throw new Error(`unknown tool address: "${address}" (register it before resolving)`);
+      if (denyEntries.has(e.address)) continue;
       if (!piTools.includes(e.piName)) piTools.push(e.piName);
       if (e.source !== 'builtin' && !seenNonBuiltin.has(e.address)) {
         seenNonBuiltin.add(e.address);
@@ -56,6 +75,14 @@ export class DefaultToolRegistry implements ToolRegistry {
       }
     }
     const result: ResolveResult = { piTools };
+    // The deny list is the run's exclude set — surfaced as the bare names pi excludes (`--exclude-tools`,
+    // emitted downstream by the command builder). Map each denied token to the bare piName it denies.
+    const excludeTools: string[] = [];
+    for (const t of denyTokens) {
+      const bare = this.entryFor(t)?.piName ?? t;
+      if (!excludeTools.includes(bare)) excludeTools.push(bare);
+    }
+    if (excludeTools.length) result.excludeTools = excludeTools;
     // sdk/mcp tools have no native pi support — compile a generated `-e` extension that binds them, then
     // BUNDLE it host-side (esbuild buildSync — `resolve` stays SYNC) into ONE self-contained ESM file so
     // the bridge/SDK/plugin/shim are INLINED and the staged `_pi/tools.ts` resolves on every provider

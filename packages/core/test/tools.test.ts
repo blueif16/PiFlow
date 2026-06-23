@@ -1,10 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { DefaultToolRegistry } from '../src/index.js';
+import { DefaultToolRegistry, verifyToolBinding, BUILTIN_TOOLS } from '../src/index.js';
 
 describe('DefaultToolRegistry.resolve', () => {
   it('maps builtin addresses to bare pi names', () => {
     const r = new DefaultToolRegistry();
     expect(r.resolve({ allow: ['fs:read', 'sh:bash'] })).toEqual({ piTools: ['read', 'bash'] });
+  });
+
+  it('resolves BARE pi builtin names (marker-authored allow) without throwing', () => {
+    const r = new DefaultToolRegistry();
+    // parseMarkers writes bare names (`read`,`write`) into node.tools.allow — not `fs:read`.
+    expect(() => r.resolve({ allow: ['read', 'write'] })).not.toThrow();
+    const piTools = r.resolve({ allow: ['read', 'write'] }).piTools;
+    expect(piTools).toContain('read');
+    expect(piTools).toContain('write');
+  });
+
+  it('aliases a bare name to the SAME tool the namespaced address resolves to', () => {
+    const r = new DefaultToolRegistry();
+    expect(r.resolve({ allow: ['bash'] }).piTools).toEqual(r.resolve({ allow: ['sh:bash'] }).piTools);
   });
 
   it('applies deny after allow', () => {
@@ -41,6 +55,27 @@ describe('DefaultToolRegistry.resolve', () => {
   it('emits NO extension when a selection is all builtins', () => {
     const r = new DefaultToolRegistry();
     expect(r.resolve({ allow: ['fs:read', 'sh:bash'] }).extension).toBeUndefined();
+  });
+
+  it('returns excludeTools derived from the deny list', () => {
+    const r = new DefaultToolRegistry();
+    const res = r.resolve({ allow: ['read', 'write', 'edit'], deny: ['edit'] });
+    expect(res.excludeTools).toContain('edit');
+    expect(res.piTools).not.toContain('edit');
+  });
+
+  it('leaves excludeTools empty/undefined when nothing is denied', () => {
+    const r = new DefaultToolRegistry();
+    const res = r.resolve({ allow: ['read', 'write'] });
+    expect(res.excludeTools ?? []).toEqual([]);
+  });
+});
+
+describe('verifyToolBinding (bare builtins)', () => {
+  it('passes for a node whose allow is bare builtin names', () => {
+    const report = verifyToolBinding({ allow: ['read', 'write', 'bash'] }, BUILTIN_TOOLS);
+    expect(report.ok).toBe(true);
+    expect(report.missing).toEqual([]);
   });
 });
 
