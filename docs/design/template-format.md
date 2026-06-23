@@ -16,10 +16,12 @@ seed.
 ## 2. On-disk layout (`.piflow/<wf>/template/`)
 ```
 template/
-  workflow.json            # the DAG manifest (§5)
+  workflow.json            # the THIN authored header (§5): id · meta · phase order — NOT the edges
   refs.json                # workspace refs (optional): skills dirs, registry paths, product-scaffold source
+  scripts/                 # optional: workflow-specific programmatic code (custom ops/checks/importers),
+                           #   referenced by node.json. Travels WITH the template; generic ops live in @piflow/core.
   nodes/<id>/              # the COPYABLE per-node skeleton — IDENTICAL shape to the runtime folder
-    node.json              # the node definition (§3): deps · tools · mcp · contract · hooks (one file, §11)
+    node.json              # the node definition (§3): deps · tools · mcp · contract · checks · policy · hooks (ONE file, §11)
     prompt.md              # the prompt TEMPLATE: prose body + ${WORKSPACE}/${RUN}/${state.*} tokens + a skill pointer
     io.json                # run-only stub, ships EMPTY ({}) so the cp brings it (§10 bucket 4)
     events.jsonl           # run-only stub, ships EMPTY
@@ -34,53 +36,79 @@ run is a near-literal copy. The empty `io.json`/`events.jsonl`/`state.json` stub
 {
   "id": "w1-design",
   "phase": "design",
-  "deps": ["w0-classify"],                 // DAG edges (§5). disjoint `owns` + same deps ⇒ a parallel lane
+  "deps": ["w0-classify"],                 // THE edges — SINGLE SOURCE (§5); the loader chains these into the DAG.
+                                           //   disjoint `owns` + same deps ⇒ a parallel lane
   "prompt": { "skill": "packages/skills/write-gdd/SKILL.md", "file": "prompt.md" },
   "tools":  { "allow": ["read","write","edit","submit_result"], "deny": [] },   // → DRIVER-TOOLS / --exclude-tools
-  "mcp":    { "servers": { /* … */ } },    // or { "ref": "..." }; omitted ⇒ none
-  "contract": {                            // → rendered into DRIVER-ARTIFACTS/OWNS/READ-SCOPE/SCHEMA + DoD prose
+  "mcp":    { "servers": { /* … */ } },    // SEPARATE field, SAME file (§11); or { "ref": "..." }; omitted ⇒ none
+  "contract": {                            // the WRITE/READ contract → DRIVER-ARTIFACTS/OWNS/READ-SCOPE/SCHEMA + DoD prose
     "artifacts": ["spec/gdd.md"],          // REQUIRED outputs, ${RUN}-relative (driver stat()s them → blocked if missing)
     "owns":      ["spec/**"],              // write authority
     "readScope": ["${RUN}", "${WORKSPACE}/packages/skills/write-gdd",
                   "${WORKSPACE}/templates/modules/${state.archetype}"],
-    "schema":    "${WORKSPACE}/.../gdd.schema.json"          // optional, validated off-disk after the node
+    "schema":      "${WORKSPACE}/.../gdd.schema.json",      // optional, validated off-disk after the node
+    "returnMode":  "optional",             // optional (default when artifacts declared) | required (zero-artifact gate nodes)
+    "fillSentinel": null                   // optional write-first sentinel
   },
-  "hooks": {                               // deterministic driver ops (§4); each omittable
+  "checks": {                              // INTEGRITY checks = the DETECTION (DRIVER-CHECKS); ⊥ the policy below (§4)
+    "pre":  [ /* validate staged inputs / preconditions BEFORE the model */ ],
+    "post": [ /* validate the produced artifacts AFTER the model */ ]
+  },
+  "policy": { /* verdict → action = the CONSEQUENCE (DRIVER-POLICY): a failed check ⇒ block | retry | escalate */ },
+  "hooks": {                               // deterministic driver OPS (§4); each omittable
     "seed":    [{ "to": "spec/genre-options.json",
                   "from": "${WORKSPACE}/templates/genres/${state.archetype}.json" }],   // PRE
-    "promote": [{ "from": "spec/classification.json:archetype", "to": "archetype", "merge": "set" }], // POST → RunState
-    "project": [ /* … */ ], "merge": [ /* … */ ]            // POST derive/merge
+    "project": [ /* … */ ], "merge": [ /* … */ ],          // POST derive/merge
+    "promote": [{ "from": "spec/classification.json:archetype", "to": "archetype", "merge": "set" }]  // POST → RunState
   },
   "return": { /* optional JSON-schema for the node's structured result (the fenced-JSON tail) */ }
 }
 ```
-Every field is **data**. Nothing here is JS; the engine renders the realized prompt from it (§6).
+Every field is **data** (no JS). The WHOLE per-node contract is SELF-CONTAINED in this ONE `node.json` —
+PRE+POST hooks AND pre/post checks AND the verdict→action policy, nothing scattered — and the engine renders the
+realized prompt from it (§6). A custom op/check the generic families don't cover points to a script in
+`scripts/` (§2); the generic executors live in `@piflow/core`.
 
-## 4. Hooks (deterministic driver ops — the `mechanical → driver hook` law)
+## 4. Hooks & checks (deterministic driver ops + integrity gates — the `mechanical → driver hook` law)
+**Hooks — deterministic OPS that do work for the model:**
 - **PRE — `seed`**: stage a node's starting artifact before the model (copy a skeleton/slice to FILL).
 - **POST — `project` / `merge`**: derive/validate a node's mechanical outputs from frozen on-disk inputs.
 - **POST — `promote`** (D6): lift a node output into a RunState channel; the DRIVER applies the channel reducer
   (`set` default · `append` · `deepMerge`) and merges at the stage barrier — the node never writes `state.json`.
 
-## 5. The DAG manifest (`workflow.json`)
+**Checks + policy — detection ⊥ consequence (the two are SEPARATE so a check is reusable under any consequence):**
+- **`checks.pre` / `checks.post` = the DETECTION** (DRIVER-CHECKS): integrity gates over the staged inputs
+  (pre) or the produced artifacts (post). A check emits a VERDICT only — it never decides the action.
+- **`policy` = the CONSEQUENCE** (DRIVER-POLICY): maps a failed-check verdict → `block | retry | escalate`. The
+  same check (e.g. "schema invalid") can `retry` on one node and `escalate` on another — because detection and
+  consequence are decoupled.
+
+All of these live in `node.json` (§3). The generic check/op executors live in `@piflow/core`; a genuinely
+custom one is a `scripts/` file (§2) the node references.
+
+## 5. The DAG — chained from `node.json` `deps`; `workflow.json` is a thin header
+**There is NO separate edge list.** Each `node.json` owns its own `deps` (§3) — that is the SINGLE SOURCE of the
+edges. The loader **auto-discovers** the node set by scanning `nodes/*/node.json` and **chains their `deps`**
+into the DAG (add a node = drop a folder; no manifest edit — the D9 auto-discovery ethos). So the overall
+workflow is *produced by chaining the per-node info*, exactly — not hand-maintained in two places.
+
+`workflow.json` is only the **authored header**:
 ```jsonc
-{ "id": "game-omni", "meta": { "name": "game-omni", "description": "…" },
-  "phases": ["classify","design","harden","scaffold", "…"],
-  "nodes": [
-    { "id": "w0-classify", "phase": "classify", "deps": [] },
-    { "id": "w1-design",   "phase": "design",   "deps": ["w0-classify"] },
-    { "id": "w3a-art",     "phase": "produce",  "deps": ["harden"] },
-    { "id": "w3b-sound",   "phase": "produce",  "deps": ["harden"] }       // disjoint owns ⇒ parallel with w3a
-  ] }
+{ "id": "game-omni",
+  "meta":   { "name": "game-omni", "description": "…" },
+  "phases": ["classify","design","harden","scaffold", "…"] }   // id · meta · phase ORDER only — NO node/deps list
 ```
-`deps` define edges; the loader derives stages; phase-mates with **write-disjoint `owns`** become a parallel
-lane. (Static DAG only — state drives values, never routing; D6.)
+**Seeing the whole DAG:** the topology you read is GENERATED from the chained `deps` — `piflow` renders the
+box-and-arrow overview (and the loader can emit a `workflow.lock`/graph view). So there is exactly ONE authored
+source of edges (the nodes) + a DERIVED overview — never two lists to drift. Phase-mates with **write-disjoint
+`owns`** become a parallel lane. (Static DAG only — state drives values, never routing; D6.)
 
 ## 6. Rendering (engine, at load / instantiate)
 The engine produces each node's realized prompt from its def — replacing the old JS `contract()` call:
 1. read `prompt.md` (+ inline the `prompt.skill` pointer line),
-2. append the `DRIVER-*` markers derived from `contract` + `hooks` + `tools` (ARTIFACTS · OWNS · READ-SCOPE ·
-   SCHEMA · TOOLS · EXCLUDE-TOOLS · SEED · PROJECT · MERGE · PROMOTE) + the Definition-of-Done prose,
+2. append the `DRIVER-*` markers derived from `contract` + `checks` + `policy` + `hooks` + `tools` (ARTIFACTS ·
+   OWNS · READ-SCOPE · SCHEMA · RETURN · CHECKS · POLICY · TOOLS · EXCLUDE-TOOLS · SEED · PROJECT · MERGE ·
+   PROMOTE) + the Definition-of-Done prose,
 3. resolve `${WORKSPACE}`/`${RUN}` to physical roots; leave `${state.*}` as DEFERRED tokens (resolved by the
    driver at node launch from `${RUN}/.pi/state.json`).
 The output is byte-equivalent to what extraction recovers from a `.js` — but from authored DATA, single-sourced.
@@ -91,17 +119,18 @@ single resolver is applied uniformly to every marker; a path not expressible in 
 smell (D6/D7).
 
 ## 8. Loader (`loadTemplate(dir) → WorkflowSpec`)
-Read `workflow.json` + each `nodes/<id>/{node.json,prompt.md}` → the in-memory `WorkflowSpec` the existing
-`compile`/`runWorkflow` consume. **Static checks** (fail closed): every `dep` resolves; every `ref`/skill path
-exists; every `${state.<channel>}` referenced is `promote`d by some upstream node (a dangling-channel gate, the
-state analogue of the dangling-ref check). `WorkflowSpec` stays the runtime contract; the template is its
-authored on-disk form.
+Read `workflow.json` (the header) + **scan `nodes/*/`** for each `{node.json, prompt.md}` → **chain the per-node
+`deps`** into the DAG → the in-memory `WorkflowSpec` the existing `compile`/`runWorkflow` consume. **Static
+checks** (fail closed): every `dep` resolves to a discovered node; no cycles; every `ref`/skill path exists;
+every `${state.<channel>}` referenced is `promote`d by some upstream node (a dangling-channel gate, the state
+analogue of the dangling-ref check). `WorkflowSpec` stays the runtime contract; the template is its authored
+on-disk form; the whole-DAG overview is RENDERED from the chained deps (visibility, not a second source).
 
 ## 9. Ingest (`.js` → template) — one-time, init only
 `extractWorkflow` (U5) recovers the DAG + realized prompts from a `.js`. The init-template skill maps each
-recorded node → a `node.json` (DAG + prompt) and the human/skill authors the "more" extraction can't recover
-(tools / mcp / contract-as-data / hooks / refs). Output: the template. The `.js` is then discarded — **no
-two-way bridge, no Claude-Workflow execution** (D8).
+recorded node → a `node.json` (its `deps` + prompt) and the human/skill authors the "more" extraction can't
+recover (tools / mcp / contract-as-data / checks / policy / hooks / refs / `scripts/`). Output: the template.
+The `.js` is then discarded — **no two-way bridge, no Claude-Workflow execution** (D8).
 
 ## 10. Instantiation (init-RUN) — ONE per-node schema, template ≅ run (a near-literal copy)
 The template's `nodes/<id>/` folder and the runtime `${RUN}/.pi/nodes/<id>/` folder are the **same schema** — a
@@ -139,6 +168,16 @@ folder without knowing the node.
 > implemented — kept here as the intended use.
 
 ## 11. Decisions & open items
+- **DAG edges — RESOLVED: SINGLE-SOURCED in each `node.json` `deps`; NOT a list in `workflow.json`.** The loader
+  auto-discovers nodes (scan `nodes/*/`) and CHAINS deps into the DAG; `workflow.json` is the thin authored
+  header (id · meta · phase order); the whole-DAG view is GENERATED (rendered overview). Removes the prior
+  deps-in-both-places duplication. (§5/§8.)
+- **Pre/post hooks + checks + policy — RESOLVED: ALL self-contained in the one `node.json`** (§3/§4): `hooks`
+  (seed=PRE; project/merge/promote=POST) + `checks` (pre/post integrity DETECTION) + `policy` (verdict→action
+  CONSEQUENCE; detection ⊥ consequence) + `returnMode`/`fillSentinel`. Nothing scattered across files.
+- **`scripts/` — RESOLVED: optional template folder for workflow-specific programmatic code** (custom
+  ops/checks/importers) that travels WITH the template; `node.json` references it. Generic op/check executors
+  live in `@piflow/core` (installed, not copied). (§2.)
 - **`mcp` + `return` — RESOLVED: INLINE in `node.json`** (one self-contained per-node def; no sidecar files).
 - **`tools` + `mcp` — RESOLVED: one `node.json`, SEPARATE FIELDS; NO exploded `tools.ts`/`mcp.json` files.** Both
   live as keys in the single `node.json` and the driver consumes both from it (this supersedes the `tools.ts
