@@ -1,0 +1,20 @@
+{
+  "name": "@piflow/tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pi Flow terminal monitor — the ink DAG/per-node run viewer, reading the .pi/ run layout.",
+  "license": "MIT",
+  "bin": { "piflow-tui": "./pi-tui.mjs" },
+  "scripts": { "start": "node pi-tui.mjs" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@piflow/core": "*",
+    "htm": "^3.1.1",
+    "ink": "^7.0.6",
+    "react": "^19.2.0"
+  },
+  "devDependencies": {
+    "ink-testing-library": "^4.0.0"
+  }
+}

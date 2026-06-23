@@ -1,0 +1,3 @@
+# installed via the workspace root (`npm install` at repo root hoists ink here). Never commit a
+# per-package node_modules — see README.md "ink dependency (offline)".
+node_modules/

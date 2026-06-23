@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config';
 // One package today (`@piflow/core`); add more via the `packages/*/test` glob automatically.
 export default defineConfig({
   test: {
-    include: ['packages/*/test/**/*.test.ts'],
+    include: ['packages/*/test/**/*.test.ts', 'packages/*/test/**/*.test.mjs'],
     environment: 'node',
     watch: false,
   },
