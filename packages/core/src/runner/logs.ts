@@ -119,9 +119,20 @@ export function tailNode(outDir: string, nodeId: string, opts: { raw?: boolean }
   return distillEvents(parseEventsFile(file));
 }
 
+interface StatusNode {
+  id: string;
+  status: string;
+  exitCode?: number;
+  killedTimeout?: boolean;
+  killedStall?: boolean;
+  durationMs?: number;
+  artifacts?: { path: string; exists: boolean; bytes?: number }[];
+}
 interface StatusShape {
+  run?: string;
   done?: boolean;
-  nodes?: Record<string, { id: string; status: string }>;
+  ok?: boolean | null;
+  nodes?: Record<string, StatusNode>;
 }
 function readStatus(outDir: string): StatusShape | null {
   try { return JSON.parse(readFileSync(statusFilePath(outDir), 'utf8')) as StatusShape; } catch { return null; }
@@ -129,6 +140,83 @@ function readStatus(outDir: string): StatusShape | null {
 /** Nodes that have started (running or terminal) — the ones with an archive worth streaming, in order. */
 function activeNodeIds(st: StatusShape | null): string[] {
   return Object.values(st?.nodes ?? {}).filter((n) => n.status !== 'pending').map((n) => n.id);
+}
+
+// ── post-run diagnosis (`piflow logs --summary`) ────────────────────────────────────────────────────
+// Correlate run-status (the verdict + declared artifacts) with the event archive (what the model
+// actually did) into a one-glance per-node diagnosis. The headline case it makes obvious: a node that
+// exits clean but writes nothing — the never-write — surfaced as `0 writes · missing <artifact>` with
+// the model's own last words attached.
+
+export interface NodeDiagnosis {
+  id: string;
+  status: string;
+  exitCode?: number;
+  killed?: 'timeout' | 'stall';
+  durationMs?: number;
+  writes: number;   // write/edit tool calls
+  reads: number;    // read tool calls
+  tools: number;    // all tool calls
+  missing: string[]; // declared artifacts NOT on disk
+  lastSay: string;   // the model's last emitted text (the smoking gun on a never-write)
+  stderr: string[];
+  note: string;      // the one-line diagnosis
+}
+
+function countNode(events: PiEvent[]): Pick<NodeDiagnosis, 'writes' | 'reads' | 'tools' | 'lastSay' | 'stderr'> {
+  let writes = 0, reads = 0, tools = 0, lastSay = '', textAcc = '';
+  const stderr: string[] = [];
+  for (const ev of events) {
+    if (ev.type === 'tool_execution_start') {
+      tools++;
+      const tn = ev.toolName;
+      if (tn === 'write' || tn === 'edit') writes++;
+      else if (tn === 'read') reads++;
+    } else if (ev.type === 'stderr' && typeof ev.text === 'string') {
+      stderr.push(ev.text);
+    }
+    const a = inner(ev);
+    if (a?.type === 'text_delta' && typeof a.delta === 'string') textAcc += a.delta;
+    else if (a?.type === 'text_end') { if (textAcc.trim()) lastSay = textAcc; textAcc = ''; }
+  }
+  if (textAcc.trim()) lastSay = textAcc;
+  return { writes, reads, tools, lastSay, stderr };
+}
+
+/** Read a run dir → a per-node diagnosis (run-status ⋈ event archive). Pure over the files. */
+export function diagnoseRun(outDir: string): { run?: string; done?: boolean; ok?: boolean | null; nodes: NodeDiagnosis[] } {
+  const st = readStatus(outDir);
+  const nodes: NodeDiagnosis[] = [];
+  for (const n of Object.values(st?.nodes ?? {})) {
+    if (n.status === 'pending') continue;
+    const c = countNode(parseEventsFile(eventsPath(outDir, n.id)));
+    const missing = (n.artifacts ?? []).filter((a) => !a.exists).map((a) => a.path);
+    const killed = n.killedTimeout ? 'timeout' : n.killedStall ? 'stall' : undefined;
+    let note: string;
+    if (n.status === 'ok' || n.status === 'reused') note = 'ok';
+    else if (killed) note = `killed: ${killed === 'timeout' ? 'node-timeout' : 'silent-stall'}`;
+    else if (c.writes === 0 && missing.length && c.lastSay) note = 'never-write: emitted text but called NO write tool';
+    else if (missing.length) note = `missing ${missing.length} declared artifact(s)`;
+    else note = n.status;
+    nodes.push({ id: n.id, status: n.status, exitCode: n.exitCode, killed, durationMs: n.durationMs, ...c, missing, note });
+  }
+  return { run: st?.run, done: st?.done, ok: st?.ok, nodes };
+}
+
+/** Render `diagnoseRun` as concise, scannable lines. */
+export function renderDiagnosis(d: ReturnType<typeof diagnoseRun>): string[] {
+  const out: string[] = [];
+  const ok = (s: string): boolean => s === 'ok' || s === 'reused';
+  out.push(`run ${d.run ?? '?'} — ${d.done ? (d.ok ? 'DONE ✓' : 'FAILED ✕') : 'running…'}  (${d.nodes.length} node(s))`);
+  for (const n of d.nodes) {
+    const mark = ok(n.status) ? '✓' : '✕';
+    const secs = n.durationMs != null ? ` ${Math.round(n.durationMs / 1000)}s` : '';
+    out.push(`${mark} ${n.id}  [${n.status}${n.exitCode != null ? ` exit ${n.exitCode}` : ''}${secs}] — ${n.writes}w/${n.reads}r/${n.tools}t · ${n.note}`);
+    if (n.missing.length) out.push(`    missing: ${n.missing.join(', ')}`);
+    if (!ok(n.status) && n.lastSay) out.push(`    last said: ${oneLine(n.lastSay, 200)}`);
+    if (n.stderr.length) out.push(`    stderr: ${oneLine(n.stderr.join(' '), 200)}`);
+  }
+  return out;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -210,17 +298,19 @@ function resolveOutDir(arg: string | undefined): string {
   return path.resolve(a);
 }
 
-/** `[dir|run] [--node <id>] [-f|--follow] [--raw] [--poll <ms>]` — the body behind `piflow logs`. */
+/** `[dir|run] [--node <id>] [-f|--follow] [--raw] [--summary] [--poll <ms>]` — the body behind `piflow logs`. */
 export async function runLogsCli(argv: string[]): Promise<void> {
   let dir: string | undefined;
   let node: string | undefined;
   let follow = false;
   let raw = false;
+  let summary = false;
   let pollMs: number | undefined;
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '-f' || k === '--follow') follow = true;
     else if (k === '--raw') raw = true;
+    else if (k === '--summary') summary = true;
     else if (k === '--node') node = argv[++i];
     else if (k === '--poll') pollMs = Number(argv[++i]);
     else if (!k.startsWith('-')) dir = k;
@@ -229,6 +319,10 @@ export async function runLogsCli(argv: string[]): Promise<void> {
   if (!existsSync(statusFilePath(outDir))) {
     process.stderr.write(`piflow logs: no run-status.json under ${outDir}\n`);
     process.exitCode = 1;
+    return;
+  }
+  if (summary) {
+    for (const line of renderDiagnosis(diagnoseRun(outDir))) process.stdout.write(line + '\n');
     return;
   }
   if (follow) {

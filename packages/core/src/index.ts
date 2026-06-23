@@ -107,5 +107,9 @@ export {
   parseEventsFile,
   eventsPath,
   statusFilePath,
+  diagnoseRun,
+  renderDiagnosis,
+  auditWorkflow,
+  hasToolFindings,
 } from './runner/index.js';
-export type { PiEvent, EventSink, FollowOpts } from './runner/index.js';
+export type { PiEvent, EventSink, FollowOpts, NodeDiagnosis, NodeToolAudit } from './runner/index.js';

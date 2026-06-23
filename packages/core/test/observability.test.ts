@@ -1,11 +1,23 @@
 import { describe, it, expect, vi } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { NodeRecorder, recordingSandbox, slimEvent, type PiEvent } from '../src/runner/events.js';
-import { distillEvents, parseEventsFile, eventsPath } from '../src/runner/logs.js';
+import { distillEvents, parseEventsFile, eventsPath, diagnoseRun } from '../src/runner/logs.js';
+import { auditWorkflow } from '../src/runner/audit.js';
 import { tailAppend } from '../src/sandbox/capture.js';
-import type { Sandbox, ExecOpts, ExecResult } from '../src/types.js';
+import type { Sandbox, ExecOpts, ExecResult, Workflow } from '../src/types.js';
+
+// Write a fixture run dir: run-status.json + per-node _pi/<id>.events.jsonl.
+function fixtureRun(status: unknown, events: Record<string, PiEvent[]>): string {
+  const dir = mkdtempSync(path.join(tmpdir(), 'piflow-run-'));
+  writeFileSync(path.join(dir, 'run-status.json'), JSON.stringify(status));
+  mkdirSync(path.join(dir, '_pi'), { recursive: true });
+  for (const [id, evs] of Object.entries(events)) {
+    writeFileSync(path.join(dir, '_pi', `${id}.events.jsonl`), evs.map((e) => JSON.stringify(e)).join('\n') + '\n');
+  }
+  return dir;
+}
 
 const tmp = (): string => mkdtempSync(path.join(tmpdir(), 'piflow-obs-'));
 
@@ -93,6 +105,47 @@ describe('slimEvent — keep the signal, drop the bulk', () => {
   it('passes a normal delta through unchanged', () => {
     const ev = { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'hi' } };
     expect(slimEvent(ev)).toBe(ev);
+  });
+});
+
+describe('diagnoseRun — post-run verdict (the never-write made obvious)', () => {
+  it('flags a blocked node that emitted text but called NO write tool', () => {
+    const dir = fixtureRun(
+      { run: 'r', done: true, ok: false, nodes: { w0: { id: 'w0', status: 'blocked', exitCode: 0, artifacts: [{ path: 'spec/x.json', exists: false, bytes: 0 }] } } },
+      { w0: [
+        { type: 'tool_execution_start', toolName: 'read', args: { path: 'a' } },
+        { type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'here is the classification {…}' } },
+        { type: 'message_update', assistantMessageEvent: { type: 'text_end' } },
+      ] },
+    );
+    const n = diagnoseRun(dir).nodes[0];
+    expect(n.writes).toBe(0);
+    expect(n.reads).toBe(1);
+    expect(n.missing).toEqual(['spec/x.json']);
+    expect(n.note).toContain('never-write');
+    expect(n.lastSay).toContain('here is the classification');
+  });
+  it('reports ok for a node that wrote its declared artifact', () => {
+    const dir = fixtureRun(
+      { run: 'r', done: true, ok: true, nodes: { w0: { id: 'w0', status: 'ok', exitCode: 0, durationMs: 4200, artifacts: [{ path: 'spec/x.json', exists: true, bytes: 10 }] } } },
+      { w0: [{ type: 'tool_execution_start', toolName: 'write', args: { path: 'spec/x.json' } }] },
+    );
+    const n = diagnoseRun(dir).nodes[0];
+    expect(n.writes).toBe(1);
+    expect(n.note).toBe('ok');
+  });
+});
+
+describe('auditWorkflow — static tool-binding audit (pre-run)', () => {
+  const wfOf = (tools: unknown): Workflow => ({ nodes: { w0: { tools } } } as unknown as Workflow);
+  it('flags an un-tokenized allow entry (the gate-3 bug)', () => {
+    expect(auditWorkflow(wfOf({ allow: ['read ls write'] }))[0].findings.some((f) => f.includes('un-tokenized'))).toBe(true);
+  });
+  it('passes a properly tokenized allowlist', () => {
+    expect(auditWorkflow(wfOf({ allow: ['read', 'ls', 'write'] }))[0].findings).toEqual([]);
+  });
+  it('flags a tool both allowed and denied', () => {
+    expect(auditWorkflow(wfOf({ allow: ['read', 'write'], deny: ['write'] }))[0].findings.some((f) => f.includes('both allowed and denied'))).toBe(true);
   });
 });
 
