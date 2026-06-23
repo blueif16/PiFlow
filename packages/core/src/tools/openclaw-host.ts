@@ -24,6 +24,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { type SecretResolver, defaultSecretResolver } from '../types.js';
 import { resolveEntry, type OpenClawPluginEntry } from './openclaw-shim.js';
 
 /** A captured `registerTool` call: the FACTORY `(ctx) => tool` and the opts (e.g. `{ names: [...] }`). */
@@ -43,6 +44,26 @@ interface OpenClawTool {
   ): unknown;
 }
 
+/**
+ * One key-gated secret a host call must route from the `SecretResolver` into the place the plugin's tool
+ * reads it (S2 provider-wire). The resolver resolves `varName` (e.g. `'TAVILY_API_KEY'`); the host writes
+ * the resolved value into the plugin's run config at `plugins.entries.<pluginId>.config.<configPath>` — the
+ * SAME field the tool consumes (tavily reads `plugins.entries.tavily.config.webSearch.apiKey`, dist
+ * `tavily-client-*.js:23`). This mirrors the runner's env seam (`mcpEnvAdditions`, `runner.ts:291`),
+ * carried into the in-process host path: resolve via the broker, inject where the consumer reads.
+ */
+export interface OpenClawSecretRoute {
+  /** Manifest plugin id whose config entry receives the secret (e.g. `'tavily'`). */
+  pluginId: string;
+  /** The env var name resolved through the `SecretResolver` (e.g. `'TAVILY_API_KEY'`). */
+  varName: string;
+  /**
+   * Dotted path UNDER `plugins.entries.<pluginId>.config` where the resolved value lands — the field the
+   * tool reads (e.g. `'webSearch.apiKey'`). Created (with intermediate objects) when absent.
+   */
+  configPath: string;
+}
+
 /** Arguments to drive one keyless OpenClaw tool through the host. */
 export interface HostOpenClawToolParams {
   /** The imported plugin module (the `definePluginEntry` default export, or its `{ default }` wrapper). */
@@ -58,9 +79,56 @@ export interface HostOpenClawToolParams {
   sessionKey?: string;
   /** Optional explicit toolCallId (defaults to a stable host id). */
   toolCallId?: string;
+  /**
+   * Key-gated secrets to route into the plugin config before execute (S2). For each route, the resolver
+   * resolves `varName` and the host writes it at `plugins.entries.<pluginId>.config.<configPath>`. Empty
+   * for keyless tools (`memory_get`); no resolver is called and the config is untouched.
+   */
+  secrets?: OpenClawSecretRoute[];
+  /**
+   * The broker seam (same type as `types.ts:319`) that resolves each route's `varName`. Defaults to the
+   * env-reading `defaultSecretResolver` — so a real `TAVILY_API_KEY` in env flows through unchanged, and a
+   * host can inject a scoped-token broker (or a fake) without the tool knowing. Resolves `undefined` ⇒ that
+   * route is skipped (the tool then hits its own "needs a key" gate, never a fabricated value).
+   */
+  secretResolver?: SecretResolver;
 }
 
 const noop = (): void => {};
+
+/**
+ * Resolve each key-gated secret through the `SecretResolver` and write it into `cfg` at the exact path the
+ * plugin's tool reads (`plugins.entries.<pluginId>.config.<configPath>`). This is the S2 provider-wire: the
+ * value is SOURCED from the resolver (never hardcoded here) and LANDS where the consumer reads — proving the
+ * secret routes through our broker seam into the in-process tool, mirroring the runner's env seam.
+ *
+ * A route whose resolver returns `undefined` is skipped (no key written), so the tool falls through to its
+ * own "needs a key" gate rather than receiving a fabricated value. Mutates and returns `cfg`.
+ */
+async function injectSecrets(
+  cfg: Record<string, unknown>,
+  secrets: OpenClawSecretRoute[],
+  resolver: SecretResolver,
+  nodeId: string,
+): Promise<Record<string, unknown>> {
+  for (const route of secrets) {
+    const value = await resolver(route.varName, { nodeId, isCloud: false });
+    if (value === undefined) continue;
+    // Build (or extend) plugins.entries.<pluginId>.config and walk `configPath` to its leaf, creating
+    // intermediate plain objects, then set the resolved value at the final segment.
+    const plugins = (cfg.plugins ??= {}) as Record<string, unknown>;
+    const entries = (plugins.entries ??= {}) as Record<string, unknown>;
+    const entry = (entries[route.pluginId] ??= {}) as Record<string, unknown>;
+    const config = (entry.config ??= {}) as Record<string, unknown>;
+    const segments = route.configPath.split('.');
+    let cursor: Record<string, unknown> = config;
+    for (let i = 0; i < segments.length - 1; i++) {
+      cursor = (cursor[segments[i]] ??= {}) as Record<string, unknown>;
+    }
+    cursor[segments[segments.length - 1]] = value;
+  }
+  return cfg;
+}
 
 /** A real-enough in-memory keyed store matching `PluginStateKeyedStore<T>` (async CRUD over a Map). */
 function makeInMemoryKeyedStore<T>(): unknown {
@@ -204,15 +272,35 @@ export async function hostOpenClawTool(args: HostOpenClawToolParams): Promise<un
     agents: { defaults: { workspace: args.workspaceDir } },
   };
 
+  // S2 provider-wire: route any key-gated secret through the SecretResolver broker into the plugin config
+  // path the tool reads. Keyless tools pass no `secrets` ⇒ the resolver is never called. The default
+  // resolver reads process.env, so a real key in env flows through unchanged.
+  if (args.secrets?.length) {
+    await injectSecrets(
+      cfg,
+      args.secrets,
+      args.secretResolver ?? defaultSecretResolver,
+      args.agentId ?? args.toolName,
+    );
+  }
+
   const { api, captured } = makeHostApi(cfg);
 
   // 1. Run the plugin's real register(api) — synchronous; stores factories + capability/embedding/CLI.
   entry.register(api as never);
 
-  // 2. Capture the named tool's factory (OpenClaw matches by the `names` opt, not the def name).
-  const found = captured.find((c) => c.opts?.names?.includes(args.toolName));
+  // 2. Capture the named tool's factory. OpenClaw passes the name as either the plural `names: string[]`
+  //    opt (memory-core) OR the singular `name: string` opt (tavily registers
+  //    `registerTool((ctx)=>..., { name: 'tavily_search' })`, dist `tavily/index.js:123`). Match both.
+  const optNames = (c: CapturedFactory): string[] => {
+    const names = c.opts?.names;
+    if (Array.isArray(names)) return names.filter((n): n is string => typeof n === 'string');
+    const single = (c.opts as { name?: unknown } | undefined)?.name;
+    return typeof single === 'string' ? [single] : [];
+  };
+  const found = captured.find((c) => optNames(c).includes(args.toolName));
   if (!found) {
-    const available = captured.flatMap((c) => c.opts?.names ?? []).join(', ') || '(none)';
+    const available = captured.flatMap(optNames).join(', ') || '(none)';
     throw new Error(
       `openclaw-host: tool \`${args.toolName}\` not registered by this plugin (registered: ${available})`,
     );
