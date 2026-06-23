@@ -1,7 +1,9 @@
 // @piflow/cli — programmatic surface for the run-observability subcommands. The `piflow` bin
-// (`./cli.ts`) is the executable front door; these exports let a host embed the same readers.
+// (`./cli.ts`) is the executable front door; these are THIN renderers over the shared observability
+// source (`@piflow/core/observe`) — `renderStatus` lays out a `RunModel` (read it with the core's
+// `readRunModel`); `watchRun` consumes the core's live `watchRun` stream. The CLI builds no run model
+// of its own — model-building lives entirely in `@piflow/core/observe`.
 
-export { readRun, renderStatus, runStatusCli } from './status.js';
-export type { RunView, NodeView } from './status.js';
+export { renderStatus, runStatusCli } from './status.js';
 export { watchRun, runWatchCli } from './watch.js';
 export type { WatchResult, WatchOpts, WatchReason } from './watch.js';

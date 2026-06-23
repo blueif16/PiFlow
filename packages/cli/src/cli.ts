@@ -9,8 +9,9 @@
 //                                          errors|blocks / a node dead-stalls
 //   piflow logs   [dir|run] [...]          stream/replay/diagnose a run's per-node event archives (core)
 //
-// `status`/`watch` read ONLY the new `.pi/` helpers (never the legacy run-status.json / _pi/ paths);
-// they VERIFY artifacts on disk rather than trusting a record's self-reported status.
+// `status`/`watch` are THIN renderers over the shared observability source (@piflow/core/observe):
+// `status` lays out a `readRunModel` snapshot, `watch` consumes the `watchRun` live stream. They build
+// NO run model of their own — the shared reader VERIFIES artifacts on disk (verified, not trusted).
 
 import { runLogsCli } from '@piflow/core';
 import { runStatusCli } from './status.js';

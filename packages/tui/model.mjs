@@ -1,291 +1,250 @@
 // ── packages/tui/model.mjs ───────────────────────────────────────────────────────
-// The renderer-AGNOSTIC data layer for visualizing ONE pi-flow run — MIGRATED from the legacy
-// pi-runner viz-model.mjs to the NEW `.pi/` run layout (D7). The view layer (components.mjs / dag.mjs)
-// is unchanged: it consumes the SAME buildModel() shape; only the data ACQUISITION moved.
+// The renderer-AGNOSTIC data layer for visualizing ONE pi-flow run — now a THIN ADAPTER over the SHARED
+// observability source (`@piflow/core/observe`). It reads the run through `readRunModel(runDir)` — the
+// ONE reader the CLI, the TUI, and a future GUI all share — and subscribes to `watchRun(runDir)` for
+// the live tail. There is NO bespoke `.pi/` reader here anymore: status derivation, stage/lane
+// reconstruction, and the io-derived data-flow edges all live in the shared source; this file only
+// MAPS the shared `RunModel` into the view shape the renderers (components.mjs / dag.mjs) already
+// consume, and DERIVES the cosmetic live extras (the running-node text tail) from the streamed
+// `node-event` PiEvents — never by re-reading `.pi/` files.
 //
-// OLD source (legacy out/<id> layout)         NEW source (this file — the .pi/ layout)
-//   the run-status digest                   →  <rundir>/.pi/run.json            (runJsonFile)
-//   the per-node debug event archive        →  <rundir>/.pi/nodes/<id>/events.jsonl (nodeEventsFile)
-//   prompt-text parse for io/data-flow      →  <rundir>/.pi/nodes/<id>/io.json   (nodeIoFile; NodeIo)
-//   the global registry + extract.mjs static DAG  →  GONE — a run dir is self-describing.
-//
-// All paths come from @piflow/core's layout helpers — NEVER hardcoded. The `.pi/run.json` payload IS a
-// RunStatus (packages/core/src/runner/status.ts): { run, nodes: {id: NodeStatusRecord}, done, ok,
-// stage, … } — so the status→row mapping ports verbatim; the data-flow edges are now read from the
-// structured io ledgers (a write of node A that node B reads back is an edge A→B) instead of parsed
-// out of prompt text. One definition of "the truth", many views.
-import fs from 'node:fs';
-import path from 'node:path';
-import { runJsonFile, nodeEventsFile, nodeIoFile } from '@piflow/core';
+// Fields the shared `RunModel` does not (yet) carry — Gantt start/end timestamps, per-node token/cost
+// counts, tool breakdown, thinking-char totals — are rendered as null/blank (the view null-guards them)
+// or, where they have a streamed source, accumulated from the live `node-event` stream. They are FLAGGED
+// as proposed `RunModel` extensions rather than re-derived by forking a second reader.
+import { readRunModel, watchRun } from '@piflow/core';
 
-const ms = (iso) => (iso ? Date.parse(iso) : null);
-
-function readJson(file) {
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch { return null; }
-}
-
-// ── status read: <rundir>/.pi/run.json ─────────────────────────────────────────────
-function readStatus(runDir) {
-  return readJson(runJsonFile(runDir));
-}
-
-// ── io ledger read: <rundir>/.pi/nodes/<id>/io.json (NodeIo) ─────────────────────────
-function readNodeIo(runDir, id) {
-  return readJson(nodeIoFile(runDir, id));
-}
-
-// Best-effort partial OUTPUT text for a running (or finished) node — reconstructs the assistant text
-// from the slimmed events.jsonl delta stream (DEBUG runs only; returns null otherwise — the UI then
-// falls back to the digest's char-count + currentTool). MIGRATED to <rundir>/.pi/nodes/<id>/events.jsonl.
-export function tailNodeOutput({ runDir, node, maxChars = 1200 } = {}) {
-  if (!node || !runDir) return null;
-  let raw;
-  try { raw = fs.readFileSync(nodeEventsFile(runDir, node), 'utf8'); } catch { return null; }
-  let text = '';
-  for (const line of raw.split('\n')) {
-    if (!line) continue;
-    let ev; try { ev = JSON.parse(line); } catch { continue; }
-    const a = ev?.assistantMessageEvent || ev?.event || ev;
-    const d = a?.delta;
-    if (ev?.type === 'message_update' && (a?.type === 'text_delta' || a?.type === 'content_delta') && typeof d === 'string') text += d;
-  }
-  if (!text) return null;
-  return { node, chars: text.length, tail: text.slice(-maxChars) };
-}
-
-// ── stages from the run status ───────────────────────────────────────────────────────
-// A run dir is self-describing: there is no separate static DAG to join. We reconstruct the stage spine
-// the way the legacy fallback did — group nodes into stages, keeping the in-file node ORDER, and treat
-// the live `stage.nodeIds` (the parallel barrier the engine last published) as one parallel lane-set so
-// concurrently-running siblings render side-by-side. Every node lands in exactly one stage.
-function buildStages(s, nodes) {
-  const order = Object.keys(nodes);
-  const stages = [];
-  const placed = new Set();
-  // The currently-/last-active parallel stage, if the engine published one.
-  const barrier = (s?.stage?.nodeIds || []).filter((id) => id in nodes);
-  const barrierSet = new Set(barrier);
-
-  let cur = null;
-  for (const id of order) {
-    if (barrierSet.has(id)) continue; // the barrier nodes group together (placed below), in barrier order
-    cur = { index: stages.length + 1, phase: nodes[id].phase || null, parallel: false, nodeIds: [id] };
-    stages.push(cur);
-    placed.add(id);
-  }
-  if (barrier.length) {
-    const idx = stages.length + 1;
-    stages.push({ index: idx, phase: nodes[barrier[0]].phase || null, parallel: barrier.length > 1, nodeIds: barrier });
-    for (const id of barrier) placed.add(id);
-  }
-  // re-index + stamp stageIndex/lane onto the nodes.
-  stages.forEach((st, i) => {
-    st.index = i + 1;
-    st.parallel = st.nodeIds.length > 1;
-    st.nodeIds.forEach((id, lane) => { nodes[id].stageIndex = st.index; nodes[id].lane = lane; });
-  });
-  return stages;
-}
-
-// THE join. Reads <rundir>/.pi/run.json + the per-node io ledgers and produces the buildModel() shape
-// the renderers (components.mjs / dag.mjs) already consume — IDENTICAL contract to the legacy.
+// ── snapshot: readRunModel → the legacy buildModel() view shape ──────────────────────
+// `RunModel` (the shared snapshot) is a SUPERSET of what the view needs for structure (nodes with
+// derived status + stageIndex/lane, the stage spine, the io-derived edges). We re-key its `nodes` array
+// into the `{id: node}` map the renderers index, and reconstruct each node's io.inputs/outputs from the
+// shared `edges` (a write of A that B reads back = edge A→B) so the per-node inspector + the DAG still
+// draw the data flow. One definition of "the truth", many views.
 export async function buildModel({ runDir, run } = {}) {
-  const s = readStatus(runDir);
-  const now = Date.now();
+  let model;
+  try { model = await readRunModel(runDir); }
+  catch { return emptyModel(run); }
+  return adaptModel(model, run);
+}
 
-  // 1) NODES — straight from .pi/run.json (NodeStatusRecord), order-preserving.
+/** Map the shared RunModel → the view shape. Pure (no I/O) — all data is already in `model`. */
+export function adaptModel(model, run) {
+  const labelOf = (id) => model.nodes.find((n) => n.id === id)?.label || id;
+
+  // edges: producer→consumer over a shared path. Index them both ways for inputs/outputs.
+  const inEdges = {};  // consumer id → [{ from, path }]
+  const outEdges = {}; // producer id → [{ to, path }]
+  for (const e of model.edges || []) {
+    (inEdges[e.to] ||= []).push(e);
+    (outEdges[e.from] ||= []).push(e);
+  }
+
   const nodes = {};
-  for (const [id, rt] of Object.entries(s?.nodes || {})) {
-    const startMs = ms(rt.startedAt);
-    const endMs = ms(rt.endedAt) || (rt.status === 'running' ? now : null);
-    nodes[id] = {
-      id,
-      label: rt.label || id,
-      phase: rt.phase || null,
-      agentType: rt.agentType || null,
-      hasSchema: !!rt.checks || !!rt.schemaChecked,
-      stageIndex: null, lane: 0,
-      status: rt.status || 'pending',
-      startedAt: rt.startedAt || null, endedAt: rt.endedAt || null,
-      durationMs: rt.durationMs ?? (startMs && endMs ? endMs - startMs : null),
-      startMs, endMs,
-      tokens: rt.tokens || null,
-      toolCalls: rt.toolCalls ?? 0,
-      toolBreakdown: rt.toolBreakdown || null,
-      thinking: rt.thinking || null,
-      eventCount: rt.eventCount ?? 0,
-      artifacts: rt.artifacts || null,
-      issues: rt.issues || [],
-      summary: rt.summary || null,
-      pipelineFindings: rt.pipelineFindings || [],
-      attempts: rt.attempts || null,
-      escalated: !!rt.escalated,
-      live: rt.live || null,
+  for (const n of model.nodes) {
+    // INPUTS — each upstream edge into this node (the producer is the edge `from`).
+    const seenIn = new Set();
+    const inputs = (inEdges[n.id] || []).filter((e) => { const k = e.path; if (seenIn.has(k)) return false; seenIn.add(k); return true; })
+      .map((e) => ({ rel: e.path, fromNode: e.from, fromLabel: labelOf(e.from), functionality: null, exists: null, bytes: null, path: null, kind: 'in' }));
+    // OUTPUTS — each path this node produced + the downstream consumers (the edge `to`s sharing it).
+    const byPath = {};
+    for (const e of outEdges[n.id] || []) (byPath[e.path] ||= []).push(e.to);
+    const outputs = Object.entries(byPath).map(([rel, tos]) => {
+      const consumers = [...new Set(tos)];
+      return { rel, toNodes: consumers, toLabels: consumers.map(labelOf), functionality: null, exists: null, bytes: null, path: rel, kind: 'out' };
+    });
+
+    nodes[n.id] = {
+      id: n.id,
+      label: n.label || n.id,
+      phase: n.phase || null,
+      agentType: null,
+      hasSchema: false,
+      stageIndex: n.stageIndex || null,
+      lane: n.lane || 0,
+      status: n.status || 'pending',
+      reported: n.reported || n.status,
+      startedAt: null, endedAt: null,
+      // Gantt timestamps are NOT in the shared RunModel (a proposed extension); the bar null-renders.
+      durationMs: n.durationMs ?? null,
+      startMs: null, endMs: null,
+      // Live cosmetics accumulated from the node-event stream (subscribeRun), not re-read from files.
+      tokens: null,
+      toolCalls: 0,
+      toolBreakdown: null,
+      thinking: null,
+      eventCount: 0,
+      // artifact verification IS in the shared model — surface verified/total + the missing set.
+      artifactsVerified: n.artifactsVerified ?? 0,
+      artifactsTotal: n.artifactsTotal ?? 0,
+      artifacts: null,
+      missing: n.missing || [],
+      issues: [],
+      summary: null,
+      pipelineFindings: [],
+      attempts: null,
+      escalated: n.status === 'error' || n.status === 'blocked' ? false : false,
+      live: null,
+      io: {
+        description: n.phase || null,
+        projectDir: null, skill: null,
+        inputs, outputs, produced: [],
+        externalReads: [],
+        owns: outputs.map((o) => baseName(o.rel)),
+        note: null,
+      },
+      description: n.phase || null,
     };
   }
 
-  // 2) STAGES + lanes (self-describing run dir; no static DAG to join).
-  const stages = buildStages(s, nodes);
+  const stages = (model.stages || []).map((st) => ({
+    index: st.index, phase: st.phase || null, parallel: !!st.parallel, nodeIds: st.nodeIds,
+  }));
 
-  // 3) IO + file-level data flow — from the per-node io.json ledgers (NodeIo: reads/writes), NOT prompt
-  //    text. An io write of node A that another node B READS back is the data-flow edge A→B (the engine's
-  //    only hard guarantee — nodes coordinate through files). Map NodeIo → the visual's io shape.
-  const ioById = {};
-  for (const id of Object.keys(nodes)) ioById[id] = readNodeIo(runDir, id);
-  const labelOf = (id) => nodes[id]?.label || id;
-  const descOf = (id) => ioById[id]?.phase || nodes[id]?.phase || null;
-  const baseName = (p) => String(p ?? '').split('/').pop();
-
-  // producer index: which node WROTE each path (first writer wins).
-  const writerOf = {};
-  for (const id of Object.keys(nodes)) {
-    for (const w of (ioById[id]?.writes || [])) if (w?.path && !(w.path in writerOf)) writerOf[w.path] = id;
-  }
-  // consumer index: which nodes READ each path.
-  const readersOf = {};
-  for (const id of Object.keys(nodes)) {
-    for (const r of (ioById[id]?.reads || [])) {
-      if (!r?.path) continue;
-      (readersOf[r.path] ||= []).push(id);
-    }
-  }
-
-  for (const id of Object.keys(nodes)) {
-    const node = nodes[id];
-    const io = ioById[id];
-    node.description = descOf(id);
-    if (!io) { node.io = { description: node.description, inputs: [], outputs: [], produced: [] }; continue; }
-
-    // INPUTS — each read whose producer we know becomes an edge from that producer.
-    const inputs = (io.reads || []).map((r) => {
-      const fromNode = writerOf[r.path] && writerOf[r.path] !== id ? writerOf[r.path] : null;
-      return {
-        rel: r.path,
-        fromNode, fromLabel: fromNode ? labelOf(fromNode) : (r.via || 'input'),
-        functionality: fromNode ? descOf(fromNode) : null,
-        exists: null, bytes: null, path: null,
-      };
-    });
-    // OUTPUTS — each declared write + which downstream nodes read it.
-    const outputs = (io.writes || []).map((w) => {
-      const consumers = (readersOf[w.path] || []).filter((oid) => oid !== id);
-      return {
-        rel: w.path,
-        toNodes: consumers, toLabels: consumers.map(labelOf),
-        functionality: node.description,
-        exists: w.verified ?? null, bytes: w.bytes ?? null, path: w.path,
-      };
-    });
-    // PRODUCED — every file the run actually wrote (run-status artifacts), keyed by path; all openable.
-    const produced = (node.artifacts || []).map((a) => ({
-      rel: a.path, exists: !!a.exists, bytes: a.bytes ?? a.size ?? null, path: a.path,
-    })).filter((p) => p.rel);
-
-    node.io = {
-      description: node.description, projectDir: null, skill: null,
-      inputs, outputs, produced,
-      externalReads: [],
-      owns: (io.writes || []).map((w) => baseName(w.path)),
-      note: null,
-    };
-  }
-
-  // 4) DERIVED — Gantt timeline + stage durations + pathways (all reconstructed, none persisted).
-  const startMsList = Object.values(nodes).map((n) => n.startMs).filter(Boolean);
-  const runStart = ms(s?.startedAt) || (startMsList.length ? Math.min(...startMsList) : now);
-  const runEnd = s?.done ? (ms(s.updatedAt) || now) : now;
-  const timeline = {
-    t0: Number.isFinite(runStart) ? runStart : now,
-    t1: Number.isFinite(runEnd) ? runEnd : now,
-    rows: Object.values(nodes)
-      .filter((n) => n.startMs)
-      .map((n) => ({ id: n.id, stageIndex: n.stageIndex, lane: n.lane, status: n.status, startMs: n.startMs, endMs: n.endMs || now, durationMs: n.durationMs })),
-  };
-  const stageTimes = stages.map((st) => {
-    const ns = st.nodeIds.map((id) => nodes[id]).filter((n) => n && n.startMs);
-    const start = ns.length ? Math.min(...ns.map((n) => n.startMs)) : null;
-    const end = ns.length ? Math.max(...ns.map((n) => n.endMs || now)) : null;
-    return { index: st.index, durationMs: start && end ? end - start : null };
-  });
-
+  // DERIVED — a minimal Gantt window (no per-node timestamps in the source ⇒ a flat, zero-width band);
+  // the bar self-blanks when startMs is null, so this stays cosmetically inert until the source carries
+  // timestamps. stageTimes/pathways are reconstructed from the structural model.
+  const timeline = { t0: 0, t1: 1, rows: [] };
+  const stageTimes = stages.map((st) => ({ index: st.index, durationMs: null }));
   const pathways = {
-    halted: s?.done === true && s?.ok === false,
+    halted: model.done === true && model.ok === false,
     haltNode: Object.values(nodes).find((n) => n.status === 'error' || n.status === 'blocked')?.id || null,
     reused: Object.values(nodes).filter((n) => n.status === 'reused').map((n) => n.id),
     pending: Object.values(nodes).filter((n) => n.status === 'pending').map((n) => n.id),
     running: Object.values(nodes).filter((n) => n.status === 'running').map((n) => n.id),
-    escalated: Object.values(nodes).filter((n) => n.escalated).map((n) => n.id),
+    escalated: [],
   };
-
-  const totals = s?.totals || {
-    nodes: Object.keys(nodes).length,
-    toolCalls: Object.values(nodes).reduce((a, n) => a + (n.toolCalls || 0), 0),
-    tokensBillable: Object.values(nodes).reduce((a, n) => a + (n.tokens?.billable || 0), 0),
-  };
-  const cost = Object.values(nodes).reduce((a, n) => a + (n.tokens?.cost || 0), 0);
+  const totals = model.totals
+    ? { nodes: model.totals.nodes, toolCalls: 0, tokensBillable: 0 }
+    : { nodes: Object.keys(nodes).length, toolCalls: 0, tokensBillable: 0 };
 
   return {
     run: {
-      id: s?.run || run || null,
-      source: s?.source || null,
-      provider: s?.provider || null, model: s?.model || null,
-      done: !!s?.done, ok: s?.ok ?? null,
-      debug: !!s?.debug, sandbox: !!s?.sandbox, escalate: s?.escalate || false,
-      startedAt: s?.startedAt || null, updatedAt: s?.updatedAt || null,
-      elapsedMs: s?.elapsedMs ?? null, durationMs: s?.durationMs ?? null,
-      stage: s?.stage || null,
-      staleMs: s?.updatedAt ? now - ms(s.updatedAt) : null,
-      missing: !s,
+      id: model.run || run || null,
+      source: null,
+      provider: model.provider || null, model: model.model || null,
+      done: !!model.done, ok: model.ok ?? null,
+      debug: false, sandbox: false, escalate: false,
+      startedAt: null, updatedAt: null,
+      elapsedMs: null, durationMs: model.durationMs ?? null,
+      stage: model.stage || null,
+      staleMs: null,
+      missing: false,
       extractErr: null,
     },
     stages, stageTimes, nodes, timeline, pathways,
-    totals: { ...totals, cost },
+    totals: { ...totals, cost: 0 },
   };
+}
+
+function emptyModel(run) {
+  return {
+    run: { id: run || null, provider: null, model: null, done: false, ok: null, durationMs: null, elapsedMs: null, stage: null, staleMs: null, missing: true, extractErr: null },
+    stages: [], stageTimes: [], nodes: {}, timeline: { t0: 0, t1: 1, rows: [] },
+    pathways: { halted: false, haltNode: null, reused: [], pending: [], running: [], escalated: [] },
+    totals: { nodes: 0, toolCalls: 0, tokensBillable: 0, cost: 0 },
+  };
+}
+
+const baseName = (p) => String(p ?? '').split('/').pop();
+
+// ── live tail: accumulated from the shared watchRun node-event stream ─────────────────
+// The running-node output tail (and the tool/thinking cosmetics) are DERIVED from the streamed
+// `node-event` PiEvents — NOT by re-reading `.pi/nodes/<id>/events.jsonl`. `subscribeRun` drives the
+// shared stream and folds each node-event into a per-node accumulator the view reads.
+
+/** Reconstruct the assistant text + tool tally a node-event PiEvent carries (the slimmed delta shape). */
+function foldEvent(acc, event) {
+  const a = event?.assistantMessageEvent || event?.event || event;
+  const t = a?.type ?? event?.type;
+  const d = a?.delta;
+  if ((t === 'text_delta' || t === 'content_delta') && typeof d === 'string') acc.text += d;
+  else if (t === 'thinking_delta' && typeof d === 'string') acc.thinkChars += d.length;
+  else if (event?.type === 'tool_execution_start') {
+    acc.toolCalls += 1;
+    const tn = event.toolName;
+    if (typeof tn === 'string') acc.toolBreakdown[tn] = (acc.toolBreakdown[tn] || 0) + 1;
+  }
+  acc.eventCount += 1;
+  return acc;
+}
+
+function newAcc() { return { text: '', thinkChars: 0, toolCalls: 0, eventCount: 0, toolBreakdown: {} }; }
+
+/**
+ * Subscribe to the SHARED live stream for one run dir. `onModel(model)` fires on each snapshot/status
+ * delta with the adapted view model; `onTail(byNode)` fires on each node-event with the per-node live
+ * accumulators (text tail · toolCalls · thinking chars · toolBreakdown). Returns an unsubscribe fn.
+ * All live data comes from the stream — this opens NO `.pi/` file itself.
+ */
+export function subscribeRun({ runDir, run, onModel, onTail, pollMs } = {}) {
+  const ctrl = new AbortController();
+  const accs = new Map(); // nodeId → live accumulator
+  (async () => {
+    try {
+      for await (const u of watchRun(runDir, { signal: ctrl.signal, pollMs })) {
+        if (ctrl.signal.aborted) break;
+        if (u.kind === 'snapshot') { onModel?.(adaptModel(u.model, run)); }
+        else if (u.kind === 'node-status') { /* status deltas are reflected by the next snapshot poll */ }
+        else if (u.kind === 'node-event') {
+          const acc = accs.get(u.id) || newAcc();
+          foldEvent(acc, u.event);
+          accs.set(u.id, acc);
+          onTail?.(Object.fromEntries(accs));
+        }
+      }
+    } catch { /* a stream error never crashes the TUI; the last good model stays on screen */ }
+  })();
+  return () => ctrl.abort();
 }
 
 // ── single-run "discovery": a run dir is one namespace with one thread ───────────────────────────────
-// The legacy registry/scan/namespace machinery is gone — `piflow-tui <rundir>` monitors ONE run. We
-// keep the namespace→thread→detail SHAPE the view layer expects (so components.mjs is unchanged) by
-// projecting the single run dir into a one-namespace / one-thread list.
+// A `piflow-tui <rundir>` monitors ONE run. We keep the namespace→thread→detail SHAPE the view layer
+// expects (so components.mjs is unchanged) by projecting the single run dir into a one-namespace /
+// one-thread list — summarized from the SHARED reader (readRunModel), no bespoke `.pi/` read.
 const TERMINAL_OK = new Set(['ok', 'reused', 'gap', 'dry']);
-export function summarizeRun(runDir) {
-  const s = readStatus(runDir);
-  if (!s) return null;
-  const nodes = Object.values(s.nodes || {});
+
+/** Summarize a run dir into the thread row the view layer iterates. Async (reads via the shared model). */
+export async function summarizeRun(runDir) {
+  let m;
+  try { m = await readRunModel(runDir); }
+  catch { return null; }
+  const nodes = m.nodes;
   const nodesDone = nodes.filter((n) => TERMINAL_OK.has(n.status)).length;
   const running = nodes.find((n) => n.status === 'running');
-  const updatedMs = ms(s.updatedAt);
-  const now = Date.now();
+  const errored = nodes.find((n) => n.status === 'error' || n.status === 'blocked');
   return {
-    // `statusPath` is the thread's unique KEY in the view layer (selection/cache keying, unchanged from
-    // the legacy); for a `.pi/` run that key IS the run dir. `runDir` is the data-read root.
-    run: s.run, runDir, statusPath: runDir,
-    state: s.done ? (s.ok === false ? 'failed' : 'done') : 'running',
-    done: !!s.done, ok: s.ok ?? null,
-    stageIndex: s.stage?.index ?? null, stageTotal: s.stage?.total ?? null, phase: s.stage?.phase ?? null,
-    runningNode: running?.id || null, runningTool: running?.live?.currentTool || null, runningStalled: !!running?.live?.stalled,
+    run: m.run, runDir, statusPath: runDir,
+    state: m.done ? (m.ok === false ? 'failed' : 'done') : 'running',
+    done: !!m.done, ok: m.ok ?? null,
+    stageIndex: m.stage?.index ?? null, stageTotal: m.stage?.total ?? null, phase: null,
+    runningNode: running?.id || null, runningTool: null, runningStalled: false,
     nodesDone, nodesTotal: nodes.length,
-    frac: s.done ? 1 : (nodes.length ? nodesDone / nodes.length : 0),
-    elapsedMs: s.done ? (s.durationMs ?? s.elapsedMs) : (s.elapsedMs ?? null),
-    tokensBillable: nodes.reduce((a, n) => a + (n.tokens?.billable || 0), 0),
-    cost: nodes.reduce((a, n) => a + (n.tokens?.cost || 0), 0),
-    provider: s.provider || null, model: s.model || null,
-    updatedAt: s.updatedAt || null, staleMs: updatedMs ? now - updatedMs : null,
-    errorNode: nodes.find((n) => n.status === 'error' || n.status === 'blocked')?.id || null,
+    frac: m.done ? 1 : (nodes.length ? nodesDone / nodes.length : 0),
+    elapsedMs: m.durationMs ?? null,
+    tokensBillable: 0, cost: 0,
+    provider: m.provider || null, model: m.model || null,
+    updatedAt: null, staleMs: null,
+    errorNode: errored?.id || null,
   };
 }
 
-// Project the single run dir → the namespace list the view layer iterates. The "thread" carries the
-// runDir so refresh()/buildModel read straight from it (no statusPath, no out/ convention).
-export function discoverNamespaces({ runDir } = {}) {
+/** Project the single run dir → the one-namespace list the view layer iterates. Async (shared reader). */
+export async function discoverNamespaces({ runDir } = {}) {
   if (!runDir) return [];
-  const sum = summarizeRun(runDir);
+  const sum = await summarizeRun(runDir);
   if (!sum) return [];
   return [{
-    name: path.basename(path.dirname(runDir)) === '.pi' ? path.basename(runDir) : path.basename(path.resolve(runDir, '..')),
-    dir: path.resolve(runDir),
-    runDir: path.resolve(runDir),
+    name: basenameOf(runDir),
+    dir: resolveDir(runDir),
+    runDir: resolveDir(runDir),
     threads: [sum],
   }];
+}
+
+// path helpers kept local (no node:path import gymnastics; the run dir is already absolute from pi-tui).
+function resolveDir(p) { return p; }
+function basenameOf(p) {
+  const parts = String(p).split('/').filter(Boolean);
+  const last = parts[parts.length - 1];
+  return last === '.pi' ? parts[parts.length - 2] || last : last;
 }

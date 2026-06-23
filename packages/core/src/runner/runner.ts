@@ -1,7 +1,7 @@
 // The runner — M1's execution loop. Takes a compiled `Workflow` and runs each node through the
 // `SandboxProvider` lifecycle (create → stage inputs → exec the agent command → collect+verify
-// artifacts → run hooks → dispose), stage-by-stage with parallel lanes within a stage, writing
-// `run-status.json`. A faithful PORT of templates/pi-runner/run.mjs onto the typed @piflow/core spine.
+// artifacts → run hooks → dispose), stage-by-stage with parallel lanes within a stage, writing the
+// `.pi/run.json` digest. A faithful PORT of templates/pi-runner/run.mjs onto the typed @piflow/core spine.
 //
 // Ported behaviors (run.mjs file:line): status schema + writeStatus (639–668, see ./status.ts);
 // headless command flags (700–728, see ./command.ts); runNode lifecycle (730–1178); node-timeout +
@@ -127,9 +127,10 @@ export interface RunOptions {
    */
   secretResolver?: SecretResolver;
   /**
-   * Capture each node's agent stdout (the `pi --mode json` stream) to `<outDir>/_pi/<id>.events.jsonl`
-   * — the observability backbone `./logs.ts` tails (`docker logs` for a run). Default `true`; the
-   * archive is slimmed + lazy (a node that emits nothing leaves no file). Set `false` to disable.
+   * Capture each node's agent stdout (the `pi --mode json` stream) to the canonical
+   * `.pi/nodes/<id>/events.jsonl` — the observability backbone the shared `watchRun` stream + `./logs.ts`
+   * tail (`docker logs` for a run). Default `true`; the archive is slimmed + lazy (a node that emits
+   * nothing leaves no file). Set `false` to disable.
    */
   recordEvents?: boolean;
   /**
