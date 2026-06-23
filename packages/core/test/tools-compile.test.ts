@@ -5,6 +5,9 @@ import {
   DEFAULT_BRIDGE_MODULE,
   BUILTIN_TOOLS,
 } from '../src/index.js';
+import { bundleExtension } from '../src/tools/compile.js';
+import { captureOpenClawTools } from '../src/tools/openclaw-shim.js';
+import pureFixture from './fixtures/pure-openclaw-plugin.js';
 import type { ToolEntry } from '../src/index.js';
 
 // ── fixtures ────────────────────────────────────────────────────────────────────────────────────
@@ -117,5 +120,125 @@ describe('compileToolExtension — the generated -e extension', () => {
     // must still produce a parseable, loadable extension whose description round-trips EXACTLY.
     const registered = instantiate(out.source, () => ({ content: [] }));
     expect(registered[0].description).toBe(nasty.description);
+  });
+});
+
+// ── the sdk branch: register a plugin's NATIVE execute (not callTool) ──────────────────────────────
+// An `sdk` (OpenClaw) tool must NOT route through the bridge. The generated extension imports the pinned
+// plugin module + the capture-shim, runs the shim to get the plugin's own tool def, and registers its
+// NATIVE execute. The fixture below proves the generated code does exactly that — calling execute returns
+// the plugin's local computation, and `callTool` is NEVER invoked.
+
+const SDK_FIXTURE_TOOL: ToolEntry = {
+  address: 'oc.fixture-pure:fixture_echo',
+  source: 'sdk',
+  piName: 'fixture_pure_fixture_echo',
+  description: 'Echo a message back (pure compute, no gateway).',
+  parameters: { type: 'object', properties: { msg: { type: 'string' } }, required: ['msg'] },
+  // origin.ref is the import specifier the generated extension imports the plugin from.
+  origin: { kind: 'openclaw-plugin', ref: './fixtures/pure-openclaw-plugin.js' },
+};
+
+/**
+ * Instantiate a generated extension that contains the sdk branch. Like `instantiate`, but also injects
+ * the capture-shim (`captureOpenClawTools`) and the plugin module namespace(s) the generated code imports.
+ * The generated sdk code imports each distinct plugin module as `__ocPlugin_<i>` and the shim by name;
+ * we strip the imports and pass those identifiers in as Function args (the real pi/esbuild path resolves
+ * them via the bundle — proven separately by the bundle tests).
+ */
+function instantiateSdk(source: string, pluginModules: unknown[], callTool: (...a: unknown[]) => unknown) {
+  const body = source
+    .replace(/^\s*import[^\n]*\n/gm, '')
+    .replace(/export\s+default\s+function/m, 'return function');
+  const argNames = ['Type', 'callTool', 'captureOpenClawTools', ...pluginModules.map((_, i) => `__ocPlugin_${i}`)];
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const make = new Function(...argNames, body);
+  const TypeStub = { Unsafe: (s: unknown) => s, Object: (s: unknown) => s };
+  const factory = make(TypeStub, callTool, captureOpenClawTools, ...pluginModules) as (pi: unknown) => void;
+  const registered: Array<Record<string, any>> = [];
+  factory({ registerTool: (def: Record<string, any>) => registered.push(def) });
+  return registered;
+}
+
+describe('compileToolExtension — the sdk branch (native execute, NOT the bridge)', () => {
+  it('plans an sdk tool with its plugin module + raw tool name (the import targets)', () => {
+    const [p] = planTools([SDK_FIXTURE_TOOL]);
+    expect(p.source).toBe('sdk');
+    expect(p.rawName).toBe('fixture_echo'); // the name the plugin actually registered (after the colon)
+    expect(p.pluginModule).toBe('./fixtures/pure-openclaw-plugin.js'); // derived from origin.ref
+  });
+
+  it('imports the capture-shim + the plugin module, and does NOT emit a callTool route for the sdk tool', () => {
+    const src = compileToolExtension([SDK_FIXTURE_TOOL]).source;
+    expect(src).toContain('captureOpenClawTools'); // the shim is wired in
+    expect(src).toContain('./fixtures/pure-openclaw-plugin.js'); // the plugin module is imported
+    expect(src).not.toContain('callTool('); // the sdk branch must NOT route through the bridge
+  });
+
+  it('GENERATES an extension that registers the plugin\'s NATIVE execute (computes locally, no bridge)', async () => {
+    const src = compileToolExtension([SDK_FIXTURE_TOOL]).source;
+    let bridgeCalls = 0;
+    const registered = instantiateSdk(src, [pureFixture], () => {
+      bridgeCalls++;
+      return { content: [] };
+    });
+
+    expect(registered.map((d) => d.name)).toEqual(['fixture_pure_fixture_echo']); // SDK piName used
+    expect(registered[0].parameters).toEqual(SDK_FIXTURE_TOOL.parameters); // captured/ingested schema
+
+    // the execute is the plugin's OWN function — it computes locally and NEVER calls the bridge.
+    const result = await registered[0].execute('tc-1', { msg: 'hi' });
+    expect(result).toEqual({ content: [{ type: 'text', text: 'ECHO:hi' }] });
+    expect(bridgeCalls).toBe(0); // the bridge was not touched — this is a native sdk tool
+  });
+
+  it('leaves the mcp branch exactly as-is (still routes through callTool by address)', async () => {
+    // an mcp tool in the SAME extension must keep the bridge route untouched by the sdk branch.
+    const src = compileToolExtension([MCP_ISSUE]).source;
+    const calls: unknown[][] = [];
+    const registered = instantiate(src, (...args) => {
+      calls.push(args);
+      return { content: [{ type: 'text', text: 'BRIDGED' }] };
+    });
+    await registered[0].execute('tc-1', { repo: 'a/b' });
+    expect(calls[0][0]).toBe('mcp.github:create_issue'); // mcp still routed by address
+  });
+});
+
+// ── the bundle seam: one self-contained ESM file (cross-provider delivery) ──────────────────────────
+// pi's jiti loader resolves an extension's imports from the staged file's OWN location, which fails on an
+// outside-repo temp dir / empty cloud VM. The fix: esbuild-bundle the rendered extension so the only
+// imports left are the ones pi INJECTS via its alias map (typebox + @earendil-works/* + node builtins).
+// `@piflow/tool-bridge` + `@modelcontextprotocol/sdk` get INLINED; typebox stays EXTERNAL.
+
+describe('bundleExtension — esbuild self-contained ESM bundle', () => {
+  it('INLINES @piflow/tool-bridge + @modelcontextprotocol/sdk (their import statements are gone)', () => {
+    const src = compileToolExtension([MCP_ISSUE]).source;
+    const bundled = bundleExtension(src);
+    // No EXECUTABLE import statement (line-anchored, so esbuild's `// node_modules/…` path comments and
+    // JSDoc example strings don't count) for the inlined specifiers — they were pulled into the bundle.
+    const importLines = bundled.split('\n').filter((l) => /^\s*import\s/.test(l));
+    expect(importLines.some((l) => /@piflow\/tool-bridge/.test(l))).toBe(false);
+    expect(importLines.some((l) => /@modelcontextprotocol\/sdk/.test(l))).toBe(false);
+    // the bundle is non-trivially larger than the source (the runtime was pulled in).
+    expect(bundled.length).toBeGreaterThan(src.length * 5);
+  });
+
+  it('KEEPS the pi-injected specifiers EXTERNAL (typebox import survives verbatim)', () => {
+    const bundled = bundleExtension(compileToolExtension([MCP_ISSUE]).source);
+    // typebox is in pi's alias map → it must remain an external import (one instance via pi's copy).
+    expect(bundled).toMatch(/from\s*['"]typebox['"]/);
+  });
+
+  it('BUILDS clean as ESM (the CJS/TLA trap is avoided) and preserves the default-export factory', () => {
+    // building without throwing is the witness that format:'esm' avoided the
+    // "Dynamic require / Top-level await not supported with cjs" failure mode.
+    const bundled = bundleExtension(compileToolExtension([MCP_ISSUE]).source);
+    // esbuild emits the default export as `export { <ident> as default }` (or `export default`).
+    expect(bundled).toMatch(/export\s*\{[^}]*\bas default\b|export\s+default/);
+  });
+
+  it('returns empty for an empty source (nothing to bundle)', () => {
+    expect(bundleExtension('')).toBe('');
   });
 });

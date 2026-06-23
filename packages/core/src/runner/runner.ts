@@ -25,7 +25,9 @@ import type {
   ToolRegistry,
   ResolveResult,
   ExecResult,
+  SecretResolver,
 } from '../types.js';
+import { defaultSecretResolver } from '../types.js';
 import { DefaultToolRegistry } from '../tools/registry.js';
 import { verifyToolBinding } from '../tools/verify.js';
 import { InMemorySandboxProvider } from '../sandbox/index.js';
@@ -103,6 +105,21 @@ export interface RunOptions {
    * a warning if ajv is absent); pass `null` to disable the gate; pass a fn to inject one (tests do this).
    */
   validateSchema?: SchemaValidator | null;
+  /**
+   * The MCP server map the runner stages into a node's `_pi/mcp.json` when that node selected MCP tools.
+   * A LOOSE JSON shape on purpose — `@piflow/tool-bridge` owns its validation (the bridge expands the
+   * `$VAR` refs + shape-checks at resolution time), so the runner does NOT import the bridge's
+   * `McpServerConfig`/`BridgeConfig` types (no cross-package type dependency); it writes this VERBATIM.
+   * Each server config carries `$VAR`/`${VAR}` REFERENCES in its secret-bearing fields, never literals.
+   */
+  mcpConfig?: { servers: Record<string, unknown> };
+  /**
+   * Per-node secret resolver — the seam where a host plugs a scoped-token / sealing broker. The runner
+   * calls it once per referenced `$VAR` per node to get the value injected into the node's env; a
+   * broker returns a SHORT-LIVED SCOPED token (cloud) so the raw long-lived credential never crosses
+   * into the VM. Omit ⇒ `defaultSecretResolver` (reads `process.env`, today's behavior).
+   */
+  secretResolver?: SecretResolver;
 }
 
 /** The result of a run: the final status record + the host run dir it was written to. */
@@ -211,6 +228,88 @@ function selectWindow(wf: Workflow, from?: string, until?: string): { fromIdx: n
   return { fromIdx, untilIdx };
 }
 
+// ── MCP config staging (env/secret porting — see docs/research/tool-bridge-env-2026-06-21.md) ───────
+// When a node selected bridge tools (mcp./oc.) AND a run-level `mcpConfig` is present, the runner stages
+// the server map to `_pi/mcp.json` (verbatim — the map carries `$VAR` refs, NEVER literal secrets) and
+// injects, via the `CreateOpts.env` seam, `PIFLOW_MCP_CONFIG` (the ABSOLUTE in-sandbox path of that file)
+// + the referenced secret env vars. The bridge inside the pi child expands the refs at resolution time.
+// An `oc.*` selection stages identically: the host supplies the reserved `openclaw` server in
+// `mcpConfig.servers` exactly like any MCP server, and the runner writes/forwards it verbatim.
+
+/** Provider kinds with no host trust boundary — the host env must NOT be spread into the VM (allowlist only). */
+const CLOUD_KINDS = new Set<SandboxProvider['kind']>(['daytona', 'e2b']);
+
+/**
+ * Did this node select at least one BRIDGE tool (mcp./oc.)? True iff an `mcp.<server>:<tool>` OR an
+ * `oc.<plugin>:<tool>` address survives `allow` minus `deny`. Both families execute through the bridge,
+ * which resolves its server config from the staged `_pi/mcp.json` — so either kind triggers staging.
+ * Exported for direct unit testing of the staging-trigger predicate.
+ */
+export function selectedBridgedTool(node: NodeSpec): boolean {
+  const deny = new Set(node.tools.deny ?? []);
+  return (node.tools.allow ?? []).some((a) => (a.startsWith('mcp.') || a.startsWith('oc.')) && !deny.has(a));
+}
+
+/** The SET of `$VAR`/`${VAR}` names referenced anywhere in the config's string values (deep walk). */
+function referencedEnvVars(config: { servers: Record<string, unknown> }): Set<string> {
+  const names = new Set<string>();
+  // matchAll is stateless per call (no shared lastIndex), so a fresh regex literal per string is correct.
+  const ref = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g;
+  const walk = (v: unknown): void => {
+    if (typeof v === 'string') {
+      for (const m of v.matchAll(ref)) names.add(m[1] ?? m[2]);
+    } else if (Array.isArray(v)) {
+      for (const x of v) walk(x);
+    } else if (v && typeof v === 'object') {
+      for (const x of Object.values(v)) walk(x);
+    }
+  };
+  walk(config.servers);
+  return names;
+}
+
+/**
+ * Build the env additions for a node that staged `_pi/mcp.json`: `PIFLOW_MCP_CONFIG` (the absolute path)
+ * plus EACH REFERENCED var resolved through the `SecretResolver` SEAM. This is a DECLARED ALLOWLIST —
+ * only the `$VAR` names the config actually references cross into the node; the host env is NEVER spread
+ * wholesale.
+ *
+ * The resolver is the broker seam. By default it reads `process.env` (today's behavior), but a host can
+ * plug a scoped-token / sealing broker: it MINTS a SHORT-LIVED, SCOPED token HOST-SIDE and returns THAT
+ * here, so the runner injects the scoped token as the env value and the bridge expands `$VAR` to it
+ * exactly as today — the real long-lived credential NEVER crosses into the cloud VM. (A sealing/egress
+ * proxy that swaps the scoped reference for the real credential at the gateway is the alternative the
+ * same seam supports.) The resolver gets `{ nodeId, isCloud }` so it can mint a per-node, cloud-only token.
+ *
+ * The allowlist is enforced identically for every backend, but it is LOAD-BEARING on cloud: a cloud VM
+ * (daytona/e2b) does NOT inherit `process.env` (the provider's exec merges only `{...this.env,...opts.env}`),
+ * so these additions are the ONLY way a secret reaches the VM — and they must be exactly the referenced
+ * set, nothing else, so an unrelated host secret can't ride along. On local backends the child already
+ * inherits `process.env` via the provider's exec merge; forwarding the referenced (resolved) set here is
+ * harmless (and correct if a var lives only in the parent process), and we still never blast the rest.
+ */
+export async function mcpEnvAdditions(
+  configPathAbs: string,
+  referenced: Set<string>,
+  isCloud: boolean,
+  nodeId: string,
+  resolver: SecretResolver = defaultSecretResolver,
+): Promise<Record<string, string>> {
+  const env: Record<string, string> = { PIFLOW_MCP_CONFIG: configPathAbs };
+  for (const name of referenced) {
+    const value = await resolver(name, { nodeId, isCloud });
+    if (value !== undefined) env[name] = value;
+  }
+  // Defense-in-depth against drift: on cloud the additions MUST be exactly PIFLOW_MCP_CONFIG + the
+  // referenced (allowlisted) names — any other key here would be a host-env leak into the VM.
+  if (isCloud) {
+    for (const key of Object.keys(env)) {
+      if (key !== 'PIFLOW_MCP_CONFIG' && !referenced.has(key)) delete env[key];
+    }
+  }
+  return env;
+}
+
 // ── the per-node lifecycle ────────────────────────────────────────────────────────────────────────
 
 interface RunContext {
@@ -225,6 +324,12 @@ interface RunContext {
   status: RunStatus;
   /** Resolved schema validator (default ajv-2020 / injected / null=disabled) for the schema gate. */
   validateSchema: SchemaValidator | null;
+  /** The MCP server map staged into `_pi/mcp.json` for bridge-tool nodes (mcp./oc.) (verbatim; bridge owns validation). */
+  mcpConfig?: { servers: Record<string, unknown> };
+  /** The provider's backend kind — drives the cloud (daytona/e2b) env ALLOWLIST vs local passthrough policy. */
+  providerKind: SandboxProvider['kind'];
+  /** Per-node secret resolver (the scoped-token / sealing-broker seam). Undefined ⇒ `defaultSecretResolver`. */
+  secretResolver?: SecretResolver;
 }
 
 /** Read a host-side input file as bytes (for staging a downstream node's reads). */
@@ -272,6 +377,29 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
   // since the stage uses Promise.all — fail-fast the WHOLE run, discarding the sibling lanes' already-
   // completed work (MDN "Promise.all fail-fast"; javascript.info "Dangerous Promise.all": an uncaught
   // rejection can crash a Node process). Mark this node `error` and let the run halt cleanly instead.
+  // MCP CONFIG STAGING (decided BEFORE create so the env additions reach the `CreateOpts.env` seam):
+  // a node that selected bridge tools (mcp./oc.) + a run-level mcpConfig gets `_pi/mcp.json` (written
+  // below, after the sandbox exists) and, injected here, `PIFLOW_MCP_CONFIG` (absolute in-sandbox path) +
+  // the referenced secret env vars. CLOUD providers forward ONLY the referenced (allowlisted) vars — never
+  // the host env.
+  const MCP_CONFIG_FILE = '_pi/mcp.json';
+  const stageMcp = Boolean(resolved.extension) && selectedBridgedTool(node) && Boolean(ctx.mcpConfig);
+  let mcpEnv: Record<string, string> | undefined;
+  if (stageMcp && ctx.mcpConfig) {
+    // Absolute in-sandbox path: the run root + the node's workdir + the staged file. posix join keeps it
+    // valid in a cloud VM; on local providers scope.root is the host repoRoot under which the node resolves.
+    const configPathAbs = path.posix.join(scope.root, node.sandbox.workspace || '.', MCP_CONFIG_FILE);
+    // Resolve each referenced $VAR through the broker seam (default: process.env). A host-plugged broker
+    // mints a scoped token here so the raw credential never reaches the (cloud) VM.
+    mcpEnv = await mcpEnvAdditions(
+      configPathAbs,
+      referencedEnvVars(ctx.mcpConfig),
+      CLOUD_KINDS.has(ctx.providerKind),
+      node.id,
+      ctx.secretResolver ?? defaultSecretResolver,
+    );
+  }
+
   let sandbox: Sandbox;
   try {
     sandbox = await scope.create({
@@ -279,7 +407,9 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
       outputDir: node.sandbox.output,
       workdir: node.sandbox.workspace,
       image: node.sandbox.image,
-      env: node.sandbox.env,
+      // Merge the MCP env additions over the node's declared env (so PIFLOW_MCP_CONFIG + the referenced
+      // secrets land in the child via the provider's exec merge). Undefined ⇒ node env unchanged.
+      env: mcpEnv ? { ...node.sandbox.env, ...mcpEnv } : node.sandbox.env,
       timeoutMs: node.sandbox.timeoutMs,
     });
   } catch (e) {
@@ -306,6 +436,13 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     if (resolved.extension) {
       extensionFile = '_pi/tools.ts';
       await sandbox.writeFile(extensionFile, resolved.extension);
+    }
+
+    // Stage the node's MCP server map VERBATIM (only for MCP-tool nodes with a run-level mcpConfig). It
+    // carries `$VAR` refs, never literal secrets — the bridge expands them in-child against PIFLOW_MCP_CONFIG
+    // + the referenced env vars injected at create above. A node with no MCP tools writes NO `_pi/mcp.json`.
+    if (stageMcp && ctx.mcpConfig) {
+      await sandbox.writeFile(MCP_CONFIG_FILE, JSON.stringify(ctx.mcpConfig));
     }
 
     // PRE hooks (deterministic plumbing — stage inputs / seeds). A blocking failure throws → error.
@@ -503,6 +640,9 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     providerName: opts.providerName ?? 'cp',
     model: opts.model,
     validateSchema,
+    mcpConfig: opts.mcpConfig,
+    providerKind: provider.kind,
+    secretResolver: opts.secretResolver,
     watchdog: {
       nodeTimeoutMs: opts.nodeTimeoutMs ?? 1_800_000,
       stallMs: opts.stallMs ?? 0,

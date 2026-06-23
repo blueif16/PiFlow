@@ -4,7 +4,7 @@
 // require a generated `-e` extension, flagged here via `ResolveResult.extension`.
 
 import type { ToolEntry, ToolRegistry, ToolSelection, ResolveResult, ToolSource } from '../types.js';
-import { compileToolExtension } from './compile.js';
+import { compileToolExtension, bundleExtension } from './compile.js';
 
 /** pi's native built-in tools, addressed under `fs:` / `sh:`. */
 export const BUILTIN_TOOLS: ToolEntry[] = [
@@ -56,8 +56,11 @@ export class DefaultToolRegistry implements ToolRegistry {
       }
     }
     const result: ResolveResult = { piTools };
-    // sdk/mcp tools have no native pi support — compile a generated `-e` extension that binds them.
-    if (nonBuiltin.length) result.extension = compileToolExtension(nonBuiltin).source;
+    // sdk/mcp tools have no native pi support — compile a generated `-e` extension that binds them, then
+    // BUNDLE it host-side (esbuild buildSync — `resolve` stays SYNC) into ONE self-contained ESM file so
+    // the bridge/SDK/plugin/shim are INLINED and the staged `_pi/tools.ts` resolves on every provider
+    // (outside-repo temp dir / empty cloud VM included), not just where an up-tree node_modules exists.
+    if (nonBuiltin.length) result.extension = bundleExtension(compileToolExtension(nonBuiltin).source);
     return result;
   }
 

@@ -301,6 +301,29 @@ export interface SandboxProvider {
   openRun?(opts: OpenRunOpts): Promise<RunScope>;
 }
 
+// ── SECRET RESOLVER (horizontal seam — scoped-token / sealing broker) ─────────
+
+/**
+ * Resolves a referenced secret var to the value injected into a node's env — the seam where a host
+ * plugs a scoped-token / sealing broker so a cloud VM gets a short-lived scoped token, NOT the raw
+ * long-lived credential. Called once per referenced $VAR per node. Default reads process.env.
+ *
+ * The refinement this exists for: NEVER put a Bearer for a long-lived credential into a cloud
+ * microVM. A host mints a SHORT-LIVED, SCOPED reference HOST-SIDE (a sealing/egress broker) and
+ * returns THAT here; the runner injects it as the env value and the bridge expands `$VAR` to it
+ * exactly as today — so the real key never crosses into the VM. (A sealing/egress proxy that swaps
+ * the scoped reference for the real credential at the gateway is the alternative the same seam
+ * supports.) `ctx.isCloud` lets a resolver mint only on a cloud backend and pass the raw value
+ * through locally.
+ */
+export type SecretResolver = (
+  varName: string,
+  ctx: { nodeId: string; isCloud: boolean },
+) => string | undefined | Promise<string | undefined>;
+
+/** The default resolver — preserves today's behavior: read the raw value straight from `process.env`. */
+export const defaultSecretResolver: SecretResolver = (name) => process.env[name];
+
 // ── TOOL REGISTRY (horizontal seam — the searchable catalog) ──────────────────
 
 /** Where a tool comes from. `builtin` is native pi; `sdk`/`mcp` need a generated `-e` extension. */

@@ -19,6 +19,9 @@ export { BridgeError } from './errors.js';
 export type { BridgeErrorCode } from './errors.js';
 export { configureBridge } from './config.js';
 export { CONFIG_ENV } from './config.js';
+// The reserved server name every `oc.<plugin>:<tool>` address routes to — re-exported so hosts/the runner
+// can reference the key under which they must configure the OpenClaw gateway in their mcpConfig.servers.
+export { OPENCLAW_SERVER } from './address.js';
 export type { BridgeConfig, McpServerConfig, PiContentBlock, PiToolResult } from './types.js';
 
 /** Per-call options. Matches the generated `execute(toolCallId, params, signal)` call site. */
@@ -46,11 +49,13 @@ function mapResult(raw: McpCallResult): PiToolResult {
 }
 
 /**
- * Call an MCP tool by its `mcp.<server>:<tool>` address and return a pi tool-execute result.
+ * Call a bridged tool by its address and return a pi tool-execute result. Two address families:
+ * `mcp.<server>:<tool>` (a plain MCP tool) and `oc.<plugin>:<tool>` (a gateway-coupled OpenClaw tool,
+ * routed to the reserved `openclaw` server with its raw tool name) — see {@link parseAddress}.
  *
- * @param address `mcp.<server>:<tool>` — server + tool keep their RAW spelling; the tool name is sent
- *                verbatim to the server (NEVER pi's sanitized piName). A non-`mcp.` address throws a
- *                typed {@link BridgeError} (`unsupported-address`).
+ * @param address `mcp.<server>:<tool>` or `oc.<plugin>:<tool>` — the tool name is sent verbatim to the
+ *                server (NEVER pi's sanitized piName). An address in neither family throws a typed
+ *                {@link BridgeError} (`unsupported-address`).
  * @param params  Tool arguments — forwarded as the MCP `tools/call` `arguments`.
  * @param opts    `{ toolCallId?, signal? }` — `signal` cancels the in-flight call.
  */

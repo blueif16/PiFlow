@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./tools/openclaw-shim": {
+      "types": "./dist/tools/openclaw-shim.d.ts",
+      "import": "./dist/tools/openclaw-shim.js"
+    },
+    "./seeds/calc": {
+      "types": "./dist/seeds/calc.d.ts",
+      "import": "./dist/seeds/calc.js"
     }
   },
   "main": "./dist/index.js",
@@ -21,6 +29,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@daytona/sdk": "^0.185.0"
+    "@daytona/sdk": "^0.185.0",
+    "esbuild": "^0.28.1"
   }
 }

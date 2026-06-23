@@ -22,12 +22,25 @@ export { DefaultToolRegistry, BUILTIN_TOOLS } from './tools/registry.js';
 // Ingestion: MCP tools/list → ToolEntry[] (the effortless catalog fill)
 export { mcpToolsToEntries } from './tools/ingest.js';
 export type { McpToolListing, McpIngestOpts } from './tools/ingest.js';
+// Ingestion: names-only OpenClaw plugin manifest → skeleton sdk ToolEntry[] (the `sdk` lane)
+export { openClawPluginToEntries } from './tools/ingest.js';
+export type { OpenClawManifest, OpenClawIngestOpts } from './tools/ingest.js';
+// OpenClaw capture-shim: run a plugin's register() to capture its native tool defs (+ purity gate)
+export { captureOpenClawTools, makeCaptureApi } from './tools/openclaw-shim.js';
+export type { OpenClawToolDef, CapturedTool, CaptureApi, OpenClawPluginEntry } from './tools/openclaw-shim.js';
 // Compile: ToolEntry[] → generated `-e` extension source (the declarative wiring)
-export { compileToolExtension, planTools, renderExtension, DEFAULT_BRIDGE_MODULE } from './tools/compile.js';
+export { compileToolExtension, planTools, renderExtension, DEFAULT_BRIDGE_MODULE, DEFAULT_SHIM_MODULE } from './tools/compile.js';
 export type { CompiledExtension, PlannedTool, CompileOpts } from './tools/compile.js';
+// Bundle: render → ONE self-contained ESM `-e` file (esbuild; inlines bridge/SDK/plugin, pi specifiers external)
+export { bundleExtension, PI_INJECTED_EXTERNALS } from './tools/compile.js';
+export type { BundleOpts } from './tools/compile.js';
 // Verify: the per-node bind pre-check (declared tools ⊆ bindable, no collisions)
 export { verifyToolBinding } from './tools/verify.js';
 export type { BindReport } from './tools/verify.js';
+// Catalog (M4 seed): the tiny persisted, searchable registry-as-code + a registry seeded with it
+export { OPENCLAW_SEED_CATALOG, loadCatalog, seededRegistry } from './tools/catalog.js';
+// Community catalog: a curated, pinned crawl of REAL OpenClaw tool plugins (discoverable, gateway-coupled)
+export { OPENCLAW_COMMUNITY_CATALOG, OPENCLAW_PIN } from './tools/openclaw-community.js';
 
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
@@ -61,6 +74,10 @@ export { runWorkflow, defaultExecRunner, defaultPiCommand, lastJsonBlock, writeS
 // Post-node schema gate (injectable validator seam + best-effort ajv-2020 default)
 export { validateArtifactSchemas, defaultSchemaValidator } from './runner/index.js';
 export type { SchemaValidator, SchemaCheckResult } from './runner/index.js';
+// Scoped-token / sealing-broker seam: a host plugs a SecretResolver so a cloud VM gets a short-lived
+// scoped token, not the raw credential (also surfaced via `export * from './types.js'` above).
+export { defaultSecretResolver } from './runner/index.js';
+export type { SecretResolver } from './runner/index.js';
 export type {
   RunOptions,
   RunResult,

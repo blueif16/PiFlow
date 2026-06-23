@@ -3,14 +3,20 @@
 // tests assert on the specific failure mode.
 
 export type BridgeErrorCode =
-  /** Address was not `mcp.<server>:<tool>` (e.g. `web:search`, an `sdk` tool) — out of this bridge's scope. */
+  /** Address was neither `mcp.<server>:<tool>` nor `oc.<plugin>:<tool>` (e.g. `web:search`, `builtin:read`) — out of this bridge's scope. */
   | 'unsupported-address'
-  /** The `mcp.<server>:<tool>` address could not be parsed into a server + tool. */
+  /** An `mcp.<server>:<tool>` / `oc.<plugin>:<tool>` address could not be parsed into a server + tool. */
   | 'malformed-address'
   /** No config exists for the server named in the address. */
   | 'unknown-server'
   /** The bridge has not been configured (no in-process config and `PIFLOW_MCP_CONFIG` unset/invalid). */
   | 'not-configured'
+  /**
+   * A `$VAR`/`${VAR}` reference in the config resolved to no env var. Distinct from `not-configured`
+   * (config IS present, just unexpandable) and `connect-failed` — we fail HERE so a literal `$VAR`
+   * never reaches a server as a bogus credential.
+   */
+  | 'missing-env'
   /** Connecting the MCP client to its server transport failed. */
   | 'connect-failed';
 

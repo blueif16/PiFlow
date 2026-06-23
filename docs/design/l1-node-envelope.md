@@ -199,11 +199,20 @@ create(readScope, outputDir, workdir, env, timeoutMs)   // pick impl by sandbox.
   (`tools/verify.ts`, wired into the runner) · runner staging of the generated extension · the **`@piflow/tool-bridge`
   MCP transport RUNTIME** (`callTool(address, params)` the generated `-e` imports: connection / lifecycle / JSON-RPC).
   The colon-namespace addressing, conflict-prefixing, and the `--tools`/`-e` compile target all hold unchanged.
+- **OpenClaw tools — population + execution.** A **persisted, searchable catalog** (`tools/catalog.ts` +
+  `tools/openclaw-community.ts`): the executable `oc.calc:add` seed (pure, native-bound) plus a curated, pinned
+  crawl of REAL OpenClaw community tools (`openclaw@2026.6.9`, discoverable, marked `gateway-coupled`). The
+  **`oc.*` execution lane** — a gateway-coupled tool (`oc.<plugin>:<tool>`) routes through the bridge to a
+  reserved `openclaw` MCP gateway (`@piflow/tool-bridge` `OPENCLAW_SERVER`), sending the BARE tool name; proven
+  end-to-end (stdio + Streamable-HTTP+bearer) against OpenClaw's `plugin-tools-serve`. **Reuse, not rebuild:**
+  OpenClaw is MIT and serves its plugin tools over MCP, so coupled tools execute in OpenClaw, reached over our
+  existing MCP lane (`docs/research/sandbox-tool-wiring-2026-06-22.md`).
 - **Runner.** The full per-node lifecycle (`runner/` — create→stage `io.reads`→exec the built command→`downloadDir`
   collect→host-stat `io.artifacts` verify→hooks→dispose) · node-timeout + silent-stall **watchdogs** routed through
   one kill seam (SIGTERM→SIGKILL grace, real process-group reap via `ExecOpts.signal`) · **halt-on-failure** ·
   `--from`/`--until` **resume** (artifact-stat preflight) · **lane isolation** (a lane throw can't fail-fast the run) ·
-  serialized + atomic `run-status.json`.
+  serialized + atomic `run-status.json` · the **scoped-token `SecretResolver` seam** (a host plugs a broker so a
+  cloud VM gets a short-lived SCOPED token, never the raw long-lived credential; default reads `process.env`).
 - **Sandbox.** The **`RunScope`/`openRun` run-scoped lifecycle** seam (`types.ts`; wired in the runner — providers that
   share ONE resource across a run boot it once / tear it down once, with a trivial per-node forwarder for those that
   don't) · the **Seatbelt read-scope `SandboxProvider`** (`sandbox/seatbelt.ts` — per-exec `sandbox-exec` profile from
@@ -219,9 +228,10 @@ create(readScope, outputDir, workdir, env, timeoutMs)   // pick impl by sandbox.
   `finishWorktree`), every node runs INSIDE it, `dispose` commits the branch (durable for a human-gated merge) and
   removes the checkout; tested against a throwaway temp git repo (`test/sandbox-worktree.test.ts`).
 
-**Deferred (horizontal fill):** the **E2B** provider (the Daytona adapter is the template) · a
-**persisted searchable catalog** +
-freshness/trust (M4; see `../research/tool-registry-maintenance-2026-06-21.md`) · the COMPOSE planner (structured-output
+**Deferred (horizontal fill):** the **E2B** provider (the Daytona adapter is the template) · catalog
+**freshness/trust** (M4; the catalog itself landed above — see `../research/tool-registry-maintenance-2026-06-21.md`) ·
+**Code Mode** (collapse a large tool catalog to `exec`/`wait` for a 94–99% tool-token cut — deferred; NOT importable
+from OpenClaw, see the `tools/compile.ts` note) · the COMPOSE planner (structured-output
 + validate→repair; weak-model schema-fill rules: *rationale-before-committed fields*, *keep optionals optional*) ·
 runner **escalation ladder** + stuck-delta/tool-thrash kills · the `@piflow/viz` renderer · the `piflow` CLI ·
 **a live `pi` smoke-test** (below) — the one thing the offline test harness deliberately cannot cover.
@@ -231,6 +241,8 @@ runner **escalation ladder** + stuck-delta/tool-thrash kills · the `@piflow/viz
 > accepts it and advertises the shape to the model as expected; if strict TypeBox is required, swap the single
 > `renderTool` parameters line (the compiler is isolated for exactly this).
 
-> **Open reconciliation:** the tools brief reports OpenClaw is *open-source*, contradicting the canon's
-> "closed-core" note (`orchestration-substrate.md` §4). Verify before amending the canon; it does not affect this
-> spine (OpenClaw offers no richer namespacing to borrow either way).
+> **Reconciliation (RESOLVED 2026-06-22):** OpenClaw is **MIT open-source** — verified from the repo `LICENSE` +
+> `package.json` (Copyright © 2026 OpenClaw Foundation). Amend the canon's "closed-core" note
+> (`orchestration-substrate.md` §4). It also corrects the prior assumption that OpenClaw *embeds pi*: OpenClaw owns
+> its own agent runtime (`@openclaw/agent-core`); the only pi dependency is `@earendil-works/pi-tui`. Neither
+> affects this spine — we reuse OpenClaw at the MCP tool-transport layer, never its runtime.
