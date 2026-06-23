@@ -21,6 +21,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "piflow": "./dist/cli.js"
+  },
   "files": [
     "dist",
     "src"

@@ -19,3 +19,17 @@ export type {
   ArtifactState,
   RunTotals,
 } from './status.js';
+// Observability: per-node event capture (write side) + the docker-style logs reader (read side).
+export { NodeRecorder, recordingSandbox, slimEvent } from './events.js';
+export type { PiEvent, EventSink } from './events.js';
+export {
+  makeDistiller,
+  distillEvents,
+  tailNode,
+  followRun,
+  runLogsCli,
+  parseEventsFile,
+  eventsPath,
+  statusFilePath,
+} from './logs.js';
+export type { FollowOpts } from './logs.js';

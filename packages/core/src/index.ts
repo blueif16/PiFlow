@@ -91,3 +91,19 @@ export type {
   ArtifactState,
   RunTotals,
 } from './runner/index.js';
+// Observability — `docker logs` for a run: per-node event capture (NodeRecorder) + the distill/tail/
+// follow reader the `piflow logs` CLI is built on. Any consumer streams a run via these or `npx piflow logs`.
+export {
+  NodeRecorder,
+  recordingSandbox,
+  slimEvent,
+  makeDistiller,
+  distillEvents,
+  tailNode,
+  followRun,
+  runLogsCli,
+  parseEventsFile,
+  eventsPath,
+  statusFilePath,
+} from './runner/index.js';
+export type { PiEvent, EventSink, FollowOpts } from './runner/index.js';

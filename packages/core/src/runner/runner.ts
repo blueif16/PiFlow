@@ -35,6 +35,7 @@ import { markersFromNode, emitMarkers } from '../contract.js';
 import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas, defaultSchemaValidator, type SchemaValidator } from './schema.js';
 import { runHooks } from '../hooks/index.js';
+import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
 import { defaultPiCommand, type CommandBuilder } from './command.js';
 import {
   type RunStatus,
@@ -120,6 +121,17 @@ export interface RunOptions {
    * into the VM. Omit ⇒ `defaultSecretResolver` (reads `process.env`, today's behavior).
    */
   secretResolver?: SecretResolver;
+  /**
+   * Capture each node's agent stdout (the `pi --mode json` stream) to `<outDir>/_pi/<id>.events.jsonl`
+   * — the observability backbone `./logs.ts` tails (`docker logs` for a run). Default `true`; the
+   * archive is slimmed + lazy (a node that emits nothing leaves no file). Set `false` to disable.
+   */
+  recordEvents?: boolean;
+  /**
+   * Live event sink — called with `(nodeId, slimmedEvent)` as each event is parsed, the push seam a
+   * TUI/GUI subscribes to (the file archive is always written regardless). Never breaks the run if it throws.
+   */
+  onEvent?: EventSink;
 }
 
 /** The result of a run: the final status record + the host run dir it was written to. */
@@ -320,6 +332,8 @@ interface RunContext {
   execRunner: ExecRunner;
   providerName: string;
   model?: string;
+  recordEvents: boolean;
+  onEvent?: EventSink;
   watchdog: ExecWatchdogOpts;
   status: RunStatus;
   /** Resolved schema validator (default ajv-2020 / injected / null=disabled) for the schema gate. */
@@ -457,7 +471,12 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     rec.command = cmd;
 
     const nodeTimeoutMs = node.sandbox.timeoutMs ?? ctx.watchdog.nodeTimeoutMs;
-    const { result, killed } = await ctx.execRunner(sandbox, cmd, { ...ctx.watchdog, nodeTimeoutMs });
+    // Tee the agent's stdout into a per-node slimmed events archive (additive — the wrap chains the
+    // watchdog's own onStdout, so recording can never disable the stall kill). See ./events.ts.
+    const recorder = ctx.recordEvents ? new NodeRecorder(ctx.outDir, node.id, ctx.onEvent) : null;
+    const execSandbox = recorder ? recordingSandbox(sandbox, recorder) : sandbox;
+    const { result, killed } = await ctx.execRunner(execSandbox, cmd, { ...ctx.watchdog, nodeTimeoutMs });
+    await recorder?.close();
     rec.exitCode = result.code;
 
     // COLLECT: copy the node's sandbox output dir back to the host run dir. The convention (proven in
@@ -639,6 +658,8 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     execRunner: opts.execRunner ?? defaultExecRunner,
     providerName: opts.providerName ?? 'cp',
     model: opts.model,
+    recordEvents: opts.recordEvents ?? true,
+    onEvent: opts.onEvent,
     validateSchema,
     mcpConfig: opts.mcpConfig,
     providerKind: provider.kind,
