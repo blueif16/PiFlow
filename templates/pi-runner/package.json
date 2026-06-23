@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Per-repo pi-runner wiring for the @piflow/core SDK consumer. The generic engine (DAG compile, runWorkflow, providers, contract codec, observability) lives in the @piflow/core package — NOT here; this folder is the thin consumer + your project's deterministic hook ops. Set the @piflow/core dependency below to your install (a file: path to the skill's packages/core, a workspace dep, or the published package once available), then `npm install`. ajv is OPTIONAL — the post-node DRIVER-SCHEMA gate degrades gracefully (warns, non-blocking skip) when no draft-2020-12 validator resolves.",
   "dependencies": {
-    "@piflow/core": "file:CHANGEME-path-to/transform-workflow-to-pi/packages/core"
+    "@piflow/core": "file:CHANGEME-path-to/piflow/packages/core"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

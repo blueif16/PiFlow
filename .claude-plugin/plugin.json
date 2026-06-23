@@ -1,0 +1,6 @@
+{
+  "name": "piflow",
+  "description": "Pi Flow — author, enhance, and run structured filesystem-coordinated workflows (a DAG of producer/verify nodes) as a fleet of efficient pi agents driven by non-Claude coding-plan models, with Claude Code as the single console. Three skills: piflow-init (create a workflow), piflow-enhance (improve it), piflow-start (run + monitor it).",
+  "version": "0.1.0",
+  "skills": "./.claude/skills"
+}

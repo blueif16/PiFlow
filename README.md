@@ -1,6 +1,7 @@
 # Pi Flow
 
-> *Repo + Claude Code skill name: `transform-workflow-to-pi`. The product/library surfaces as **Pi Flow** (`piflow`).*
+> *Repo + plugin name: `piflow` (at `~/Desktop/piflow`). Surfaces as three Claude Code skills — `piflow-init`
+> (create), `piflow-enhance` (improve), `piflow-start` (run) — plus the `@piflow/core` library.*
 
 ## Your next ultracode can be on a Pi fleet.
 
@@ -53,7 +54,7 @@ the broader substrate.
 | Layer | Where | What |
 |---|---|---|
 | **The product vision** | [`docs/`](docs/), [`ROADMAP.md`](ROADMAP.md) | The substrate Pi Flow is becoming — the design canon, the buildable architecture, the forward plan. **Start at [`docs/INDEX.md`](docs/INDEX.md).** |
-| **The shipping skill + harness** | [`SKILL.md`](SKILL.md), [`reference/`](reference/), [`packages/core`](packages/core) (`@piflow/core`), [`templates/pi-runner/`](templates/pi-runner/) | What runs *today*: the Claude Code skill that performs the transform; the **`@piflow/core` SDK** (the engine — installed, not copied); and the thin consumer template you drop into any repo. The pre-SDK monolith is archived in [`templates/legacy/`](templates/legacy/). |
+| **The shipping skills + harness** | [`.claude/skills/`](.claude/skills/) (`piflow-init`/`piflow-enhance`/`piflow-start`), [`reference/`](reference/), [`packages/core`](packages/core) (`@piflow/core`), [`templates/pi-runner/`](templates/pi-runner/) | What runs *today*: the three Claude Code skills (`piflow-init` carries the bulk); the **`@piflow/core` SDK** (the engine — installed, not copied); and the thin consumer template you drop into any repo. The pre-SDK monolith is archived in [`templates/legacy/`](templates/legacy/). |
 
 **Status: Foundation.** The harness ships and runs today (extract → drive a Pi fleet → verify on disk).
 The auto-design / self-improve / full control-plane capabilities above are the substrate's design and
@@ -72,17 +73,20 @@ build order — see [`ROADMAP.md`](ROADMAP.md) for what is GA vs in flight.
 - **[`docs/pi-agent-notes.md`](docs/pi-agent-notes.md)** — the durable knowledge record about `pi` as a headless
   executor (capabilities, mechanics, sharp edges, codex-vs-pi, backlog).
 
-## Install (the skill)
+## Install (the skills)
 
-This is a Claude Code skill. Make it discoverable by placing (or symlinking) the folder under your
-skills directory:
+This repo is the **piflow** Claude Code plugin. Make the three skills globally discoverable by symlinking
+each into your skills directory:
 
 ```bash
-ln -s "$(pwd)" ~/.claude/skills/transform-workflow-to-pi
+for s in piflow-init piflow-enhance piflow-start; do
+  ln -sfn "$(pwd)/.claude/skills/$s" ~/.claude/skills/$s
+done
 ```
 
-Claude Code surfaces it whenever someone asks to "run my workflow on pi", "run this on a non-Claude
-model", "pi-runner", or "offload the workflow to a non-Claude fleet".
+Claude Code surfaces `piflow-init` whenever someone asks to "create/author a workflow", "port my Claude
+workflow to pi", "run my workflow on a non-Claude model", or "pi-runner"; `piflow-start` to run/monitor a
+workflow; `piflow-enhance` to improve one.
 
 ## Quickstart (the transform, condensed)
 

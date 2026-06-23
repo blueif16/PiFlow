@@ -837,7 +837,7 @@ async function runMerge(spec, projectBase) {
 // PROMOTE-UPSTREAM (local-first, flagged per the engine law): this DRIVER-SEED-CONTRACT family + its catalog-driven
 // interpreter is a NEW generic op added LOCALLY in this repo's pi-runner/. It carries ZERO repo-specific literals
 // (it is driven entirely by the catalog DATA + the marker), so it is a candidate for promotion into the canonical
-// transform-workflow-to-pi template (reference/artifact-contract.md's marker family + the run.mjs template) once
+// piflow template (reference/artifact-contract.md's marker family + the run.mjs template) once
 // proven on a real run — alongside the existing DRIVER-SEED/DRIVER-PROJECT/DRIVER-MERGE families. Until promoted it
 // lives here only; the engine stays byte-identical for repos that don't render the marker (it is inert when absent).
 // DRIVER-SEED-CONTRACT — a THIRD post-node DERIVE family (sibling of DRIVER-PROJECT / DRIVER-MERGE), for the
@@ -1081,7 +1081,7 @@ function finishWorktree(wtRoot, run, baseRoot, baseRunCwd, cwdRel, ok, keep) {
 // both the Definition-of-Done prose (for the model) AND these markers (for this driver). Unlike
 // `outputArtifacts` (self-reported, honest only when the model is), the driver verifies the
 // REQUIRED set itself — a clean exit that did NOT produce a required artifact is a contract BREACH,
-// not an ok. Full spec: transform-workflow-to-pi/reference/artifact-contract.md.
+// not an ok. Full spec: piflow/reference/artifact-contract.md.
 function markerPaths(prompt, key) {
   const m = new RegExp(`(?:^|\\n)\\s*${key}:\\s*(.+?)\\s*(?:\\n|$)`).exec(prompt || "");
   if (!m) return null;

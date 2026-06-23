@@ -74,8 +74,9 @@
   TRIAGE: (a) INGEST — a one-time `extractWorkflow` lift of an existing `.js`'s DAG+prompts; or (b) RECONSTRUCT —
   author from other sources (a spec / descriptions / an existing project), no `.js` at all. ONE-TIME ingest
   only: no two-way bridge, no generated `.js` view, NO Claude-Workflow execution target (pi + human + the verify
-  harness are the proving ground). **Inverts the `transform-workflow-to-pi` first law** — that skill's law is a
-  tracked follow-up rewrite. Full model: the *Source of truth & the init-template* section below.
+  harness are the proving ground). **Inverts the original Pi Flow first law** (the `.js`-as-truth premise Pi
+  Flow originally carried) — the law now lives, inverted, in `piflow-init`. Full model: the *Source of truth &
+  the init-template* section below.
 - **D9 — one project filesystem: `.piflow/` with workflow namespaces [proposed 2026-06-23].** All pi-flow state
   lives under `<project>/.piflow/`: an AUTO-DISCOVERED workflow INDEX + one directory per workflow (the
   NAMESPACE), each holding `template/` (the D8 source of truth, COMMITTED) and `runs/<id>/` (the threads,
