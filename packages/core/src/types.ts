@@ -363,6 +363,18 @@ export interface ResolveResult {
   excludeTools?: string[];
 }
 
+/**
+ * Optional, ENV-FREE knobs the command builder accepts as a 4th argument — the consumer (the runner)
+ * maps env/config → these, so the builder itself reads no `process.env`. Omitted ⇒ today's 3-arg
+ * behavior, byte-identical.
+ */
+export interface PiCommandOptions {
+  /** Reasoning-depth cap → `pi --thinking <v>`. Emitted only when truthy (a level string, or `true`). */
+  thinking?: string | boolean;
+  /** Extra `-e <path>` extensions, emitted BEFORE `ctx.extensionFile` (order is load-bearing). */
+  extraExtensions?: string[];
+}
+
 /** The catalog: register tools, resolve a selection to pi flags, search, and enumerate. */
 export interface ToolRegistry {
   register(entry: ToolEntry): void;

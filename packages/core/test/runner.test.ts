@@ -257,6 +257,42 @@ describe('defaultPiCommand — production headless flags', () => {
     expect(cmd).toContain('--model m1');
     expect(cmd).toContain('--tools read,write');
     expect(cmd).toMatch(/@'_pi\/prompt\.md'$/);
+    // back-compat: the 3-arg call carries NEITHER of U4's new flags.
+    expect(cmd).not.toContain('--exclude-tools');
+    expect(cmd).not.toContain('--thinking');
+  });
+
+  it('emits --exclude-tools from resolved.excludeTools (NOT a node.tools read)', () => {
+    // The load-bearing assertion: exclude derives from the RESOLVED result. The node declares NO deny,
+    // so a node.tools-direct builder would emit nothing — only reading `resolved.excludeTools` works.
+    const node = compile(wf([n('X', [], ['x.txt'])])).nodes.x;
+    const cmd = defaultPiCommand(node, { piTools: ['read'], excludeTools: ['bash', 'web'] }, { promptFile: '_pi/prompt.md' });
+    expect(cmd).toContain('--exclude-tools bash,web');
+  });
+
+  it('emits --thinking ONLY when opts.thinking is set', () => {
+    const node = compile(wf([n('X', [], ['x.txt'])])).nodes.x;
+    const resolved = { piTools: ['read'] };
+    const ctx = { promptFile: '_pi/prompt.md' };
+    expect(defaultPiCommand(node, resolved, ctx, { thinking: 'high' })).toContain('--thinking high');
+    // absent opts ⇒ no flag.
+    expect(defaultPiCommand(node, resolved, ctx)).not.toContain('--thinking');
+  });
+
+  it('places each opts.extraExtensions -e BEFORE the ctx.extensionFile -e (order is load-bearing)', () => {
+    const node = compile(wf([n('X', [], ['x.txt'])])).nodes.x;
+    const cmd = defaultPiCommand(
+      node,
+      { piTools: ['read'] },
+      { promptFile: '_pi/prompt.md', extensionFile: '_pi/x/tools.ts' },
+      { extraExtensions: ['/abs/a.ts', '/abs/b.ts'] },
+    );
+    // each extra is an -e; the ctx extension is the LAST -e.
+    expect(cmd).toContain("-e '/abs/a.ts' -e '/abs/b.ts'");
+    expect(cmd).toContain("-e '_pi/x/tools.ts'");
+    // ORDER: both extras must come before the ctx extension in the argv string.
+    expect(cmd.indexOf("-e '/abs/a.ts'")).toBeLessThan(cmd.indexOf("-e '_pi/x/tools.ts'"));
+    expect(cmd.indexOf("-e '/abs/b.ts'")).toBeLessThan(cmd.indexOf("-e '_pi/x/tools.ts'"));
   });
 });
 
