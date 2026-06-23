@@ -76,6 +76,12 @@
   only: no two-way bridge, no generated `.js` view, NO Claude-Workflow execution target (pi + human + the verify
   harness are the proving ground). **Inverts the `transform-workflow-to-pi` first law** — that skill's law is a
   tracked follow-up rewrite. Full model: the *Source of truth & the init-template* section below.
+- **D9 — one project filesystem: `.piflow/` with workflow namespaces [proposed 2026-06-23].** All pi-flow state
+  lives under `<project>/.piflow/`: an AUTO-DISCOVERED workflow INDEX + one directory per workflow (the
+  NAMESPACE), each holding `template/` (the D8 source of truth, COMMITTED) and `runs/<id>/` (the threads,
+  GITIGNORED). A run's canonical home is ALWAYS `.piflow/<wf>/runs/<id>/` (= the D7 `${RUN}`) — REGARDLESS of
+  execution venue: local, worktree, and remote runs all COLLECT results back here, so the tracked record is
+  uniform across projects and venues. Full layout: the *Project filesystem* section below.
 
 ## Build order (each: additive · test-first · its own commit · mirrors the named test file)
 
@@ -285,6 +291,45 @@ never co-authoritative; it is a discardable seed.
   `${WORKSPACE}`/`${RUN}` roots + RunState type/reducers/load-persist + the `io.json` writer), U7 (`${state}`
   resolver + `promote` executor + barrier-merge + contract-as-data rendering), U8 (`runFromConfig` + `init(${RUN})`).
 - **No Claude-Workflow execution** ⇒ drop any "generated `.js` view" idea; extraction is ingest-only.
+
+## Project filesystem — `.piflow/` + workflow namespaces (D9)
+
+> [proposed 2026-06-23] The project-level layer ABOVE D7's per-run `.pi/`. Makes the WHOLE pi-flow footprint
+> uniform across projects (the recurring "don't let the fs go messy" bar) and unifies execution venues —
+> local / worktree / remote all land their tracked record in the same place.
+
+```
+<project>/
+  packages/skills/  templates/        # ${WORKSPACE}: canonical, committed, read-only at run time (registry/components/scaffold)
+  .piflow/                            # the ONE pi-flow home (SDK-owned convention)
+    workflows.json                    # AUTO-DISCOVERED index (scan .piflow/*/template/) — name → {dir, description, …}; NOT hand-edited
+    <workflow-name>/                  # a NAMESPACE (a project may have many: game-omni, archetype-fill, …)
+      template/                       # the D8 SOURCE OF TRUTH (committed): DAG manifest + per-node defs + refs
+      runs/                           # all threads of this workflow (GITIGNORED — ephemeral, regenerable)
+        <runId>/                      # one thread = the D7 ${RUN}
+          spec/ src/ public/ dist/    # the product, at semantic paths
+          .pi/                        # per-run engine metadata (state.json · run.json · nodes/<id>/{io.json,prompt,tools,events})
+```
+
+**Venue-independent tracking.** `.piflow/<wf>/runs/<id>/` is the run's CANONICAL HOME and single tracked record.
+The execution VENUE varies — local = execute in place there; worktree = execute in a git worktree and collect
+back; remote (daytona/e2b) = execute on a VM and `downloadDir` back — but the results (product + `.pi/` ledger +
+`state.json`) ALWAYS land here. Even a purely-local run gets its own `runs/<id>/` (no more shared `out/game`),
+so local and sandbox runs are recorded identically.
+
+**Committed vs ephemeral.** `template/` + `workflows.json` are COMMITTED (the source of truth); `runs/` is
+GITIGNORED (rebuildable from the template). One ignore rule: `.piflow/*/runs/`.
+
+**Layering onto D6/D7/D8.** `${WORKSPACE}` = the project's canonical trees (`packages/skills/`, `templates/`) +
+the workflow's `template/` (all read-only at run time). `${RUN}` = `.piflow/<wf>/runs/<id>/`. D7's `.pi/` nests
+inside each run; D8's template gets a fixed address (`.piflow/<wf>/template/`).
+
+**Generic-core note.** Core does NOT hardcode `.piflow/<wf>/runs/`; it owns the `.pi/` structure inside a given
+run dir and takes `workspace`/`projectBase` as inputs (U6a). The `.piflow/` convention is the CLI/init-run
+default (U8) + the init-template skill — so the SDK stays generic, the convention stays uniform.
+
+**Open naming nit:** `.piflow/` (project home) vs `${RUN}/.pi/` (per-run metadata) are close — keep, or rename
+the per-run dir (`_meta`/`.run`) to avoid confusion. Minor; flag for decision.
 
 ## Out of scope (Phase 2)
 The consumer opt-in: game-omni's `pi-runner/sdk/*` switching to import from `@piflow/core` and deleting its
