@@ -800,7 +800,15 @@ async function applyMergeOp(opSpec, projectBase) {
     const { cmd, args = [], cwd, note } = opSpec.run;
     if (!cmd) return { op: "run", wrote: false, skipped: "run needs { cmd }" };
     const sub = (s) => typeof s === "string" ? s.replace(/\{project\}/g, projectBase).replace(/\{root\}/g, ROOT) : s;
-    const cmdAbs = path.isAbsolute(sub(cmd)) ? sub(cmd) : path.join(ROOT, sub(cmd));
+    // A BARE command (no path separator) — `node` (run with the driver's OWN interpreter, robust to a
+    // PATH/nvm mismatch in the spawned env), `python3`, etc. — resolves via process/PATH, NOT joined to
+    // ROOT (joining produced <ROOT>/node → ENOENT, which silently no-op'd a bare-cmd run op like an
+    // event-wiring gate). Only a path CONTAINING a separator is a repo-relative file and keeps the ROOT join.
+    const subCmd = sub(cmd);
+    const cmdAbs = path.isAbsolute(subCmd) ? subCmd
+      : subCmd === "node" ? process.execPath
+      : !/[\\/]/.test(subCmd) ? subCmd
+      : path.join(ROOT, subCmd);
     const argv = (Array.isArray(args) ? args : []).map(sub);
     const runCwd = cwd ? (path.isAbsolute(sub(cwd)) ? sub(cwd) : path.join(ROOT, sub(cwd))) : ROOT;
     const res = spawnSync(cmdAbs, argv, { cwd: runCwd, stdio: ["ignore", "pipe", "pipe"], env: process.env });
