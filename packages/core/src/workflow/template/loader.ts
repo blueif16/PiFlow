@@ -12,11 +12,11 @@
 
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
-import type { WorkflowSpec, NodeIntent, NodeSpec, Check, Policy, ReturnMode } from '../../types.js';
-import { markersFromNode, emitMarkers } from '../../contract.js';
+import type { WorkflowSpec, NodeIntent, ReturnMode } from '../../types.js';
 import { defaultSchemaValidator, type SchemaValidator } from '../../runner/schema.js';
 import { nodeSchema, metaSchema } from './schema/index.js';
 import type { LoadedNode, TemplateNode, TemplateMeta } from './types.js';
+import { renderRealizedPrompt, collectChecks, toPolicy } from './render.js';
 import {
   checkSchemas,
   checkDeps,
@@ -90,7 +90,7 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
     // label = the template id so `slugify(label)` round-trips to the SAME id (the DAG compiler derives
     // ids from labels, not from an authored id — keeping `compile`'s graph aligned with the template).
     label: n.def.id,
-    prompt: renderPrompt(n),
+    prompt: renderRealizedPrompt(n.def, n.prose),
     skill: n.def.prompt.skill,
     tools: { allow: n.def.tools?.allow, deny: n.def.tools?.deny },
     io: {
@@ -112,58 +112,6 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
     },
   };
   return intent;
-}
-
-/** Flatten pre+post checks into the runtime `Check[]` (detection). Render order: pre then post. */
-function collectChecks(def: TemplateNode): Check[] | undefined {
-  const all = [...(def.checks?.pre ?? []), ...(def.checks?.post ?? [])].map((c) => ({
-    kind: c.kind,
-    path: c.path,
-    param: c.param,
-    severity: c.severity,
-  })) as Check[];
-  return all.length ? all : undefined;
-}
-
-/**
- * Map the authored policy object → the runtime `Policy`. The authored vocabulary is the RUNTIME verdict
- * keys (`warn`/`fail`) with `block|warn|stop` actions (the T1 schema's `policyAction`) — already the
- * runtime enum, so this is a structural pass-through. (NOTE: §3 prose still writes `retry`/`escalate`;
- * the policy-vocabulary reconcile is a codec concern deferred to T3 — flagged in the task return.)
- */
-function toPolicy(p: TemplateNode['policy']): Policy | undefined {
-  if (!p || !Object.keys(p).length) return undefined;
-  return p as Policy;
-}
-
-/**
- * Render a node's realized prompt: the prose body + the DRIVER-* marker tail (§6 step 2). Uses the
- * EXISTING `markersFromNode` codec AS-IS over a materialized NodeSpec (artifacts/owns/readScope/schema/
- * checks/policy/return) — T3 owns extending the codec for seed/promote/inject delivery (SEAM, flagged).
- */
-function renderPrompt(n: LoadedNode): string {
-  const c = n.def.contract;
-  // A minimal NodeSpec the codec reads — only the fields `markersFromNode` touches.
-  const node = {
-    id: n.def.id,
-    label: n.def.id,
-    prompt: n.prose,
-    skill: n.def.prompt.skill,
-    sandbox: { provider: 'inmemory', workspace: '.', read: c.readScope, write: c.owns, output: `out/${n.def.id}` },
-    tools: { allow: n.def.tools?.allow, deny: n.def.tools?.deny },
-    io: {
-      reads: [],
-      produces: c.artifacts,
-      artifacts: c.artifacts.map((p) => (c.schema ? { path: p, schema: c.schema } : { path: p })),
-      checks: collectChecks(n.def),
-      policy: toPolicy(n.def.policy),
-      returnMode: c.returnMode as ReturnMode | undefined,
-      fillSentinel: c.fillSentinel ?? undefined,
-    },
-  } as unknown as NodeSpec;
-  const tail = emitMarkers(markersFromNode(node));
-  const body = n.prose.trimEnd();
-  return tail ? `${body}\n\n${tail}` : body;
 }
 
 /**

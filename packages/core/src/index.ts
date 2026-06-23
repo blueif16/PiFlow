@@ -26,6 +26,13 @@ export { nodeSchema, metaSchema, workflowSchema } from './workflow/template/sche
 export { loadTemplate, TemplateError } from './workflow/template/loader.js';
 export type { LoadTemplateOpts } from './workflow/template/loader.js';
 
+// init-RUN (T5 / template-format.md §10): instantiate a runnable THREAD from an authored template dir —
+// the four buckets (pure-copy node.json+prose · intrinsic {{RUN}}/{{WORKSPACE}} resolve, {{state.*}}
+// deferred · markersFromNode tail · EMPTY io.json/events.jsonl/state.json stubs). Template ≅ run (D7).
+export { instantiateRun } from './workflow/template/instantiate.js';
+export type { InstantiateRunOpts, InstantiateRunResult, InstantiatedNode } from './workflow/template/instantiate.js';
+export { renderRealizedPrompt } from './workflow/template/render.js';
+
 // RunState (D6): the per-thread channel object + its reducers + the only state I/O. `RunState`/`Reducer`
 // types come via `export * from './types.js'` above.
 export { applyReducer, mergeUpdate, loadState, persistState } from './workflow/state.js';
