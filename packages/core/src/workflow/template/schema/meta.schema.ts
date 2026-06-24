@@ -23,5 +23,29 @@ export const metaSchema = {
       items: { type: 'string', minLength: 1 },
       uniqueItems: true,
     },
+    profiles: {
+      // OPTIONAL product-declared run modes (§5) — a map name → a GENERIC elision predicate. The names
+      // are the PRODUCT's vocabulary (data); the SDK only applies the predicate. `{}` elides nothing.
+      type: 'object',
+      description: 'Optional named run profiles — generic node-elision predicates (DATA).',
+      additionalProperties: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          elidePhases: {
+            type: 'array',
+            description: 'Elide every node whose `phase` is in this list (deps rewired transitively).',
+            items: { type: 'string', minLength: 1 },
+            uniqueItems: true,
+          },
+        },
+      },
+    },
+    defaultProfile: {
+      // OPTIONAL — the profile applied when a run names none. Absent ⇒ no elision (the full DAG).
+      type: 'string',
+      minLength: 1,
+      description: 'Profile applied when a run names none. Absent ⇒ the full DAG.',
+    },
   },
 } as const;

@@ -48,6 +48,10 @@ export interface TemplateMeta {
   name: string;
   description: string;
   phases?: string[];
+  /** Named run profiles (product-declared run modes) — generic elision predicates, as DATA (§5). */
+  profiles?: Record<string, { elidePhases?: string[] }>;
+  /** The profile applied when a run names none. Absent ⇒ no elision (the full DAG). */
+  defaultProfile?: string;
 }
 
 /** A loaded node bundle: its parsed def + the absolute path to its folder (for ref/render resolution). */

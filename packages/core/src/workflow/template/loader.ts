@@ -110,6 +110,8 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
     // label = the template id so `slugify(label)` round-trips to the SAME id (the DAG compiler derives
     // ids from labels, not from an authored id — keeping `compile`'s graph aligned with the template).
     label: n.def.id,
+    // carry the node's `phase` through to the spec so a PROFILE predicate can select by it (generic metadata).
+    phase: n.def.phase,
     prompt: renderRealizedPrompt(n.def, n.prose),
     skill: n.def.prompt.skill,
     tools: { allow: n.def.tools?.allow, deny: n.def.tools?.deny },
@@ -186,5 +188,9 @@ export async function loadTemplate(dir: string, opts: LoadTemplateOpts = {}): Pr
     meta: { name: m.name, description: m.description },
     nodes: loaded.map(toNodeIntent),
   };
+  // Carry the product-declared run modes (DATA) onto the spec when authored — additive, the SDK only
+  // applies the named profile's GENERIC predicate; the product owns the names/vocabulary in its meta.json.
+  if (m.profiles) spec.profiles = m.profiles;
+  if (m.defaultProfile !== undefined) spec.defaultProfile = m.defaultProfile;
   return spec;
 }

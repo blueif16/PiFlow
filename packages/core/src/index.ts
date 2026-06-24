@@ -9,6 +9,11 @@ export * from './types.js';
 // DAG compiler (data-flow edge inference + topological staging + validation)
 export { compile, tryCompile, validate, inferEdges, stagesOf, slugify, WorkflowError } from './dag.js';
 
+// Run PROFILES — the generic node-elision primitive (profiles-and-resume-robustness.md Phase 2): resolve
+// a template-declared profile NAME to a `ProfileSpec` predicate and elide the matched nodes (deps rewired
+// transitively) BEFORE compile. `ProfileSpec`/`WorkflowSpec.profiles` types come via `export * from './types.js'`.
+export { applyProfile, applyProfileByName, resolveProfile, UnknownProfileError } from './workflow/profile.js';
+
 // Workflow extraction: run a Claude Code Workflow .js under recording stubs → realized agent
 // records + structural DAG (the RAW recorded shape; the bridge maps it to a WorkflowSpec).
 export { extractWorkflow } from './workflow/extract.js';

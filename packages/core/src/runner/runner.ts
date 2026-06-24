@@ -134,6 +134,13 @@ export interface RunOptions {
   /** Resume window: run up to the last stage whose phase/label/id contains this (inclusive). */
   until?: string;
   /**
+   * Active run PROFILE name — resolved against the WorkflowSpec's declared `profiles` BEFORE compile to
+   * elide a subset of nodes (deps rewired transitively). The elision happens at the spec-compile sites
+   * (`runFromConfig`/`runFromTemplate`), NOT here (`runWorkflow` already holds a compiled `Workflow`).
+   * Absent ⇒ the spec's `defaultProfile`, or, if none, the full DAG. An unknown name errors loudly.
+   */
+  profile?: string;
+  /**
    * Schema validator for the post-node schema gate. Omit ⇒ a best-effort ajv-2020 default (skips with
    * a warning if ajv is absent); pass `null` to disable the gate; pass a fn to inject one (tests do this).
    */

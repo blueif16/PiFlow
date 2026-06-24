@@ -19,6 +19,8 @@ export interface NodeSpec {
   id: string;
   /** Human-readable name (the authored handle the id derives from). */
   label: string;
+  /** Generic phase label (§5 display metadata) — carried for the elision predicate; never drives the DAG. */
+  phase?: string;
 
   // WORK — intelligence about the task (authored).
   /** The realized wave prompt — recorded by `extract` (human front-end) or emitted by COMPOSE. */
@@ -497,19 +499,43 @@ export interface ToolRegistry {
 
 /**
  * The AUTHORED subset of a node — what the COMPOSE agent fills. Mechanics (id, edges, stage/lane,
- * sandbox profile, provider/workspace defaults) are SDK-filled by `compile`.
+ * sandbox profile, provider/workspace defaults) are SDK-filled by `compile`. `phase` is generic node
+ * metadata (a display label, §5) carried through so a PROFILE predicate can select nodes by it — it
+ * NEVER drives ordering/parallelism (deps + owns do).
  */
 export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentType' | 'tools'> & {
   io: NodeIO;
+  /** Generic phase label (display metadata; the elision predicate may select by it). Optional/additive. */
+  phase?: string;
   sandbox?: Partial<SandboxSpec>;
   hooks?: NodeSpec['hooks'];
   ops?: NodeSpec['ops'];
 };
 
-/** A flat bag of nodes — NO edges. `compile` derives the DAG from each node's `io`. */
+/**
+ * A named RUN PROFILE — a GENERIC node-ELISION predicate over node metadata. The SDK applies it
+ * VERBATIM (it carries NO product vocabulary — a "phase" is generic metadata, never "verify"). A profile
+ * with no predicate keys (`{}`) elides nothing (the full DAG). Designed to grow: add `elideTags`/etc.
+ * later WITHOUT breaking the empty-object = no-op contract.
+ */
+export interface ProfileSpec {
+  /** Elide every node whose `phase` is in this list (then transitively bypass it in dependents' deps). */
+  elidePhases?: string[];
+}
+
+/**
+ * A flat bag of nodes — NO edges. `compile` derives the DAG from each node's `io`. `profiles` +
+ * `defaultProfile` are OPTIONAL/additive product-declared run modes (DATA): a run resolves an active
+ * profile NAME to a `ProfileSpec` predicate and elides the matched nodes before compiling. Absent ⇒ the
+ * full DAG, always.
+ */
 export interface WorkflowSpec {
   meta: { name: string; description: string };
   nodes: NodeIntent[];
+  /** Named run profiles (product vocab lives HERE, as data — never in core logic). Optional. */
+  profiles?: Record<string, ProfileSpec>;
+  /** The profile applied when none is named on the run. Absent ⇒ no elision (the full DAG). */
+  defaultProfile?: string;
 }
 
 // ── COMPILED DAG (what the runner + viz consume) ──────────────────────────────

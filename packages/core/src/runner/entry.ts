@@ -11,6 +11,7 @@
 import path from 'node:path';
 import type { WorkflowSpec } from '../types.js';
 import { compile } from '../dag.js';
+import { applyProfileByName } from '../workflow/profile.js';
 import { loadTemplate } from '../workflow/template/loader.js';
 import { instantiateRun } from '../workflow/template/instantiate.js';
 import { runWorkflow, type RunOptions, type RunResult } from './runner.js';
@@ -49,6 +50,9 @@ export async function runFromConfig(config: ResolvedRunConfig): Promise<RunResul
     );
   }
 
+  // Apply the active run PROFILE (elide nodes by the declared predicate, rewire deps) BEFORE compile.
+  // No profile + no defaultProfile ⇒ the spec is returned verbatim (the full DAG).
+  spec = applyProfileByName(spec, (runOpts as RunOptions).profile);
   const workflow = compile(spec);
   return runWorkflow(workflow, runOpts as RunOptions);
 }
@@ -79,9 +83,12 @@ export async function runFromTemplate(templateDir: string, opts: RunFromTemplate
   const { runDir, ...runOpts } = opts;
   const workspace = opts.workspace ?? opts.repoRoot ?? process.cwd();
   // (1) compile the template → WorkflowSpec (fail-closed §8 gate).
-  const spec = await loadTemplate(templateDir);
-  // (2) materialize the run thread folder (${RUN}/.pi/nodes/<id>/ + the empty state stub).
+  const loaded = await loadTemplate(templateDir);
+  // (2) materialize the run thread folder (${RUN}/.pi/nodes/<id>/ + the empty state stub). ALL nodes are
+  // materialized regardless of profile — an elided node's folder is harmless (it is just never executed).
   await instantiateRun(templateDir, runDir, { workspace });
+  // (2.5) apply the active run PROFILE (elide nodes by the declared predicate, rewire deps) BEFORE compile.
+  const spec = applyProfileByName(loaded, (runOpts as RunOptions).profile);
   // (3) build the DAG + (4) run it, collecting into the SAME run root.
   const workflow = compile(spec);
   return runWorkflow(workflow, { ...(runOpts as RunOptions), outDir: path.resolve(runDir), workspace });
