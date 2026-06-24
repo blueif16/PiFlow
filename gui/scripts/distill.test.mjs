@@ -70,5 +70,44 @@ test('per-tool timeline spans are produced for every tool call', () => {
     'each span has a start offset and duration');
 });
 
+// ── token aggregation (the cost/token-data bug) ───────────────────────────────────────────────
+// ORACLE (independent of this reducer): run-status.json records a per-node `tokens` rollup
+// {input, output, cacheRead, cacheWrite, billable, contextPeak, cost} computed by the ORIGINAL
+// engine. Per-call usage lives on `message_end` (NOT `message_start`, where it is ~always zero, and
+// NOT BOTH message_end+turn_end which are 1:1 duplicates). The reducer must SUM message_end usage,
+// take contextPeak = max(totalTokens), and reduce the OBJECT-shaped `cost` to a scalar. Read the
+// wrong event, double-count, or string-concat the cost object → diverge from the engine → RED.
+const T = rich.tokens;        // produced by our reducer
+const O = oracle.tokens;      // recorded by the original engine
+
+test('token totals match the engine rollup (input/output/cacheRead/cacheWrite)', () => {
+  assert.equal(T.input, O.input, `input ${T.input} != ${O.input}`);       // 50723
+  assert.equal(T.output, O.output, `output ${T.output} != ${O.output}`);  // 6599
+  assert.equal(T.cacheRead, O.cacheRead, `cacheRead ${T.cacheRead} != ${O.cacheRead}`); // 874543
+  assert.equal(T.cacheWrite, O.cacheWrite, `cacheWrite ${T.cacheWrite} != ${O.cacheWrite}`); // 0
+});
+
+test('billable (input+output) and contextPeak (max totalTokens) match the engine rollup', () => {
+  assert.equal(T.billable, O.billable);     // 57322
+  assert.equal(T.contextPeak, O.contextPeak); // 54693
+});
+
+test('cost reduces to a NUMBER — never the "0[object Object]" concat corruption', () => {
+  assert.equal(typeof T.cost, 'number', `cost must be a scalar number, got ${typeof T.cost}`);
+  assert.equal(T.cost, O.cost); // 0 for mmgw (unpriced) — but numeric 0, not a string
+});
+
+test('model/provider recovered from the assistant stream (survives the message_start move)', () => {
+  assert.equal(rich.model, 'MiniMax-M3');
+  assert.equal(rich.provider, 'mmgw');
+});
+
+// ROBUST no-data-loss monitor: the engine recorded how many events this node emitted (eventCount).
+// Our reducer must have SEEN exactly that many — a silently dropped/torn/skipped line shows up here
+// as a count mismatch, independent of whether any single metric happens to look right.
+test('reducer saw every recorded event — no silent line drops (coverage.eventsSeen == eventCount)', () => {
+  assert.equal(rich.coverage.eventsSeen, oracle.eventCount); // 553
+});
+
 if (process.exitCode) console.error(`\n${passed} passed, some FAILED`);
 else console.log(`\nall ${passed} passed`);
