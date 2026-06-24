@@ -40,8 +40,11 @@ import { validateArtifactSchemas, defaultSchemaValidator, type SchemaValidator }
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
 import { defaultPiCommand, type CommandBuilder } from './command.js';
-import { resolveTokens, type ResolveCtx } from '../workflow/resolver.js';
+import { resolveTokens, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
 import { stageSeed } from '../workflow/ops/seed.js';
+import { runMerge } from '../workflow/ops/merge.js';
+import { applyProjectionOp } from '../workflow/ops/project.js';
+import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, barrierMerge, type NodeUpdate, type ResolvedPromote } from '../workflow/ops/promote.js';
 import { loadState, persistState } from '../workflow/state.js';
 import {
@@ -693,6 +696,31 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     } catch (e) {
       st = 'error';
       issues.push(`post-hook failed: ${(e as Error).message}`);
+    }
+
+    // POST DERIVE ops (S4): on an OK node, run the node's `project` then `merge` ops — the deterministic
+    // "derive a mechanical output from frozen on-disk inputs" families (run.mjs runNode order: project →
+    // merge → promote). Each op's `{{RUN}}`/`{{WORKSPACE}}`/`{{state.*}}`/`{{arg.*}}` path tokens are made
+    // physical via the per-node resolver ctx BEFORE the executor runs (the executor still substitutes its
+    // OWN `{project}` token for `run` ops). `projectBase = outDir` (the resolved `{{RUN}}`). A missing input
+    // degrades gracefully inside the executors (skip, not throw); a `run` op that exits non-zero is recorded
+    // as `failed` (its receipt-artifact gate, not the op itself, blocks the node). project precedes merge so
+    // a projection that lays down a file (e.g. index.json rows) is in place before a merge reconciles it.
+    if (st === 'ok' && node.ops?.project?.length) {
+      for (const rawOp of node.ops.project) {
+        const op = resolveDeep(rawOp as Record<string, unknown>, resolveCtx);
+        // The projection derives from a FROZEN source JSON read ONCE (the first `from`, or `source`). A
+        // `{to,from}`-only authoring spec carries no copy/assemble/merge discriminator → applyProjectionOp
+        // returns `unknown`/wrote:false (a graceful no-op), never a corrupting copy.
+        const srcRel = (op.source as string) ?? (Array.isArray(op.from) ? (op.from[0] as string) : (op.from as string));
+        const spec = srcRel ? await readJsonSafe(absUnder(ctx.outDir, srcRel)) : undefined;
+        const name = String(op.op ?? Object.keys(op).find((k) => k === 'copy' || k === 'assemble' || k === 'merge') ?? 'project');
+        await applyProjectionOp(name, op, spec, ctx.outDir);
+      }
+    }
+    if (st === 'ok' && node.ops?.merge) {
+      // The merge spec is the `{ ops:[...] }` MergeSpec (the discriminated fold|concat|reconcile|run grammar).
+      await runMerge(resolveDeep(node.ops.merge, resolveCtx), ctx.outDir);
     }
 
     // PROMOTE POST op (S3): on an OK node, LIFT each declared output into a RunState channel (the value

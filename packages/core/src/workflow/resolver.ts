@@ -94,3 +94,23 @@ export function resolveTokens(s: string, ctx: ResolveCtx): string {
 export function resolveAll(list: string[], ctx: ResolveCtx): string[] {
   return list.map((s) => resolveTokens(s, ctx));
 }
+
+/**
+ * DEEP-resolve every `{{…}}` token in EVERY string of an arbitrary op-spec tree (strings · arrays · plain
+ * objects), returning a NEW tree (pure; the input is untouched). The POST ops (`project`/`merge`) carry
+ * their source/dest paths INSIDE nested op objects (`{ fold:{ from, to }}`, `{ run:{ cmd, args[] }}`), so a
+ * flat `resolveAll` is not enough — this makes `{{RUN}}`/`{{WORKSPACE}}`/`{{state.*}}`/`{{arg.*}}` physical
+ * throughout before the executor runs. A missing channel/arg throws (same loud discipline as `resolveTokens`).
+ * Non-string leaves (numbers/booleans/null) pass through verbatim. (The executor still substitutes its own
+ * `{project}` token for `run` ops — that is a SEPARATE, executor-owned token, not a `{{…}}` logical root.)
+ */
+export function resolveDeep<T>(value: T, ctx: ResolveCtx): T {
+  if (typeof value === 'string') return resolveTokens(value, ctx) as unknown as T;
+  if (Array.isArray(value)) return value.map((v) => resolveDeep(v, ctx)) as unknown as T;
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = resolveDeep(v, ctx);
+    return out as unknown as T;
+  }
+  return value;
+}
