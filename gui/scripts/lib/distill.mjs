@@ -19,6 +19,16 @@ const WRITE_TOOLS = new Set(['edit', 'write']);  // file writes → "outputs"
 
 const baseName = (p) => (typeof p === 'string' ? p.split('/').pop() : p);
 
+// Pull the human-readable text out of a tool result ({ content: [{type:'text', text}] }), capped — so
+// the HUD's "hover a read → see the file" shows the REAL bytes the agent read, not a placeholder.
+const PREVIEW_CAP = 1200;
+function resultText(result) {
+  if (!result || !Array.isArray(result.content)) return undefined;
+  const text = result.content.filter((c) => c && c.type === 'text' && typeof c.text === 'string').map((c) => c.text).join('\n');
+  if (!text) return undefined;
+  return text.length > PREVIEW_CAP ? text.slice(0, PREVIEW_CAP) : text;
+}
+
 export function createNodeAccumulator() {
   const reads = new Map();   // path → { path, via, tStartMs }  (first touch wins; de-duped by path)
   const lists = new Map();   // path → { path, via }
@@ -60,8 +70,8 @@ export function createNodeAccumulator() {
           toolCalls += 1;
           const name = e.toolName;
           toolBreakdown[name] = (toolBreakdown[name] || 0) + 1;
-          open.set(e.toolCallId, { name, tStartMs: e._t ?? null });
           const p = e.args && e.args.path;
+          open.set(e.toolCallId, { name, tStartMs: e._t ?? null, path: READ_TOOLS.has(name) ? p : null });
           if (READ_TOOLS.has(name) && p) { if (!reads.has(p)) reads.set(p, { path: p, via: name, tStartMs: e._t ?? null }); }
           else if (LIST_TOOLS.has(name) && p) { if (!lists.has(p)) lists.set(p, { path: p, via: name }); }
           else if (WRITE_TOOLS.has(name) && p) { if (!writes.has(p)) writes.set(p, { path: p, via: name, tStartMs: e._t ?? null }); }
@@ -73,6 +83,11 @@ export function createNodeAccumulator() {
           if (span) {
             const durMs = (e._t != null && span.tStartMs != null) ? Math.max(0, e._t - span.tStartMs) : 0;
             timeline.push({ name: span.name, tStartMs: span.tStartMs, durMs, ok: !e.isError });
+            // capture the REAL read content once, for the "hover → see the file" detail view
+            if (span.path && reads.has(span.path) && !reads.get(span.path).preview) {
+              const preview = resultText(e.result);
+              if (preview) reads.get(span.path).preview = preview;
+            }
             open.delete(e.toolCallId);
           }
           break;

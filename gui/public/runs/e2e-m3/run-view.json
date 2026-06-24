@@ -1,0 +1,1944 @@
+{
+  "run": "e2e-m3",
+  "source": ".claude/workflows/game-omni-v1.6.js",
+  "provider": "mmgw",
+  "model": null,
+  "startedAt": "2026-06-22T23:29:13.147Z",
+  "updatedAt": "2026-06-22T23:31:00.465Z",
+  "durationMs": 107318,
+  "done": true,
+  "ok": true,
+  "totals": {
+    "nodes": 9,
+    "ok": 9,
+    "failed": 0
+  },
+  "stages": [
+    {
+      "index": 1,
+      "phase": "W0 Classify",
+      "parallel": false,
+      "nodeIds": [
+        "w0-classify"
+      ]
+    },
+    {
+      "index": 2,
+      "phase": "W1 Spec",
+      "parallel": false,
+      "nodeIds": [
+        "w1-spec"
+      ]
+    },
+    {
+      "index": 3,
+      "phase": "Gameplay",
+      "parallel": false,
+      "nodeIds": [
+        "gameplay-blueprint"
+      ]
+    },
+    {
+      "index": 4,
+      "phase": "Producers ∥",
+      "parallel": true,
+      "nodeIds": [
+        "shell-chrome",
+        "sound-chrome",
+        "model-retrieval",
+        "asset-art-direction",
+        "guidance-chrome"
+      ]
+    },
+    {
+      "index": 5,
+      "phase": "W2 Scaffold",
+      "parallel": false,
+      "nodeIds": [
+        "w2-scaffold"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "w0-classify",
+      "to": "w1-spec",
+      "path": "out/e2e-m3/spec/classification.json"
+    },
+    {
+      "from": "w0-classify",
+      "to": "gameplay-blueprint",
+      "path": "out/e2e-m3/spec/classification.json"
+    },
+    {
+      "from": "w0-classify",
+      "to": "w2-scaffold",
+      "path": "out/e2e-m3/spec/classification.json"
+    },
+    {
+      "from": "gameplay-blueprint",
+      "to": "shell-chrome",
+      "path": "out/e2e-m3/spec/blueprint.json"
+    },
+    {
+      "from": "gameplay-blueprint",
+      "to": "guidance-chrome",
+      "path": "out/e2e-m3/spec/blueprint.json"
+    },
+    {
+      "from": "gameplay-blueprint",
+      "to": "asset-art-direction",
+      "path": "out/e2e-m3/spec/blueprint.json"
+    },
+    {
+      "from": "gameplay-blueprint",
+      "to": "sound-chrome",
+      "path": "out/e2e-m3/spec/blueprint.json"
+    },
+    {
+      "from": "gameplay-blueprint",
+      "to": "model-retrieval",
+      "path": "out/e2e-m3/spec/blueprint.json"
+    },
+    {
+      "from": "gameplay-blueprint",
+      "to": "w2-scaffold",
+      "path": "out/e2e-m3/spec/blueprint.json"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "w0-classify",
+      "label": "W0 classify",
+      "phase": "W0 Classify",
+      "status": "reused",
+      "startedAt": "2026-06-22T03:02:03.966Z",
+      "endedAt": "2026-06-22T03:03:53.108Z",
+      "durationMs": 109142,
+      "expectedMs": 109142,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 7,
+      "toolBreakdown": {
+        "read": 3,
+        "bash": 3,
+        "write": 1
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 5151,
+          "durMs": 10,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 5150,
+          "durMs": 12,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 41123,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 41123,
+          "durMs": 18,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 87421,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 96449,
+          "durMs": 46,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 96449,
+          "durMs": 51,
+          "ok": true
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/classify-game/SKILL.md",
+          "displayPath": "packages/skills/classify-game/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: classify-game\ndescription: \"W0 CLASSIFY (Designer, first node). Route a raw game prompt to one physics-first archetype (an entry of templates/genres.json archetypes[], read live), state the core loop in one line, and record an explicit scope-cut. Writes spec/classification.json — the artifact that routes the whole game-omni pipeline.\"\nversion: 1.0.0\nnode: W0\nrole: Designer\nargument-hint: \"<the raw game prompt> (passed as args.prompt)\"\nallowed-tools: Write\nmetadata:\n  writes: spec/classification.json\n  schema: classification.schema.json\n  archetypes: the archetypes are `templates/genres.json` `archetypes[]` (read live)\n---\n\n# W0 — Classify a game prompt (physics-first routing + scope-cut)\n\nYou are the **first node** in the game-omni pipeline (role: Designer). You receive ONE\nraw game prompt and produce ONE on-disk artifact: `spec/classification.json`. Every\nlater node (W1 Spec, W2 Scaffold, …) reads that file — it is the contract, not your\nchat output. Nothing you \"decide\" survives except what you write to disk.\n\nYour job has exactly four parts:\n1. **Classify** the prompt into one archetype from `genres.json` `archetypes[]` (read live) — by PHYSICS, not by genre name.\n2. *"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/genres.json",
+          "displayPath": "templates/genres.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$comment\": \"GENERATED from templates/modules/*/genre.json via templates/registry/build-genres.mjs — do NOT hand-edit. The per-module genre.json files are the AUTHORED source: edit a module's genre.json (prose, whenToUse triggers, palette refs), then run `npm run genres:build`. A drift between this file and the sources — or a palette ref / capabilitiesRef / skillRef / archetype that does not resolve — fails `npm run genres:check`.\",\n  \"generatedBy\": \"templates/registry/build-genres.mjs\",\n  \"archetypes\": [\n    \"platformer\",\n    \"top_down\",\n    \"grid_logic\",\n    \"tower_defense\",\n    \"ui_heavy\",\n    \"voxel_sandbox\",\n    \"action_3d\",\n    \"endless_runner\",\n    \"gallery_shooter\",\n    \"paddle_ball\"\n  ],\n  \"genres\": [\n    {\n      \"id\": \"action_3d:crime\",\n      \"archetype\": \"action_3d\",\n      \"subgenre\": \"high-angle-crime-caper\",\n      \"physicsProfile\": {\n        \"hasGravity\": true,\n        \"perspective\": \"third_person\",\n        \"movementType\": \"continuous\"\n      },\n      \"oneLineIntent\": \"Walk a blocky high-angle city, take on missions, shoot, and meet contacts — a top-down crime caper. The contested decision is committing to a shot (it slows you, spends ammo) versus keeping moving tow"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/classify-game/classification.schema.json",
+          "displayPath": "packages/skills/classify-game/classification.schema.json",
+          "via": "read",
+          "scope": "skill",
+          "preview": "{\n  \"$schema\": \"http://json-schema.org/draft-07/schema#\",\n  \"$id\": \"https://game-omni/spec/classification.schema.json\",\n  \"title\": \"W0 Classification artifact\",\n  \"description\": \"The single artifact written by the W0 Classify node (spec/classification.json). Routes the whole game-omni pipeline: physics-first archetype, one-line core loop, and explicit scope-cut. Authored by packages/skills/classify-game/SKILL.md.\",\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\n    \"prompt\",\n    \"archetype\",\n    \"coreLoop\",\n    \"coreVerb\",\n    \"physicsProfile\",\n    \"reasoning\",\n    \"confidence\",\n    \"scoringModel\",\n    \"scopeCut\"\n  ],\n  \"properties\": {\n    \"prompt\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"The raw args.prompt, copied verbatim. Provenance for every downstream node.\"\n    },\n    \"archetype\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"must resolve in templates/genres.json archetypes[]\"\n    },\n    \"coreLoop\": {\n      \"type\": \"string\",\n      \"minLength\": 1,\n      \"description\": \"One self-enclosed sentence: player verb + goal/win + obstacle + fail/reset. The spine W1 elaborates and the seed for W1 win/lose.\"\n   "
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 2,
+          "paths": [
+            "packages/skills/classify-game/SKILL.md",
+            "packages/skills/classify-game/classification.schema.json"
+          ]
+        },
+        {
+          "kind": "template",
+          "label": "Templates",
+          "count": 1,
+          "paths": [
+            "templates/genres.json"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/classification.json",
+          "displayPath": "out/e2e-m3/spec/classification.json",
+          "verified": false
+        }
+      ],
+      "artifacts": [],
+      "bash": [
+        {
+          "command": "ls /Users/tk/Desktop/game-omni/out/e2e-m3/ 2>/dev/null || echo \"MISSING\"",
+          "tStartMs": 41123
+        },
+        {
+          "command": "node -e \"const c=require('./out/e2e-m3/spec/classification.json'); console.log('archetype:', JSON.stringify(c.archetype)); console.log('coreVerb:', JSON.stringify(c.coreVerb)); console.log('scoringModel:', JSON.stringify(c.scoringModel)); console.log('confidence:', JSON.stringify(c.confidence)); console.log('scopeCut count:', c.scopeCut.length); const g=require('./templates/genres.json'); const ok=g.archetypes.includes(c.archetype); console.log('archetype in registry:', ok);\"",
+          "tStartMs": 96449
+        },
+        {
+          "command": "node -e \"\nconst c=require('./out/e2e-m3/spec/classification.json');\n// Validate against the schema (manual structural check since no ajv handy)\nconst required=['prompt','archetype','coreLoop','coreVerb','physicsProfile','reasoning','confidence','scoringModel','scopeCut'];\nfor(const k of required){ if(!(k in c)){ console.error('MISSING',k); process.exit(1);} }\nconst pp=c.physicsProfile;\nif(typeof pp.hasGravity!=='boolean'){console.error('hasGravity bad');process.exit(1);}\nif(!['side','top_down','none'].includes(pp.perspective)){console.error('perspective bad');process.exit(1);}\nif(!['continuous','grid','path','ui_only'].includes(pp.movementType)){console.error('movementType bad');process.exit(1);}\nif(!['high','medium','low'].includes(c.confidence)){console.error('confidence bad');process.exit(1);}\nif(!['none','bounded-collectible','bounded-threshold','performance'].includes(c.scoringModel)){console.error('scoringModel bad');process.exit(1);}\nif(!Array.isArray(c.scopeCut)||c.scopeCut.length<1){console.error('scopeCut empty');process.exit(1);}\nconsole.log('schema ok');\n\"",
+          "tStartMs": 96449
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 7030,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object][object Object][object Object]",
+        "contextPeak": 7030,
+        "billable": 0
+      },
+      "issues": [],
+      "stageIndex": 1,
+      "lane": 0
+    },
+    {
+      "id": "w1-spec",
+      "label": "W1 spec",
+      "phase": "W1 Spec",
+      "status": "reused",
+      "startedAt": "2026-06-22T04:29:19.490Z",
+      "endedAt": "2026-06-22T04:31:17.082Z",
+      "durationMs": 117592,
+      "expectedMs": 117592,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 10,
+      "toolBreakdown": {
+        "read": 10
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 5620,
+          "durMs": 12,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 10745,
+          "durMs": 7,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 16855,
+          "durMs": 4,
+          "ok": false
+        },
+        {
+          "name": "read",
+          "tStartMs": 22474,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 30116,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 30116,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 34648,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 34647,
+          "durMs": 9,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 45572,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 45572,
+          "durMs": 6,
+          "ok": true
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/write-gdd/SKILL.md",
+          "displayPath": "packages/skills/write-gdd/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: write-gdd\ndescription: \"W1 SPEC (Designer, second node). Read spec/classification.json + the original prompt, read the per-archetype GENRE SLICE spec/genre-options.json (driver-staged; ONE genre ⇒ lead with it, compose ACROSS lenses only when ≥2 exist), DRILL into the module's design-rules.md (craft) + capabilities.json (the live catalog), and turn it into ONE markdown design doc. Fills a registry-BOUND design (entities/mechanics/controls/effects bind to capabilities.json ids; gaps go to custom[]) and decomposes the core loop into 3-5 PLAYABLE milestones, each carrying acceptance criteria + executable runtime assertions VERIFY-2 runs headless against the live game object. Writes ONE file spec/gdd.md: a MARKDOWN design doc (the merged GDD + playability plan as reason-first PROSE) ending in a fenced ```json milestones tail — NOT strict gdd.json + PLAN.md. WHY: the downstream consumers (HARDEN, VERIFY-1) are REASONING nodes, not parsers, and the producer is the non-Claude (MiniMax-tier) executor — forcing strict JSON on the design body costs 5-15% reasoning accuracy (the format tax) + ~35% more tokens; strict JSON is reserved for the real machine boundary, blueprint.json (HA"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/classification.json",
+          "displayPath": "out/e2e-m3/spec/classification.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"prompt\": \"A clean little breakout game where I slide a bat along the bottom of the screen and bounce a ball up to break a bright wall of colorful bricks, sending the ball back up each time it falls toward me, until every brick is gone.\",\n  \"archetype\": \"paddle_ball\",\n  \"coreLoop\": \"The player slides a paddle along the bottom to keep a bouncing ball alive and chips away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n  \"coreVerb\": \"bounce\",\n  \"physicsProfile\": {\n    \"hasGravity\": false,\n    \"perspective\": \"side\",\n    \"movementType\": \"continuous\"\n  },\n  \"reasoning\": \"The prompt names the paddle-and-ball breakout directly — paddle_ball's KEY QUESTION (slide a paddle, bounce a ball to clear bricks) fires with no gravity, side view, continuous paddle motion. Tie-break #1 (gravity) does not apply; the bounce is independent of gravity. The paddle_ball:brick-breaker subgenre's whenToUse list explicitly matches 'breakout', 'paddle and ball', 'bounce a ball off a paddle', and 'clear the wall of bricks'.\",\n  \"confidence\": \"high\",\n  \"scoringModel\": \"bounded-collectible\",\n  \"scopeCut\": [\n  "
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/genre-options.json",
+          "displayPath": "out/e2e-m3/spec/genre-options.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"$comment\": \"GENERATED per-archetype SLICE of genres.json via templates/registry/build-genres.mjs — do NOT hand-edit. The filtered view the design node (W1) reads (it is already inside one archetype); genres here share the module catalog + craft, so treat them as a palette menu, not a one-of. Edit the module's genre.json, then `npm run genres:build`. Drift fails `npm run genres:check`.\",\n  \"generatedBy\": \"templates/registry/build-genres.mjs\",\n  \"archetype\": \"paddle_ball\",\n  \"genres\": [\n    {\n      \"id\": \"paddle_ball:brick-breaker\",\n      \"archetype\": \"paddle_ball\",\n      \"subgenre\": \"brick-breaker\",\n      \"physicsProfile\": {\n        \"hasGravity\": false,\n        \"perspective\": \"side\",\n        \"movementType\": \"continuous\"\n      },\n      \"oneLineIntent\": \"Slide a one-axis bat to keep a bouncing ball alive and carve angles off the bat's contact point to chip away a wall of bricks — the contested decision is WHERE on the paddle to take the ball so it returns at the angle that clears the brick you want, before it falls below you.\",\n      \"coreVerbs\": [\n        \"move\",\n        \"bounce\"\n      ],\n      \"whenToUse\": [\n        \"breakout\",\n        \"Breakout-like\",\n        \"Arkanoid\",\n     "
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/modules/paddle_ball/capabilities.json",
+          "displayPath": "templates/modules/paddle_ball/capabilities.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$comment\": \"GENERATED from templates/modules/paddle_ball/src/** (+ templates/core-contract/src/hook-contract.ts) via registry/build-registry.mjs — do NOT hand-edit. The CODE is the source of truth: edit a behavior/effect/control-scheme class (or a system's CAPABILITY const, or the discover.mjs taxonomies), then run `npm run registry:build`. A drift between this file and the code fails `npm run registry:check`.\",\n  \"archetype\": \"paddle_ball\",\n  \"generatedBy\": \"registry/build-registry.mjs\",\n  \"capabilities\": [\n    {\n      \"kind\": \"behavior\",\n      \"id\": \"PaddleController\",\n      \"intent\": \"One-axis paddle locomotion: read the bound control scheme's input source (Left/Right + A/D keys, OR the pointer) and slide the paddle ALONG its axis only, clamped to the play field. This is what makes a paddle_ball game CONTROLLABLE (a frozen paddle is a fail); it pairs with a control-scheme record (paddle-keys / paddle-pointer).\",\n      \"implements\": \"PaddleController\",\n      \"params\": [\n        \"speed\",\n        \"axis\",\n        \"source\"\n      ],\n      \"roles\": [\n        \"paddle\"\n      ],\n      \"tuning\": [\n        \"paddleSpeed\"\n      ]\n    },\n    {\n      \"kind\": \"behavior\",\n      \"id\": \"Pinbal"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/modules/paddle_ball/design-rules.md",
+          "displayPath": "templates/modules/paddle_ball/design-rules.md",
+          "via": "read",
+          "scope": "template",
+          "preview": "# Paddle-ball — design rules (deep craft)\n\n> **What this is.** The paddle_ball module's **deep craft layer** — the senior design\n> judgment a design node (W1 / VERIFY-1) drills into *after* the genre index\n> (`genres.json`) routes a prompt here via a paddle_ball genre's `skillRef`. It answers\n> **\"what makes a GOOD paddle-ball game, and how do I lay one out?\"** — the loop, the\n> contact-point skill, the brick field, juice, win/lose integrity, and the reflection /\n> tunneling pitfalls as *design* constraints.\n>\n> **What this is NOT.** It does **not** list capabilities — *what exists* is the generated\n> `capabilities.json` (behaviors / systems / effects / control-schemes / config-keys /\n> scene-hooks / observables). This doc never re-enumerates them; it tells you which to\n> reach for and **why**, and how to compose them into a level worth playing. Bind only to\n> ids that resolve in `capabilities.json` (each genre's `palette` is the curated shortlist).\n>\n> Grounded in `research/paddle_ball-category-research-2026-06-19.md` (cited as **[RB §x]**)\n> and the iconic-games taxonomy (`research/iconic-games-canon-and-genre-taxonomy-2026-06-13.md`\n> §3 — the `paddle_ball` row). Every rule is a"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/gdd.md",
+          "displayPath": "out/e2e-m3/spec/gdd.md",
+          "via": "read",
+          "scope": "run",
+          "preview": "# Bounce & Break\n\n## Meta\n\n- **archetype**: `paddle_ball` — the classification routed the prompt directly here (breakout / brick-breaker / paddle-and-ball / clear the wall of bricks are all explicit `whenToUse` matches).\n- **goalModel**: `win-lose` — the prompt names an explicit OBJECTIVE (\"until every brick is gone\") and a fail-state (\"missing the ball costs a life\"). §1.1 routes this to win-lose: a `winCondition` (last breakable brick cleared) + `loseCondition` (lives exhausted) that the player can reach, a difficulty floor, and score-meaning.\n- **coreLoop**: The player slides a paddle along the bottom to keep a bouncing ball alive and chips away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\n- **coreVerb**: `bounce` — the contact-point steering the engine already does on a paddle hit.\n- **coreFantasy**: clean paddle-and-ball brick destruction.\n- **failModel**: `lives` — a ball below the paddle costs EXACTLY one life (the engine latches it; one ball-below = one life, never per-frame); `0` lives → terminal `status:'lost'`. `lives:3` is the baseline.\n- **scoringModel**: `bounded-coll"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/gdd.skeleton.md",
+          "displayPath": "templates/gdd.skeleton.md",
+          "via": "read",
+          "scope": "template",
+          "preview": "<!--\n  GENERIC gdd.md SKELETON — the W1 Spec node's pre-staged FILL target (DRIVER-SEED).\n  This is the §6 prose-body SPINE only: the section headers in canonical order + the empty\n  milestones fence. It is GENRE-, ARCHETYPE-, and goalModel-AGNOSTIC (win-lose | open-ended |\n  creative-objective) — STRUCTURE, never CONTENT. It MUST NOT pre-decide or bias any design choice.\n\n  HOW TO USE THIS FILE (W1): this is a READ-ONLY STRUCTURE reference — the section ORDER to follow,\n  NOT a file you edit in place. READ it once for the outline, COMPOSE the design against it, then\n  WRITE the COMPLETE filled gdd.md in ONE whole-file write that OVERWRITES this skeleton (replace\n  each `<FILL: …>` guide with the real PROSE — reason-first: the WHY, then the committed value —\n  delete THIS comment, and fill the milestones fence). The whole filled doc FITS in one turn; emit it\n  as ONE atomic write — your write tool OVERWRITES (it does not append), so each write must carry the\n  COMPLETE document, never a section fragment.\n  The headers below are the REQUIRED §6 order; keep every one. Some sections are goalModel-\n  conditional — fill the branch your `meta.goalModel` selects and write \"none\" (with one"
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "run",
+          "label": "Run workspace",
+          "count": 3,
+          "paths": [
+            "out/e2e-m3/spec/classification.json",
+            "out/e2e-m3/spec/genre-options.json",
+            "out/e2e-m3/spec/gdd.md"
+          ]
+        },
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 1,
+          "paths": [
+            "packages/skills/write-gdd/SKILL.md"
+          ]
+        },
+        {
+          "kind": "template",
+          "label": "Templates",
+          "count": 3,
+          "paths": [
+            "templates/modules/paddle_ball/capabilities.json",
+            "templates/modules/paddle_ball/design-rules.md",
+            "templates/gdd.skeleton.md"
+          ]
+        }
+      ],
+      "writes": [],
+      "artifacts": [],
+      "bash": [],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object]",
+        "contextPeak": 0,
+        "billable": 0
+      },
+      "issues": [],
+      "stageIndex": 2,
+      "lane": 0
+    },
+    {
+      "id": "gameplay-blueprint",
+      "label": "Gameplay blueprint",
+      "phase": "Gameplay",
+      "status": "reused",
+      "startedAt": "2026-06-22T06:21:31.955Z",
+      "endedAt": "2026-06-22T06:41:10.662Z",
+      "durationMs": 1178707,
+      "expectedMs": 1178707,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 13,
+      "toolBreakdown": {
+        "read": 10,
+        "write": 2,
+        "submit_result": 1
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 7143,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 7143,
+          "durMs": 7,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 7143,
+          "durMs": 8,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 7143,
+          "durMs": 9,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 13330,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 13330,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 13330,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 13330,
+          "durMs": 7,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 18578,
+          "durMs": 9,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 879653,
+          "durMs": 0,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 885453,
+          "durMs": 14,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 1162547,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "submit_result",
+          "tStartMs": 1179541,
+          "durMs": 0,
+          "ok": true
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/harden-blueprint/SKILL.md",
+          "displayPath": "packages/skills/harden-blueprint/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: harden-blueprint\ndescription: \"HARDEN (the blueprint PRODUCER, the node AFTER W1 Spec and BEFORE VERIFY-1). A PRODUCING node, not a verifier: read the design THESIS (spec/gdd.md — W1's merged prose design doc + a fenced JSON milestones tail — plus spec/classification.json) and PRODUCE the COMPLETE, frozen, WINNABLE spec/blueprint.json — the load-bearing artifact the entire build (W2/W4/VERIFY-2) binds to. You are the first strict-JSON producer (the machine boundary): you FORMALIZE W1's prose design + milestone tail into strict JSON. Fix every NUMBER (a complete config + a concrete layout: spawn/goal/rewards/threats-with-route+timing/platforms/bounds), PROVE winnable by the per-archetype KINEMATIC FEASIBILITY MATH (recording numbersUsed), author the referenceSolution + coupling (the threat-on-path proof), the Given/When/Then acceptanceCriteria, the declaredRanges perturbation envelope, and RESOLVE every registry binding (genre + behaviors/effects/controlScheme to capabilities.json ids; gaps to custom[], compose-first). HARDEN does NOT judge the design (VERIFY-1 does that next) — it PRODUCES the concrete artifact and runs a producer self-critique to keep it winnable. Writes"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/gdd.md",
+          "displayPath": "out/e2e-m3/spec/gdd.md",
+          "via": "read",
+          "scope": "run",
+          "preview": "# Bounce & Break\n\n## Meta\n\n- **archetype**: `paddle_ball` — the classification routed the prompt directly here (breakout / brick-breaker / paddle-and-ball / clear the wall of bricks are all explicit `whenToUse` matches).\n- **goalModel**: `win-lose` — the prompt names an explicit OBJECTIVE (\"until every brick is gone\") and a fail-state (\"missing the ball costs a life\"). §1.1 routes this to win-lose: a `winCondition` (last breakable brick cleared) + `loseCondition` (lives exhausted) that the player can reach, a difficulty floor, and score-meaning.\n- **coreLoop**: The player slides a paddle along the bottom to keep a bouncing ball alive and chips away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\n- **coreVerb**: `bounce` — the contact-point steering the engine already does on a paddle hit.\n- **coreFantasy**: clean paddle-and-ball brick destruction.\n- **failModel**: `lives` — a ball below the paddle costs EXACTLY one life (the engine latches it; one ball-below = one life, never per-frame); `0` lives → terminal `status:'lost'`. `lives:3` is the baseline.\n- **scoringModel**: `bounded-coll"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/classification.json",
+          "displayPath": "out/e2e-m3/spec/classification.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"prompt\": \"A clean little breakout game where I slide a bat along the bottom of the screen and bounce a ball up to break a bright wall of colorful bricks, sending the ball back up each time it falls toward me, until every brick is gone.\",\n  \"archetype\": \"paddle_ball\",\n  \"coreLoop\": \"The player slides a paddle along the bottom to keep a bouncing ball alive and chips away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n  \"coreVerb\": \"bounce\",\n  \"physicsProfile\": {\n    \"hasGravity\": false,\n    \"perspective\": \"side\",\n    \"movementType\": \"continuous\"\n  },\n  \"reasoning\": \"The prompt names the paddle-and-ball breakout directly — paddle_ball's KEY QUESTION (slide a paddle, bounce a ball to clear bricks) fires with no gravity, side view, continuous paddle motion. Tie-break #1 (gravity) does not apply; the bounce is independent of gravity. The paddle_ball:brick-breaker subgenre's whenToUse list explicitly matches 'breakout', 'paddle and ball', 'bounce a ball off a paddle', and 'clear the wall of bricks'.\",\n  \"confidence\": \"high\",\n  \"scoringModel\": \"bounded-collectible\",\n  \"scopeCut\": [\n  "
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/blueprint.json",
+          "displayPath": "out/e2e-m3/spec/blueprint.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"$comment_TEMPLATE\": \"HARDEN STARTING ARTIFACT — the per-archetype, SCHEMA-SHAPED blueprint skeleton for a WIN-LOSE paddle_ball game (meta.goalModel == 'win-lose', the default branch). COPY this to spec/blueprint.json, then FILL every <FILL: ...> sentinel with your hardened values. Every value below is a SENTINEL that FAILS blueprint.schema.json on purpose, so an unfilled copy cannot validate. Each array shows ONE placeholder element exhibiting ALL its fields — REPLACE it with the real set.\",\n  \"$comment_LAYOUT_MAPPING\": \"PADDLE_BALL LAYOUT MAPPING (load-bearing — read before filling layout). blueprint.schema.json is UNCHANGED and its layout allows ONLY {playerSpawn, groundSlot, platforms, goal, rewards, threats, bounds}; paddle_ball maps its world onto those generic 2D keys, NOT new keys (additionalProperties:false rejects paddle/ball/bricks/brickGrid). The MAPPING: the PADDLE start goes in layout.playerSpawn (the bat's CENTER, near the bottom); the BRICKS go in layout.platforms[] (each brick is an axis-aligned rect — the SDK treats them as bricks via the BrickGrid system + the runtime PaddleLevelData.brickGrid/bricks); the win-target goes in layout.goal (the win is the clear-"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/genres.json",
+          "displayPath": "templates/genres.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$comment\": \"GENERATED from templates/modules/*/genre.json via templates/registry/build-genres.mjs — do NOT hand-edit. The per-module genre.json files are the AUTHORED source: edit a module's genre.json (prose, whenToUse triggers, palette refs), then run `npm run genres:build`. A drift between this file and the sources — or a palette ref / capabilitiesRef / skillRef / archetype that does not resolve — fails `npm run genres:check`.\",\n  \"generatedBy\": \"templates/registry/build-genres.mjs\",\n  \"archetypes\": [\n    \"platformer\",\n    \"top_down\",\n    \"grid_logic\",\n    \"tower_defense\",\n    \"ui_heavy\",\n    \"voxel_sandbox\",\n    \"action_3d\",\n    \"endless_runner\",\n    \"gallery_shooter\",\n    \"paddle_ball\"\n  ],\n  \"genres\": [\n    {\n      \"id\": \"action_3d:crime\",\n      \"archetype\": \"action_3d\",\n      \"subgenre\": \"high-angle-crime-caper\",\n      \"physicsProfile\": {\n        \"hasGravity\": true,\n        \"perspective\": \"third_person\",\n        \"movementType\": \"continuous\"\n      },\n      \"oneLineIntent\": \"Walk a blocky high-angle city, take on missions, shoot, and meet contacts — a top-down crime caper. The contested decision is committing to a shot (it slows you, spends ammo) versus keeping moving tow"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/modules/paddle_ball/capabilities.json",
+          "displayPath": "templates/modules/paddle_ball/capabilities.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$comment\": \"GENERATED from templates/modules/paddle_ball/src/** (+ templates/core-contract/src/hook-contract.ts) via registry/build-registry.mjs — do NOT hand-edit. The CODE is the source of truth: edit a behavior/effect/control-scheme class (or a system's CAPABILITY const, or the discover.mjs taxonomies), then run `npm run registry:build`. A drift between this file and the code fails `npm run registry:check`.\",\n  \"archetype\": \"paddle_ball\",\n  \"generatedBy\": \"registry/build-registry.mjs\",\n  \"capabilities\": [\n    {\n      \"kind\": \"behavior\",\n      \"id\": \"PaddleController\",\n      \"intent\": \"One-axis paddle locomotion: read the bound control scheme's input source (Left/Right + A/D keys, OR the pointer) and slide the paddle ALONG its axis only, clamped to the play field. This is what makes a paddle_ball game CONTROLLABLE (a frozen paddle is a fail); it pairs with a control-scheme record (paddle-keys / paddle-pointer).\",\n      \"implements\": \"PaddleController\",\n      \"params\": [\n        \"speed\",\n        \"axis\",\n        \"source\"\n      ],\n      \"roles\": [\n        \"paddle\"\n      ],\n      \"tuning\": [\n        \"paddleSpeed\"\n      ]\n    },\n    {\n      \"kind\": \"behavior\",\n      \"id\": \"Pinbal"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/modules/paddle_ball/events.catalog.json",
+          "displayPath": "templates/modules/paddle_ball/events.catalog.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$comment\": \"GENERATED from templates/modules/paddle_ball/src/** surface().events via registry/build-registry.mjs — do NOT hand-edit. The OPEN/DERIVED event vocabulary (base ∪ archetype ∪ each capability ∪ $custom). The single source of truth is surface().events: add a component that declares an event and it appears here with ZERO core edits. A drift between this file and the code fails `npm run registry:check`.\",\n  \"archetype\": \"paddle_ball\",\n  \"generatedBy\": \"registry/build-registry.mjs\",\n  \"events\": [\n    {\n      \"name\": \"ball.bounced\",\n      \"scope\": \"archetype\",\n      \"payload\": \"{x,y,off:'wall'|'brick'|'paddle',vx?,vy?}\",\n      \"drivenBy\": \"the ball reflects off a wall, a brick, or the paddle (by contact point)\",\n      \"expect\": \"the ball's velocity reflects (a paddle bounce steers the angle by contact point, total speed preserved); ball.bounced logged\",\n      \"sources\": [\n        \"src/scenes/BasePaddleScene.ts\"\n      ]\n    },\n    {\n      \"name\": \"ball.served\",\n      \"scope\": \"archetype\",\n      \"payload\": \"{toward:'left'|'right',speed,playerScore,aiScore}\",\n      \"drivenBy\": \"a point starts (the first serve, or a re-serve after a score)\",\n      \"expect\": \"the ball re-cent"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/modules/paddle_ball/genre.json",
+          "displayPath": "templates/modules/paddle_ball/genre.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$comment\": \"AUTHORED (hand-edited) genre source for the paddle_ball module — the prose + curated capability palette. Co-located with the module per the sdk-reframe Part-7 isomorphism (genre-knowledge lives on the per-archetype side, next to capabilities.json + design-rules.md). This is NOT generated. The root templates/genres.json is GENERATED from every modules/*/genre.json by templates/registry/build-genres.mjs; its dangling-reference gate (templates/registry, `genres:check`) verifies that every `palette` id resolves in the referenced capabilities.json, that capabilitiesRef/skillRef point at real files, and that `archetype` is a known archetype. Author here; never hand-edit genres.json. paddle_ball is a 2D Phaser archetype on the SAME coreBase:'core' as platformer/top_down (no new substrate); the NEW engine is the ball reflection physics (contact-point steering) + the brick grid + sub-stepped no-tunnel integration (the paddle is the player). The BASE record (id='paddle_ball:brick-breaker') is Breakout — the lowest-risk framing; the paddle-duel (Pong) + pinball siblings are Wave-2 components (listed in the module's wave2Components, not yet built) and will reference ONLY ids t"
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "run",
+          "label": "Run workspace",
+          "count": 3,
+          "paths": [
+            "out/e2e-m3/spec/gdd.md",
+            "out/e2e-m3/spec/classification.json",
+            "out/e2e-m3/spec/blueprint.json"
+          ]
+        },
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 1,
+          "paths": [
+            "packages/skills/harden-blueprint/SKILL.md"
+          ]
+        },
+        {
+          "kind": "template",
+          "label": "Templates",
+          "count": 4,
+          "paths": [
+            "templates/genres.json",
+            "templates/modules/paddle_ball/capabilities.json",
+            "templates/modules/paddle_ball/events.catalog.json",
+            "templates/modules/paddle_ball/genre.json"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/blueprint.json",
+          "displayPath": "out/e2e-m3/spec/blueprint.json",
+          "verified": false
+        }
+      ],
+      "artifacts": [],
+      "bash": [],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 360925,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object][object Object][object Object][object Object][object Object]",
+        "contextPeak": 138590,
+        "billable": 0
+      },
+      "issues": [],
+      "stageIndex": 3,
+      "lane": 0
+    },
+    {
+      "id": "shell-chrome",
+      "label": "Shell chrome",
+      "phase": "Producers ∥",
+      "status": "reused",
+      "startedAt": "2026-06-22T07:35:17.968Z",
+      "endedAt": "2026-06-22T07:36:10.372Z",
+      "durationMs": 52404,
+      "expectedMs": 52404,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 4,
+      "toolBreakdown": {
+        "read": 2,
+        "write": 1,
+        "submit_result": 1
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 4649,
+          "durMs": 8,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 4649,
+          "durMs": 9,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 49071,
+          "durMs": 5,
+          "ok": true
+        },
+        {
+          "name": "submit_result",
+          "tStartMs": 53477,
+          "durMs": 0,
+          "ok": true
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/author-shell/SKILL.md",
+          "displayPath": "packages/skills/author-shell/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: author-shell\ndescription: \"SHELL (the chrome PRODUCER — runs in PARALLEL with the Gameplay node, off the GDD only). A PRODUCING node, not a verifier: read the DESIGN (spec/gdd.md + spec/classification.json) and PRODUCE one blueprint section, shell{}, the player-facing CHROME AROUND gameplay — the HUD display spec (hud[]), the title/how-to-play surface (intro{}), the scene-flow (sceneFlow{}), and the modes (modes[]) — bound ONLY to GDD-declared observables (failModel · scoringModel/maxScore · winCondition.description/objective · controls[]), all of which exist at DESIGN time, so Shell never waits on Gameplay. Project the HUD from the declared fields: a resource widget ONLY for the resource the failModel actually drives (respawn/none → none — surfacing an inert bar is the named defect), score as x/max progress when bounded, an objective panel when there is a standing goal. Pin the format per widget kind (health→bar x/max · lives→counter int · time→timer mm:ss). Author the title GOAL line + how-to-play rows COPIED from controls[], and a scene-flow whose gameOver branch exists IFF the failModel can reach status:'lost'. Declare WHAT each surface shows + its legibility intent ("
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/blueprint.json",
+          "displayPath": "out/e2e-m3/spec/blueprint.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"meta\": {\n    \"title\": \"Bounce & Break\",\n    \"archetype\": \"paddle_ball\",\n    \"goalModel\": \"win-lose\",\n    \"coreLoop\": \"Slide a paddle along the bottom to keep a bouncing ball alive and chip away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n    \"coreVerb\": \"bounce\",\n    \"coreFantasy\": \"clean paddle-and-ball brick destruction\",\n    \"failModel\": \"lives\",\n    \"scoringModel\": \"bounded-collectible\",\n    \"artStyle\": \"flat vector cartoon; deep indigo→violet gradient backdrop; hazard accents in warm orange + electric-cyan; soft cozy arcade mood\",\n    \"atmosphere\": \"a still, dim arcade hall with a faint glowing horizon; the play field floats centered over a softly lit floor; no precipitation, no time-of-day, but a calm enclosed mood that focuses attention on the brick wall\",\n    \"assetBudget\": 6,\n    \"physicsProfile\": {\n      \"hasGravity\": false,\n      \"perspective\": \"side\",\n      \"movementType\": \"continuous\"\n    }\n  },\n  \"entities\": [\n    {\n      \"id\": \"paddle\",\n      \"role\": \"player\",\n      \"description\": \"the player's bat — slides along x to return the ball, clamped to the play-fiel"
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "run",
+          "label": "Run workspace",
+          "count": 1,
+          "paths": [
+            "out/e2e-m3/spec/blueprint.json"
+          ]
+        },
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 1,
+          "paths": [
+            "packages/skills/author-shell/SKILL.md"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/shell.fragment.json",
+          "displayPath": "out/e2e-m3/spec/shell.fragment.json",
+          "verified": false
+        }
+      ],
+      "artifacts": [],
+      "bash": [],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 54559,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object]",
+        "contextPeak": 26086,
+        "billable": 0
+      },
+      "issues": [],
+      "stageIndex": 4,
+      "lane": 0
+    },
+    {
+      "id": "guidance-chrome",
+      "label": "Guidance chrome",
+      "phase": "Producers ∥",
+      "status": "reused",
+      "startedAt": "2026-06-22T07:35:18.026Z",
+      "endedAt": "2026-06-22T07:39:18.771Z",
+      "durationMs": 240745,
+      "expectedMs": 240745,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 9,
+      "toolBreakdown": {
+        "read": 7,
+        "write": 1,
+        "submit_result": 1
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 6203,
+          "durMs": 8,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 6203,
+          "durMs": 9,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 10264,
+          "durMs": 0,
+          "ok": false
+        },
+        {
+          "name": "read",
+          "tStartMs": 10264,
+          "durMs": 16,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 10264,
+          "durMs": 16,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 10264,
+          "durMs": 16,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 186443,
+          "durMs": 0,
+          "ok": false
+        },
+        {
+          "name": "write",
+          "tStartMs": 214313,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "submit_result",
+          "tStartMs": 241868,
+          "durMs": 0,
+          "ok": true
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/author-guidance/SKILL.md",
+          "displayPath": "packages/skills/author-guidance/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: author-guidance\ndescription: \"GUIDANCE (the in-game TEACHING author — the node AFTER Gameplay/Harden, binding to gameplay's FROZEN surface). A PRODUCING node: read the design intent-to-teach (spec/gdd.md + spec/classification.json) and the frozen gameplay SURFACE, and PRODUCE the game's teaching layer — the contextual coaching tips, player-facing text OVERLAYS (with an abstract trigger bound to the surface at merge), and diegetic WORLD-CUES (bound to a real frozen entity position) — that teach THIS game's loop at the moment it matters. Teach, don't tell; just-in-time, not upfront; one idea per cue; TEACH THE VERB SAFELY FIRST (a low-stakes exercise before any threat); every cue DECAYS once learned (prefer dismissOn the success event / an on-first one-shot — a timer is the FALLBACK, not a peer). Author teaching CONTENT only — never a gameplay number, never the standing HUD readout (Shell's job), never the deterministic intro/objective baseline (Harden's job). RETRIEVE the per-genre teaching knowledge + the teaching capabilities from the registry; bind every trigger/cue to a published surface handle, never a gameplay internal. Genre-agnostic: carries NO per-archetype teachi"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/blueprint.json",
+          "displayPath": "out/e2e-m3/spec/blueprint.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"meta\": {\n    \"title\": \"Bounce & Break\",\n    \"archetype\": \"paddle_ball\",\n    \"goalModel\": \"win-lose\",\n    \"coreLoop\": \"Slide a paddle along the bottom to keep a bouncing ball alive and chip away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n    \"coreVerb\": \"bounce\",\n    \"coreFantasy\": \"clean paddle-and-ball brick destruction\",\n    \"failModel\": \"lives\",\n    \"scoringModel\": \"bounded-collectible\",\n    \"artStyle\": \"flat vector cartoon; deep indigo→violet gradient backdrop; hazard accents in warm orange + electric-cyan; soft cozy arcade mood\",\n    \"atmosphere\": \"a still, dim arcade hall with a faint glowing horizon; the play field floats centered over a softly lit floor; no precipitation, no time-of-day, but a calm enclosed mood that focuses attention on the brick wall\",\n    \"assetBudget\": 6,\n    \"physicsProfile\": {\n      \"hasGravity\": false,\n      \"perspective\": \"side\",\n      \"movementType\": \"continuous\"\n    }\n  },\n  \"entities\": [\n    {\n      \"id\": \"paddle\",\n      \"role\": \"player\",\n      \"description\": \"the player's bat — slides along x to return the ball, clamped to the play-fiel"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/gameplay.surface.md",
+          "displayPath": "out/e2e-m3/spec/gameplay.surface.md",
+          "via": "read",
+          "scope": "run",
+          "preview": "ENOENT: no such file or directory, access '/Users/tk/Desktop/game-omni/out/e2e-m3/spec/gameplay.surface.md'"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/modules/paddle_ball/events.catalog.json",
+          "displayPath": "templates/modules/paddle_ball/events.catalog.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$comment\": \"GENERATED from templates/modules/paddle_ball/src/** surface().events via registry/build-registry.mjs — do NOT hand-edit. The OPEN/DERIVED event vocabulary (base ∪ archetype ∪ each capability ∪ $custom). The single source of truth is surface().events: add a component that declares an event and it appears here with ZERO core edits. A drift between this file and the code fails `npm run registry:check`.\",\n  \"archetype\": \"paddle_ball\",\n  \"generatedBy\": \"registry/build-registry.mjs\",\n  \"events\": [\n    {\n      \"name\": \"ball.bounced\",\n      \"scope\": \"archetype\",\n      \"payload\": \"{x,y,off:'wall'|'brick'|'paddle',vx?,vy?}\",\n      \"drivenBy\": \"the ball reflects off a wall, a brick, or the paddle (by contact point)\",\n      \"expect\": \"the ball's velocity reflects (a paddle bounce steers the angle by contact point, total speed preserved); ball.bounced logged\",\n      \"sources\": [\n        \"src/scenes/BasePaddleScene.ts\"\n      ]\n    },\n    {\n      \"name\": \"ball.served\",\n      \"scope\": \"archetype\",\n      \"payload\": \"{toward:'left'|'right',speed,playerScore,aiScore}\",\n      \"drivenBy\": \"a point starts (the first serve, or a re-serve after a score)\",\n      \"expect\": \"the ball re-cent"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/core-contract/src/teach-spec.ts",
+          "displayPath": "templates/core-contract/src/teach-spec.ts",
+          "via": "read",
+          "scope": "template",
+          "preview": "/**\n * ============================================================================\n * teach-spec.ts  —  the CoachingEntry shape (DATA, engine-agnostic, no import)\n * ============================================================================\n * The contract half of the in-game TEACHING layer — the player-facing prompting\n * capability that tells a player HOW TO PLAY and WHAT THE GOAL IS. It is the\n * sibling of `hud-spec.ts`: hud-spec declares the STANDING readout (the chips +\n * the objective panel that persist), this declares the TIMED, transient teaching\n * prompts (a control-teach hint shown on the first relevant moment, an intro\n * objective banner that fades, a contextual tip). Pure DATA — both engines RENDER\n * + TIME it their own way (the 3D DOM `Coachmark` + `Coaching` driver today; a 2D\n * impl later), so the WHAT-to-teach + WHEN decision lives here while the\n * HOW-to-draw stays in each engine's impl.\n *\n * GENERIC across any game (anti-reward-hack / one-canonical-home): the trigger\n * comparators and the content shape hold for ANY archetype — the only\n * game-specific thing is the `coaching[]` DATA a blueprint declares. There is NO\n * game noun in this file.\n *\n * The"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/core-contract/guidance.section.schema.json",
+          "displayPath": "templates/core-contract/guidance.section.schema.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://game-omni/spec/guidance.section.schema.json\",\n  \"$comment\": \"STANDALONE per-section schema for the GUIDANCE chrome producer's fragment (spec/guidance.fragment.json) — v1.6 producing-tier dependency separation (docs/reconstruction/contracts-v1.md Contract 2/3/7). LOOSE STRUCTURAL CONTRACT by design: the Guidance node composes teaching CREATIVELY from its seeded menu, so this validates SHAPE + value TYPES only — it does NOT freeze the trigger vocabulary / cueKinds / bound handles as enums (that duplicates the drift-gated read-view core/guidance.json and blocks clever cues). WHAT RESOLVES is checked against the seeded surface + core/guidance.json (recorded in couplingToGameplay.surfaceExposed); teaching QUALITY (every cue decays, teaches an about-to-need beat, classified right) is the node's self-critique + VERIFY-1, never a hard gate (prefer-promptcraft-over-hardgates). Mirrors $defs/guidanceSection (+ guidance* sub-defs) in packages/skills/harden-blueprint/blueprint.schema.json — keep in sync. The fragment ROOT is the guidance{} section object; additionalProperties:true throughout so editorial annotatio"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/_logs",
+          "displayPath": "out/e2e-m3/_logs",
+          "via": "read",
+          "scope": "run",
+          "preview": "ENOENT: no such file or directory, access '/Users/tk/Desktop/game-omni/out/e2e-m3/_logs'"
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "run",
+          "label": "Run workspace",
+          "count": 3,
+          "paths": [
+            "out/e2e-m3/spec/blueprint.json",
+            "out/e2e-m3/spec/gameplay.surface.md",
+            "out/e2e-m3/_logs"
+          ]
+        },
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 1,
+          "paths": [
+            "packages/skills/author-guidance/SKILL.md"
+          ]
+        },
+        {
+          "kind": "template",
+          "label": "Templates",
+          "count": 3,
+          "paths": [
+            "templates/modules/paddle_ball/events.catalog.json",
+            "templates/core-contract/src/teach-spec.ts",
+            "templates/core-contract/guidance.section.schema.json"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/guidance.fragment.json",
+          "displayPath": "out/e2e-m3/spec/guidance.fragment.json",
+          "verified": false
+        }
+      ],
+      "artifacts": [],
+      "bash": [],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 151947,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object][object Object][object Object]",
+        "contextPeak": 45937,
+        "billable": 0
+      },
+      "issues": [],
+      "stageIndex": 4,
+      "lane": 4
+    },
+    {
+      "id": "asset-art-direction",
+      "label": "Asset art-direction",
+      "phase": "Producers ∥",
+      "status": "reused",
+      "startedAt": "2026-06-22T07:35:18.002Z",
+      "endedAt": "2026-06-22T07:41:51.316Z",
+      "durationMs": 393314,
+      "expectedMs": 393314,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 19,
+      "toolBreakdown": {
+        "read": 11,
+        "write": 4,
+        "submit_result": 4
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 6970,
+          "durMs": 10,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 6970,
+          "durMs": 12,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 71210,
+          "durMs": 0,
+          "ok": false
+        },
+        {
+          "name": "read",
+          "tStartMs": 71210,
+          "durMs": 7,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 77011,
+          "durMs": 7,
+          "ok": false
+        },
+        {
+          "name": "read",
+          "tStartMs": 77011,
+          "durMs": 19,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 81274,
+          "durMs": 3,
+          "ok": false
+        },
+        {
+          "name": "read",
+          "tStartMs": 83663,
+          "durMs": 2,
+          "ok": false
+        },
+        {
+          "name": "read",
+          "tStartMs": 86221,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 118588,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 118588,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 139683,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "submit_result",
+          "tStartMs": 156898,
+          "durMs": 0,
+          "ok": false
+        },
+        {
+          "name": "submit_result",
+          "tStartMs": 243007,
+          "durMs": 0,
+          "ok": false
+        },
+        {
+          "name": "write",
+          "tStartMs": 261351,
+          "durMs": 0,
+          "ok": false
+        },
+        {
+          "name": "submit_result",
+          "tStartMs": 300855,
+          "durMs": 0,
+          "ok": false
+        },
+        {
+          "name": "write",
+          "tStartMs": 344346,
+          "durMs": 0,
+          "ok": false
+        },
+        {
+          "name": "read",
+          "tStartMs": 361646,
+          "durMs": 1,
+          "ok": false
+        },
+        {
+          "name": "submit_result",
+          "tStartMs": 380527,
+          "durMs": 0,
+          "ok": false
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/assets/SKILL.md",
+          "displayPath": "packages/skills/assets/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: assets\ndescription: \"W3 ASSETS (the ASSET lane; runs CONCURRENTLY with the BUILD lane W2 — both off the frozen blueprint), split into two jobs. W3a (Art Director) reads the asset slot list FROM THE BLUEPRINT (assetList ∪ entities[].assetSlot) + the global art style and AUTHORS a per-asset CREATIVE image prompt + a multi-color palette → writes asset-prompts.json (the imaginative prompt-craft + color taste live here: a DISTINCT subject per asset and a harmonious palette with figure/ground + hazard salience). W3b (Assets) runs the bundled gen/ tool with --blueprint (gemini-3.1-flash-image + a LOCAL offline chroma key), which derives the slot list from the blueprint, consumes asset-prompts.json, generates a REAL file for EVERY non-audio slot, then writes the ASSETS.md manifest + its OWN public/assets/asset-manifest.json (the per-slot status/path/dims map). It does NOT write index.json (W2 owns it concurrently — the serial JOIN reconciles it from asset-manifest.json) and appends MEMORY.w3b.md (a per-node fragment, NOT MEMORY.md). Real generation is MANDATORY — there is NO placeholder/template fallback: if the tool can't run (no key/deps) or asset-prompts.json is missing, HALT "
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/blueprint.json",
+          "displayPath": "out/e2e-m3/spec/blueprint.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"meta\": {\n    \"title\": \"Bounce & Break\",\n    \"archetype\": \"paddle_ball\",\n    \"goalModel\": \"win-lose\",\n    \"coreLoop\": \"Slide a paddle along the bottom to keep a bouncing ball alive and chip away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n    \"coreVerb\": \"bounce\",\n    \"coreFantasy\": \"clean paddle-and-ball brick destruction\",\n    \"failModel\": \"lives\",\n    \"scoringModel\": \"bounded-collectible\",\n    \"artStyle\": \"flat vector cartoon; deep indigo→violet gradient backdrop; hazard accents in warm orange + electric-cyan; soft cozy arcade mood\",\n    \"atmosphere\": \"a still, dim arcade hall with a faint glowing horizon; the play field floats centered over a softly lit floor; no precipitation, no time-of-day, but a calm enclosed mood that focuses attention on the brick wall\",\n    \"assetBudget\": 6,\n    \"physicsProfile\": {\n      \"hasGravity\": false,\n      \"perspective\": \"side\",\n      \"movementType\": \"continuous\"\n    }\n  },\n  \"entities\": [\n    {\n      \"id\": \"paddle\",\n      \"role\": \"player\",\n      \"description\": \"the player's bat — slides along x to return the ball, clamped to the play-fiel"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3",
+          "displayPath": "out/e2e-m3",
+          "via": "read",
+          "scope": "run",
+          "preview": "EISDIR: illegal operation on a directory, read"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/assets/references/color-and-aesthetics.md",
+          "displayPath": "packages/skills/assets/references/color-and-aesthetics.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "# Color & aesthetics — the W3a palette/color craft (theme-agnostic)\n\n> Loaded by **W3a (Art Director)** to derive `palette` and assign a color to each asset prompt. Every rule\n> here is a **RELATION keyed on role + theme**, never a named color for a named game — it must hold for ANY\n> theme (forest, neon city, undersea, candy, ruins, …). Pair it with the sibling\n> `references/gpt-image-2-prompting.md` for the prompt-structure / set-consistency doctrine; this file owns the\n> COLOR LOGIC.\n\n## Why this exists (the defect it fixes)\nA flat one-color theme makes danger, reward, ground, and player all read the same — the player can't tell a\nhazard from a collectible at a glance, and the foreground melts into the background. A palette is not\ndecoration; it is the **readability layer of the game**. Different gameplay roles MUST read as different\ncolors, and the choices must be harmonious, not random.\n\n## 1. Palette-derivation recipe (artStyle words → a cohesive small set)\nFrom `meta.artStyle` extract the palette/mood words (e.g. \"warm earthy\", \"icy\", \"neon\", \"pastel\"). Derive a\nsmall cohesive set — **do not** invent a rainbow:\n- **1 dominant hue** — the theme's anchor (drives the background"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/assets/references/gpt-image-2-prompting.md",
+          "displayPath": "packages/skills/assets/references/gpt-image-2-prompting.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "# Image-prompt craft — how W3a structures one strong single-subject prompt\n\n> Loaded by **W3a (Art Director)** for the PROMPT-STRUCTURE craft: how to write one strong image prompt per\n> asset slot. Project-local distillation of the `gpt-image-2-prompting` doctrine, kept to exactly what W3a uses\n> (a single-subject sprite prompt). The COLOR logic lives in its sibling `color-and-aesthetics.md`; this file\n> owns the PROMPT SHAPE. Theme-agnostic — every rule is a relation over `description` + `artStyle` + the role\n> colour, never a named subject/colour for a named game. (Origin: OpenAI gpt-image-2 cookbook + practitioner\n> testing, research 2026-06; pi/MiniMax cannot load Claude-global skills, so the craft is injected here.)\n\n## What W3a writes (the only deliverable this file serves)\nONE creative prompt per non-audio slot in `asset-prompts.json`: a single cut-out asset — **subject + the\nshared global style + this slot's own palette colour**. NOT a scene, NOT a set with text, NOT a diagram. The\nW3b python appends ALL technical/dimensional/negative scaffolding (size, transparent background, sprite-sheet,\n\"no text\") — so W3a writes the CREATIVE BRIEF ONLY and never any of that.\n\n## 1. Pro"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/MEMORY.asset.md",
+          "displayPath": "out/e2e-m3/MEMORY.asset.md",
+          "via": "read",
+          "scope": "run",
+          "preview": "ENOENT: no such file or directory, access '/Users/tk/Desktop/game-omni/out/e2e-m3/MEMORY.asset.md'"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/_logs",
+          "displayPath": "out/e2e-m3/_logs",
+          "via": "read",
+          "scope": "run",
+          "preview": "ENOENT: no such file or directory, access '/Users/tk/Desktop/game-omni/out/e2e-m3/_logs'"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out",
+          "displayPath": "out",
+          "via": "read",
+          "scope": "repo",
+          "preview": "EISDIR: illegal operation on a directory, read"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/asset-prompts.json",
+          "displayPath": "out/e2e-m3/asset-prompts.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"palette\": {\n    \"name\": \"indigo-cozy-arcade\",\n    \"roles\": {\n      \"player\": \"#F4E5D2\",\n      \"projectile\": \"#5DF5F5\",\n      \"hazard\": \"#FF7A3D\",\n      \"background\": \"#2A1F4A\"\n    }\n  },\n  \"prompts\": [\n    {\n      \"slot\": \"paddle\",\n      \"prompt\": \"A side-view horizontal paddle bat in a soft warm cream tone, flat vector cartoon style with rounded ends, soft cozy arcade mood, clean solid fills with a subtle highlight along the top edge, friendly and inviting.\"\n    },\n    {\n      \"slot\": \"ball\",\n      \"prompt\": \"A round ball in a bright electric-cyan tone, flat vector cartoon style, soft cozy arcade mood, clean solid fills with a soft white highlight, glowing and energetic.\"\n    },\n    {\n      \"slot\": \"brick_standard\",\n      \"prompt\": \"A rectangular single-hit breakable brick in a warm orange tone, flat vector cartoon style, face-on view, soft cozy arcade mood, clean solid fills with a soft top highlight and gentle shadow underneath, simple and crisp.\"\n    },\n    {\n      \"slot\": \"brick_tough\",\n      \"prompt\": \"A rectangular multi-hit reinforced brick in a warm orange tone, flat vector cartoon style, face-on view, soft cozy arcade mood, clean solid fills with visible reinforcemen"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/public/assets/asset-manifest.json",
+          "displayPath": "out/e2e-m3/public/assets/asset-manifest.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "ENOENT: no such file or directory, access '/Users/tk/Desktop/game-omni/out/e2e-m3/public/assets/asset-manifest.json'"
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "run",
+          "label": "Run workspace",
+          "count": 6,
+          "paths": [
+            "out/e2e-m3/spec/blueprint.json",
+            "out/e2e-m3",
+            "out/e2e-m3/MEMORY.asset.md",
+            "out/e2e-m3/_logs",
+            "out/e2e-m3/asset-prompts.json",
+            "out/e2e-m3/public/assets/asset-manifest.json"
+          ]
+        },
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 3,
+          "paths": [
+            "packages/skills/assets/SKILL.md",
+            "packages/skills/assets/references/color-and-aesthetics.md",
+            "packages/skills/assets/references/gpt-image-2-prompting.md"
+          ]
+        },
+        {
+          "kind": "repo",
+          "label": "Repo source",
+          "count": 1,
+          "paths": [
+            "out"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/asset-prompts.json",
+          "displayPath": "out/e2e-m3/asset-prompts.json",
+          "verified": false
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/MEMORY.asset.md",
+          "displayPath": "out/e2e-m3/MEMORY.asset.md",
+          "verified": false
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/public/assets/asset-manifest.json",
+          "displayPath": "out/e2e-m3/public/assets/asset-manifest.json",
+          "verified": false
+        }
+      ],
+      "artifacts": [],
+      "bash": [],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 773891,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object]",
+        "contextPeak": 60454,
+        "billable": 0
+      },
+      "issues": [],
+      "stageIndex": 4,
+      "lane": 3
+    },
+    {
+      "id": "sound-chrome",
+      "label": "Sound chrome",
+      "phase": "Producers ∥",
+      "status": "reused",
+      "startedAt": "2026-06-22T07:35:17.971Z",
+      "endedAt": "2026-06-22T07:37:22.904Z",
+      "durationMs": 124933,
+      "expectedMs": 124933,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 7,
+      "toolBreakdown": {
+        "read": 6,
+        "write": 1
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 7940,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 7940,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 7940,
+          "durMs": 5,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 15154,
+          "durMs": 8,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 15154,
+          "durMs": 9,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 15154,
+          "durMs": 9,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 112856,
+          "durMs": 0,
+          "ok": true
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/sound-author/SKILL.md",
+          "displayPath": "packages/skills/sound-author/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: sound-author\ndescription: \"SOUND/SFX (the in-game AUDIO-FEEDBACK author — the node that binds a sound to a gameplay MOMENT). A PRODUCING node, not a verifier: read the design's sonic intent (spec/gdd.md + spec/classification.json) and the game's GENERATED EVENT CATALOG, and PRODUCE the game's sound layer — a per-event BEST-MATCH sfx[] binding + the overall SOUND PATH (the game's sonic identity, the audio analog of meta.artStyle that makes the per-event picks coherent). SELECT, never generate: every `play` is a key that RESOLVES in the reused SFX vocabulary (sound-registry.json — the @studio/sound-kit _sfx menu); every `on` is an event that RESOLVES in the surface()-derived EVENT CATALOG (events.catalog.json — the events the bound components actually emit on the bus, ∪ custom[].emits[] — NOT effects[].on, the cosmetic channel the bus never carries); an unresolved binding is a contract gap self-reported (couplingToGameplay.surfaceExposed:false), NEVER an invented event or a generated sound. SEPARATION (load-bearing): Sound READS the event catalog and writes ONLY blueprint.sound; it NEVER mutates guidance or effects — one event name joins guidance and sfx as two independent "
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/blueprint.json",
+          "displayPath": "out/e2e-m3/spec/blueprint.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"meta\": {\n    \"title\": \"Bounce & Break\",\n    \"archetype\": \"paddle_ball\",\n    \"goalModel\": \"win-lose\",\n    \"coreLoop\": \"Slide a paddle along the bottom to keep a bouncing ball alive and chip away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n    \"coreVerb\": \"bounce\",\n    \"coreFantasy\": \"clean paddle-and-ball brick destruction\",\n    \"failModel\": \"lives\",\n    \"scoringModel\": \"bounded-collectible\",\n    \"artStyle\": \"flat vector cartoon; deep indigo→violet gradient backdrop; hazard accents in warm orange + electric-cyan; soft cozy arcade mood\",\n    \"atmosphere\": \"a still, dim arcade hall with a faint glowing horizon; the play field floats centered over a softly lit floor; no precipitation, no time-of-day, but a calm enclosed mood that focuses attention on the brick wall\",\n    \"assetBudget\": 6,\n    \"physicsProfile\": {\n      \"hasGravity\": false,\n      \"perspective\": \"side\",\n      \"movementType\": \"continuous\"\n    }\n  },\n  \"entities\": [\n    {\n      \"id\": \"paddle\",\n      \"role\": \"player\",\n      \"description\": \"the player's bat — slides along x to return the ball, clamped to the play-fiel"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/sound-author/sound-registry.json",
+          "displayPath": "packages/skills/sound-author/sound-registry.json",
+          "via": "read",
+          "scope": "skill",
+          "preview": "{\n  \"$comment\": \"SOUND REGISTRY — the reused SFX VOCABULARY the Sound node SELECTS from (the selection menu, NOT a generator). It MIRRORS the real @studio/sound-kit `SFX_REGISTRY` (the curated, named, stable-key one-shot vocabulary in shared-sound/src/sfx.ts) — the 26 keys the kit exposes helper functions over (sfxSrc / sfxDefaultVolume / semitonesToPlaybackRate). Each entry: { file (bank-relative wav), volume (linear peak 0..1, faithful to the kit's per-key level), role (the ONE gameplay moment it best fits), tags (other moments it suits) }. WHY a menu, not a freeform field: selection-not-generation — the Sound node BINDS an event to a key that RESOLVES here; a key that does not resolve is a contract gap, never invented. The volume column is faithful to the kit: the kit sets each key to SFX_DEFAULT_LINEAR * <multiplier>; here SFX_DEFAULT_LINEAR is resolved to 0.7 (a sensible standalone linear peak for a game with no narration bed — the kit's value sits SFX below narration; a game has no narration, so 0.7 is the in-game default), and each `volume` = round(0.7 * multiplier, 2). LICENSE: every wav is ElevenLabs Eleven Music / Sound Effects (API) — commercial via paid plan. A CC0 swap"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/modules/paddle_ball/events.catalog.json",
+          "displayPath": "templates/modules/paddle_ball/events.catalog.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$comment\": \"GENERATED from templates/modules/paddle_ball/src/** surface().events via registry/build-registry.mjs — do NOT hand-edit. The OPEN/DERIVED event vocabulary (base ∪ archetype ∪ each capability ∪ $custom). The single source of truth is surface().events: add a component that declares an event and it appears here with ZERO core edits. A drift between this file and the code fails `npm run registry:check`.\",\n  \"archetype\": \"paddle_ball\",\n  \"generatedBy\": \"registry/build-registry.mjs\",\n  \"events\": [\n    {\n      \"name\": \"ball.bounced\",\n      \"scope\": \"archetype\",\n      \"payload\": \"{x,y,off:'wall'|'brick'|'paddle',vx?,vy?}\",\n      \"drivenBy\": \"the ball reflects off a wall, a brick, or the paddle (by contact point)\",\n      \"expect\": \"the ball's velocity reflects (a paddle bounce steers the angle by contact point, total speed preserved); ball.bounced logged\",\n      \"sources\": [\n        \"src/scenes/BasePaddleScene.ts\"\n      ]\n    },\n    {\n      \"name\": \"ball.served\",\n      \"scope\": \"archetype\",\n      \"payload\": \"{toward:'left'|'right',speed,playerScore,aiScore}\",\n      \"drivenBy\": \"a point starts (the first serve, or a re-serve after a score)\",\n      \"expect\": \"the ball re-cent"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/core-contract/sound.section.schema.json",
+          "displayPath": "templates/core-contract/sound.section.schema.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "{\n  \"$schema\": \"https://json-schema.org/draft/2020-12/schema\",\n  \"$id\": \"https://game-omni/spec/sound.section.schema.json\",\n  \"$comment\": \"STANDALONE per-section schema for the SOUND/SFX producer's fragment (blueprint.sound). Sibling of guidance.section.schema.json — same LOOSE STRUCTURAL CONTRACT discipline: the Sound node SELECTS a best-match sound per event from the drift-gated vocabulary (packages/skills/sound-author/sound-registry.json) + names the game's overall SOUND PATH, so this validates SHAPE + value TYPES only. It does NOT enum-freeze the event-name vocabulary (`on`) NOR the sound keys (`play`) — that would duplicate the drift-gated surfaces (the creation contract: effects[].on ∪ custom[].emits[].name for events; the sound-registry for keys) and block clever picks. WHAT RESOLVES is checked against those surfaces and recorded in couplingToGameplay.surfaceExposed (exactly like guidance's honesty self-report); an unresolved `on` is a contract gap (surfaceExposed:false), NEVER invented. `on` is therefore just a string here — it MUST resolve in the event vocabulary, but this standalone schema does not depend on the (other-session, uncommitted) blueprint.schema event field to"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/core-contract/src/sound-spec.ts",
+          "displayPath": "templates/core-contract/src/sound-spec.ts",
+          "via": "read",
+          "scope": "template",
+          "preview": "/**\n * ============================================================================\n * sound-spec.ts  —  the SfxBinding shape (DATA, engine-agnostic, no import)\n * ============================================================================\n * The contract half of the in-game SOUND/SFX layer — the player-facing AUDIO\n * FEEDBACK capability that plays a short one-shot when a gameplay MOMENT fires.\n * It is the sibling of `teach-spec.ts`: teach-spec declares the TIMED teaching\n * prompts, this declares the EVENT-TRIGGERED sound effects. Pure DATA — the\n * single-sourced, renderer-agnostic `@contract/sound/SoundPlayer` (shared verbatim\n * by both engines, like the unified guidance driver) PLAYS it off the SAME event\n * seam, so the WHAT-to-play + ON-WHICH-event decision lives here while the\n * HOW-to-play stays in the one SoundPlayer.\n *\n * GENERIC across any game (anti-reward-hack / one-canonical-home): the binding\n * shape holds for ANY archetype — the only game-specific thing is the `sfx[]`\n * DATA a blueprint declares. There is NO game noun in this file.\n *\n * THE EVENT SEAM (mirror guidance — DO NOT re-derive). The SoundPlayer POLLS the\n * SAME PUSH-channel read seam guidance's T"
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "run",
+          "label": "Run workspace",
+          "count": 1,
+          "paths": [
+            "out/e2e-m3/spec/blueprint.json"
+          ]
+        },
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 2,
+          "paths": [
+            "packages/skills/sound-author/SKILL.md",
+            "packages/skills/sound-author/sound-registry.json"
+          ]
+        },
+        {
+          "kind": "template",
+          "label": "Templates",
+          "count": 3,
+          "paths": [
+            "templates/modules/paddle_ball/events.catalog.json",
+            "templates/core-contract/sound.section.schema.json",
+            "templates/core-contract/src/sound-spec.ts"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/sound.fragment.json",
+          "displayPath": "out/e2e-m3/spec/sound.fragment.json",
+          "verified": false
+        }
+      ],
+      "artifacts": [],
+      "bash": [],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object][object Object]",
+        "contextPeak": 0,
+        "billable": 0
+      },
+      "issues": [],
+      "stageIndex": 4,
+      "lane": 1
+    },
+    {
+      "id": "model-retrieval",
+      "label": "Model retrieval",
+      "phase": "Producers ∥",
+      "status": "reused",
+      "startedAt": "2026-06-22T07:35:17.985Z",
+      "endedAt": "2026-06-22T07:36:36.449Z",
+      "durationMs": 78464,
+      "expectedMs": 78464,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 5,
+      "toolBreakdown": {
+        "read": 2,
+        "write": 2,
+        "submit_result": 1
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 5534,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 5534,
+          "durMs": 8,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 66844,
+          "durMs": 0,
+          "ok": true
+        },
+        {
+          "name": "write",
+          "tStartMs": 66844,
+          "durMs": 0,
+          "ok": true
+        },
+        {
+          "name": "submit_result",
+          "tStartMs": 79542,
+          "durMs": 0,
+          "ok": true
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/assets/SKILL.md",
+          "displayPath": "packages/skills/assets/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: assets\ndescription: \"W3 ASSETS (the ASSET lane; runs CONCURRENTLY with the BUILD lane W2 — both off the frozen blueprint), split into two jobs. W3a (Art Director) reads the asset slot list FROM THE BLUEPRINT (assetList ∪ entities[].assetSlot) + the global art style and AUTHORS a per-asset CREATIVE image prompt + a multi-color palette → writes asset-prompts.json (the imaginative prompt-craft + color taste live here: a DISTINCT subject per asset and a harmonious palette with figure/ground + hazard salience). W3b (Assets) runs the bundled gen/ tool with --blueprint (gemini-3.1-flash-image + a LOCAL offline chroma key), which derives the slot list from the blueprint, consumes asset-prompts.json, generates a REAL file for EVERY non-audio slot, then writes the ASSETS.md manifest + its OWN public/assets/asset-manifest.json (the per-slot status/path/dims map). It does NOT write index.json (W2 owns it concurrently — the serial JOIN reconciles it from asset-manifest.json) and appends MEMORY.w3b.md (a per-node fragment, NOT MEMORY.md). Real generation is MANDATORY — there is NO placeholder/template fallback: if the tool can't run (no key/deps) or asset-prompts.json is missing, HALT "
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/blueprint.json",
+          "displayPath": "out/e2e-m3/spec/blueprint.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"meta\": {\n    \"title\": \"Bounce & Break\",\n    \"archetype\": \"paddle_ball\",\n    \"goalModel\": \"win-lose\",\n    \"coreLoop\": \"Slide a paddle along the bottom to keep a bouncing ball alive and chip away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n    \"coreVerb\": \"bounce\",\n    \"coreFantasy\": \"clean paddle-and-ball brick destruction\",\n    \"failModel\": \"lives\",\n    \"scoringModel\": \"bounded-collectible\",\n    \"artStyle\": \"flat vector cartoon; deep indigo→violet gradient backdrop; hazard accents in warm orange + electric-cyan; soft cozy arcade mood\",\n    \"atmosphere\": \"a still, dim arcade hall with a faint glowing horizon; the play field floats centered over a softly lit floor; no precipitation, no time-of-day, but a calm enclosed mood that focuses attention on the brick wall\",\n    \"assetBudget\": 6,\n    \"physicsProfile\": {\n      \"hasGravity\": false,\n      \"perspective\": \"side\",\n      \"movementType\": \"continuous\"\n    }\n  },\n  \"entities\": [\n    {\n      \"id\": \"paddle\",\n      \"role\": \"player\",\n      \"description\": \"the player's bat — slides along x to return the ball, clamped to the play-fiel"
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "run",
+          "label": "Run workspace",
+          "count": 1,
+          "paths": [
+            "out/e2e-m3/spec/blueprint.json"
+          ]
+        },
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 1,
+          "paths": [
+            "packages/skills/assets/SKILL.md"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/model-queries.json",
+          "displayPath": "out/e2e-m3/model-queries.json",
+          "verified": false
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/MEMORY.model.md",
+          "displayPath": "out/e2e-m3/MEMORY.model.md",
+          "verified": false
+        }
+      ],
+      "artifacts": [],
+      "bash": [],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 75123,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object]",
+        "contextPeak": 36293,
+        "billable": 0
+      },
+      "issues": [],
+      "stageIndex": 4,
+      "lane": 2
+    },
+    {
+      "id": "w2-scaffold",
+      "label": "W2 scaffold",
+      "phase": "W2 Scaffold",
+      "status": "ok",
+      "startedAt": "2026-06-22T23:29:13.154Z",
+      "endedAt": "2026-06-22T23:31:00.465Z",
+      "durationMs": 107311,
+      "expectedMs": 107311,
+      "priorSamples": 1,
+      "model": "MiniMax-M3",
+      "provider": "mmgw",
+      "api": "anthropic-messages",
+      "toolCalls": 35,
+      "toolBreakdown": {
+        "bash": 20,
+        "read": 14,
+        "edit": 1
+      },
+      "timeline": [
+        {
+          "name": "read",
+          "tStartMs": 5705,
+          "durMs": 4,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 5705,
+          "durMs": 14,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 9941,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 9941,
+          "durMs": 3,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 9941,
+          "durMs": 14,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 12863,
+          "durMs": 2,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 12863,
+          "durMs": 13,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 16761,
+          "durMs": 10,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 16761,
+          "durMs": 12,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 16761,
+          "durMs": 19,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 18703,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 18703,
+          "durMs": 4,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 21991,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 21991,
+          "durMs": 15,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 26934,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 26934,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 26934,
+          "durMs": 5,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 30299,
+          "durMs": 1,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 30299,
+          "durMs": 24,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 40673,
+          "durMs": 3,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 40673,
+          "durMs": 3,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 40673,
+          "durMs": 24,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 44260,
+          "durMs": 8,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 44263,
+          "durMs": 19,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 55280,
+          "durMs": 204,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 58153,
+          "durMs": 118,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 60483,
+          "durMs": 123,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 62973,
+          "durMs": 10,
+          "ok": false
+        },
+        {
+          "name": "bash",
+          "tStartMs": 64753,
+          "durMs": 4148,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 79585,
+          "durMs": 138,
+          "ok": false
+        },
+        {
+          "name": "bash",
+          "tStartMs": 83431,
+          "durMs": 30,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 91028,
+          "durMs": 14,
+          "ok": true
+        },
+        {
+          "name": "read",
+          "tStartMs": 94101,
+          "durMs": 0,
+          "ok": true
+        },
+        {
+          "name": "bash",
+          "tStartMs": 95880,
+          "durMs": 14,
+          "ok": true
+        },
+        {
+          "name": "edit",
+          "tStartMs": 102893,
+          "durMs": 3,
+          "ok": true
+        }
+      ],
+      "reads": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/packages/skills/scaffold/SKILL.md",
+          "displayPath": "packages/skills/scaffold/SKILL.md",
+          "via": "read",
+          "scope": "skill",
+          "preview": "---\nname: scaffold\ndescription: \"W2 SCAFFOLD (Coder, the BUILD lane — runs CONCURRENTLY with the ASSET lane W3a→W3b, both off the frozen blueprint). Turn spec/blueprint.json into a RUNNING, EMPTY Phaser/Vite/TS project: copy templates/modules/<archetype>, merge blueprint.config into gameConfig.json, materialize src/levels/<level>.json, derive index.json (asset slots + dims, status:'pending'), write STRUCTURE.md (the architecture map), ensure window.__GAME__ is exposed per the template contract, and pass the BUILD-HEALTH gate (npm run build). Owns the template/engine contract the whole pipeline reads. Owns the SCAFFOLD (src/**, gameConfig.json, STRUCTURE.md, index.json, the build config) MINUS the asset-lane paths (public/assets/**, ASSETS.md, asset-prompts.json) — it does NOT generate assets. It STILL produces index.json (W4 reads its KEYS); the serial JOIN reconciles each slot's path/status from the asset lane's manifest after both lanes. Writes the per-node fragment MEMORY.w2.md (NOT MEMORY.md — the JOIN merges fragments; concurrent MEMORY.md rewrites vs the asset lane would lose notes).\"\nversion: 1.0.0\nnode: W2\nrole: Coder\nargument-hint: \"(reads spec/gdd.json from the project di"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/blueprint.json",
+          "displayPath": "out/e2e-m3/spec/blueprint.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"meta\": {\n    \"title\": \"Bounce & Break\",\n    \"archetype\": \"paddle_ball\",\n    \"goalModel\": \"win-lose\",\n    \"coreLoop\": \"Slide a paddle along the bottom to keep a bouncing ball alive and chip away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n    \"coreVerb\": \"bounce\",\n    \"coreFantasy\": \"clean paddle-and-ball brick destruction\",\n    \"failModel\": \"lives\",\n    \"scoringModel\": \"bounded-collectible\",\n    \"artStyle\": \"flat vector cartoon; deep indigo→violet gradient backdrop; hazard accents in warm orange + electric-cyan; soft cozy arcade mood\",\n    \"atmosphere\": \"a still, dim arcade hall with a faint glowing horizon; the play field floats centered over a softly lit floor; no precipitation, no time-of-day, but a calm enclosed mood that focuses attention on the brick wall\",\n    \"assetBudget\": 6,\n    \"physicsProfile\": {\n      \"hasGravity\": false,\n      \"perspective\": \"side\",\n      \"movementType\": \"continuous\"\n    }\n  },\n  \"entities\": [\n    {\n      \"id\": \"paddle\",\n      \"role\": \"player\",\n      \"description\": \"the player's bat — slides along x to return the ball, clamped to the play-fiel"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/spec/classification.json",
+          "displayPath": "out/e2e-m3/spec/classification.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"prompt\": \"A clean little breakout game where I slide a bat along the bottom of the screen and bounce a ball up to break a bright wall of colorful bricks, sending the ball back up each time it falls toward me, until every brick is gone.\",\n  \"archetype\": \"paddle_ball\",\n  \"coreLoop\": \"The player slides a paddle along the bottom to keep a bouncing ball alive and chips away a wall of bricks by angling each return off the paddle's contact point; missing the ball costs a life and the round ends when every brick is gone.\",\n  \"coreVerb\": \"bounce\",\n  \"physicsProfile\": {\n    \"hasGravity\": false,\n    \"perspective\": \"side\",\n    \"movementType\": \"continuous\"\n  },\n  \"reasoning\": \"The prompt names the paddle-and-ball breakout directly — paddle_ball's KEY QUESTION (slide a paddle, bounce a ball to clear bricks) fires with no gravity, side view, continuous paddle motion. Tie-break #1 (gravity) does not apply; the bounce is independent of gravity. The paddle_ball:brick-breaker subgenre's whenToUse list explicitly matches 'breakout', 'paddle and ball', 'bounce a ball off a paddle', and 'clear the wall of bricks'.\",\n  \"confidence\": \"high\",\n  \"scoringModel\": \"bounded-collectible\",\n  \"scopeCut\": [\n  "
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/genres.json",
+          "displayPath": "templates/genres.json",
+          "via": "read",
+          "scope": "template",
+          "preview": "      \"id\": \"paddle_ball:brick-breaker\",\n      \"archetype\": \"paddle_ball\",\n      \"subgenre\": \"brick-breaker\",\n      \"physicsProfile\": {\n        \"hasGravity\": false,\n        \"perspective\": \"side\",\n        \"movementType\": \"continuous\"\n      },\n      \"oneLineIntent\": \"Slide a one-axis bat to keep a bouncing ball alive and carve angles off the bat's contact point to chip away a wall of bricks — the contested decision is WHERE on the paddle to take the ball so it returns at the angle that clears the brick you want, before it falls below you.\",\n      \"coreVerbs\": [\n        \"move\",\n        \"bounce\"\n      ],\n      \"whenToUse\": [\n        \"breakout\",\n        \"Breakout-like\",\n        \"Arkanoid\",\n        \"brick breaker\",\n        \"break the bricks\",\n        \"bounce a ball off a paddle\",\n        \"paddle and ball\",\n        \"clear the wall of bricks\",\n        \"ball-and-paddle\",\n        \"block breaker\",\n        \"smash the bricks\",\n        \"keep the ball in play\",\n        \"bat and ball brick game\"\n      ],\n      \"capabilitiesRef\": \"modules/paddle_ball/capabilities.json\",\n      \"skillRef\": \"modules/paddle_ball/design-rules.md\",\n      \"coreBase\": \"core\",\n      \"runtimeShape\": {\n        \"dir\": \"levels\""
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/templates/modules/paddle_ball/src/scenes/paddle-data.ts",
+          "displayPath": "templates/modules/paddle_ball/src/scenes/paddle-data.ts",
+          "via": "read",
+          "scope": "template",
+          "preview": "/**\n * paddle-data.ts — the runtime PADDLE-BALL LEVEL DATA contract (KEEP — engine seam).\n *\n * This is the shape of the per-level data file `src/levels/<level>.json` that W2\n * MATERIALIZES from `blueprint.layout` + the blueprint's capability BINDINGS\n * (genre/controlScheme/effects/systems/custom). DataPaddleScene reads it and\n * INSTANTIATES the WHOLE level from it — bounds, the paddle, the ball serve, the\n * brick grid, lives, and the event->effect bindings — with ZERO per-game code. W4\n * authors ONLY the `custom[]` entries (a Pong AI paddle, a multi-ball power-up …).\n *\n * It is the paddle_ball analogue of platformer's `scenes/level-data.ts` and top_down's\n * `scenes/topdown-data.ts`. The runtime bundles `gameConfig.json` + this level file,\n * never `spec/blueprint.json`, so the geometry/bindings ride into the build here.\n *\n * KEY ARCHETYPE FACTS: there is NO gravity. The PADDLE is the player (one-axis\n * controllable; window.__GAME__.player is the paddle). The BALL is engine-driven\n * (sub-stepped so it never tunnels) and reflects off walls (mirror), bricks\n * (axis-resolved), and the paddle BY CONTACT POINT (a near-edge hit returns at a\n * steeper angle than a center hit —"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/src/levels/level1.json",
+          "displayPath": "out/e2e-m3/src/levels/level1.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"scene\": \"Level1Scene\",\n  \"bounds\": {\n    \"width\": 432,\n    \"height\": 768\n  },\n  \"backgroundColor\": \"#10121e\",\n  \"lives\": 3,\n  \"controlScheme\": \"paddle-keys\",\n  \"paddle\": {\n    \"id\": \"paddle\",\n    \"x\": 216,\n    \"y\": 712,\n    \"width\": 96,\n    \"height\": 18,\n    \"axis\": \"x\",\n    \"assetSlot\": \"paddle\",\n    \"behaviors\": []\n  },\n  \"ball\": {\n    \"id\": \"ball\",\n    \"x\": 216,\n    \"y\": 690,\n    \"size\": 14,\n    \"speed\": 320,\n    \"angleDeg\": -60,\n    \"assetSlot\": \"ball\"\n  },\n  \"systems\": [\n    {\n      \"ref\": \"BrickGrid\",\n      \"params\": {\n        \"brickPoints\": 10,\n        \"winEffectEvent\": \"level.statusChanged\"\n      }\n    },\n    {\n      \"ref\": \"BrickTypes\",\n      \"params\": {\n        \"crackEffect\": \"brick.cracked\"\n      }\n    },\n    {\n      \"ref\": \"BallSpeedRamp\",\n      \"params\": {\n        \"bricksPerStep\": 4,\n        \"stepFactor\": 1.12,\n        \"maxSteps\": 4,\n        \"triggerEvent\": \"brick.cleared\",\n        \"resetEvent\": \"life.lost\"\n      }\n    }\n  ],\n  \"effects\": [\n    {\n      \"on\": \"ball.bounced\",\n      \"play\": \"hitStop\",\n      \"params\": {\n        \"durationMs\": 60\n      }\n    },\n    {\n      \"on\": \"ball.bounced\",\n      \"play\": \"shakeLight\"\n    },\n    {\n      \"on\": \"brick.cleared\",\n      \""
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/src/gameConfig.json",
+          "displayPath": "out/e2e-m3/src/gameConfig.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"screenSize\": {\n    \"width\": {\n      \"value\": 432,\n      \"type\": \"number\",\n      \"description\": \"VIEWPORT design width in pixels (the browser frame). 9:16 PORTRAIT (432x768) so Scale.FIT FILLS a portrait phone and LETTERBOXES centered on a landscape laptop — one fixed canvas plays on both mobile and desktop. OWNED BY core/gameConfig.json (the infra groups) — a module MUST mirror core's screenSize, never diverge (template-contract §4).\"\n    },\n    \"height\": {\n      \"value\": 768,\n      \"type\": \"number\",\n      \"description\": \"VIEWPORT design height in pixels. 9:16 portrait (432x768) — see width. OWNED BY core (template-contract §4).\"\n    }\n  },\n  \"debugConfig\": {\n    \"debug\": {\n      \"value\": false,\n      \"type\": \"boolean\",\n      \"description\": \"Enable physics debug rendering\"\n    }\n  },\n  \"renderConfig\": {\n    \"pixelArt\": {\n      \"value\": true,\n      \"type\": \"boolean\",\n      \"description\": \"Enable pixel-art (nearest-neighbour) rendering\"\n    }\n  },\n  \"paddleConfig\": {\n    \"paddleSpeed\": {\n      \"value\": 480,\n      \"type\": \"number\",\n      \"description\": \"Paddle slide speed (px/s) for the keys control scheme — tunes PaddleController.\"\n    },\n    \"ballSpeed\": {\n      \"value\": 380,\n "
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/index.json",
+          "displayPath": "out/e2e-m3/index.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"archetype\": \"paddle_ball\",\n  \"assetsDir\": \"public/assets\",\n  \"slots\": [\n    {\n      \"slot\": \"paddle\",\n      \"type\": \"sprite\",\n      \"path\": \"sprites/paddle.png\",\n      \"width\": 17,\n      \"height\": 17,\n      \"description\": \"side-view horizontal bat, facing right\",\n      \"status\": \"generated\"\n    },\n    {\n      \"slot\": \"ball\",\n      \"type\": \"sprite\",\n      \"path\": \"sprites/ball.png\",\n      \"width\": 15,\n      \"height\": 15,\n      \"description\": \"round ball, side view\",\n      \"status\": \"generated\"\n    },\n    {\n      \"slot\": \"brick_standard\",\n      \"type\": \"sprite\",\n      \"path\": \"sprites/brick_standard.png\",\n      \"width\": 19,\n      \"height\": 19,\n      \"description\": \"rectangular brick, face-on, single-hit appearance\",\n      \"status\": \"generated\"\n    },\n    {\n      \"slot\": \"brick_tough\",\n      \"type\": \"sprite\",\n      \"path\": \"sprites/brick_tough.png\",\n      \"width\": 19,\n      \"height\": 19,\n      \"description\": \"rectangular brick with reinforced/multi-hit appearance, face-on\",\n      \"status\": \"generated\"\n    },\n    {\n      \"slot\": \"brick_unbreakable\",\n      \"type\": \"sprite\",\n      \"path\": \"sprites/brick_unbreakable.png\",\n      \"width\": 13,\n      \"height\": 13,\n      \"description\": \"r"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/package.json",
+          "displayPath": "out/e2e-m3/package.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"name\": \"bounce-and-break\",\n  \"private\": true,\n  \"version\": \"0.0.0\",\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"build\": \"tsc --noEmit && vite build\",\n    \"preview\": \"vite preview --port 4173 --strictPort\",\n    \"testkit:smoke\": \"node ../core-contract/src/testkit/bootHeadless.smoke.mjs\",\n    \"testkit:oracle\": \"node ../core-contract/src/testkit/run-oracle-tests.mjs\"\n  },\n  \"dependencies\": {\n    \"phaser\": \"3.90.0\",\n    \"phaser3-rex-plugins\": \"^1.80.16\"\n  },\n  \"devDependencies\": {\n    \"esbuild\": \"^0.25.12\",\n    \"jsdom\": \"^29.1.1\",\n    \"typescript\": \"~5.8.3\",\n    \"vite\": \"^6.2.6\"\n  }\n}\n"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/src/levels/Level1Scene.json",
+          "displayPath": "out/e2e-m3/src/levels/Level1Scene.json",
+          "via": "read",
+          "scope": "run",
+          "preview": "{\n  \"playerSpawn\": {\n    \"x\": 216,\n    \"y\": 720\n  },\n  \"platforms\": [\n    {\n      \"id\": \"r0c0\",\n      \"x\": 40,\n      \"y\": 189,\n\n[445 more lines in file. Use offset=11 to continue.]"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/STRUCTURE.md",
+          "displayPath": "out/e2e-m3/STRUCTURE.md",
+          "via": "read",
+          "scope": "run",
+          "preview": "# Bounce & Break\n\n## Archetype & Stack\npaddle_ball · Phaser 3.90 / Vite 6 / TypeScript · perspective side (no gravity; the ball is sub-stepped for reflection, the paddle is one-axis).\n\n## Controls (input wiring)\n| Input | Action |\n|---|---|\n| ArrowLeft | slide paddle left |\n| ArrowRight | slide paddle right |\n| KeyA | slide paddle left (alternate) |\n| KeyD | slide paddle right (alternate) |\n\n(Control scheme id `paddle-keys`; resolved to `PADDLE_KEYS` (move=keys, axis=x) in `src/controls/schemes.ts`; the scene wires the keys + configures the `PaddleController` behavior from the scheme record — ZERO per-game input code.)\n\n## Scenes\n| Scene (file) | Role | Children / launches |\n|---|---|---|\n| BootScene (src/scenes/BootScene.ts) | engine boot | Preloader |\n| Preloader (src/scenes/Preloader.ts) | load assets (index.json) + placeholder-fill | TitleScreen |\n| TitleScreen (src/scenes/TitleScreen.ts) | title + GOAL + HOW-TO-PLAY | Level1Scene |\n| DataPaddleScene (src/scenes/DataPaddleScene.ts) | the data-driven level base (KEEP — engine) | (abstract — instantiated by Level1Scene) |\n| Level1Scene (src/scenes/Level1Scene.ts) | the playable level; extends DataPaddleScene with `src/levels/leve"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/src/main.ts",
+          "displayPath": "out/e2e-m3/src/main.ts",
+          "via": "read",
+          "scope": "run",
+          "preview": "import Phaser from 'phaser';\nimport gameConfig from './gameConfig.json';\nimport { installGameHook } from './hook';\nimport { mountGuidance } from '@contract/guidance/mountGuidance';\nimport { mountSound } from '@contract/sound/mountSound';\n\n// Core engine scenes (KEEP — overlaid from templates/core).\nimport { Preloader } from './scenes/Preloader';\nimport { TitleScreen } from './scenes/TitleScreen';\nimport UIScene from './scenes/UIScene';\nimport { PauseUIScene } from './scenes/PauseUIScene';\nimport { VictoryUIScene } from './scenes/VictoryUIScene';\nimport { GameCompleteUIScene } from './scenes/GameCompleteUIScene';\nimport { GameOverUIScene } from './scenes/GameOverUIScene';\n\n// Paddle-ball level scenes. Level1Scene is the data-driven shell (extends\n// DataPaddleScene, loads the committed default levels/level1.json); W2 overwrites that\n// data per-game and the construction path is unchanged.\nimport { Level1Scene } from './scenes/Level1Scene';\n// TODO-W4: import additional level scenes here.\n\n/**\n * main.ts — the SINGLE bootstrap point (KEEP — engine seam; W4 only adds level-scene\n * registrations below the marked line).\n *\n * Paddle-ball: Arcade physics with NO global gravity (the ball"
+        },
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/MEMORY.w2.md",
+          "displayPath": "out/e2e-m3/MEMORY.w2.md",
+          "via": "read",
+          "scope": "run",
+          "preview": "# W2 Scaffold (per-node fragment) — Bounce & Break (paddle_ball)\n\n## Quirks & discoveries\n\n### Scaffold-level breakage the driver pre-staged into src/ but the engine seam expected elsewhere\n- `templates/core-contract/src/testkit/` was copied wholesale into `out/e2e-m3/src/contract/testkit/` by the DRIVER-SEED `core-contract -> src/contract` step. The testkit is a RUNTIME-ONLY artifact: `src/contract/testkit/bundle.mjs` copies `boot-entry.ts` into a temp merged tree (with `./scenes/Preloader` style relative imports that resolve at the BUNDLE location, not the original). The original `boot-entry.ts` in the testkit dir is a TEMPLATE that is NOT meant to be compiled in place — its relative imports break `tsc --noEmit` (the same as a phantom in any other module's `src/contract/testkit/boot-entry.ts`).\n- FIX: added `\"exclude\": [\"src/contract/testkit\"]` to `out/e2e-m3/tsconfig.json`. The lenient strict options (noImplicitAny/strict/etc.) are UNCHANGED — only the include path was tightened to keep tsc from sweeping a runtime-only testkit. `npm run build` now passes.\n- (W2 directive: \"Do NOT tighten tsconfig\" — interpreted as strictness flags, not the include path. The testkit is a copied s"
+        }
+      ],
+      "scopes": [
+        {
+          "kind": "run",
+          "label": "Run workspace",
+          "count": 10,
+          "paths": [
+            "out/e2e-m3/spec/blueprint.json",
+            "out/e2e-m3/spec/classification.json",
+            "out/e2e-m3/src/levels/level1.json",
+            "out/e2e-m3/src/gameConfig.json",
+            "out/e2e-m3/index.json",
+            "out/e2e-m3/package.json",
+            "out/e2e-m3/src/levels/Level1Scene.json",
+            "out/e2e-m3/STRUCTURE.md",
+            "out/e2e-m3/src/main.ts",
+            "out/e2e-m3/MEMORY.w2.md"
+          ]
+        },
+        {
+          "kind": "skill",
+          "label": "Skill",
+          "count": 1,
+          "paths": [
+            "packages/skills/scaffold/SKILL.md"
+          ]
+        },
+        {
+          "kind": "template",
+          "label": "Templates",
+          "count": 2,
+          "paths": [
+            "templates/genres.json",
+            "templates/modules/paddle_ball/src/scenes/paddle-data.ts"
+          ]
+        }
+      ],
+      "writes": [
+        {
+          "path": "/Users/tk/Desktop/game-omni/out/e2e-m3/MEMORY.w2.md",
+          "displayPath": "out/e2e-m3/MEMORY.w2.md",
+          "verified": true,
+          "bytes": 18056
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "out/e2e-m3/STRUCTURE.md",
+          "displayPath": "STRUCTURE.md",
+          "exists": true,
+          "bytes": 9881
+        },
+        {
+          "path": "out/e2e-m3/index.json",
+          "displayPath": "index.json",
+          "exists": true,
+          "bytes": 1585
+        },
+        {
+          "path": "out/e2e-m3/MEMORY.w2.md",
+          "displayPath": "MEMORY.w2.md",
+          "exists": true,
+          "bytes": 18056
+        }
+      ],
+      "bash": [
+        {
+          "command": "ls /Users/tk/Desktop/game-omni/out/e2e-m3/ 2>&1 | head -50",
+          "tStartMs": 5705
+        },
+        {
+          "command": "ls -la /Users/tk/Desktop/game-omni/out/e2e-m3/src/ /Users/tk/Desktop/game-omni/out/e2e-m3/spec/ 2>&1",
+          "tStartMs": 9941
+        },
+        {
+          "command": "ls /Users/tk/Desktop/game-omni/out/e2e-m3/src/levels/ 2>&1; cat /Users/tk/Desktop/game-omni/templates/genres.json | head -100",
+          "tStartMs": 12863
+        },
+        {
+          "command": "grep -n \"paddle_ball\" /Users/tk/Desktop/game-omni/templates/genres.json | head -20",
+          "tStartMs": 16761
+        },
+        {
+          "command": "ls /Users/tk/Desktop/game-omni/templates/modules/ 2>&1",
+          "tStartMs": 16761
+        },
+        {
+          "command": "ls /Users/tk/Desktop/game-omni/templates/modules/paddle_ball/ 2>&1; echo \"---\"; ls /Users/tk/Desktop/game-omni/templates/modules/paddle_ball/src/ 2>&1; echo \"---\"; ls /Users/tk/Desktop/game-omni/templates/modules/paddle_ball/src/scenes/ 2>&1",
+          "tStartMs": 16761
+        },
+        {
+          "command": "ls /Users/tk/Desktop/game-omni/out/e2e-m3/src/levels/; wc -l /Users/tk/Desktop/game-omni/out/e2e-m3/src/levels/*",
+          "tStartMs": 21991
+        },
+        {
+          "command": "head -30 /Users/tk/Desktop/game-omni/out/e2e-m3/src/levels/Level1Scene.json",
+          "tStartMs": 26934
+        },
+        {
+          "command": "ls /Users/tk/Desktop/game-omni/out/e2e-m3/dist/ 2>&1; cat /Users/tk/Desktop/game-omni/out/e2e-m3/STRUCTURE.md 2>&1 | head -20; echo \"===\"; cat /Users/tk/Desktop/game-omni/out/e2e-m3/MEMORY.w2.md 2>&1 | head -40; echo \"===\"; cat /Users/tk/Desktop/game-omni/out/e2e-m3/MEMORY.md 2>&1 | head -40",
+          "tStartMs": 30299
+        },
+        {
+          "command": "wc -l /Users/tk/Desktop/game-omni/out/e2e-m3/STRUCTURE.md /Users/tk/Desktop/game-omni/out/e2e-m3/src/levels/*; echo \"---\"; ls /Users/tk/Desktop/game-omni/out/e2e-m3/public/assets/ 2>&1 | head -20",
+          "tStartMs": 40673
+        },
+        {
+          "command": "cd /Users/tk/Desktop/game-omni/out/e2e-m3 && ls -la 2>&1 | head -30; echo \"---\"; cat tsconfig.json 2>&1",
+          "tStartMs": 44263
+        },
+        {
+          "command": "npm run build 2>&1 | tail -50",
+          "tStartMs": 55280
+        },
+        {
+          "command": "npm run build 2>&1 | tail -60",
+          "tStartMs": 58153
+        },
+        {
+          "command": "npm run build 2>&1 | tail -60",
+          "tStartMs": 60483
+        },
+        {
+          "command": "pwd && ls package.json 2>&1",
+          "tStartMs": 62973
+        },
+        {
+          "command": "cd /Users/tk/Desktop/game-omni/out/e2e-m3 && pwd && npm run build 2>&1 | tail -80",
+          "tStartMs": 64753
+        },
+        {
+          "command": "cat run-status.json 2>&1 | head -30; echo \"---\"; cat src/levels/level1.json | python3 -c \"import json,sys; d=json.load(sys.stdin); print('keys:', list(d.keys())); print('paddle:', list(d.get('paddle',{}).keys())); print('ball:', list(d.get('ball',{}).keys())); print('bricks:', len(d.get('bricks',[]))); print('effects:', len(d.get('effects',[]))); print('systems:', [s['ref'] for s in d.get('systems',[])]); print('backgroundColor:', d.get('backgroundColor')); print('backgroundSlot:', d.get('backgroundSlot'))\"",
+          "tStartMs": 79585
+        },
+        {
+          "command": "cd /Users/tk/Desktop/game-omni/out/e2e-m3 && python3 -c \"\nimport json\nwith open('src/levels/level1.json') as f: d = json.load(f)\nprint('top-level keys:', list(d.keys()))\nprint('paddle keys:', list(d.get('paddle',{}).keys()))\nprint('ball keys:', list(d.get('ball',{}).keys()))\nprint('bricks count:', len(d.get('bricks',[])))\nprint('effects count:', len(d.get('effects',[])))\nprint('systems:', [s['ref'] for s in d.get('systems',[])])\nprint('backgroundColor:', d.get('backgroundColor'))\nprint('backgroundSlot:', d.get('backgroundSlot'))\nprint('controlScheme:', d.get('controlScheme'))\nprint('lives:', d.get('lives'))\nprint('bounds:', d.get('bounds'))\nprint('---')\nwith open('index.json') as f: idx = json.load(f)\nprint('index archetype:', idx.get('archetype'))\nprint('index slot count:', len(idx.get('slots',[])))\nprint('index slots:', [s['slot'] for s in idx.get('slots',[])])\n\"",
+          "tStartMs": 83431
+        },
+        {
+          "command": "ls /Users/tk/Desktop/game-omni/out/e2e-m3/verify/ 2>&1; cat /Users/tk/Desktop/game-omni/out/e2e-m3/verify/event-bindings.ok.json 2>&1 | head -5",
+          "tStartMs": 91028
+        },
+        {
+          "command": "cd /Users/tk/Desktop/game-omni/out/e2e-m3 && tail -5 MEMORY.w2.md; echo \"---END---\"; wc -l MEMORY.w2.md",
+          "tStartMs": 95880
+        }
+      ],
+      "tokens": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 10595,
+        "cacheWrite": 0,
+        "cost": "0[object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object]",
+        "contextPeak": 10595,
+        "billable": 0
+      },
+      "summary": "Pre-staged state verified: STRUCTURE.md (83 lines, full architecture map) and index.json (6 paddle_ball slots, paths/status already reconciled by the asset lane) are on disk; src/levels/level1.json carries the full step-3 weave (paddle/ball/45 bricks/9 effects/3 systems/backgroundColor+backgroundSlot); src/main.ts installs window.__GAME__; npm run build is green (tsc --noEmit + vite build, 60 modules).",
+      "issues": [
+        "contract warn — reported writes outside owned paths: out/e2e-m3/STRUCTURE.md, out/e2e-m3/index.json, out/e2e-m3/MEMORY.w2.md"
+      ],
+      "stageIndex": 5,
+      "lane": 0
+    }
+  ],
+  "generatedFrom": "transcoded real run (e2e-m3) — gui/scripts/transcode-run.mjs"
+}
