@@ -12,7 +12,7 @@
  * index snapshot (~/.piflow/index.json via the Vite middleware). Selecting a run
  * sets the active run; the live pi connection is deferred.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useReactFlow } from "@xyflow/react";
 import { GlassSurface } from "./GlassSurface";
@@ -27,6 +27,7 @@ export function MenuBar({ activeRun, onSelectRun }: { activeRun: string; onSelec
   const { fitView } = useReactFlow();
   const [ix, setIx] = useState<GlobalIndex | null>(null);
   const [open, setOpen] = useState(false);
+  const layerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -34,11 +35,21 @@ export function MenuBar({ activeRun, onSelectRun }: { activeRun: string; onSelec
     return () => { alive = false; };
   }, []);
 
+  // dismiss the switcher on any click outside it (or Esc) — the "click anywhere closes" rule
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (!layerRef.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown, true); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
   const active = ix ? findThread(ix, activeRun) : null;
   const { tree, resolve } = useMemo(() => (ix ? indexToTree(ix) : { tree: [], resolve: () => undefined }), [ix]);
 
   return createPortal(
-    <div className="ds-menubar-layer">
+    <div className="ds-menubar-layer" ref={layerRef}>
       <GlassSurface variant="soft" as="nav" className="ds-menubar" legibleText aria-label="Workspace menu">
         <button
           type="button"
