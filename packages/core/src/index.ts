@@ -46,13 +46,12 @@ export type { ResolveCtx } from './workflow/resolver.js';
 export { driverSeed, resolveSeedTokens, stageSeed } from './workflow/ops/seed.js';
 export type { Seed, SeedResult } from './workflow/ops/seed.js';
 export { ensureDir, projJson, drillPath, readJsonSafe, fileExists, absUnder } from './workflow/ops/util.js';
+// DRIVER-PROJECT ops: generic JSON transforms (copy | assemble | merge | union) + the registry-keyed
+// projection runner that resolves a record by key and applies its `projections` op-map.
 export { applyProjectionOp, runProjection } from './workflow/ops/project.js';
 export type { ProjectionResult, ProjectionMarker, ProjectionSummary } from './workflow/ops/project.js';
 export { applyMergeOp, runMerge } from './workflow/ops/merge.js';
 export type { MergeResult, MergeSpec } from './workflow/ops/merge.js';
-// game-omni P2 — the seedContracts derive (per-node bind-template interpreter).
-export { runSeedContract, resolveNodeContract, coreObservables, drillArrayField, gatherEntityIds } from './workflow/ops/seed-contract.js';
-export type { NodeCatalogEntry, SeedContractSpec, SeedContractResult } from './workflow/ops/seed-contract.js';
 
 // U7 — the `promote` POST-op (lift a node output into a RunState channel via the reducer) + the
 // stage-barrier merge (serial+deterministic parallel-promote merge; a `set` channel with two concurrent

@@ -35,14 +35,21 @@ describe('T6 migrate — game-omni-v1.6 → template loads GREEN', () => {
     expect(spec.nodes.map((n) => n.label).sort()).toEqual(ALL_NODES);
   });
 
-  it('carries the P2/P3 derive hooks onto NodeOps (seedContracts on gameplay, registryProject on w2-scaffold)', async () => {
+  it('carries the P2/P3 derive hooks onto NodeOps (gameplay run-op contract-derive, registryProject on w2-scaffold)', async () => {
     const spec = await loadTemplate(TEMPLATE);
     const byId = Object.fromEntries(spec.nodes.map((n) => [n.label, n]));
-    // P2 — gameplay seeds per-node contracts from the drift-gated catalog (RED if the schema/loader drops it).
-    expect(byId['gameplay'].ops?.seedContracts).toEqual({
-      source: 'spec/blueprint.json',
-      catalog: '{{WORKSPACE}}/.agents/node-catalog.json',
-    });
+    // P2 — gameplay derives its per-node contracts CONSUMER-SIDE: the interpreter was relocated OUT of core
+    // (no more `seedContracts` NodeOp) onto the generic `run` merge-op shelling a game-omni gen/ script. RED
+    // if the template reverts to the in-core hook or drops the script's --source/--catalog wiring.
+    const runOp = (byId['gameplay'].ops?.merge?.ops?.[0] as { run?: { args?: string[] } } | undefined)?.run;
+    expect(runOp).toBeDefined();
+    expect(runOp!.args).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('packages/skills/harden-blueprint/gen/seed-contracts.mjs'),
+        '--source',
+        '--catalog',
+      ]),
+    );
     // P3 — W2 derives its mechanical outputs from the registry record's projections map.
     expect(byId['w2-scaffold'].ops?.registryProject).toEqual({
       source: 'spec/blueprint.json',

@@ -1,38 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // DRIVER-PROJECT (the POST/DERIVE family) — generic JSON transforms that DERIVE a node's outputs from a
-// FROZEN on-disk source. Ported from game-omni pi-runner/hooks/project.mjs; behavior-preserving for the
-// GENERIC ops (copy | assemble | merge). The state change: the run.mjs RUN_CWD/ROOT fallback chain is
-// retired — the destination resolves under the explicit `projectBase` (= the resolved `{{RUN}}`), and the
-// SOURCE spec is read by the caller (runProjection) under the same root.
+// FROZEN on-disk source. Ported from game-omni pi-runner/hooks/project.mjs; behavior-preserving. The
+// destination resolves under the explicit `projectBase` (= the resolved `{{RUN}}`); the SOURCE spec is
+// read by the caller (`runProjection`) under the same root.
 //
-// SCOPE NOTE (flagged): the `union` op (asset-slot manifest builder — assetDefaultPath, entities[].assetSlot
-// dedup) is ported here too; it is the generic index.json transform consumed via a genre record's `projections`
-// DATA. The `opSpec.schema` ajv re-validation that the game-omni .mjs ran on the union output is DEFERRED to a
-// separate core seam (same posture as merge) — `union` always writes its rows here; schema validation is not
-// the projection executor's concern.
+// Every op is a GENERIC, data-driven JSON transform — `copy` (write a drilled subtree), `assemble`
+// (spread + deterministic fields), `merge` (.value overwrite + literal coalesce), `union` (dedup-union
+// of items into a manifest). NO domain knowledge lives in this code: the field names, defaults, path
+// convention, and envelope are all supplied by the op-spec DATA the consumer authors. The `opSpec.schema`
+// re-validation the original .mjs ran on the `union` output is DEFERRED to a separate core seam (same
+// posture as `merge`) — `union` always writes its rows here; schema validation is not this executor's concern.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { ensureDir, projJson, drillPath, absUnder, readJsonSafe } from './util.js';
-
-// ---- asset-slot path convention (local; NOT a util.ts concern — it is the union op's own data) ----
-const ASSET_DIR_BY_TYPE: Record<string, string> = {
-  sprite: 'sprites',
-  animation: 'sprites',
-  image: 'images',
-  tileset: 'tiles',
-  background: 'backgrounds',
-  audio: 'audio',
-  model: 'models',
-};
-const ASSET_EXT_BY_TYPE: Record<string, string> = { audio: 'mp3', model: 'glb' };
-/** The conventional `<dir>/<slot>.<ext>` path the runtime Preloader reads for a slot of `type`. */
-function assetDefaultPath(slot: string, type: string): string {
-  const dir = ASSET_DIR_BY_TYPE[type] || 'sprites';
-  const ext = ASSET_EXT_BY_TYPE[type] || 'png';
-  return `${dir}/${slot}.${ext}`;
-}
 
 /** The result of one projection op. `wrote` is the on-disk effect; `skipped` carries the graceful reason. */
 export interface ProjectionResult {
@@ -41,17 +23,52 @@ export interface ProjectionResult {
   wrote: boolean;
   skipped?: string;
   modelOwns?: string[];
-  /** `union` only: the number of deduped slot rows written. */
+  /** `union` only: the number of deduped rows written. */
   rows?: number;
 }
 
 /** A field spec in an `assemble` op: a dotted-path string, an `@entity:` marker, `{value}`, or `{from,default}`. */
 type FieldSpec = string | { value: unknown } | { from: string; default?: unknown };
 
+/** The optional computed-path config for a `union` op: derive a per-row `path` from one field of the item. */
+interface UnionPathSpec {
+  /** The item field whose value selects the dir/ext (e.g. a type discriminator). */
+  byField: string;
+  /** value → directory segment. */
+  dir?: Record<string, string>;
+  /** value → file extension. */
+  ext?: Record<string, string>;
+  /** Fallback directory when the field's value is absent or unmapped. */
+  defaultDir: string;
+  /** Fallback extension when the field's value is absent or unmapped. */
+  defaultExt: string;
+}
+
+/** The `union` op-spec: a generic dedup-union of items (drawn from `from` refs) into a manifest envelope. */
+interface UnionSpec {
+  /** The array refs to union. A `"arr[].f"` ref maps each element's `f` to the key; a plain `"arr"` ref keys each element by `key`. */
+  from: string[];
+  /** The dedup key field name (default 'slot'). */
+  key?: string;
+  /** Per-field fallback applied (falsy-coalesced) when an item's field is absent/empty. */
+  defaults?: Record<string, unknown>;
+  /** Optional computed `path` field; omit ⇒ no `path` field is added. */
+  path?: UnionPathSpec;
+  /** Field whitelist carried from each item (in this order). Inserted only when present. */
+  carry?: string[];
+  /** Constant fields merged into every row (last). */
+  row?: Record<string, unknown>;
+  /** Wrapper fields: a string value DRILLS the source; a `{value}` is a literal. */
+  envelope?: Record<string, string | { value: unknown }>;
+  /** Where the rows nest in the envelope (default 'items'). */
+  itemsKey?: string;
+}
+
 /**
  * Apply ONE generic projection op against the source JSON (`spec`), writing under `projectBase`.
  * Op kinds: `copy` (write a drilled subtree) · `assemble` (spread + deterministic fields, @entity-aware,
- * deterministic-absence drop) · `merge` (.value overwrite of seeded group keys + top-level literal coalesce).
+ * deterministic-absence drop) · `merge` (.value overwrite of seeded group keys + top-level literal coalesce) ·
+ * `union` (dedup-union of items into a manifest, all specifics — defaults/path/carry/envelope — in the DATA).
  */
 export async function applyProjectionOp(
   name: string,
@@ -72,8 +89,8 @@ export async function applyProjectionOp(
     return { to: toRel, op: 'copy', wrote: true };
   }
 
-  // ---- assemble: start from the model's on-disk file (preserving @entity weaves), overwrite only the
-  // deterministic fields; a deterministic field whose source is ABSENT is DROPPED (no seed leak) ----
+  // ---- assemble: start from the destination's on-disk file (preserving @entity weaves), overwrite only
+  // the deterministic fields; a deterministic field whose source is ABSENT is DROPPED (no seed leak) ----
   if (opSpec.assemble && typeof opSpec.assemble === 'object') {
     const { spread, fields = {} } = opSpec.assemble as { spread?: string; fields?: Record<string, FieldSpec> };
     let onDisk: Record<string, unknown> = {};
@@ -159,56 +176,53 @@ export async function applyProjectionOp(
     return { to: toRel, op: 'merge', wrote: true };
   }
 
-  // ---- union: build the asset-slot manifest (index.json) — dedup slots across the union refs, default
-  // each row's path/width/height, carry optional depth/frames/entityIds/description, append the const row ----
-  if (Array.isArray(opSpec.union)) {
-    const constRow = (opSpec.row && typeof opSpec.row === 'object' ? opSpec.row : {}) as Record<string, unknown>;
+  // ---- union: a GENERIC dedup-union of items into a manifest. Every domain specific (the dedup key, the
+  // per-field defaults, the computed-path convention, the carried-field whitelist, the constant row, the
+  // wrapper envelope) is supplied by the op-spec DATA — this code carries no field names of its own.
+  // A `"arr[].f"` ref maps each element's `f` to the key and carries the element's OTHER fields; a plain
+  // `"arr"` ref treats each element as a row keyed by `key`. The FIRST occurrence of a key wins (dedup). ----
+  if (opSpec.union && typeof opSpec.union === 'object' && !Array.isArray(opSpec.union)) {
+    const u = opSpec.union as unknown as UnionSpec;
+    if (!Array.isArray(u.from)) return { to: toRel, op: 'union', wrote: false, skipped: 'union.from must be an array of refs' };
+    const keyField = u.key ?? 'slot';
+    const carry = u.carry ?? [];
+    const defaults = u.defaults ?? {};
+    const constRow = (u.row && typeof u.row === 'object' ? u.row : {}) as Record<string, unknown>;
+    const itemsKey = u.itemsKey ?? 'items';
     const rows: Record<string, unknown>[] = [];
     const seen = new Set<string>();
-    for (const ref of opSpec.union as string[]) {
-      const mEnt = /^(.+?)\[\]\.(.+)$/.exec(ref); // "entities[].assetSlot" → collect each entity's assetSlot
-      if (mEnt) {
-        const arr = drillPath(spec, mEnt[1]);
-        if (Array.isArray(arr))
-          for (const ent of arr as Record<string, unknown>[]) {
-            const slot = ent && (ent[mEnt[2]] as string);
-            if (!slot || seen.has(slot)) continue;
-            seen.add(slot);
-            const type = (ent.type as string) || 'sprite';
-            rows.push({
-              slot,
-              type,
-              path: assetDefaultPath(slot, type),
-              width: (ent.width as number) || 32,
-              height: (ent.height as number) || 32,
-              ...(ent.description ? { description: ent.description } : {}),
-              ...constRow,
-            });
+    for (const ref of u.from) {
+      const mMap = /^(.+?)\[\]\.(.+)$/.exec(ref); // "arr[].f" → key each element by its `f`
+      const arrRef = mMap ? mMap[1] : ref;
+      const arr = drillPath(spec, arrRef);
+      if (!Array.isArray(arr)) continue;
+      for (const el of arr as Record<string, unknown>[]) {
+        const keyVal = mMap ? (el && (el[mMap[2]] as string)) : (el && (el[keyField] as string));
+        if (!keyVal || seen.has(keyVal)) continue;
+        seen.add(keyVal);
+        const item = (el && typeof el === 'object' ? el : {}) as Record<string, unknown>;
+        const r: Record<string, unknown> = { [keyField]: keyVal };
+        // Walk the carry whitelist in order. A field with a `defaults` entry is always inserted
+        // (falsy-coalesced to its default); a field with no default is inserted only when present.
+        // The computed `path` is inserted right after its `path.byField` source field.
+        for (const f of carry) {
+          const has = Object.prototype.hasOwnProperty.call(defaults, f);
+          if (has) r[f] = (item[f] as unknown) || defaults[f];
+          else if (item[f] !== undefined) r[f] = item[f];
+          if (u.path && f === u.path.byField) {
+            const sel = (item[u.path.byField] as string) ?? '';
+            const dir = (u.path.dir && u.path.dir[sel]) || u.path.defaultDir;
+            const ext = (u.path.ext && u.path.ext[sel]) || u.path.defaultExt;
+            r.path = `${dir}/${keyVal}.${ext}`;
           }
-      } else {
-        const arr = drillPath(spec, ref);
-        if (Array.isArray(arr))
-          for (const e of arr as Record<string, unknown>[]) {
-            const slot = e && (e.slot as string);
-            if (!slot || seen.has(slot)) continue;
-            seen.add(slot);
-            const type = (e.type as string) || 'sprite';
-            const r: Record<string, unknown> = {
-              slot,
-              type,
-              path: assetDefaultPath(slot, type),
-              width: (e.width as number) || 32,
-              height: (e.height as number) || 32,
-            };
-            if (typeof e.depth === 'number') r.depth = e.depth; // 3D model slot: carry the Z extent
-            if (Array.isArray(e.frames)) r.frames = e.frames;
-            if (Array.isArray(e.entityIds)) r.entityIds = e.entityIds;
-            if (e.description) r.description = e.description;
-            rows.push({ ...r, ...constRow });
-          }
+        }
+        rows.push({ ...r, ...constRow });
       }
     }
-    const out = { archetype: drillPath(spec, 'meta.archetype'), assetsDir: 'public/assets', slots: rows };
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(u.envelope ?? {}))
+      out[k] = typeof v === 'string' ? drillPath(spec, v) : (v as { value: unknown }).value;
+    out[itemsKey] = rows;
     await fs.writeFile(toAbs, projJson(out));
     return { to: toRel, op: 'union', wrote: true, rows: rows.length };
   }
@@ -221,26 +235,28 @@ export async function applyProjectionOp(
   };
 }
 
-/** A resolved DRIVER-PROJECT marker: the source spec, the genre token, and the genre map to look it up in. */
+/** A resolved DRIVER-PROJECT marker: the source spec, the record key, and the registry index to look it up in. */
 export interface ProjectionMarker {
   source: string;
-  genreToken: string;
+  key: string;
   mapRef: string;
 }
 
-/** The summary `runProjection` returns: either a graceful skip, or the resolved genre + the per-op results. */
+/** The summary `runProjection` returns: either a graceful skip, or the resolved record key + the per-op results. */
 export interface ProjectionSummary {
   skipped?: string;
-  genre?: string;
+  key?: string;
   map?: string;
   ops?: ProjectionResult[];
   note?: string;
 }
 
 /**
- * Run a node's DRIVER-PROJECT map: resolve the genre record in `mapRef` (exact `id` match, else the FIRST whose
- * archetype prefix `id.split(':')[0]` equals the token — multi-match picks first), read its `projections`, read
- * the source spec ONCE, and apply each op. Every failure degrades to a graceful skip — never throws.
+ * Run a node's DRIVER-PROJECT map: resolve the registry record in `mapRef` whose `id` matches `key`, read
+ * its `projections`, read the source spec ONCE, and apply each op. Resolution: prefer an EXACT `id === key`,
+ * else the FIRST record whose namespace prefix `id.split(':')[0]` equals `key` — i.e. a bare key `k` also
+ * matches a namespaced record id `k:<suffix>`; multi-match picks the first. Every failure degrades to a
+ * graceful skip — never throws.
  */
 export async function runProjection(
   proj: ProjectionMarker | null,
@@ -248,20 +264,27 @@ export async function runProjection(
 ): Promise<ProjectionSummary | null> {
   if (!proj) return null;
   const mapAbs = absUnder(projectBase, proj.mapRef);
-  const map = (await readJsonSafe(mapAbs)) as { genres?: { id: string; projections?: Record<string, Record<string, unknown>> }[] } | undefined;
-  if (!map) return { skipped: `mapRef unreadable: ${proj.mapRef}` };
-  // Prefer an exact id match, then the archetype PREFIX (record ids are compound "archetype:subgenre" but
-  // the token is the bare archetype). Multi-match on the prefix → pick the first.
-  const genres = map.genres || [];
-  let record = genres.find((g) => g.id === proj.genreToken);
+  type RegistryRecord = { id: string; projections?: Record<string, Record<string, unknown>> };
+  const map = (await readJsonSafe(mapAbs)) as Record<string, unknown> | undefined;
+  if (!map || typeof map !== 'object') return { skipped: `mapRef unreadable: ${proj.mapRef}` };
+  // The registry index holds its records under the FIRST top-level property that is an array of
+  // id-bearing objects — so core reads the record list WITHOUT knowing the consumer's array key name.
+  const records =
+    (Object.values(map).find(
+      (v): v is RegistryRecord[] =>
+        Array.isArray(v) && v.length > 0 && v.every((e) => e && typeof e === 'object' && typeof (e as RegistryRecord).id === 'string'),
+    ) as RegistryRecord[] | undefined) ?? [];
+  // Prefer an exact id match, then the namespace PREFIX (record ids may be compound "<key>:<suffix>" but
+  // the lookup key is the bare prefix). Multi-match on the prefix → pick the first.
+  let record = records.find((g) => g.id === proj.key);
   if (!record) {
-    const byPrefix = genres.filter((g) => g.id.split(':')[0] === proj.genreToken);
+    const byPrefix = records.filter((g) => g.id.split(':')[0] === proj.key);
     record = byPrefix[0];
   }
-  if (!record) return { skipped: `no genre record: ${proj.genreToken}` };
+  if (!record) return { skipped: `no registry record: ${proj.key}` };
   const projections = record.projections;
   if (!projections || typeof projections !== 'object')
-    return { genre: proj.genreToken, ops: [], note: 'no projections declared for this genre (inert)' };
+    return { key: proj.key, ops: [], note: 'no projections declared for this record (inert)' };
   // Read the source JSON ONCE (the frozen spec the projection derives from).
   const spec = await readJsonSafe(absUnder(projectBase, proj.source));
   if (spec === undefined) return { skipped: `source unreadable: ${proj.source}` };
@@ -273,5 +296,5 @@ export async function runProjection(
       ops.push({ to: String((opSpec as Record<string, unknown>)?.to), op: name, wrote: false, skipped: `error: ${(e as Error).message}` });
     }
   }
-  return { genre: proj.genreToken, map: proj.mapRef, ops };
+  return { key: proj.key, map: proj.mapRef, ops };
 }

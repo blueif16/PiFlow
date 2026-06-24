@@ -41,9 +41,22 @@
         "from": "{{WORKSPACE}}/templates/modules/{{state.archetype}}/blueprint.template.json"
       }
     ],
-    "seedContracts": {
-      "source": "spec/blueprint.json",
-      "catalog": "{{WORKSPACE}}/.agents/node-catalog.json"
+    "merge": {
+      "ops": [
+        {
+          "run": {
+            "cmd": "node",
+            "args": [
+              "{{WORKSPACE}}/packages/skills/harden-blueprint/gen/seed-contracts.mjs",
+              "--source",
+              "{project}/spec/blueprint.json",
+              "--catalog",
+              "{{WORKSPACE}}/.agents/node-catalog.json"
+            ],
+            "note": "Consumer-side contract derivation: seed blueprint.contracts.<node> from the node-catalog (relocated out of core)."
+          }
+        }
+      ]
     }
   }
 }

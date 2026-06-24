@@ -65,18 +65,12 @@ export interface NodeOps {
   /** POST: lift a node output (`from`) into a RunState channel (`to`) via the reducer (default 'set'). */
   promote?: { from: string; to: string; merge?: Reducer }[];
   /**
-   * POST DERIVE (game-omni P2): seed a per-node CONTRACT into `source.<into>.<node>` for every node-TYPE in
-   * the drift-gated `catalog`, by resolving each TYPE's declarative bind-template against the frozen `source`.
-   * The un-hallucinatable producer of the chrome lanes' input contract. Handed to `runSeedContract`.
+   * POST DERIVE: derive a node's mechanical outputs from a frozen `source` per a registry record's
+   * `projections` map, resolved from the index at `mapRef` by `key`. Distinct from the inline `project` ops
+   * (whose op-map is authored on the node); here the op-map lives in the registry record. Handed to
+   * `runProjection`.
    */
-  seedContracts?: { source: string; catalog: string; into?: string };
-  /**
-   * POST DERIVE (game-omni P3): derive a node's mechanical outputs (gameConfig/index/world) from a frozen
-   * `source` per the genre record's `projections` map resolved from `mapRef` by `genre`. Distinct from the
-   * inline `project` ops (whose op-map is authored on the node); here the op-map lives in the registry record.
-   * Handed to `runProjection`.
-   */
-  projectGenre?: { source: string; mapRef: string; genre: string };
+  registryProject?: { source: string; mapRef: string; key: string };
 }
 
 // 1 ── SANDBOX ────────────────────────────────────────────────────────────────

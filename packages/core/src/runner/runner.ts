@@ -44,7 +44,6 @@ import { resolveTokens, resolveDeep, type ResolveCtx } from '../workflow/resolve
 import { stageSeed } from '../workflow/ops/seed.js';
 import { runMerge } from '../workflow/ops/merge.js';
 import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
-import { runSeedContract } from '../workflow/ops/seed-contract.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, barrierMerge, type NodeUpdate, type ResolvedPromote } from '../workflow/ops/promote.js';
 import { loadState, persistState } from '../workflow/state.js';
@@ -706,7 +705,7 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     // OWN `{project}` token for `run` ops). `projectBase = outDir` (the resolved `{{RUN}}`). A missing input
     // degrades gracefully inside the executors (skip, not throw); a `run` op that exits non-zero is recorded
     // as `failed` (its receipt-artifact gate, not the op itself, blocks the node). project precedes merge so
-    // a projection that lays down a file (e.g. index.json rows) is in place before a merge reconciles it.
+    // a projection that lays down a file (e.g. a manifest's rows) is in place before a merge reconciles it.
     if (st === 'ok' && node.ops?.project?.length) {
       for (const rawOp of node.ops.project) {
         const op = resolveDeep(rawOp as Record<string, unknown>, resolveCtx);
@@ -719,18 +718,12 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
         await applyProjectionOp(name, op, spec, ctx.outDir);
       }
     }
-    // POST DERIVE — genre-record projection (game-omni P3): the op-map lives in the registry record (mapRef),
-    // resolved by `genre` (a `{{state.archetype}}` token). Runs in the project family (BEFORE merge), so its
-    // derived index.json is on disk before the merge `reconcile` patches it.
-    if (st === 'ok' && node.ops?.projectGenre) {
-      const pg = resolveDeep(node.ops.projectGenre as unknown as Record<string, unknown>, resolveCtx) as { source: string; mapRef: string; genre: string };
-      await runProjection({ source: pg.source, mapRef: pg.mapRef, genreToken: pg.genre }, ctx.outDir);
-    }
-    // POST DERIVE — seedContracts (game-omni P2): derive per-node contracts into the frozen source's `<into>`
-    // from the drift-gated catalog (the chrome lanes' input contract). Mutates the source (blueprint), so it
-    // runs after the inline projections and before any merge/promote that reads the contracts.
-    if (st === 'ok' && node.ops?.seedContracts) {
-      await runSeedContract(resolveDeep(node.ops.seedContracts as unknown as Record<string, unknown>, resolveCtx) as { source: string; catalog: string; into?: string }, ctx.outDir);
+    // POST DERIVE — registry-keyed projection: the op-map lives in the registry record (mapRef), resolved by
+    // `key` (which may be a `{{state.*}}` token). Runs in the project family (BEFORE merge), so its derived
+    // outputs are on disk before a merge `reconcile` patches them.
+    if (st === 'ok' && node.ops?.registryProject) {
+      const pg = resolveDeep(node.ops.registryProject as unknown as Record<string, unknown>, resolveCtx) as { source: string; mapRef: string; key: string };
+      await runProjection({ source: pg.source, mapRef: pg.mapRef, key: pg.key }, ctx.outDir);
     }
     if (st === 'ok' && node.ops?.merge) {
       // The merge spec is the `{ ops:[...] }` MergeSpec (the discriminated fold|concat|reconcile|run grammar).
