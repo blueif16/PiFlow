@@ -1,20 +1,27 @@
 ---
 name: piflow-start
 description: >-
-  Pi Flow · START — run & monitor an already-created pi-flow workflow on the pi fleet, via the SDK
-  (`piflow run <templateDir>`), with Claude Code as the single console. Use to "run/kick off/start my
-  piflow workflow", "do a live run on pi", "monitor/follow a run", "diagnose a stalled / never-wrote node".
-  The run is ALWAYS: pull the next prompt from the bank → dry-run (free) → live background → poll. To CREATE
-  or PORT the template first use piflow-init; to IMPROVE a node/the chain use piflow-enhance.
+  Pi Flow · START — run & monitor an already-created pi-flow workflow on the pi fleet via the SDK CLI, with
+  Claude Code as the single console. LOAD THIS SKILL BEFORE running ANY piflow/pi command — it pins the
+  canonical invocation: the npm-linked global `piflow run <templateDir>` bin (NOT `node …/dist/cli.js` nor
+  `pi-runner/run.mjs`, both non-canonical) with `--provider <gw> --thinking low --sandbox local` +
+  `--from`/`--until`. Do NOT reconstruct the command from memory. Triggers — load on ANY of: "run / kick off /
+  start / resume my piflow workflow", "do a live run on pi", "run game-omni on pi", "companion-mode run",
+  "monitor / follow / poll a run", "diagnose a stalled / never-wrote / blocked node", or the words
+  "piflow" / "pi-runner" / "pi fleet" / "pi run" appearing at all. The run is ALWAYS: pull the next prompt
+  from the bank → dry-run (free) → live background → poll. To CREATE or PORT the template first use
+  piflow-init; to IMPROVE a node/the chain use piflow-enhance.
 ---
 
 # Pi Flow · START — run & monitor a workflow on the pi fleet
 
 **You are the operator — you run every command; the user runs nothing.** A workflow is a structured TEMPLATE
 (`.piflow/<wf>/template/`); the `@piflow/core` SDK loads it (`loadTemplate → instantiateRun → compile →
-runWorkflow`) and runs one `pi` per node. The `piflow` CLI bin (from **`@piflow/cli`**) is the entrypoint.
-**This is the canonical run path — never `node pi-runner/run.mjs` (the deleted legacy monolith) nor a
-hand-rolled shim.**
+runWorkflow`) and runs one `pi` per node. **The entrypoint is the `piflow` bin (from `@piflow/cli`,
+npm-linked onto PATH — confirm with `which piflow`). The canonical command is `piflow run <templateDir> …` —
+NOT `node <piflow>/packages/cli/dist/cli.js run …` (the same code, but the bare-node form is the fallback only
+when the link is missing) and NEVER `node pi-runner/run.mjs` (the deleted legacy monolith).** Every command
+below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `piflow` subcommand.
 
 ## The run contract (read before every run)
 - **INPUT IS THE PROMPT BANK, NEVER TYPED.** A run's `prompt` is the next `pending` entry of the consumer's
@@ -40,21 +47,27 @@ hand-rolled shim.**
 1. **Dry-run (free, no model) — always first.** Confirms the template loads, the DAG compiles, args resolve,
    and prints each realized `pi` command:
    ```bash
-   node <piflow>/packages/cli/dist/cli.js run <templateDir> \
+   piflow run <templateDir> \
      --workspace <consumerRepo> --out <consumerRepo>/out/<id> --run <id> \
-     --arg prompt="<the bank entry's prompt>" --dry-run
+     --provider <gw> --arg prompt="<the bank entry's prompt>" --dry-run
    ```
-   (`@piflow/cli` need not be installed in the consumer — run the bin from the piflow repo, point `--workspace`
-   at the consumer.) **CAVEAT: the dry-run prints the FULL DAG; it does NOT show the `--from`/`--until`
-   window.** The window applies only at runtime — verify it by reading the matcher, not the dry-run output.
+   (`piflow` is the global linked bin — the consumer repo needs no install; `--workspace` points it at the
+   consumer's content. If `which piflow` is empty, fall back to `node <piflow>/packages/cli/dist/cli.js run …`.)
+   **CAVEAT: the dry-run prints the FULL DAG; it does NOT show the `--from`/`--until` window.** The window
+   applies only at runtime — verify it by reading the matcher, not the dry-run output.
 2. **Live (background) — never block on it.** Drop `--dry-run`, add `--sandbox local` (real in-place pi exec;
-   **omit it and NO model runs — it goes in-memory**). Redirect to a log and run in the background:
+   **omit it and NO model runs — it goes in-memory**) and **`--thinking low`** (the proven default — omit it
+   and pi defaults to `medium` → over-deliberation / stall risk on the headless loop). Redirect to a log and
+   run in the background:
    ```bash
-   node <piflow>/packages/cli/dist/cli.js run <templateDir> \
+   piflow run <templateDir> \
      --workspace <consumerRepo> --out <consumerRepo>/out/<id> --run <id> \
-     --arg prompt="…" --sandbox local [--until <node>] [--from <node>] \
+     --provider <gw> --thinking low --sandbox local \
+     --arg prompt="…" [--from <node>] [--until <node>] \
      > <consumerRepo>/out/<id>/run.console.log 2>&1   # launch in the background
    ```
+   (Proven game-omni invocation: `--provider mmgw --thinking low --sandbox local`, template
+   `<piflow>/.piflow/game-omni/template`, `--workspace <game-omni> --out <game-omni>/out/<id>`.)
 3. **Monitor — poll, don't block.** The run writes `out/<id>/.pi/{run.json,state.json}` + per-node
    `out/<id>/.pi/nodes/<node>/{events.jsonl,io.json,node.json}`; produced artifacts land under `out/<id>/`
    (e.g. `spec/*.json`). Watch with `piflow status <out/<id>>` / `piflow watch <out/<id>>` / `piflow logs`, or
@@ -80,9 +93,11 @@ against the criteria fixture as it lands (see piflow-enhance / hermes-skill-syst
 ## Triage a misbehaving run (failure signatures)
 - **never-wrote** (clean exit, required artifact absent) → read the node's `events.jsonl`: explore-forever /
   in-head work / a missing input the prompt needed. Fix at the node's SKILL or the seed, not by re-running.
-- **stall** (no events for minutes) → a silent headless hang; the SDK CLI does NOT pass `--thinking` (pi
-  defaults to `medium` → over-deliberation) nor the `-e` node-contract extension (no write-first gate). Note
-  these as enhancement targets; do not fake around them.
+- **stall** (no events for minutes) → a silent headless hang, usually over-deliberation. FIRST check you
+  passed **`--thinking low`** — the CLI now forwards it to `pi --thinking`, but if you OMIT it pi defaults to
+  `medium` and over-thinks (the #1 cause of a slow/never-finishing node). The `-e` node-contract extension
+  (the write-first gate) is still not auto-passed by the SDK CLI — note that as an enhancement target; do not
+  fake around it.
 - **hook failed** (node ok but a `run` post-hook non-zero) → the deterministic step (gen / seed-contract /
   merge) failed: check the hook cmd path resolves under `{{WORKSPACE}}` and `{project}`, and its exit/stderr.
 
