@@ -50,6 +50,7 @@ import { Companion } from "./Companion";
 import { ExpandContext } from "./ExpandContext";
 import { loadRunView, toFlowGraph, buildDirectory } from "../data/runView";
 import { loadIndex, findThread, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
+import { useRunStream, liveFlowGraph, RunStreamContext } from "../data/runStream";
 
 /* defined OUTSIDE the component — prevents node re-mounts on every render */
 const nodeTypes = { flowNode: WorkflowNode };
@@ -64,6 +65,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [dir, setDir] = useState<{ tree: DirEntry[]; fileToNode: Record<string, string> }>({ tree: [], fileToNode: {} });
   const [loadError, setLoadError] = useState<string | null>(null);
   const { fitView } = useReactFlow();
+  // ONE run-telemetry subscription for the active run — drives the LIVE graph (below) and is provided to
+  // the Companion via RunStreamContext so it doesn't open a second EventSource.
+  const live = useRunStream(activeRun);
 
   // LIVE-poll the global index (every 4s) so runs that start / progress after launch appear without a
   // manual re-index. CanvasInner is the single owner; MenuBar reads `ix` as a prop.
@@ -116,6 +120,16 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     return () => { alive = false; };
   }, [activeRun, viewable, setNodes, setEdges]);
 
+  // A LIVE / foreign run has no transcoded run-view.json — render it straight from the stream model, and
+  // re-render as node-status deltas arrive. (Viewable runs are handled by the run-view effect above.)
+  useEffect(() => {
+    if (viewable || !activeRun) return;
+    if (!live.model) { setNodes([]); setEdges([]); setDir({ tree: [], fileToNode: {} }); return; }
+    const { nodes: n, edges: e } = liveFlowGraph(live.model);
+    setNodes(n);
+    setEdges(e);
+  }, [viewable, activeRun, live.model, setNodes, setEdges]);
+
   // switch the viewed run (from the menu-bar switcher): load it + close any open node
   const selectRun = useCallback((run: string) => {
     setActiveRun(run);
@@ -140,6 +154,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
 
   return (
     <ExpandContext.Provider value={expandApi}>
+      <RunStreamContext.Provider value={live}>
       <LayoutGroup>
         <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--ds-bg-canvas)" }}>
           <OrbField />
@@ -156,7 +171,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
               Couldn’t load run data — {loadError}. Run <code>npm run data</code> in <code>gui/</code>.
             </div>
           )}
-          {activeRun && !viewable && !loadError && (
+          {activeRun && !viewable && !loadError && !live.model && (
             <div
               style={{
                 position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 150,
@@ -165,9 +180,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
                 fontFamily: "var(--ds-font-sans)", fontSize: 13, color: "var(--ds-text-secondary)", lineHeight: 1.5,
               }}
             >
-              <strong style={{ fontFamily: "var(--ds-font-mono)" }}>{activeRun}</strong> is live — open the
-              companion (bottom-right) to follow it in real time. The graph renders once the run is
-              transcoded to <code>run-view.json</code>.
+              {live.status === "error"
+                ? <>Couldn’t reach the live stream for <strong style={{ fontFamily: "var(--ds-font-mono)" }}>{activeRun}</strong>.</>
+                : <>Connecting to <strong style={{ fontFamily: "var(--ds-font-mono)" }}>{activeRun}</strong> — live graph loading…</>}
             </div>
           )}
           <ReactFlow
@@ -205,6 +220,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           <Companion activeRun={activeRun} />
         </div>
       </LayoutGroup>
+      </RunStreamContext.Provider>
     </ExpandContext.Provider>
   );
 }

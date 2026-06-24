@@ -3,7 +3,10 @@
 // `@piflow/core/observe` `watchRun` stream. The view types here MIRROR observe/types.ts
 // (RunModel/RunUpdate) — we only carry the fields the companion renders, but the shapes
 // are the shared contract, not a fork. Real data only; no mock fallback.
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import type { Edge } from "@xyflow/react";
+import type { FlowNode, FlowNodeData } from "../components/WorkflowNode";
+import { toNodeStatus } from "./runView";
 
 export type LiveNodeStatus =
   | "pending" | "running" | "ok" | "reused" | "gap" | "blocked" | "error" | "dry";
@@ -28,6 +31,8 @@ export interface LiveModel {
   model?: string | null;
   totals: { nodes: number; ok: number; failed: number } | null;
   nodes: LiveNode[];
+  /** file-flow edges (a writer's path read back by a consumer) — fills in as nodes complete. */
+  edges?: { from: string; to: string; path: string }[];
 }
 
 /** A wire frame: the observe RunUpdate kinds + the bridge's `meta`/`stream-error` wrappers. */
@@ -51,6 +56,11 @@ export interface RunStreamState {
 
 const INITIAL: RunStreamState = { status: "connecting", model: null, recent: [] };
 const RECENT_CAP = 40;
+
+/** Shared stream state — CanvasInner owns ONE subscription (for the live graph) and provides it here so
+ *  the Companion reads the same connection instead of opening a second EventSource. */
+export const RunStreamContext = createContext<RunStreamState>(INITIAL);
+export const useRunStreamContext = (): RunStreamState => useContext(RunStreamContext);
 
 function reduce(prev: RunStreamState, f: Frame): RunStreamState {
   switch (f.kind) {
@@ -125,4 +135,46 @@ export function whereAreWe(s: RunStreamState): string {
   const bad = m.nodes.find((n) => n.status === "error" || n.status === "blocked");
   if (bad) return `${bad.status} · ${bad.label}`;
   return `${doneCount}/${total} nodes`;
+}
+
+/**
+ * Build the React Flow graph from the LIVE model — the canvas renderer for a run with no transcoded
+ * run-view.json (a running or foreign run). Positions by stage column / parallel lane (same layout as
+ * runView.toFlowGraph); status drives the node color and re-renders as node-status deltas arrive. HUD
+ * detail is sparse (the live model is lean) — the rich view comes from run-view.json once transcoded.
+ */
+export function liveFlowGraph(model: LiveModel): { nodes: FlowNode[]; edges: Edge[] } {
+  const COL = 300;
+  const ROW = 132;
+  const nodes: FlowNode[] = model.nodes.map((n) => {
+    const data: FlowNodeData = {
+      title: n.label,
+      kind: "agent",
+      typeLabel: n.phase ?? "node",
+      status: toNodeStatus(n.status),
+      preview: n.status === "running" ? "running…" : n.status,
+      progress: n.status === "running" ? undefined : 1,
+      meta: [
+        { label: "Status", value: n.status, mono: true },
+        { label: "Stage", value: String(n.stageIndex), mono: true },
+      ],
+      io: { inputs: [], outputs: [] },
+    };
+    return {
+      id: n.id,
+      type: "flowNode",
+      position: { x: 40 + (Math.max(1, n.stageIndex) - 1) * COL, y: 60 + n.lane * ROW },
+      data,
+    } as FlowNode;
+  });
+
+  const seen = new Set<string>();
+  const edges: Edge[] = [];
+  for (const e of model.edges ?? []) {
+    const key = `${e.from}->${e.to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    edges.push({ id: key, source: e.from, target: e.to });
+  }
+  return { nodes, edges };
 }
