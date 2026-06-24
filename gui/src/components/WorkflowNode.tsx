@@ -18,6 +18,7 @@ import * as motion from "motion/react-client";
 import { useExpand } from "./ExpandContext";
 import { ProgressBar } from "./ProgressBar";
 import type { FieldTone } from "./FieldBlock";
+import type { RunViewNode } from "../data/runView";
 
 export type NodeStatus = "idle" | "selected" | "running" | "success" | "error";
 
@@ -73,6 +74,9 @@ export type FlowNodeData = {
   logs?: Array<string | StreamLine>;
   /** Signals panel: I/O */
   io?: NodeIO;
+  /** The full real run-view payload for this node — the HUD's source of truth (model, tools,
+   *  scope-bucketed reads, timeline, writes, artifacts). Present for data-driven nodes. */
+  rv?: RunViewNode;
 };
 
 export type FlowNode = Node<FlowNodeData, "flowNode">;
