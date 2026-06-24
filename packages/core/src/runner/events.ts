@@ -27,12 +27,37 @@ const MAX_LINE = 8192;
 const MAX_RESULT = 2048;
 
 /**
+ * The small, load-bearing fields pi nests INSIDE `message` — token usage + which model produced the
+ * call. They live alongside the bulky `content` snapshot; we keep these and drop everything else.
+ * `usage` is the ONLY token source (message_start/_end/turn_end carry `message.usage`), so deleting
+ * the whole message — as this slimmer once did — silently destroyed every token/cost number.
+ */
+const KEEP_MSG_FIELDS = ['role', 'model', 'provider', 'api', 'usage', 'stopReason'] as const;
+
+/**
+ * Slim a `message` snapshot to ONLY its small, valuable fields (usage/model/…), dropping the
+ * cumulative `content` transcript that makes the stream huge. Returns `undefined` when nothing of
+ * value survives (a pure transcript snapshot — e.g. a per-token `message_update` or a user prompt),
+ * so the caller drops the field entirely, matching the original behaviour for those events.
+ */
+function slimMessage(m: unknown): Record<string, unknown> | undefined {
+  if (!m || typeof m !== 'object') return undefined;
+  const src = m as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of KEEP_MSG_FIELDS) if (k in src) out[k] = src[k];
+  // Keep the slim message ONLY if it carries real telemetry; `role` alone is a bare snapshot → drop.
+  const hasTelemetry = 'usage' in out || 'model' in out || 'provider' in out || 'api' in out;
+  return hasTelemetry ? out : undefined;
+}
+
+/**
  * Slim ONE parsed event for the archive. The killer of size is the cumulative `message` snapshot pi
  * re-embeds on EVERY event (`message_update` per token, `turn_*`/`message_*` per turn) — the whole
  * accumulated transcript, re-sent each delta; that redundancy is what makes a raw stream 100s of MB.
- * The unique content lives in the per-event `delta` (and the bounded tool fields), so we strip the
- * snapshot everywhere, drop the `assistantMessageEvent.partial` cumulative on a delta, and truncate a
- * large `tool_execution_end` result. Returns `ev` UNCHANGED (same ref) when there is nothing to slim.
+ * The unique content lives in the per-event `delta` (and the bounded tool fields), so we slim the
+ * snapshot down to its telemetry (usage/model) everywhere — NOT delete it, which threw away the only
+ * token data — drop the `assistantMessageEvent.partial` cumulative on a delta, and truncate a large
+ * `tool_execution_end` result. Returns `ev` UNCHANGED (same ref) when there is nothing to slim.
  */
 export function slimEvent(ev: PiEvent): PiEvent | null {
   if (!ev || typeof ev !== 'object') return null;
@@ -42,7 +67,10 @@ export function slimEvent(ev: PiEvent): PiEvent | null {
   const bigResult = ev.type === 'tool_execution_end' && 'result' in ev;
   if (!hasMessage && !hasPartial && !bigResult) return ev; // nothing to strip — pass through
   const out: PiEvent = { ...ev };
-  if (hasMessage) delete out.message;
+  if (hasMessage) {
+    const slim = slimMessage(ev.message);
+    if (slim) out.message = slim; else delete out.message;
+  }
   if (hasPartial) { const ae = { ...a }; delete ae.partial; out.assistantMessageEvent = ae; }
   if (bigResult) out.result = truncResult(out.result);
   return out;
