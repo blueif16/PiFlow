@@ -165,19 +165,30 @@ async function buildThread(runDir) {
  * few file stats, so recomputing it per request (live mode) is cheap for a normal fleet.
  */
 export async function buildSnapshot(registry) {
+  // GLOBAL namespace registry: a run associates to its workflow by run.json.source, and that workflow's
+  // template can live in a DIFFERENT registered product than the run — e.g. game-omni runs sit under
+  // /…/game-omni/out while the game-omni template lives in the piflow repo's .piflow/. Resolve source
+  // against ALL products' templates (not just the run's own product), so such runs file under their REAL
+  // namespace WITH its templatePath/meta instead of falling to 'unfiled'.
+  const globalNs = new Map(); // namespace id → { id, name, templatePath, meta }
+  for (const p of registry.products) for (const ns of discoverNamespaces(p.root)) if (!globalNs.has(ns.id)) globalNs.set(ns.id, ns);
+  const globalNsIds = new Set(globalNs.keys());
+
   const products = [];
   for (const product of registry.products) {
     const root = product.root;
     const namespaces = discoverNamespaces(root);
     const { runDirs } = discoverRunDirs(root);
     const nsById = new Map(namespaces.map((ns) => [ns.id, { ...ns, threads: [] }]));
-    const namespaceIds = new Set(namespaces.map((ns) => ns.id));
 
     for (const runDir of runDirs) {
       const thread = await buildThread(runDir);
       if (!thread) continue;
-      const nsId = namespaceIdForSource(readRunSource(runDir), namespaceIds);
-      if (!nsById.has(nsId)) nsById.set(nsId, { id: nsId, name: nsId, templatePath: null, meta: null, threads: [] });
+      const nsId = namespaceIdForSource(readRunSource(runDir), globalNsIds);
+      if (!nsById.has(nsId)) {
+        const g = globalNs.get(nsId);
+        nsById.set(nsId, g ? { ...g, threads: [] } : { id: nsId, name: nsId, templatePath: null, meta: null, threads: [] });
+      }
       nsById.get(nsId).threads.push(thread);
     }
 
