@@ -1,0 +1,78 @@
+/* ============================================================================
+   MenuBar — persistent top-right shell chrome (portaled above the overlay scrim).
+   Floats over the canvas in map mode AND over the HUD in node mode. The layer
+   wraps its content (does not blanket the screen) so canvas clicks fall through.
+   ========================================================================== */
+.ds-menubar-layer {
+  position: fixed;
+  top: clamp(10px, 1.6vh, 18px);
+  right: clamp(10px, 1.6vw, 18px);
+  z-index: var(--ds-z-popover);            /* above the overlay (1000) + its scrim */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ds-space-2);
+  pointer-events: none;                    /* only the bar + popover are interactive */
+}
+
+.ds-menubar {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  padding: 5px;
+  border-radius: var(--ds-radius-lg);
+}
+
+.ds-menubar__switch {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  height: 28px;
+  padding: 0 var(--ds-space-2);
+  border: none;
+  background: transparent;
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-sm);
+}
+.ds-menubar__switch:hover { background: var(--ds-bg-hover); }
+.ds-menubar__switch:disabled { cursor: default; opacity: 0.6; }
+.ds-menubar__switch:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-menubar__ns  { color: var(--ds-text-secondary); }
+.ds-menubar__sep { color: var(--ds-text-tertiary); }
+.ds-menubar__run { color: var(--ds-text-primary); font-weight: var(--ds-weight-medium); }
+.ds-menubar__chev { color: var(--ds-text-tertiary); transition: transform var(--ds-dur-fast) var(--ds-ease-standard); }
+.ds-menubar__chev.is-open { transform: rotate(180deg); }
+
+.ds-menubar__status {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  padding: 0 var(--ds-space-2);
+  border-left: 1px solid var(--ds-border-hairline);
+}
+.ds-menubar__status[data-state="done"]    { color: var(--ds-success-fg); }
+.ds-menubar__status[data-state="failed"]  { color: var(--ds-error-fg); }
+.ds-menubar__status[data-state="running"] { color: var(--ds-text-accent); }
+
+.ds-menubar__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-tertiary);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+}
+.ds-menubar__icon:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-menubar__icon:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-menubar__exit:hover { color: var(--ds-error-fg); }
+
+/* the switcher popover hosts the DirectoryPanel (its own glass-soft surface) */
+.ds-menubar__pop { pointer-events: auto; }

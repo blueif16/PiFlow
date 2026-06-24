@@ -45,6 +45,7 @@ import { OrbField } from "./OrbField";
 import { WorkflowNode, type FlowNode } from "./WorkflowNode";
 import { NodeExpandOverlay } from "./NodeExpandOverlay";
 import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
+import { MenuBar } from "./MenuBar";
 import { ExpandContext } from "./ExpandContext";
 import { loadRunView, toFlowGraph, buildDirectory } from "../data/runView";
 
@@ -55,14 +56,17 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId ?? null);
+  const [activeRun, setActiveRun] = useState<string>("e2e-m3");
   const [dir, setDir] = useState<{ tree: DirEntry[]; fileToNode: Record<string, string> }>({ tree: [], fileToNode: {} });
   const [loadError, setLoadError] = useState<string | null>(null);
   const { fitView } = useReactFlow();
 
-  // Build the graph from the real run-view at mount — no mock seed.
+  // Build the graph from the active run's real run-view — no mock seed. Re-runs
+  // when the menu-bar switcher picks a different run.
   useEffect(() => {
     let alive = true;
-    loadRunView()
+    setLoadError(null);
+    loadRunView(activeRun)
       .then((view) => {
         if (!alive) return;
         const { nodes: n, edges: e } = toFlowGraph(view);
@@ -72,7 +76,10 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       })
       .catch((err) => { if (alive) setLoadError(String(err?.message ?? err)); });
     return () => { alive = false; };
-  }, [setNodes, setEdges]);
+  }, [activeRun, setNodes, setEdges]);
+
+  // switch the viewed run (from the menu-bar switcher): load it + close any open node
+  const selectRun = useCallback((run: string) => { setActiveRun(run); setExpandedId(null); }, []);
 
   // refit the viewport once the real nodes land
   useEffect(() => {
@@ -138,6 +145,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           </ReactFlow>
 
           <NodeExpandOverlay id={expandedId} data={expandedData} onClose={() => setExpandedId(null)} />
+          <MenuBar activeRun={activeRun} onSelectRun={selectRun} />
         </div>
       </LayoutGroup>
     </ExpandContext.Provider>
