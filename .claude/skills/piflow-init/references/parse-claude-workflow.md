@@ -36,31 +36,40 @@ Per recorded node it emits one `NodeIntent`:
 The self-check then compiles the spec and asserts the compiled stage count and per-stage membership equal the
 recording — so a 0 exit means "the DAG survived the translation," not merely "the script ran."
 
-## What it CANNOT recover — the refinement pass (do this by hand, after)
-The mechanical port is the floor. Three things the `.js` does not encode, that you upgrade afterward:
+## What the LLM MUST CONSTRUCT — the port is the FLOOR, the LLM builds the run-ready template
+piflow-init is an LLM-driven skill: `parse-claude-workflow.mjs` does the MECHANICAL half (the realized prompts
++ the DAG + artifacts/tools/sandbox); **you, the LLM, then CONSTRUCT everything else a successful run needs and
+MERGE it into the template — miss nothing.** The bar is NOT "it compiles" — it is **a green dry-run AND a clean
+live run in which every hook fires and every declared artifact lands on disk.** The mechanical port emits
+0 hooks, 0 policy, 0 returnMode and empty data-flow; the SDK is safe-by-default with these absent (it cannot
+over-block), but the run is INCOMPLETE until you build them. Construct each, per node, from the source `.js`'s
+intent (`enrich-contract.md` is the per-target how-to, with a worked exemplar):
 
-1. **True data-flow (`io.reads`/`io.produces`).** The SDK's native model INFERS edges from `reads ⋈ produces`;
-   the port instead pins the recorded order via `dependsOn`. To get real data-flow (looser, parallelism-
-   revealing), replace `dependsOn` with each node's actual `reads` (the upstream files it consumes) and set
-   `produces` = its artifacts. Keep `dependsOn` until you do — never ship a spec with neither.
+1. **Hooks (the largest construct — the whole deterministic-derive layer).** Every `DRIVER-SEED` (pre) and
+   `DRIVER-PROJECT`/`DRIVER-MERGE`/`DRIVER-SEED-CONTRACT` (post) marker in the source is a `Hook` the text port
+   drops. Re-express each as node.json `hooks` DATA — `seed` (stage inputs), `registryProject`/`project`
+   (derive a runtime file from a frozen spec), `merge` (`fold`/`concat`/`reconcile`/`run`) — with
+   `{{WORKSPACE}}`/`{{RUN}}`/`{{state.*}}`/`{project}` tokens. **Point every `run`-op cmd at the CURRENT code
+   path** (e.g. a relocated script), never the path the old `.js` used.
+2. **State promotion.** Any `{{state.X}}` token a downstream seed/project resolves against needs a node that
+   PROMOTES it (e.g. w0 classify → `promote` archetype → `state.archetype`). The port has no state-channel
+   awareness; add the `promote` on the establishing node or every downstream token resolves to nothing.
+3. **SDK-vocabulary translation.** Rename the Claude/pi-runner marker vocab to the SDK's
+   (`project`→`registryProject`, `genre`→`key`, …) so the hooks bind to `@piflow/core`'s op set, not the legacy
+   monolith's.
+4. **Contract decisions — `policy` / `returnMode` / `checks` / `fillSentinel`.** The Claude `contract()` emits
+   only `artifacts`/`owns`/`readScope`/tools. Add: `policy.fail:"block"` on every producing node (the artifact
+   gate); `returnMode` where the default is wrong (default = optional-with-artifacts, required for a
+   zero-artifact gate); the integrity `checks` + `fillSentinel` the workflow relied on.
+5. **True data-flow (optional upgrade).** The port pins the recorded order via `io.dependsOn`. To reveal real
+   parallelism, replace it with each node's actual `io.reads` (upstream files) + `io.produces` (its artifacts).
+   Keep `dependsOn` until you do — never ship a spec with neither.
 
-2. **Deterministic hooks.** `DRIVER-SEED` (pre) and `DRIVER-PROJECT`/`DRIVER-MERGE`/`DRIVER-SEED-CONTRACT`
-   (post) are run.mjs's hook family; the SDK models them as typed `Hook` objects with a `run` function, which a
-   text marker can't carry. The port drops them; re-add them as `hooks: { pre/post: [...] }` in code where the
-   workflow relied on them.
-
-3. **The new contract decisions (checks/policy/returnMode/fillSentinel) — THE GAP.** The current Claude
-   `contract()` helper emits only `artifacts`/`owns`/`readScope`/tools. It has no field for the integrity
-   checks, the verdict→action policy, the fill-sentinel, or an explicit return mode we added to the SDK. So a
-   ported workflow is almost all-defaults here (empirically, game-omni-v1.6.js → 16/16 nodes with artifacts,
-   1/16 with checks, 0/16 with returnMode). **What the SDK does with the absent fields (the safe defaults):**
-   - `returnMode` defaults to **optional when the node declares artifacts** (the file proves the work),
-     **required otherwise** (a zero-artifact gate node's return is its only proof). Correct for most nodes.
-   - The **schema gate** runs only where an artifact declares a `schema` (opt-in; absent ⇒ skipped).
-   - **No integrity checks** run unless declared; **`fillSentinel`** is off unless declared.
-   So a port is SAFE by default (it cannot over-block), just not as STRICT as it could be. Enriching a node
-   with checks/policy is a deliberate upgrade — see `enrich-contract.md` for whether to default it or generate
-   it (the open decision: a few default policies vs. an LLM-authored per-node check set).
+**The miss-nothing self-check (run before declaring the port done):** every `DRIVER-*` marker in the source has
+a matching hook in the template · every `{{state.X}}` token has a promoting node · every producing node has
+`policy.fail` + an artifact contract · the green dry-run compiles the SAME stage count + membership as the
+source · a live run produces every artifact and fires every hook. **A template that compiles but drops a hook
+is a FAILED port, not a partial one.**
 
 ## Fixture
 `fixtures/sample-workflow.js` is a 4-node (serial → parallel(2) → serial) workflow carrying the full marker
