@@ -13,12 +13,12 @@
 
 /* --- region grid -------------------------------------------------------- */
 .ds-hud {
-  width: min(1120px, 96vw);
-  max-height: 92vh;
+  width: 100%;
+  height: 100%;
   pointer-events: auto;
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr) minmax(220px, 300px);
-  grid-template-rows: auto minmax(320px, 60vh) auto;
+  grid-template-columns: minmax(240px, 340px) minmax(0, 1fr) minmax(240px, 360px);
+  grid-template-rows: auto minmax(200px, 1fr) auto;
   grid-template-areas:
     "top top top"
     "left mid right"

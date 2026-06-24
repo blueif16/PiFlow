@@ -62,8 +62,8 @@ export function NodeExpandOverlay({ id, data, onClose }: NodeExpandOverlayProps)
               inset: 0,
               zIndex: "var(--ds-z-overlay)" as unknown as number,
               display: "grid",
-              placeItems: "center",
-              padding: "clamp(16px, 4vh, 48px)",
+              placeItems: "stretch",
+              padding: "clamp(10px, 1.6vh, 18px)",
               pointerEvents: "none",
             }}
           >
