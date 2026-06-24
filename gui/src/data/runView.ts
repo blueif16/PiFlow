@@ -41,6 +41,14 @@ export interface RunViewNode {
   artifacts: ArtifactRef[];
   bash: BashCall[];
   tokens?: RunTokens;
+  /** provider rate-limit/overload retries (count of `auto_retry_start`) — mirrors core. */
+  retries: number;
+  /** the assistant's final `message.stopReason` (null if none seen). */
+  stopReason: string | null;
+  /** the output was cut off by the token cap (stopReason `'max_tokens'`/`'length'`). */
+  truncated: boolean;
+  /** total `thinking_delta` characters for this node. */
+  thinkingChars: number;
   summary?: string;
   issues?: string[];
   stageIndex?: number;

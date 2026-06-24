@@ -109,6 +109,16 @@
 .ds-minibar__val[data-tone="warn"] { color: var(--ds-warning-fg); }
 .ds-minibar__val[data-tone="high"] { color: var(--ds-error-fg); }
 
+/* status badges — truncation / retry flags, shown only when a signal fires (no empty box) */
+.ds-nodemode__badges { display: flex; gap: var(--ds-space-1); }
+.ds-nodebadge {
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); line-height: 1.4;
+  padding: 0 5px; border-radius: var(--ds-radius-sm); border: 1px solid var(--ds-border-hairline);
+  background: var(--ds-bg-surface); letter-spacing: var(--ds-tracking-label);
+}
+.ds-nodebadge[data-tone="high"] { color: var(--ds-error-fg); border-color: var(--ds-error); }
+.ds-nodebadge[data-tone="warn"] { color: var(--ds-warning-fg); border-color: var(--ds-warning); }
+
 /* model chip ("license plate") */
 .ds-nodemode--model { align-items: flex-start; }
 .ds-modelchip {

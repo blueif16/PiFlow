@@ -54,6 +54,12 @@ export function NodeModeStrip({ mode, data }: { mode: ViewMode; data: FlowNodeDa
       <div className="ds-nodemode ds-nodemode--status">
         <MiniBar tag="time" tone={timeTone} frac={timeFrac} value={timeVal} />
         <MiniBar tag="ctx" tone={ctxToneV} frac={ctxFrac} value={ctxVal} />
+        {(rv?.truncated || (rv?.retries ?? 0) > 0) && (
+          <div className="ds-nodemode__badges">
+            {rv?.truncated && <span className="ds-nodebadge" data-tone="high" title="Output hit max_tokens — truncated">TRUNC</span>}
+            {(rv?.retries ?? 0) > 0 && <span className="ds-nodebadge" data-tone="warn" title="Provider retries (429/overload)">↻ {rv?.retries}</span>}
+          </div>
+        )}
       </div>
     );
   }
