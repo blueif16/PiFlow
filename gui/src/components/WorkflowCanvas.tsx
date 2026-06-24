@@ -49,6 +49,7 @@ import { MenuBar } from "./MenuBar";
 import { Companion } from "./Companion";
 import { ExpandContext } from "./ExpandContext";
 import { loadRunView, toFlowGraph, buildDirectory } from "../data/runView";
+import { loadIndex, findThread, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
 
 /* defined OUTSIDE the component — prevents node re-mounts on every render */
 const nodeTypes = { flowNode: WorkflowNode };
@@ -57,14 +58,32 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId ?? null);
-  const [activeRun, setActiveRun] = useState<string>("e2e-m3");
+  const [ix, setIx] = useState<GlobalIndex | null>(null);
+  const [activeRun, setActiveRun] = useState<string>("");
+  const [viewable, setViewable] = useState<boolean>(true);
   const [dir, setDir] = useState<{ tree: DirEntry[]; fileToNode: Record<string, string> }>({ tree: [], fileToNode: {} });
   const [loadError, setLoadError] = useState<string | null>(null);
   const { fitView } = useReactFlow();
 
-  // Build the graph from the active run's real run-view — no mock seed. Re-runs
-  // when the menu-bar switcher picks a different run.
+  // Open on the REAL current run from the global index (running > newest) — no demo default.
   useEffect(() => {
+    let alive = true;
+    loadIndex()
+      .then((index) => {
+        if (!alive) return;
+        setIx(index);
+        const run = pickCurrentRun(index);
+        if (run) { setActiveRun(run); setViewable(findThread(index, run)?.viewable ?? false); }
+      })
+      .catch((err) => { if (alive) setLoadError(String(err?.message ?? err)); });
+    return () => { alive = false; };
+  }, []);
+
+  // Build the graph from the active run's real run-view — no mock seed. The canvas renders a transcoded
+  // run-view.json (viewable runs only); a LIVE/foreign run has none yet, so we clear the graph and let
+  // the companion stream it. Re-runs when the switcher picks a different run.
+  useEffect(() => {
+    if (!activeRun || !viewable) { setNodes([]); setEdges([]); setDir({ tree: [], fileToNode: {} }); setLoadError(null); return; }
     let alive = true;
     setLoadError(null);
     loadRunView(activeRun)
@@ -77,10 +96,14 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       })
       .catch((err) => { if (alive) setLoadError(String(err?.message ?? err)); });
     return () => { alive = false; };
-  }, [activeRun, setNodes, setEdges]);
+  }, [activeRun, viewable, setNodes, setEdges]);
 
   // switch the viewed run (from the menu-bar switcher): load it + close any open node
-  const selectRun = useCallback((run: string) => { setActiveRun(run); setExpandedId(null); }, []);
+  const selectRun = useCallback((run: string) => {
+    setActiveRun(run);
+    setViewable(ix ? findThread(ix, run)?.viewable ?? false : false);
+    setExpandedId(null);
+  }, [ix]);
 
   // refit the viewport once the real nodes land
   useEffect(() => {
@@ -113,6 +136,20 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
               }}
             >
               Couldn’t load run data — {loadError}. Run <code>npm run data</code> in <code>gui/</code>.
+            </div>
+          )}
+          {activeRun && !viewable && !loadError && (
+            <div
+              style={{
+                position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", zIndex: 150,
+                maxWidth: 420, padding: "16px 20px", borderRadius: 10, textAlign: "center",
+                background: "var(--ds-glass-bg-strong, #fff)", boxShadow: "var(--ds-shadow-md)",
+                fontFamily: "var(--ds-font-sans)", fontSize: 13, color: "var(--ds-text-secondary)", lineHeight: 1.5,
+              }}
+            >
+              <strong style={{ fontFamily: "var(--ds-font-mono)" }}>{activeRun}</strong> is live — open the
+              companion (bottom-right) to follow it in real time. The graph renders once the run is
+              transcoded to <code>run-view.json</code>.
             </div>
           )}
           <ReactFlow

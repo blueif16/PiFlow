@@ -19,6 +19,7 @@ import { runWatchCli } from './watch.js';
 import { runExtractCli } from './extract.js';
 import { runRunCli } from './run.js';
 import { runInspectCli } from './inspect.js';
+import { runGuiCli } from './gui.js';
 
 const HELP = `piflow — drive + observe a pi-flow run over the .pi/ run layout
 
@@ -29,6 +30,7 @@ USAGE
   piflow status  <rundir> [--every <s>]  per-node table + stage/rollup (verified on disk)
   piflow watch   <rundir> [--notify]     silent sentinel — one line on done / fail / dead-stall
   piflow logs    [dir|run] [options]     stream / replay / diagnose per-node event archives
+  piflow gui     [--port <n>] [--no-open]  launch the run viewer; indexes the product at cwd (or global)
 
 RUN
   <templateDir> an authored template/ dir (meta.json + nodes/*/). Required.
@@ -87,6 +89,9 @@ async function main(): Promise<void> {
       break;
     case 'logs':
       await runLogsCli(rest);
+      break;
+    case 'gui':
+      await runGuiCli(rest);
       break;
     case 'help':
     case '--help':

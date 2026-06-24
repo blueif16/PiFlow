@@ -36,23 +36,27 @@ const INDEX_FILE = path.join(GLOBAL_DIR, 'index.json');
 // The terminal-OK statuses summarizeRun counts as "done" (mirrors packages/tui/model.mjs:204).
 const TERMINAL_OK = new Set(['ok', 'reused', 'gap', 'dry']);
 
-// ── product registry: idempotent upsert of THIS repo ─────────────────────────────────────────────────
-async function upsertProduct() {
-  const id = path.basename(REPO);          // "piflow"
-  const name = id;
+// ── product registry: idempotent upsert of one or more repo roots ─────────────────────────────────────
+// THIS repo (where the GUI lives) is always registered; `piflow gui` (and a bare `--root <path>` arg)
+// adds the repo it was launched from, so a run in ANOTHER repo (e.g. game-omni's out/<id>) becomes
+// discoverable without hand-editing the registry. Upsert is by abs root OR id (refreshes a moved dir).
+function upsertRoot(registry, root) {
+  const abs = path.resolve(root);
+  const id = path.basename(abs);
+  if (!Array.isArray(registry.products)) registry.products = [];
+  const existing = registry.products.find((p) => p.root === abs || p.id === id);
+  if (existing) { existing.id = id; existing.name = id; existing.root = abs; }
+  else registry.products.push({ id, name: id, root: abs, registeredAt: new Date().toISOString() });
+}
+
+async function upsertProducts(extraRoots = []) {
   let registry = { products: [] };
   if (fssync.existsSync(PRODUCTS_FILE)) {
     try { registry = JSON.parse(await fs.readFile(PRODUCTS_FILE, 'utf8')); }
     catch { registry = { products: [] }; }
   }
-  if (!Array.isArray(registry.products)) registry.products = [];
-  const existing = registry.products.find((p) => p.root === REPO || p.id === id);
-  if (existing) {
-    // keep the original registeredAt; refresh derived fields in case the dir moved/renamed
-    existing.id = id; existing.name = name; existing.root = REPO;
-  } else {
-    registry.products.push({ id, name, root: REPO, registeredAt: new Date().toISOString() });
-  }
+  upsertRoot(registry, REPO);
+  for (const r of extraRoots) upsertRoot(registry, r);
   await fs.writeFile(PRODUCTS_FILE, JSON.stringify(registry, null, 2) + '\n');
   return registry;
 }
@@ -74,36 +78,29 @@ function discoverNamespaces(root) {
   return out;
 }
 
-// ── run discovery: any dir with .pi/run.json under the two documented search roots ────────────────────
+// ── run discovery: any dir with .pi/run.json under the documented search roots ────────────────────────
+// A run dir is ANY dir holding `.pi/run.json`. We scan THREE conventions: the documented
+// `.piflow/<wf>/runs/<id>/`, the GUI's served `gui/public/runs/<id>/`, and the live-run `out/<id>/`
+// convention (game-omni and the legacy run.mjs write there). The `.pi/run.json` existence check is the
+// filter, so scanning `out/*` never picks up bare node-output dirs (e.g. out/w0-classify with no .pi).
 function discoverRunDirs(root) {
-  const searchRoots = [
-    path.join(root, '.piflow'),       // documented convention: .piflow/<wf>/runs/<id>/.pi/run.json
-    path.join(root, 'gui', 'public', 'runs'),
-  ];
+  const wfRoot = path.join(root, '.piflow');
+  const guiRuns = path.join(root, 'gui', 'public', 'runs');
+  const outRoot = path.join(root, 'out');
+  const searchRoots = [wfRoot, guiRuns, outRoot];
   const runDirs = [];
+  const pushIfRun = (dir) => {
+    if (fssync.existsSync(path.join(dir, '.pi', 'run.json'))) runDirs.push(dir);
+  };
+  const eachChildDir = (parent, fn) => {
+    if (!fssync.existsSync(parent)) return;
+    for (const e of fssync.readdirSync(parent, { withFileTypes: true })) if (e.isDirectory()) fn(path.join(parent, e.name));
+  };
   // .piflow/<wf>/runs/<id>
-  const wfRoot = searchRoots[0];
-  if (fssync.existsSync(wfRoot)) {
-    for (const wf of fssync.readdirSync(wfRoot, { withFileTypes: true })) {
-      if (!wf.isDirectory()) continue;
-      const runsDir = path.join(wfRoot, wf.name, 'runs');
-      if (!fssync.existsSync(runsDir)) continue;
-      for (const r of fssync.readdirSync(runsDir, { withFileTypes: true })) {
-        if (!r.isDirectory()) continue;
-        const dir = path.join(runsDir, r.name);
-        if (fssync.existsSync(path.join(dir, '.pi', 'run.json'))) runDirs.push(dir);
-      }
-    }
-  }
-  // gui/public/runs/<id>
-  const guiRuns = searchRoots[1];
-  if (fssync.existsSync(guiRuns)) {
-    for (const r of fssync.readdirSync(guiRuns, { withFileTypes: true })) {
-      if (!r.isDirectory()) continue;
-      const dir = path.join(guiRuns, r.name);
-      if (fssync.existsSync(path.join(dir, '.pi', 'run.json'))) runDirs.push(dir);
-    }
-  }
+  eachChildDir(wfRoot, (wfDir) => eachChildDir(path.join(wfDir, 'runs'), pushIfRun));
+  // gui/public/runs/<id>  and  out/<id>
+  eachChildDir(guiRuns, pushIfRun);
+  eachChildDir(outRoot, pushIfRun);
   return { runDirs, searchRoots };
 }
 
@@ -204,7 +201,13 @@ function readRunSource(runDir) {
 
 async function main() {
   await fs.mkdir(GLOBAL_DIR, { recursive: true });
-  const registry = await upsertProduct();
+  // `--root <path>` (repeatable) registers extra repos before indexing — how `piflow gui` registers
+  // the repo it was launched from. THIS repo is always registered too (see upsertProducts).
+  const extraRoots = [];
+  for (let i = 2; i < process.argv.length; i++) {
+    if (process.argv[i] === '--root' && process.argv[i + 1]) extraRoots.push(process.argv[++i]);
+  }
+  const registry = await upsertProducts(extraRoots);
 
   const products = [];
   let totalNamespaces = 0, totalThreads = 0;

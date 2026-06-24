@@ -21,6 +21,20 @@ import "../styles/companion.css";
 
 interface Msg { role: "you" | "system"; text: string }
 
+/** The official pi mark (pi.dev) — geometric P + i dot. Inherits `currentColor`. */
+function PiMark({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 800 800" fill="none" aria-hidden="true">
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M165.29 165.29 H517.36 V400 H400 V517.36 H282.65 V634.72 H165.29 Z M282.65 282.65 V400 H400 V282.65 Z"
+      />
+      <path fill="currentColor" d="M517.36 400 H634.72 V634.72 H517.36 Z" />
+    </svg>
+  );
+}
+
 export function Companion({ activeRun }: { activeRun: string }) {
   const { expandedId } = useExpand();
   const [open, setOpen] = useState(false);
@@ -50,7 +64,7 @@ export function Companion({ activeRun }: { activeRun: string }) {
         <GlassSurface as="aside" variant="soft" className="ds-companion" legibleText aria-label="AI companion">
           <header className="ds-companion__head">
             <span className="ds-companion__spark" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1.5l1.4 4.1 4.1 1.4-4.1 1.4L8 12.5 6.6 8.4 2.5 7l4.1-1.4z" fill="currentColor" /></svg>
+              <PiMark size={13} />
             </span>
             <span className="ds-companion__title">Companion</span>
             <span className="ds-companion__ctx" title={context}>{context}</span>
@@ -85,7 +99,7 @@ export function Companion({ activeRun }: { activeRun: string }) {
         </GlassSurface>
       ) : (
         <button type="button" className="ds-companion-launch" aria-label="Open companion" onClick={() => setOpen(true)}>
-          <svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 1.5l1.4 4.1 4.1 1.4-4.1 1.4L8 12.5 6.6 8.4 2.5 7l4.1-1.4z" fill="currentColor" /></svg>
+          <PiMark size={20} />
         </button>
       )}
     </div>,

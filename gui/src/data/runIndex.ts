@@ -20,6 +20,8 @@ export interface IndexThread {
   nodesTotal: number;
   frac: number;
   elapsedMs: number | null;
+  /** wall-clock of the last status write (ISO) — recency sort key for pickCurrentRun; null when unknown. */
+  updatedAt: string | null;
   provider: string | null;
   model: string | null;
   errorNode: string | null;
@@ -69,6 +71,21 @@ export function findThread(ix: GlobalIndex, run: string): ActiveThread | null {
       for (const t of ns.threads)
         if (t.run === run) return { ...t, productName: p.name, nsId: ns.id, nsName: ns.name };
   return null;
+}
+
+/**
+ * Pick the run to focus on first: a `running` run wins (follow what's happening NOW); else the most
+ * recently updated; else the last discovered. Returns null for an empty index. This is what replaces
+ * the hardcoded demo default — the GUI opens on the real current run.
+ */
+export function pickCurrentRun(ix: GlobalIndex): string | null {
+  const threads: IndexThread[] = [];
+  for (const p of ix.products) for (const ns of p.namespaces) for (const t of ns.threads) threads.push(t);
+  if (!threads.length) return null;
+  const running = threads.find((t) => t.state === "running");
+  if (running) return running.run;
+  const dated = threads.filter((t) => t.updatedAt).sort((a, b) => (a.updatedAt! < b.updatedAt! ? 1 : -1));
+  return (dated[0] ?? threads[threads.length - 1]).run;
 }
 
 export interface SwitcherEntry { run: string; viewable: boolean; productId: string; nsId: string; }
