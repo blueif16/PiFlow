@@ -71,6 +71,8 @@ export interface RunTotals {
 export interface RunStatus {
   run: string;
   source?: string;
+  /** The active run PROFILE name (the reduced DAG this run reflects); null/absent ⇒ the full DAG. */
+  profile?: string | null;
   provider?: string;
   model?: string | null;
   startedAt: string;

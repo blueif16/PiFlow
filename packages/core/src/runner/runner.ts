@@ -865,6 +865,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     status: {
       run,
       source: wf.meta.name,
+      profile: opts.profile ?? null,
       provider: opts.providerName ?? 'cp',
       model: opts.model ?? null,
       startedAt: nowISO(),
@@ -894,6 +895,15 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   for (const s of skipped) seed(s, 'reused');
   for (const s of selected) seed(s, 'pending');
   await writeStatus(outDir, ctx.status);
+
+  // Persist the RESOLVED DAG (the profile already applied — elided nodes dropped, deps rewired) into the
+  // self-describing run dir. `.pi/run.json` records WHAT ran; this records the SHAPE it ran as — the deck
+  // of nodes, their topological stages, and their DECLARED data-flow edges. Every viewer renders the run's
+  // real graph from THIS, never by reconstructing edges from runtime io/events traces.
+  await fs.writeFile(
+    path.join(outDir, '.pi', 'workflow.json'),
+    JSON.stringify({ meta: wf.meta, profile: opts.profile ?? null, stages: wf.stages, edges: wf.edges }, null, 2) + '\n',
+  );
 
   // RESUME PREFLIGHT (run.mjs 1282–1305): the skipped upstream nodes were NOT re-run, so their
   // declared artifacts MUST already exist on the host or the resumed tail runs on absent inputs. Stat

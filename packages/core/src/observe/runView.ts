@@ -232,16 +232,31 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
     });
   }
 
-  // STAGES — the DAG layout (columns = stages, rows = parallel lanes). Prefer the template's DECLARED stage
-  // order from piflow init's workflow.json (complete the moment the template exists), used whenever it
-  // places every node this run has. Otherwise group nodes by phase in execution order (a shared phase with
-  // >1 node = a parallel lane). One {stageIndex, lane} assignment either way.
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
+
+  // The run-local RESOLVED DAG (`.pi/workflow.json`, written by the runner with the active profile already
+  // applied — elided nodes dropped, deps rewired) is the AUTHORITATIVE structure: the deck of nodes, their
+  // topological stages, and their DECLARED data-flow edges. It makes the run self-describing, so the graph
+  // is the workflow the run actually executed — never reconstructed from runtime io/events traces.
+  let resolvedDag: { stages?: { index: number; phase?: string | null; parallel?: boolean; nodeIds: string[] }[]; edges?: { from: string; to: string; files?: string[] }[] } | null = null;
+  try {
+    const f = path.join(runDir, '.pi', 'workflow.json');
+    if (fssync.existsSync(f)) resolvedDag = JSON.parse(fssync.readFileSync(f, 'utf8'));
+  } catch { resolvedDag = null; }
+
+  // STAGES — columns = stages, rows = parallel lanes. Priority: the run-local resolved DAG → the declared
+  // template (opts.workflow) when it covers every run node → phase grouping in execution order. One
+  // {stageIndex, lane} assignment whichever wins.
   const tStages = (opts.workflow?.stages ?? [])
     .map((ids) => ids.filter((id) => nodeById.has(id)))
     .filter((ids) => ids.length > 0);
   let stages: RunViewStage[];
-  if (tStages.length && new Set(tStages.flat()).size === nodeById.size) {
+  if (resolvedDag?.stages?.length) {
+    stages = resolvedDag.stages
+      .map((st) => ({ phase: st.phase ?? '—', parallel: !!st.parallel, nodeIds: (st.nodeIds || []).filter((id) => nodeById.has(id)) }))
+      .filter((st) => st.nodeIds.length > 0)
+      .map((st, i) => ({ index: i + 1, phase: st.phase, parallel: st.parallel, nodeIds: st.nodeIds }));
+  } else if (tStages.length && new Set(tStages.flat()).size === nodeById.size) {
     stages = tStages.map((ids, i) => ({ index: i + 1, phase: nodeById.get(ids[0])?.phase ?? '—', parallel: ids.length > 1, nodeIds: ids }));
   } else {
     const ordered = [...nodes].sort((a, b) => String(a.startedAt || '').localeCompare(String(b.startedAt || '')));
@@ -254,64 +269,70 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
   }
   for (const st of stages) st.nodeIds.forEach((id, lane) => { const n = nodeById.get(id); if (n) { n.stageIndex = st.index; n.lane = lane; } });
 
-  // data-flow edges = the DECLARED io.json ledger UNION the events-observed I/O. io.json persists across
-  // reuse and predates per-node event capture (so it wires nodes the event stream misses); events cover
-  // runs whose io.json ledger wasn't written (legacy/partial captures, e.g. an empty `{}` io.json). The
-  // union is strictly the most complete topology, and it unifies this view with observe/read.ts (io.json-
-  // only) so every renderer agrees.
-  //
-  // Keyed on the ABSOLUTE path (the two sources emit byte-identical absolute strings), which (a) lets a
-  // shared edge from both sources DEDUPE to one — never a double edge — and (b) cannot collide two distinct
-  // files that share a basename (a display-path key could). CONFLICT PRECEDENCE: the union never yields a
-  // duplicate edge (deduped by from|to|path). The only contest is a path claimed by two WRITERS; it is
-  // resolved deterministically — the declared io.json writer wins over an events-observed one, and within a
-  // source the first writer in node order wins (matching read.ts's "first writer wins"). A well-formed
-  // workflow has exactly one producer per path, so this is a guard, not a routine branch.
-  const writerOf = new Map<string, string>();                     // absolute path → producing node (first wins)
-  const claim = (nodeId: string, abs: string) => { if (abs && !writerOf.has(abs)) writerOf.set(abs, nodeId); };
-  for (const n of nodes) for (const p of ioByNode.get(n.id)?.writes ?? []) claim(n.id, p);   // declared first…
-  for (const n of nodes) for (const w of n.writes) claim(n.id, w.path);                       // …then observed
-  const readsOf = (n: RunViewNode): string[] => [
-    ...(ioByNode.get(n.id)?.reads ?? []),
-    ...n.reads.map((r) => r.path),
-  ];
-  const seen = new Set<string>();
-  const edges: RunViewEdge[] = [];
-  for (const n of nodes) {
-    for (const abs of readsOf(n)) {
-      const from = writerOf.get(abs);
-      if (!from || from === n.id) continue;
-      const key = `${from}|${n.id}|${abs}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      edges.push({ from, to: n.id, path: displayPath(abs) });
+  // EDGES — same priority as stages. The run-local resolved DAG's DECLARED data-flow edges are authoritative
+  // (one RunViewEdge per contract file; a declared edge with no files still draws the connection). Runtime
+  // io/events are then NOT consulted for topology — only for per-node telemetry. Without a resolved DAG we
+  // fall back to the declared template (opts.workflow) UNION the runtime file-flow edges.
+  let edges: RunViewEdge[];
+  if (resolvedDag?.edges) {
+    edges = [];
+    const seen = new Set<string>();
+    for (const e of resolvedDag.edges) {
+      if (!nodeById.has(e.from) || !nodeById.has(e.to) || e.from === e.to) continue;
+      const files = e.files && e.files.length ? e.files : [''];
+      for (const f of files) {
+        const p = f ? displayPath(f) : '';
+        const key = `${e.from}|${e.to}|${p}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        edges.push({ from: e.from, to: e.to, path: p });
+      }
     }
-  }
-
-  // DECLARED topology: union the template's dependency edges (a node's declared dep D → that node) onto the
-  // runtime file-flow edges above — restricted to nodes this run has, and only for pairs not already linked
-  // by a real file path. piflow init's workflow.json is the complete DAG, so this guarantees no connection
-  // is missing even when a run's io.json/events are sparse (a declared edge carries no specific file path).
-  // When a dep was ELIDED by the run's profile (e.g. the companion profile drops the verify phases), we
-  // bridge THROUGH it to its nearest present ancestors, so the downstream node stays connected.
-  const wfNodes = opts.workflow?.nodes ?? {};
-  const presentDeps = (id: string, seen = new Set<string>()): string[] => {
-    const out: string[] = [];
-    for (const d of wfNodes[id]?.deps ?? []) {
-      if (seen.has(d)) continue;
-      seen.add(d);
-      if (nodeById.has(d)) out.push(d);
-      else out.push(...presentDeps(d, seen));   // bridge through an elided node to its present ancestors
+  } else {
+    // FALLBACK (no run-local DAG): the DECLARED io.json ledger UNION the events-observed I/O, keyed on the
+    // ABSOLUTE path so a shared edge dedupes to one and basenames never collide. First writer of a path wins
+    // (declared io.json before events-observed); a well-formed workflow has one producer per path.
+    const writerOf = new Map<string, string>();
+    const claim = (nodeId: string, abs: string) => { if (abs && !writerOf.has(abs)) writerOf.set(abs, nodeId); };
+    for (const n of nodes) for (const p of ioByNode.get(n.id)?.writes ?? []) claim(n.id, p);   // declared first…
+    for (const n of nodes) for (const w of n.writes) claim(n.id, w.path);                       // …then observed
+    const readsOf = (n: RunViewNode): string[] => [
+      ...(ioByNode.get(n.id)?.reads ?? []),
+      ...n.reads.map((r) => r.path),
+    ];
+    const seen = new Set<string>();
+    edges = [];
+    for (const n of nodes) {
+      for (const abs of readsOf(n)) {
+        const from = writerOf.get(abs);
+        if (!from || from === n.id) continue;
+        const key = `${from}|${n.id}|${abs}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        edges.push({ from, to: n.id, path: displayPath(abs) });
+      }
     }
-    return out;
-  };
-  const pairLinked = new Set(edges.map((e) => `${e.from}|${e.to}`));
-  for (const to of Object.keys(wfNodes)) {
-    if (!nodeById.has(to)) continue;
-    for (const from of presentDeps(to)) {
-      if (from === to || pairLinked.has(`${from}|${to}`)) continue;
-      pairLinked.add(`${from}|${to}`);
-      edges.push({ from, to, path: '' });
+    // Fill any connection the runtime traces missed from the declared template deps, bridging THROUGH
+    // profile-elided nodes to their nearest present ancestors so the downstream node stays connected.
+    const wfNodes = opts.workflow?.nodes ?? {};
+    const presentDeps = (id: string, seenIds = new Set<string>()): string[] => {
+      const out: string[] = [];
+      for (const d of wfNodes[id]?.deps ?? []) {
+        if (seenIds.has(d)) continue;
+        seenIds.add(d);
+        if (nodeById.has(d)) out.push(d);
+        else out.push(...presentDeps(d, seenIds));
+      }
+      return out;
+    };
+    const pairLinked = new Set(edges.map((e) => `${e.from}|${e.to}`));
+    for (const to of Object.keys(wfNodes)) {
+      if (!nodeById.has(to)) continue;
+      for (const from of presentDeps(to)) {
+        if (from === to || pairLinked.has(`${from}|${to}`)) continue;
+        pairLinked.add(`${from}|${to}`);
+        edges.push({ from, to, path: '' });
+      }
     }
   }
 
