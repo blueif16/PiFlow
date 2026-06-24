@@ -82,6 +82,48 @@ describe('loadTemplate — HAPPY PATH (the unmodified fixture LOADS)', () => {
     expect(w0.prompt).toMatch(/^DRIVER-OWNS:/m);
     expect(w0.prompt).toMatch(/^DRIVER-READ-SCOPE:/m);
   });
+
+  // S1(a) — the loader must CARRY the authored op-specs (node.json `hooks`) onto the NodeIntent so the
+  // run loop can stage seeds / promote at the barrier. Pre-S1 `toNodeIntent` drops `hooks` entirely.
+  it('carries the authored hooks (seed/promote) onto intent.ops', async () => {
+    dir = await cloneFixture();
+    const spec = await loadTemplate(dir);
+    // w0-classify declares a `promote` (archetype); w2a-levels declares a `seed`.
+    const w0 = spec.nodes.find((n) => n.label === 'w0-classify')!;
+    expect(w0.ops?.promote).toEqual([
+      { from: 'spec/classification.json:archetype', to: 'archetype', merge: 'set' },
+    ]);
+    const w2a = spec.nodes.find((n) => n.label === 'w2a-levels')!;
+    expect(w2a.ops?.seed).toEqual([
+      {
+        to: 'spec/level-skeleton.json',
+        from: '{{WORKSPACE}}/templates/modules/{{state.archetype}}/level-skeleton.json',
+      },
+    ]);
+    // w2b-assets authors a `project` hook → it carries through onto ops.project (not seed/promote).
+    const w2b = spec.nodes.find((n) => n.label === 'w2b-assets')!;
+    expect(w2b.ops?.project).toEqual([
+      { to: 'public/assets/manifest.json', from: ['spec/classification.json', 'public/assets'] },
+    ]);
+    expect(w2b.ops?.seed).toBeUndefined();
+    expect(w2b.ops?.promote).toBeUndefined();
+  });
+
+  it('compile passes ops through onto the dense NodeSpec', async () => {
+    dir = await cloneFixture();
+    const wf = compile(await loadTemplate(dir));
+    expect(wf.nodes['w0-classify'].ops?.promote?.[0].to).toBe('archetype');
+    expect(wf.nodes['w2a-levels'].ops?.seed?.[0].to).toBe('spec/level-skeleton.json');
+  });
+
+  it('a NodeIntent with NO ops compiles to a NodeSpec with ops undefined (additive — absence stays absent)', () => {
+    // The additivity guarantee: an authored node that declares no ops is byte-for-byte op-free downstream.
+    const wf = compile({
+      meta: { name: 't', description: 'd' },
+      nodes: [{ label: 'Plain', prompt: 'x', tools: {}, io: { reads: [], produces: ['p.txt'], artifacts: [{ path: 'p.txt' }] } }],
+    });
+    expect(wf.nodes.plain.ops).toBeUndefined();
+  });
 });
 
 describe('loadTemplate — §8 STATIC CHECKS (each goes RED when violated)', () => {

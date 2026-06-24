@@ -36,6 +36,30 @@ export interface NodeSpec {
   hooks?: { pre?: Hook[]; post?: Hook[] };
   /** 4. The filesystem contract — and the source of the inferred DAG edges. */
   io: NodeIO;
+  /**
+   * 5. The declarative DATA ops (template `node.json` `hooks`) the RUN LOOP executes around the node —
+   * PRE `seed` (stage a starting artifact), POST `project`/`merge` (derive outputs from frozen inputs),
+   * POST `promote` (lift an output into a RunState channel). DECLARATIVE (data, not `Hook` fns) so the
+   * runner owns the resolver-ctx threading + the stage barrier. OPTIONAL/additive: a node with no `ops`
+   * behaves exactly as before. Carried verbatim from `node.json.hooks` by the template loader.
+   */
+  ops?: NodeOps;
+}
+
+/**
+ * The authored, declarative op-specs a node carries (template `node.json` `hooks`). Each entry is DATA the
+ * run loop resolves + executes; the run loop — not a closure — owns the resolver ctx, the run/workspace
+ * roots, and the stage barrier. All fields optional.
+ */
+export interface NodeOps {
+  /** PRE: stage a starting artifact at `to` from the (token-bearing) source `from`. */
+  seed?: { to: string; from: string }[];
+  /** POST: derive `to` from one or many frozen on-disk sources `from`. */
+  project?: { to: string; from: string | string[] }[];
+  /** POST: filesystem-merge one or many sources `from` into `to`. */
+  merge?: { to: string; from: string | string[] }[];
+  /** POST: lift a node output (`from`) into a RunState channel (`to`) via the reducer (default 'set'). */
+  promote?: { from: string; to: string; merge?: Reducer }[];
 }
 
 // 1 ── SANDBOX ────────────────────────────────────────────────────────────────
@@ -468,6 +492,7 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
   io: NodeIO;
   sandbox?: Partial<SandboxSpec>;
   hooks?: NodeSpec['hooks'];
+  ops?: NodeSpec['ops'];
 };
 
 /** A flat bag of nodes — NO edges. `compile` derives the DAG from each node's `io`. */

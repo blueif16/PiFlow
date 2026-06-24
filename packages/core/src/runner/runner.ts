@@ -28,6 +28,7 @@ import type {
   SecretResolver,
   PiCommandOptions,
   ReturnMode,
+  RunState,
 } from '../types.js';
 import { defaultSecretResolver } from '../types.js';
 import { DefaultToolRegistry } from '../tools/registry.js';
@@ -39,6 +40,7 @@ import { validateArtifactSchemas, defaultSchemaValidator, type SchemaValidator }
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
 import { defaultPiCommand, type CommandBuilder } from './command.js';
+import { resolveTokens, type ResolveCtx } from '../workflow/resolver.js';
 import {
   type RunStatus,
   type NodeStatusRecord,
@@ -81,6 +83,16 @@ export interface RunOptions {
   outDir?: string;
   /** Base checkout root for a run-scoped provider (worktree-path source / prompt-rewrite anchor). Default cwd. */
   repoRoot?: string;
+  /**
+   * `{{WORKSPACE}}` — the canonical, read-only, OUT-OF-THREAD tree (skills · templates · registry) that
+   * tokens resolve against at node launch. Default `repoRoot` (the live tree for a local provider).
+   */
+  workspace?: string;
+  /**
+   * The run-level args (`--arg k=v` delivery) that `{{arg.<key>}}` tokens resolve against at node launch.
+   * A `{{arg.x}}` token with no matching key fails the node loudly (MissingArgError), never a silent ''.
+   */
+  args?: Record<string, string>;
   /** Sandbox backend. Default the in-memory reference provider. */
   provider?: SandboxProvider;
   /** Tool registry to resolve each node's selection. Default builtin registry. */
@@ -363,6 +375,15 @@ interface RunContext {
   secretResolver?: SecretResolver;
   /** Run-level default for the return handshake (a node's own `returnMode` wins; else this; else the artifact heuristic). */
   returnProtocol?: ReturnMode;
+  /** `{{WORKSPACE}}` — the canonical out-of-thread tree tokens resolve against (default repoRoot). */
+  workspace: string;
+  /** The run-level args `{{arg.<key>}}` tokens resolve against (`--arg k=v`). */
+  args: Record<string, string>;
+  /**
+   * The per-thread RunState `{{state.<channel>}}` tokens resolve against. Loaded once at run start and
+   * folded at each stage barrier (S3); the S1 spine threads it as `{}` until promote wiring lands.
+   */
+  runState: RunState;
 }
 
 /** Read a host-side input file as bytes (for staging a downstream node's reads). */
@@ -462,11 +483,22 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
       if (data) await sandbox.writeFile(rel, data);
     }
 
+    // TOKEN RESOLUTION AT LAUNCH (U7): make `{{arg.*}}`/`{{WORKSPACE}}`/`{{RUN}}`/`{{state.*}}` PHYSICAL
+    // in the prompt before staging. A missing arg/channel throws loudly (MissingArgError/MissingChannelError)
+    // → the node fails with a clear issue, never a silently-unresolved prompt handed to the model.
+    const resolveCtx: ResolveCtx = { run: ctx.outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
+    let resolvedPrompt: string;
+    try {
+      resolvedPrompt = resolveTokens(node.prompt, resolveCtx);
+    } catch (e) {
+      return finishNode(ctx, node, rec, t0, 'error', `prompt token resolution failed: ${(e as Error).message}`, [], [(e as Error).message]);
+    }
+
     // The prompt carries the machine-readable contract markers (artifacts/owns/read-scope/tools) so a
     // future node-contract extension can self-gate; we append them exactly as run.mjs does.
     const markers = emitMarkers(markersFromNode(node, resolved));
     const promptFile = path.posix.join(nodeStage, 'prompt.md');
-    await sandbox.writeFile(promptFile, node.prompt + (markers ? `\n\n${markers}` : ''));
+    await sandbox.writeFile(promptFile, resolvedPrompt + (markers ? `\n\n${markers}` : ''));
 
     // Stage the generated tool `-e` extension (binds the node's declared sdk/mcp tools) and pass its
     // in-sandbox path to the command builder. Absent when the node selected only builtins.
@@ -691,6 +723,9 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     providerKind: provider.kind,
     secretResolver: opts.secretResolver,
     returnProtocol: opts.returnProtocol,
+    workspace: opts.workspace ?? repoRoot,
+    args: opts.args ?? {},
+    runState: {},
     watchdog: {
       nodeTimeoutMs: opts.nodeTimeoutMs ?? 1_800_000,
       stallMs: opts.stallMs ?? 0,

@@ -39,7 +39,7 @@ export { applyReducer, mergeUpdate, loadState, persistState } from './workflow/s
 
 // U7 — the SINGLE runtime token resolver: `{{RUN}}`/`{{WORKSPACE}}`/`{{state.<channel>}}` made physical,
 // applied uniformly to every marker (retires the `BASE_ROOT→wtRoot` regex + `RUN_CWD`-relative tokens).
-export { resolveTokens, resolveAll, MissingChannelError } from './workflow/resolver.js';
+export { resolveTokens, resolveAll, MissingChannelError, MissingArgError } from './workflow/resolver.js';
 export type { ResolveCtx } from './workflow/resolver.js';
 
 // U7 — deterministic op executors (seed PRE · project/merge POST), re-rooted onto the logical resolver.

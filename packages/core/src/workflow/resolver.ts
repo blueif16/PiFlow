@@ -21,7 +21,7 @@
 import type { RunState } from '../types.js';
 import { reToken } from './template/tokens.js';
 
-/** The two engine-resolved logical roots + the per-thread RunState channels. */
+/** The two engine-resolved logical roots + the per-thread RunState channels + the run-level args. */
 export interface ResolveCtx {
   /** `{{RUN}}` — the per-thread mutable output root (`projectBase`, e.g. `out/<run>`). */
   run: string;
@@ -29,6 +29,8 @@ export interface ResolveCtx {
   workspace: string;
   /** The RunState channels (`{{state.<channel>}}` reads these). Absent ⇒ no `{{state}}` token may resolve. */
   state?: RunState;
+  /** The run-level args (`{{arg.<key>}}` reads these — the `--arg k=v` delivery). Absent ⇒ no `{{arg}}` may resolve. */
+  args?: Record<string, string>;
 }
 
 /** Thrown when a `{{state.<channel>}}` token names a channel that is ABSENT from RunState. NOT a silent ''. */
@@ -42,8 +44,20 @@ export class MissingChannelError extends Error {
   }
 }
 
-// One regex covers all three token kinds; the captured `inner` selects the resolver branch.
+/** Thrown when a `{{arg.<key>}}` token names a run arg that was not supplied. NOT a silent ''. */
+export class MissingArgError extends Error {
+  constructor(public readonly key: string) {
+    super(
+      `unresolved run arg "${key}": no such key in the run args. ` +
+        `Supply it via --arg ${key}=<value> (the consumer reads {{arg.${key}}}).`,
+    );
+    this.name = 'MissingArgError';
+  }
+}
+
+// One regex covers each token kind; the captured `inner` selects the resolver branch.
 const STATE_RE = /^state\.([A-Za-z0-9_]+)$/;
+const ARG_RE = /^arg\.([A-Za-z0-9_]+)$/;
 
 /**
  * Resolve EVERY `{{…}}` token in `s` against the logical roots + RunState. Pure. A string with no token
@@ -62,7 +76,16 @@ export function resolveTokens(s: string, ctx: ResolveCtx): string {
       if (!(channel in state)) throw new MissingChannelError(channel);
       return String(state[channel]);
     }
-    // An unknown `{{token}}` (not RUN/WORKSPACE/state.*) is left verbatim — it is not ours to resolve.
+    const am = ARG_RE.exec(inner);
+    if (am) {
+      const key = am[1];
+      const args = ctx.args ?? {};
+      // Mirror the state discipline: an ABSENT arg throws (never a silent '') — but an explicitly-set
+      // empty/0 value is PRESENT.
+      if (!(key in args)) throw new MissingArgError(key);
+      return String(args[key]);
+    }
+    // An unknown `{{token}}` (not RUN/WORKSPACE/state.*/arg.*) is left verbatim — it is not ours to resolve.
     return _whole;
   });
 }

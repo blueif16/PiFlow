@@ -12,7 +12,7 @@
 
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
-import type { WorkflowSpec, NodeIntent, ReturnMode } from '../../types.js';
+import type { WorkflowSpec, NodeIntent, NodeOps, ReturnMode, Reducer } from '../../types.js';
 import { defaultSchemaValidator, type SchemaValidator } from '../../runner/schema.js';
 import { nodeSchema, metaSchema } from './schema/index.js';
 import type { LoadedNode, TemplateNode, TemplateMeta } from './types.js';
@@ -83,9 +83,27 @@ async function scanNodes(dir: string): Promise<{ loaded: LoadedNode[]; raw: { id
   return { loaded, raw };
 }
 
+/**
+ * Carry the authored `node.json.hooks` block onto the runtime `NodeOps` (the declarative DATA the run
+ * loop executes: seed PRE · project/merge/promote POST). The `node.json` `hooks` shape IS `NodeOps`
+ * (`{to,from}` / `{from,to,merge}`), so this is a near-pass-through; only `promote.merge` is narrowed
+ * from the authored `string` to the `Reducer` union (the schema gate already constrains it). Returns
+ * undefined when no hooks block is authored (so a node with no ops stays op-free — additive).
+ */
+function toNodeOps(h: LoadedNode['def']['hooks']): NodeOps | undefined {
+  if (!h) return undefined;
+  const ops: NodeOps = {};
+  if (h.seed) ops.seed = h.seed;
+  if (h.project) ops.project = h.project;
+  if (h.merge) ops.merge = h.merge;
+  if (h.promote) ops.promote = h.promote.map((p) => ({ from: p.from, to: p.to, merge: p.merge as Reducer }));
+  return ops;
+}
+
 /** Map an authored TemplateNode → the runtime NodeIntent the existing DAG compiler consumes. */
 function toNodeIntent(n: LoadedNode): NodeIntent {
   const c = n.def.contract;
+  const ops = toNodeOps(n.def.hooks);
   const intent: NodeIntent = {
     // label = the template id so `slugify(label)` round-trips to the SAME id (the DAG compiler derives
     // ids from labels, not from an authored id — keeping `compile`'s graph aligned with the template).
@@ -111,6 +129,8 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
       write: c.owns.slice(),
     },
   };
+  // Additive: only attach `ops` when the node authored a hooks block (a node with none stays op-free).
+  if (ops) intent.ops = ops;
   return intent;
 }
 

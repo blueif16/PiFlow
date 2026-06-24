@@ -413,6 +413,89 @@ describe('runWorkflow — per-node staging isolation (parallel nodes never clobb
   });
 });
 
+// ── S1: token resolution at node launch — {{arg.*}}/{{WORKSPACE}}/{{RUN}} made physical in the prompt ─
+
+describe('runWorkflow — prompt token resolution at node launch (S1)', () => {
+  /** A recording provider that captures every writeFile (so a test can inspect the STAGED prompt bytes). */
+  function recorder(): { provider: SandboxProvider; writes: { path: string; data: string }[] } {
+    const writes: { path: string; data: string }[] = [];
+    const base = new InMemorySandboxProvider();
+    const provider: SandboxProvider = {
+      kind: 'inmemory',
+      async create(opts: CreateOpts): Promise<Sandbox> {
+        const sb = await base.create(opts);
+        const orig = sb.writeFile.bind(sb);
+        sb.writeFile = async (p: string, d: Uint8Array | string) => {
+          writes.push({ path: p, data: typeof d === 'string' ? d : Buffer.from(d).toString('utf8') });
+          return orig(p, d);
+        };
+        return sb;
+      },
+    };
+    return { provider, writes };
+  }
+
+  it('resolves {{arg.*}} and {{WORKSPACE}}/{{RUN}} in the prompt BEFORE staging it on disk', async () => {
+    // The prompt prose carries logical tokens (exactly like w0-classify/prompt.md's {{arg.prompt}}).
+    const node: NodeIntent = {
+      label: 'Classify',
+      prompt: 'Build: {{arg.prompt}} | canon={{WORKSPACE}}/skills | out={{RUN}}/spec',
+      tools: {},
+      io: { reads: [], produces: ['s.txt'], artifacts: [{ path: 's.txt' }] },
+    };
+    const outDir = await tmpOut();
+    const { provider, writes } = recorder();
+
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'argres',
+      outDir,
+      provider,
+      buildCommand: stubBuilder(),
+      args: { prompt: 'a fast platformer' },
+      workspace: '/canon-root',
+    });
+    expect(status.nodes.classify.status).toBe('ok');
+
+    const staged = writes.find((w) => w.path === '_pi/classify/prompt.md')!;
+    expect(staged).toBeTruthy();
+    // The tokens are PHYSICAL on disk — not the verbatim {{…}} the pre-S1 runner staged.
+    expect(staged.data).toContain('Build: a fast platformer');
+    expect(staged.data).toContain('canon=/canon-root/skills');
+    expect(staged.data).toContain(`out=${outDir}/spec`); // {{RUN}} resolves to outDir
+    expect(staged.data).not.toContain('{{arg.prompt}}');
+    expect(staged.data).not.toContain('{{WORKSPACE}}');
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a missing {{arg.*}} fails the node loudly (MissingArgError) — never a silent unresolved prompt', async () => {
+    const node: NodeIntent = {
+      label: 'Need',
+      prompt: 'requires {{arg.absent}}',
+      tools: {},
+      io: { reads: [], produces: ['s.txt'], artifacts: [{ path: 's.txt' }] },
+    };
+    const outDir = await tmpOut();
+    // No `args` supplied → the {{arg.absent}} token cannot resolve.
+    const { status } = await runWorkflow(compile(wf([node])), { run: 'argmiss', outDir, buildCommand: stubBuilder() });
+    expect(status.nodes.need.status).toBe('error');
+    expect(status.nodes.need.issues.join(' ')).toMatch(/absent/);
+    expect(status.ok).toBe(false);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a prompt with NO tokens is staged byte-identical (additive — non-token prompts unchanged)', async () => {
+    const outDir = await tmpOut();
+    const { provider, writes } = recorder();
+    await runWorkflow(compile(wf([n('Plain', [], ['p.txt'])])), { run: 'plain-res', outDir, provider, buildCommand: stubBuilder() });
+    const staged = writes.find((w) => w.path === '_pi/plain/prompt.md')!;
+    // 'do Plain' prose survives intact (the markers tail still appends, as before).
+    expect(staged.data).toContain('do Plain');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
 // ── run scope: openRun lifecycle (worktree/cloud share ONE resource across a run) ─────────────────
 
 describe('runWorkflow — run scope (the openRun lifecycle for worktree/cloud providers)', () => {

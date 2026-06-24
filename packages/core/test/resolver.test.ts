@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveTokens, resolveAll, MissingChannelError } from '../src/index.js';
+import { resolveTokens, resolveAll, MissingChannelError, MissingArgError } from '../src/index.js';
 import type { ResolveCtx } from '../src/index.js';
 
 const ctx = (over: Partial<ResolveCtx> = {}): ResolveCtx => ({
@@ -58,6 +58,40 @@ describe('resolveTokens — the single logical-root + state resolver (U7)', () =
 
   it('treats an explicitly-null channel value as PRESENT (not missing) — only an ABSENT key throws', () => {
     expect(resolveTokens('{{state.maybe}}', ctx({ state: { maybe: null } }))).toBe('null');
+  });
+});
+
+// S1 — the arg channel: `{{arg.<key>}}` resolves against ResolveCtx.args at node launch (the consumer
+// vocabulary is ahead of the engine — w0-classify/prompt.md already uses {{arg.prompt}}). A missing arg
+// throws MissingArgError (the sibling of MissingChannelError — never a silent '').
+describe('resolveTokens — the arg channel (S1)', () => {
+  it('{{arg.<key>}} resolves to the arg value from ResolveCtx.args', () => {
+    expect(resolveTokens('{{arg.prompt}}', ctx({ args: { prompt: 'make a platformer' } }))).toBe(
+      'make a platformer',
+    );
+  });
+
+  it('resolves an {{arg.*}} mixed with the logical roots in one string', () => {
+    expect(
+      resolveTokens('{{RUN}}/spec << {{arg.prompt}}', ctx({ args: { prompt: 'hi' } })),
+    ).toBe('/runs/abc/spec << hi');
+  });
+
+  it('THROWS MissingArgError for an absent arg key — never a silent empty string', () => {
+    expect(() => resolveTokens('{{arg.nope}}', ctx({ args: { prompt: 'hi' } }))).toThrow(MissingArgError);
+    expect(() => resolveTokens('{{arg.nope}}', ctx({ args: {} }))).toThrow(/nope/);
+    // load-bearing: it must NOT degrade to '' (mirrors the state-channel discipline).
+    let resolved: string | undefined;
+    try {
+      resolved = resolveTokens('x={{arg.nope}}', ctx({ args: {} }));
+    } catch {
+      resolved = undefined;
+    }
+    expect(resolved).toBeUndefined();
+  });
+
+  it('throws MissingArgError when args is ABSENT entirely (no channel to resolve against)', () => {
+    expect(() => resolveTokens('{{arg.prompt}}', ctx({ args: undefined }))).toThrow(MissingArgError);
   });
 });
 
