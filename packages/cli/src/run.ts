@@ -111,6 +111,8 @@ export interface DryRunPlanOpts {
   provider?: string;
   /** Model pin, if any. */
   model?: string;
+  /** Reasoning-depth cap → `pi --thinking <v>`. Rendered only when set, mirroring the LIVE command. */
+  thinking?: string;
 }
 
 /**
@@ -142,7 +144,7 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
         resolved = { piTools: [] as string[] };
         note = `  # NOTE: tools unresolved at preview (${(e as Error).message})`;
       }
-      const cmd = defaultPiCommand(node, resolved, { promptFile, provider, model: opts.model });
+      const cmd = defaultPiCommand(node, resolved, { promptFile, provider, model: opts.model }, { thinking: opts.thinking });
       lines.push(`    [${id}] ${cmd}${note}`);
     }
   }
@@ -181,7 +183,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     await instantiateRun(templateDir, outDir, { workspace });
     // reference the actual realized prompt path the run materialized (engine-owned layout helper).
     const samplePromptDir = nodePromptFile(outDir, '<id>').replace(/\/<id>\/prompt\.md$/, '');
-    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: parsed.provider ?? 'cp', model: parsed.model }));
+    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: parsed.provider ?? 'cp', model: parsed.model, thinking: parsed.thinking }));
     return undefined;
   }
 

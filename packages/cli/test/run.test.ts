@@ -113,6 +113,14 @@ describe('piflow run --dry-run — realized commands, no model', () => {
     expect(plan).toContain('@'); // the prompt is referenced as @<file>
   });
 
+  it('renders --thinking faithfully — present when set, absent when not (a dry-run that drops a flag the LIVE run emits is a lying preview)', async () => {
+    const wf = compile(await loadTemplate(TEMPLATE_MIN));
+    // set ⇒ the cap appears on every realized command, mirroring defaultPiCommand's `opts.thinking` branch.
+    expect(dryRunPlan(wf, { promptDir: '/run/_pi', thinking: 'low' })).toContain('--thinking low');
+    // absent ⇒ no flag (the LIVE command omits it too) — guards against a spurious default.
+    expect(dryRunPlan(wf, { promptDir: '/run/_pi' })).not.toContain('--thinking');
+  });
+
   it('run --dry-run materializes ${RUN}/.pi via instantiateRun and invokes NO model (runFromConfig not called)', async () => {
     let runFromConfigCalls = 0;
     const lines: string[] = [];
