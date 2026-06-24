@@ -103,6 +103,29 @@ describe('slimEvent — keep the signal, drop the bulk', () => {
     expect(slimEvent({ type: 'message_end', message: { big: 1 }, usage: { tokens: 42 } }))
       .toEqual({ type: 'message_end', usage: { tokens: 42 } });
   });
+  // THE token-loss bug: pi puts per-call usage + model INSIDE `message` (message.usage / message.model),
+  // alongside the cumulative transcript (message.content — the size killer). Deleting the WHOLE message
+  // throws away the only token source. Keep the small fields; drop ONLY content. (Verified against real
+  // game-omni e2e-m3 message_end events.)
+  it('keeps message.usage + model/provider on a message_end, dropping only the bulky content', () => {
+    const ev = {
+      type: 'message_end',
+      message: {
+        role: 'assistant', model: 'MiniMax-M3', provider: 'mmgw', api: 'anthropic-messages',
+        usage: { input: 60, output: 391, cacheRead: 54242, totalTokens: 54693, cost: { total: 0 } },
+        stopReason: 'end_turn',
+        content: [{ type: 'text', text: 'x'.repeat(5000) }], // the cumulative snapshot bulk
+      },
+    };
+    expect(slimEvent(ev)).toEqual({
+      type: 'message_end',
+      message: {
+        role: 'assistant', model: 'MiniMax-M3', provider: 'mmgw', api: 'anthropic-messages',
+        usage: { input: 60, output: 391, cacheRead: 54242, totalTokens: 54693, cost: { total: 0 } },
+        stopReason: 'end_turn',
+      },
+    });
+  });
   it('truncates a large tool_execution_end result, leaves a small one intact', () => {
     const big = slimEvent({ type: 'tool_execution_end', toolName: 'read', result: { content: 'x'.repeat(5000) } }) as PiEvent;
     expect((big.result as { truncated?: boolean }).truncated).toBe(true);

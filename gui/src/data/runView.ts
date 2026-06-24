@@ -59,6 +59,8 @@ export interface RunView {
   done?: boolean;
   ok?: boolean | null;
   totals?: { nodes: number; ok: number; failed: number };
+  /** run-level rollup of every node's token usage (sum of per-node tokens; contextPeak is the max). */
+  tokenTotal?: RunTokens;
   stages: RunViewStage[];
   edges: RunViewEdge[];
   nodes: RunViewNode[];

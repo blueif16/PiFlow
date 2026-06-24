@@ -13,6 +13,15 @@
     "ok": 9,
     "failed": 0
   },
+  "tokenTotal": {
+    "input": 493653,
+    "output": 147312,
+    "cacheRead": 2442108,
+    "cacheWrite": 0,
+    "cost": 0,
+    "billable": 640965,
+    "contextPeak": 139653
+  },
   "stages": [
     {
       "index": 1,
@@ -235,13 +244,13 @@
         }
       ],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 7030,
+        "input": 33965,
+        "output": 5147,
+        "cacheRead": 85874,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object][object Object][object Object]",
-        "contextPeak": 7030,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 30967,
+        "billable": 39112
       },
       "issues": [],
       "stageIndex": 1,
@@ -411,13 +420,13 @@
       "artifacts": [],
       "bash": [],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 0,
+        "input": 44423,
+        "output": 2671,
+        "cacheRead": 184064,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object]",
-        "contextPeak": 0,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 46691,
+        "billable": 47094
       },
       "issues": [],
       "stageIndex": 2,
@@ -621,13 +630,13 @@
       "artifacts": [],
       "bash": [],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 360925,
+        "input": 171354,
+        "output": 74867,
+        "cacheRead": 331450,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object][object Object][object Object][object Object][object Object]",
-        "contextPeak": 138590,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 139653,
+        "billable": 246221
       },
       "issues": [],
       "stageIndex": 3,
@@ -722,13 +731,13 @@
       "artifacts": [],
       "bash": [],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 54559,
+        "input": 28303,
+        "output": 3626,
+        "cacheRead": 26256,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object]",
-        "contextPeak": 26086,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 26269,
+        "billable": 31929
       },
       "issues": [],
       "stageIndex": 4,
@@ -900,13 +909,13 @@
       "artifacts": [],
       "bash": [],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 151947,
+        "input": 37476,
+        "output": 16240,
+        "cacheRead": 114471,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object][object Object][object Object]",
-        "contextPeak": 45937,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 47814,
+        "billable": 53716
       },
       "issues": [],
       "stageIndex": 4,
@@ -1172,13 +1181,13 @@
       "artifacts": [],
       "bash": [],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 773891,
+        "input": 49259,
+        "output": 23865,
+        "cacheRead": 724632,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object]",
-        "contextPeak": 60454,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 61151,
+        "billable": 73124
       },
       "issues": [],
       "stageIndex": 4,
@@ -1329,13 +1338,13 @@
       "artifacts": [],
       "bash": [],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 0,
+        "input": 39458,
+        "output": 9130,
+        "cacheRead": 64387,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object][object Object]",
-        "contextPeak": 0,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 40201,
+        "billable": 48588
       },
       "issues": [],
       "stageIndex": 4,
@@ -1441,13 +1450,13 @@
       "artifacts": [],
       "bash": [],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 75123,
+        "input": 38692,
+        "output": 5167,
+        "cacheRead": 36431,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object]",
-        "contextPeak": 36293,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 37153,
+        "billable": 43859
       },
       "issues": [],
       "stageIndex": 4,
@@ -1924,13 +1933,13 @@
         }
       ],
       "tokens": {
-        "input": 0,
-        "output": 0,
-        "cacheRead": 10595,
+        "input": 50723,
+        "output": 6599,
+        "cacheRead": 874543,
         "cacheWrite": 0,
-        "cost": "0[object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object][object Object]",
-        "contextPeak": 10595,
-        "billable": 0
+        "cost": 0,
+        "contextPeak": 54693,
+        "billable": 57322
       },
       "summary": "Pre-staged state verified: STRUCTURE.md (83 lines, full architecture map) and index.json (6 paddle_ball slots, paths/status already reconciled by the asset lane) are on disk; src/levels/level1.json carries the full step-3 weave (paddle/ball/45 bricks/9 effects/3 systems/backgroundColor+backgroundSlot); src/main.ts installs window.__GAME__; npm run build is green (tsc --noEmit + vite build, 60 modules).",
       "issues": [
