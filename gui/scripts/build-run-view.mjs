@@ -24,7 +24,8 @@ function displayPath(abs) {
   if (typeof abs !== 'string') return String(abs);
   const i = abs.indexOf('/game-omni/');
   if (i >= 0) return abs.slice(i + '/game-omni/'.length);
-  return abs.replace(/^.*\//, '');
+  if (!abs.startsWith('/')) return abs; // already relative (e.g. status-record artifacts) — keep verbatim
+  return abs.replace(/^.*\//, ''); // some other absolute path — fall back to basename
 }
 
 // The "different kind of scope" the user wants the LEFT region to show differently. Derived from where

@@ -1824,19 +1824,19 @@
       "artifacts": [
         {
           "path": "out/e2e-m3/STRUCTURE.md",
-          "displayPath": "STRUCTURE.md",
+          "displayPath": "out/e2e-m3/STRUCTURE.md",
           "exists": true,
           "bytes": 9881
         },
         {
           "path": "out/e2e-m3/index.json",
-          "displayPath": "index.json",
+          "displayPath": "out/e2e-m3/index.json",
           "exists": true,
           "bytes": 1585
         },
         {
           "path": "out/e2e-m3/MEMORY.w2.md",
-          "displayPath": "MEMORY.w2.md",
+          "displayPath": "out/e2e-m3/MEMORY.w2.md",
           "exists": true,
           "bytes": 18056
         }
