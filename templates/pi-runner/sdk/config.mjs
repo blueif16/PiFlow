@@ -11,14 +11,21 @@ import { fileURLToPath } from "node:url";
 // the .env lives at pi-runner/.env; BASE_ROOT defaults to its parent (the repo root).
 export const HERE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Load pi-runner/.env (KEY=VALUE). A real process.env value always wins (set only when undefined). */
+/**
+ * Load pi-runner/.env (KEY=VALUE) as the GROUND-TRUTH config: each declared value OVERWRITES ambient
+ * process.env. The committed .env is authoritative — a stray shell export (e.g. a `PI_RUNNER_PROVIDER`
+ * inherited from the terminal that launched the runner) must NEVER silently change the declared
+ * provider/model. Explicit CLI flags still win: loadConfig/parseArgs read the parsed arg BEFORE
+ * process.env. Precedence: CLI flag > .env (this file) > ambient env > built-in default. Only keys the
+ * .env actually declares are overwritten; everything else keeps its ambient value.
+ */
 export function loadDefaults(here = HERE) {
   let raw;
   try { raw = fs.readFileSync(path.join(here, ".env"), "utf8"); } catch { return; }
   for (const line of raw.split("\n")) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
     if (!m) continue;
-    if (process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    process.env[m[1]] = m[2].replace(/^["']|["']$/g, ""); // .env is ground truth — overwrite ambient
   }
 }
 
