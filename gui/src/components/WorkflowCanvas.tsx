@@ -125,10 +125,12 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   useEffect(() => {
     if (viewable || !activeRun) return;
     if (!live.model) { setNodes([]); setEdges([]); setDir({ tree: [], fileToNode: {} }); return; }
-    const { nodes: n, edges: e } = liveFlowGraph(live.model);
+    // pass richByNode so a running node renders its LIVE-folded tokens/tools (the HUD's rv); re-runs
+    // when richByNode updates (the throttled fold) so the numbers climb as the run streams.
+    const { nodes: n, edges: e } = liveFlowGraph(live.model, live.richByNode);
     setNodes(n);
     setEdges(e);
-  }, [viewable, activeRun, live.model, setNodes, setEdges]);
+  }, [viewable, activeRun, live.model, live.richByNode, setNodes, setEdges]);
 
   // switch the viewed run (from the menu-bar switcher): load it + close any open node
   const selectRun = useCallback((run: string) => {

@@ -6,7 +6,9 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { Edge } from "@xyflow/react";
 import type { FlowNode, FlowNodeData } from "../components/WorkflowNode";
-import { toNodeStatus } from "./runView";
+import { toNodeStatus, formatMs } from "./runView";
+import type { RunViewNode } from "./runView";
+import { LiveTelemetry } from "./liveTelemetry";
 
 export type LiveNodeStatus =
   | "pending" | "running" | "ok" | "reused" | "gap" | "blocked" | "error" | "dry";
@@ -51,11 +53,19 @@ export interface RunStreamState {
   model: LiveModel | null;
   /** rolling tail of the most recent node events — the live "what's happening now" feed. */
   recent: RunEvent[];
+  /** per-node rich telemetry folded LIVE from the node-event firehose (tokens/tools/reads/writes/
+   *  timeline), keyed by node id — the SAME shape the transcoded run-view carries, so the existing
+   *  HUD renders it. Only nodes that have emitted events appear; the rest stay lean. */
+  richByNode: Record<string, RunViewNode>;
+  /** sum of every folded node's billable tokens — the run-level live token counter. */
+  liveBillable: number;
   error?: string;
 }
 
-const INITIAL: RunStreamState = { status: "connecting", model: null, recent: [] };
+const INITIAL: RunStreamState = { status: "connecting", model: null, recent: [], richByNode: {}, liveBillable: 0 };
 const RECENT_CAP = 40;
+/** How often to re-fold the live accumulators into richByNode (cheap, but not per-event at firehose rate). */
+const FOLD_MS = 500;
 
 /** Shared stream state — CanvasInner owns ONE subscription (for the live graph) and provides it here so
  *  the Companion reads the same connection instead of opening a second EventSource. */
@@ -97,20 +107,36 @@ export function useRunStream(run: string | null | undefined): RunStreamState {
   useEffect(() => {
     if (!run) { setState(INITIAL); return; }
     setState(INITIAL);
+    // ONE telemetry folder per run: every node-event frame is folded through the SHARED distiller, then
+    // a throttled flush rebuilds richByNode (per-node tokens/tools/reads the HUD renders) off the model.
+    const tele = new LiveTelemetry();
+    const dirty = { current: false };
+    const flush = () => {
+      if (!dirty.current) return;
+      dirty.current = false;
+      setState((prev) => {
+        if (!prev.model) return prev;
+        return { ...prev, richByNode: tele.richByNode(prev.model.nodes), liveBillable: tele.billableTotal() };
+      });
+    };
+    const foldTimer = window.setInterval(flush, FOLD_MS);
+
     const es = new EventSource(`/__piflow/stream/${encodeURIComponent(run)}`);
     esRef.current = es;
     es.onmessage = (e: MessageEvent) => {
       let f: Frame;
       try { f = JSON.parse(e.data) as Frame; } catch { return; }
+      if (f.kind === "node-event") { tele.pushEvent(f.id, f.event); dirty.current = true; }
       if (f.kind === "done") es.close(); // finished run → stop auto-reconnect
       setState((prev) => reduce(prev, f));
+      if (f.kind === "done") flush(); // final fold so a finished run shows its complete token totals
     };
     es.onerror = () => {
       // EventSource retries on its own; only surface an error if we never got a model
       // and the run isn't already done.
       setState((prev) => (prev.status === "done" || prev.model ? prev : { ...prev, status: "error", error: "stream connection failed" }));
     };
-    return () => { es.close(); esRef.current = null; };
+    return () => { es.close(); esRef.current = null; window.clearInterval(foldTimer); };
   }, [run]);
 
   return state;
@@ -140,26 +166,49 @@ export function whereAreWe(s: RunStreamState): string {
 /**
  * Build the React Flow graph from the LIVE model — the canvas renderer for a run with no transcoded
  * run-view.json (a running or foreign run). Positions by stage column / parallel lane (same layout as
- * runView.toFlowGraph); status drives the node color and re-renders as node-status deltas arrive. HUD
- * detail is sparse (the live model is lean) — the rich view comes from run-view.json once transcoded.
+ * runView.toFlowGraph); status drives the node color and re-renders as node-status deltas arrive. When
+ * `richByNode` carries this node's LIVE-folded telemetry it is attached as `rv` — so the SAME NodeHud
+ * that renders a transcoded run now shows real tokens/tools/reads for a RUNNING node; nodes with no
+ * folded events yet stay lean (just status + stage).
  */
-export function liveFlowGraph(model: LiveModel): { nodes: FlowNode[]; edges: Edge[] } {
+export function liveFlowGraph(
+  model: LiveModel,
+  richByNode: Record<string, RunViewNode> = {},
+): { nodes: FlowNode[]; edges: Edge[] } {
   const COL = 300;
   const ROW = 132;
   const nodes: FlowNode[] = model.nodes.map((n) => {
-    const data: FlowNodeData = {
-      title: n.label,
-      kind: "agent",
-      typeLabel: n.phase ?? "node",
-      status: toNodeStatus(n.status),
-      preview: n.status === "running" ? "running…" : n.status,
-      progress: n.status === "running" ? undefined : 1,
-      meta: [
-        { label: "Status", value: n.status, mono: true },
-        { label: "Stage", value: String(n.stageIndex), mono: true },
-      ],
-      io: { inputs: [], outputs: [] },
-    };
+    const rv = richByNode[n.id];
+    const data: FlowNodeData = rv
+      ? {
+          title: n.label,
+          kind: "agent",
+          typeLabel: n.phase ?? "node",
+          status: toNodeStatus(n.status),
+          preview: `${rv.tokens?.billable?.toLocaleString() ?? 0} tok · ${rv.toolCalls} tools`,
+          progress: n.status === "running" ? undefined : 1,
+          meta: [
+            { label: "Model", value: rv.model ?? "—", mono: true },
+            { label: "Tokens", value: (rv.tokens?.billable ?? 0).toLocaleString() },
+            { label: "Tool calls", value: String(rv.toolCalls) },
+            { label: "Duration", value: formatMs(rv.durationMs), mono: true },
+          ],
+          io: { inputs: rv.reads.map((r) => r.displayPath), outputs: rv.writes.map((w) => w.displayPath) },
+          rv,
+        }
+      : {
+          title: n.label,
+          kind: "agent",
+          typeLabel: n.phase ?? "node",
+          status: toNodeStatus(n.status),
+          preview: n.status === "running" ? "running…" : n.status,
+          progress: n.status === "running" ? undefined : 1,
+          meta: [
+            { label: "Status", value: n.status, mono: true },
+            { label: "Stage", value: String(n.stageIndex), mono: true },
+          ],
+          io: { inputs: [], outputs: [] },
+        };
     return {
       id: n.id,
       type: "flowNode",

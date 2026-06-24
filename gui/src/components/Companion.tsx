@@ -43,7 +43,9 @@ export function Companion({ activeRun }: { activeRun: string }) {
 
   const live = useRunStreamContext(); // shared subscription (owned by CanvasInner) — no second connection
   const where = whereAreWe(live);
-  const context = expandedId ? `${activeRun} · ${expandedId}` : `${activeRun} · ${where}`;
+  // live token counter folded from the node-event firehose (0 until events stream / for a lean run)
+  const tokens = live.liveBillable > 0 ? ` · ${live.liveBillable.toLocaleString()} tok` : "";
+  const context = expandedId ? `${activeRun} · ${expandedId}` : `${activeRun} · ${where}${tokens}`;
 
   function send(e: FormEvent) {
     e.preventDefault();
