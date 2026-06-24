@@ -83,7 +83,17 @@ export interface RunView {
 }
 export interface NodeAudit { id: string; status: string; exists: boolean; bytes: number; lines: number; seen: number; dropped: number; usageEvents: number; billable: number }
 
-export interface BuildRunViewOpts { historyDirs?: string[]; workspaceRoot?: string | null; catalog?: ModelCatalog }
+export interface BuildRunViewOpts {
+  historyDirs?: string[];
+  workspaceRoot?: string | null;
+  catalog?: ModelCatalog;
+  /** The template's declared DAG from piflow init's `workflow.json` — ordered `stages` + per-node `deps`.
+   *  When the caller resolves it (the SDK never reaches into the registry itself), the graph's stages and
+   *  edges come from this COMPLETE topology, so no declared connection is missing even when a run's
+   *  io.json/events are sparse. Absent → structure is derived from the run alone (phase grouping + runtime
+   *  file-flow edges). */
+  workflow?: { stages?: string[][]; nodes?: Record<string, { phase?: string | null; deps?: string[] }> } | null;
+}
 
 // Strip an absolute path to a workspace-relative display path (workspace root first, then the legacy
 // `/game-omni/` heuristic for the older demo capture, then a bare basename).
@@ -222,15 +232,27 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
     });
   }
 
-  // stages: group nodes by phase in execution order (a shared phase with >1 node is a parallel lane)
-  const ordered = [...nodes].sort((a, b) => String(a.startedAt || '').localeCompare(String(b.startedAt || '')));
-  const phaseOrder: string[] = [];
-  for (const n of ordered) { const ph = n.phase || '—'; if (!phaseOrder.includes(ph)) phaseOrder.push(ph); }
-  const stages: RunViewStage[] = phaseOrder.map((ph, i) => {
-    const ids = ordered.filter((n) => (n.phase || '—') === ph).map((n) => n.id);
-    return { index: i + 1, phase: ph, parallel: ids.length > 1, nodeIds: ids };
-  });
-  for (const st of stages) st.nodeIds.forEach((id, lane) => { const n = nodes.find((x) => x.id === id); if (n) { n.stageIndex = st.index; n.lane = lane; } });
+  // STAGES — the DAG layout (columns = stages, rows = parallel lanes). Prefer the template's DECLARED stage
+  // order from piflow init's workflow.json (complete the moment the template exists), used whenever it
+  // places every node this run has. Otherwise group nodes by phase in execution order (a shared phase with
+  // >1 node = a parallel lane). One {stageIndex, lane} assignment either way.
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const tStages = (opts.workflow?.stages ?? [])
+    .map((ids) => ids.filter((id) => nodeById.has(id)))
+    .filter((ids) => ids.length > 0);
+  let stages: RunViewStage[];
+  if (tStages.length && new Set(tStages.flat()).size === nodeById.size) {
+    stages = tStages.map((ids, i) => ({ index: i + 1, phase: nodeById.get(ids[0])?.phase ?? '—', parallel: ids.length > 1, nodeIds: ids }));
+  } else {
+    const ordered = [...nodes].sort((a, b) => String(a.startedAt || '').localeCompare(String(b.startedAt || '')));
+    const phaseOrder: string[] = [];
+    for (const n of ordered) { const ph = n.phase || '—'; if (!phaseOrder.includes(ph)) phaseOrder.push(ph); }
+    stages = phaseOrder.map((ph, i) => {
+      const ids = ordered.filter((n) => (n.phase || '—') === ph).map((n) => n.id);
+      return { index: i + 1, phase: ph, parallel: ids.length > 1, nodeIds: ids };
+    });
+  }
+  for (const st of stages) st.nodeIds.forEach((id, lane) => { const n = nodeById.get(id); if (n) { n.stageIndex = st.index; n.lane = lane; } });
 
   // data-flow edges = the DECLARED io.json ledger UNION the events-observed I/O. io.json persists across
   // reuse and predates per-node event capture (so it wires nodes the event stream misses); events cover
@@ -263,6 +285,33 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       if (seen.has(key)) continue;
       seen.add(key);
       edges.push({ from, to: n.id, path: displayPath(abs) });
+    }
+  }
+
+  // DECLARED topology: union the template's dependency edges (a node's declared dep D → that node) onto the
+  // runtime file-flow edges above — restricted to nodes this run has, and only for pairs not already linked
+  // by a real file path. piflow init's workflow.json is the complete DAG, so this guarantees no connection
+  // is missing even when a run's io.json/events are sparse (a declared edge carries no specific file path).
+  // When a dep was ELIDED by the run's profile (e.g. the companion profile drops the verify phases), we
+  // bridge THROUGH it to its nearest present ancestors, so the downstream node stays connected.
+  const wfNodes = opts.workflow?.nodes ?? {};
+  const presentDeps = (id: string, seen = new Set<string>()): string[] => {
+    const out: string[] = [];
+    for (const d of wfNodes[id]?.deps ?? []) {
+      if (seen.has(d)) continue;
+      seen.add(d);
+      if (nodeById.has(d)) out.push(d);
+      else out.push(...presentDeps(d, seen));   // bridge through an elided node to its present ancestors
+    }
+    return out;
+  };
+  const pairLinked = new Set(edges.map((e) => `${e.from}|${e.to}`));
+  for (const to of Object.keys(wfNodes)) {
+    if (!nodeById.has(to)) continue;
+    for (const from of presentDeps(to)) {
+      if (from === to || pairLinked.has(`${from}|${to}`)) continue;
+      pairLinked.add(`${from}|${to}`);
+      edges.push({ from, to, path: '' });
     }
   }
 
