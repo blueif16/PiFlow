@@ -95,16 +95,31 @@ LLM intelligence on a seam, wired in via the same three modes already in the spi
 - **[`docs/design/orchestration-substrate.md`](docs/design/orchestration-substrate.md)** — the deep design canon.
 - **[`ROADMAP.md`](ROADMAP.md)** — the build order, framework shape, and guardrails.
 
-## Install (the skills + CLI)
+## The pieces
 
-This repo is the **piflow** Claude Code plugin. Make the three skills globally discoverable, and link the
-`piflow` CLI bin onto your PATH:
+Four artifacts, one stack. The **engine** is the SDK; the **CLI** drives it; the **TUI + GUI** are the
+single monitor layer; **`pi`** is the agent runtime each node spawns — installed once, *not* bundled.
+
+| Piece | Package / bin | Role |
+|---|---|---|
+| **Engine (SDK)** | `@piflow/core` | the L1 node-envelope schema, the DAG compiler, the runner, the tool/sandbox plane, and the `observe` stream |
+| **CLI** | `@piflow/cli` → `piflow` | the front door: `run` · `inspect` · `extract` · `status` · `watch` · `logs` · `gui` |
+| **Monitor** (the viewer) | `@piflow/tui` → `piflow-tui`  +  the GUI canvas (`piflow gui`) | monitor-only twins on the **one** `observe` stream |
+| **Runtime** (underneath) | `pi` — external prerequisite | the headless agent each node spawns. Installed and credentialed **once** via `~/.pi/` (parallels `~/.piflow/`); kept external so `@piflow/core` stays product-agnostic logic only |
+
+## Install (skills · CLI · pi)
+
+This repo is the **piflow** Claude Code plugin. Have **`pi`** on your PATH first (the agent runtime — Pi
+Flow spawns it per node; it is not bundled). Then make the three skills globally discoverable and link the
+bins:
 
 ```bash
+# prerequisite: install `pi` (earendil-works/pi · pi.dev) and verify it runs:  pi --list-models cp
 for s in piflow-init piflow-enhance piflow-start; do
   ln -sfn "$(pwd)/.claude/skills/$s" ~/.claude/skills/$s
 done
-npm --prefix packages/cli link        # exposes the global `piflow` bin
+npm --prefix packages/cli link        # the global `piflow` bin
+npm --prefix packages/tui link        # the global `piflow-tui` monitor (optional)
 ```
 
 Claude Code surfaces `piflow-init` to create/port a workflow, `piflow-start` to run/monitor one, and
