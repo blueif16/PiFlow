@@ -22,7 +22,7 @@
 // copying is a NOTED extension, not invented here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { TemplateNode } from './types.js';
 import { renderRealizedPrompt } from './render.js';
@@ -107,8 +107,12 @@ export async function instantiateRun(
     .sort((a, b) => a.name.localeCompare(b.name)); // deterministic, id-sorted (matches the loader scan)
 
   // BUCKET 4 (run-level) — the engine namespace + the EMPTY RunState stub, complete from t=0.
+  // PRESERVE an existing state.json: a --from resume re-instantiates the run (runFromTemplate always
+  // calls instantiateRun), so unconditionally re-stubbing would WIPE the channels prior nodes promoted
+  // — then a reused upstream node never re-promotes and a downstream {{state.*}} consumer fails with
+  // "unresolved state channel". Only seed the empty stub on a fresh run (no state.json yet).
   await fs.mkdir(piDir(runDir), { recursive: true });
-  await fs.writeFile(stateFile(runDir), '{}');
+  if (!existsSync(stateFile(runDir))) await fs.writeFile(stateFile(runDir), '{}');
 
   const nodes: InstantiatedNode[] = [];
   for (const e of entries) {
