@@ -86,9 +86,10 @@ async function scanNodes(dir: string): Promise<{ loaded: LoadedNode[]; raw: { id
 /**
  * Carry the authored `node.json.hooks` block onto the runtime `NodeOps` (the declarative DATA the run
  * loop executes: seed PRE · project/merge/promote POST). The `node.json` `hooks` shape IS `NodeOps`
- * (`{to,from}` / `{from,to,merge}`), so this is a near-pass-through; only `promote.merge` is narrowed
- * from the authored `string` to the `Reducer` union (the schema gate already constrains it). Returns
- * undefined when no hooks block is authored (so a node with no ops stays op-free — additive).
+ * (seed/project `{to,from}` · promote `{from,to,merge}` · merge the `{ops:[...]}` MergeSpec), so this is
+ * a near-pass-through; only `promote.merge` is narrowed from the authored `string` to the `Reducer` union
+ * (the schema gate already constrains it). Returns undefined when no hooks block is authored (so a node
+ * with no ops stays op-free — additive).
  */
 function toNodeOps(h: LoadedNode['def']['hooks']): NodeOps | undefined {
   if (!h) return undefined;

@@ -56,8 +56,12 @@ export interface NodeOps {
   seed?: { to: string; from: string }[];
   /** POST: derive `to` from one or many frozen on-disk sources `from`. */
   project?: { to: string; from: string | string[] }[];
-  /** POST: filesystem-merge one or many sources `from` into `to`. */
-  merge?: { to: string; from: string | string[] }[];
+  /**
+   * POST: the DRIVER-MERGE op set (the `applyMergeOp` discriminated grammar — `{fold|concat|reconcile|run}`),
+   * carried VERBATIM from the authoring source. Shape is the executor's `MergeSpec` (`{ ops: [...] }`), so the
+   * run loop hands it straight to `runMerge`. Each op is loose DATA (the executor discriminates on the op key).
+   */
+  merge?: { ops: Record<string, unknown>[] };
   /** POST: lift a node output (`from`) into a RunState channel (`to`) via the reducer (default 'set'). */
   promote?: { from: string; to: string; merge?: Reducer }[];
 }

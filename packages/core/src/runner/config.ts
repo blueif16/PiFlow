@@ -29,6 +29,12 @@ export interface ConfigArgs {
   stallMs?: number;
   /** Run-level return-handshake default (the write-then-fence default; a node's own returnMode still wins). */
   returnProtocol?: RunOptions['returnProtocol'];
+  /**
+   * The run-level args (`--arg k=v` delivery) — a parsed map that `{{arg.<key>}}` tokens resolve against at
+   * node launch. The CLI parses the repeated `--arg k=v` flags into this map (see `parseArgFlags`); a missing
+   * `{{arg.x}}` token fails the node loudly (MissingArgError), never a silent ''. Carried straight through.
+   */
+  args?: Record<string, string>;
 }
 
 /** Inputs to `loadConfig`: the parsed args + the env map (injectable; default `process.env`). */
@@ -55,7 +61,30 @@ export type ResolvedRunOpts = Pick<
   | 'nodeTimeoutMs'
   | 'stallMs'
   | 'returnProtocol'
+  | 'args'
 >;
+
+/**
+ * Parse repeated `--arg k=v` CLI tokens into the args map (the `{{arg.<key>}}` channel). Accepts either the
+ * `['--arg', 'k=v', …]` flag form OR bare `'k=v'` tokens; the value may itself contain `=` (only the FIRST
+ * `=` splits). A token with no `=` or an empty key is ignored (the CLI surfaces a usage error separately).
+ * Pure + injectable so `loadConfig`'s arg resolution stays testable.
+ */
+export function parseArgFlags(tokens: string[]): Record<string, string> {
+  const args: Record<string, string> = {};
+  for (let i = 0; i < tokens.length; i++) {
+    let kv = tokens[i];
+    if (kv === '--arg') {
+      kv = tokens[++i] ?? '';
+    } else if (!kv.includes('=')) {
+      continue;
+    }
+    const eq = kv.indexOf('=');
+    if (eq <= 0) continue;
+    args[kv.slice(0, eq)] = kv.slice(eq + 1);
+  }
+  return args;
+}
 
 /** Parse a seconds string from the env into milliseconds; undefined if absent/unparseable. */
 function secondsToMs(v: string | undefined): number | undefined {
@@ -94,6 +123,8 @@ export function loadConfig(input: LoadConfigInput): ResolvedRunOpts {
     nodeTimeoutMs: args.nodeTimeoutMs ?? secondsToMs(env.PI_RUNNER_NODE_TIMEOUT),
     stallMs: args.stallMs ?? secondsToMs(env.PI_RUNNER_STALL_TIMEOUT),
     returnProtocol: args.returnProtocol,
+    // The `--arg k=v` channel — no env fallback (it is per-run CLI delivery). An empty map prunes away.
+    args: args.args && Object.keys(args.args).length ? args.args : undefined,
   };
   return pruneUndefined(resolved);
 }

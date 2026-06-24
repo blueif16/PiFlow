@@ -130,7 +130,7 @@ export const nodeSchema = {
       properties: {
         seed: { type: 'array', items: { $ref: '#/$defs/seedHook' } }, // PRE
         project: { type: 'array', items: { $ref: '#/$defs/derivedHook' } }, // POST derive
-        merge: { type: 'array', items: { $ref: '#/$defs/derivedHook' } }, // POST merge
+        merge: { $ref: '#/$defs/mergeHook' }, // POST merge — the DRIVER-MERGE op set
         promote: { type: 'array', items: { $ref: '#/$defs/promoteHook' } }, // POST → RunState
       },
     },
@@ -174,6 +174,40 @@ export const nodeSchema = {
           { type: 'string', minLength: 1 },
           { type: 'array', items: { type: 'string', minLength: 1 }, minItems: 1 },
         ] },
+      },
+    },
+    mergeHook: {
+      // POST — the DRIVER-MERGE op set (`applyMergeOp` grammar). `{ ops: [...] }`, each op EXACTLY ONE of the
+      // discriminated kinds (fold | concat | reconcile | run). The op bodies stay permissive (the executor
+      // discriminates + reads kind-specific params), but each op MUST carry exactly one recognized kind key —
+      // a bare `{to,from}` (the lossy migration stub) NO LONGER validates, which is the whole point of S4.
+      type: 'object',
+      additionalProperties: false,
+      required: ['ops'],
+      properties: {
+        ops: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            // The four recognized op-kind keys (bodies stay permissive — the executor reads kind-specific
+            // params); no OTHER key is allowed, so a bare {to,from} (the lossy migration stub) is rejected.
+            additionalProperties: false,
+            properties: {
+              fold: { type: 'object' },
+              concat: { type: 'object' },
+              reconcile: { type: 'object' },
+              run: { type: 'object' },
+            },
+            // EXACTLY ONE op-kind key per op (the discriminator the executor switches on).
+            oneOf: [
+              { required: ['fold'] },
+              { required: ['concat'] },
+              { required: ['reconcile'] },
+              { required: ['run'] },
+            ],
+          },
+        },
       },
     },
     promoteHook: {

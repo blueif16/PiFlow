@@ -1,0 +1,15 @@
+{
+  "id": "greet",
+  "phase": "greet",
+  "deps": [],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "contract": {
+    "artifacts": ["out/greeting.txt"],
+    "owns": ["out/greeting.txt"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional",
+    "fillSentinel": null
+  },
+  "policy": { "fail": "block" }
+}

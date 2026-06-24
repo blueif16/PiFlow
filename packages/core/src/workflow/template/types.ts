@@ -33,7 +33,8 @@ export interface TemplateNode {
   hooks?: {
     seed?: { to: string; from: string }[];
     project?: { to: string; from: string | string[] }[];
-    merge?: { to: string; from: string | string[] }[];
+    /** DRIVER-MERGE op set — the `applyMergeOp` discriminated grammar (`{ ops: [{fold|concat|reconcile|run}] }`). */
+    merge?: { ops: Record<string, unknown>[] };
     promote?: { from: string; to: string; merge?: string }[];
   };
   return?: object;

@@ -38,11 +38,22 @@
     "fail": "block"
   },
   "hooks": {
-    "merge": [
-      {
-        "to": "verify/event-wiring.ok.json",
-        "from": "src"
-      }
-    ]
+    "merge": {
+      "ops": [
+        {
+          "run": {
+            "cmd": "node",
+            "args": [
+              "{{WORKSPACE}}/templates/registry/check-event-wiring.mjs",
+              "--root",
+              "{project}",
+              "--receipt",
+              "{project}/verify/event-wiring.ok.json"
+            ],
+            "note": "Emit-side event-wiring gate — every declared surface().events name in the generated game (base ∪ W4 custom[]) must have a real .emit() site, else status=blocked."
+          }
+        }
+      ]
+    }
   }
 }

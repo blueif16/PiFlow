@@ -62,18 +62,60 @@
         "from": "{{WORKSPACE}}/templates/core-contract/src"
       }
     ],
-    "merge": [
-      {
-        "to": "index.json",
-        "from": [
-          "public/assets/asset-manifest.json",
-          "public/assets/models/model-manifest.json"
-        ]
-      },
-      {
-        "to": "MEMORY.md",
-        "from": "MEMORY.*.md"
-      }
-    ]
+    "merge": {
+      "ops": [
+        {
+          "concat": {
+            "glob": "MEMORY.*.md",
+            "to": "MEMORY.md",
+            "heading": "## {name}"
+          }
+        },
+        {
+          "reconcile": {
+            "from": "public/assets/asset-manifest.json",
+            "to": "index.json",
+            "key": "slot",
+            "fromAt": "slots",
+            "arrayAt": "slots",
+            "schema": "packages/skills/scaffold/index.schema.json",
+            "fields": [
+              "status",
+              { "name": "path", "when": { "field": "status", "equals": "generated" } },
+              { "name": "width", "when": { "field": "status", "equals": "generated" } },
+              { "name": "height", "when": { "field": "status", "equals": "generated" } }
+            ]
+          }
+        },
+        {
+          "reconcile": {
+            "from": "public/assets/models/model-manifest.json",
+            "to": "index.json",
+            "key": "slot",
+            "fromAt": "slots",
+            "arrayAt": "slots",
+            "schema": "packages/skills/scaffold/index.schema.json",
+            "fields": ["status"]
+          }
+        },
+        {
+          "run": {
+            "cmd": "node",
+            "args": [
+              "{{WORKSPACE}}/templates/registry/check-event-bindings.mjs",
+              "--catalog-dir",
+              "{{WORKSPACE}}/templates/modules",
+              "--blueprint",
+              "{project}/spec/blueprint.json",
+              "--gameconfig",
+              "{project}/src/gameConfig.json",
+              "--receipt",
+              "{project}/verify/event-bindings.ok.json"
+            ],
+            "note": "Consume-side event-wiring gate — every sfx/guidance/effects on:/event: binding must resolve in the event catalog (∪ custom emits), else status=blocked."
+          }
+        }
+      ]
+    }
   }
 }

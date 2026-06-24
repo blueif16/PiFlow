@@ -33,11 +33,16 @@
     "fail": "block"
   },
   "hooks": {
-    "merge": [
-      {
-        "to": "spec/blueprint.json",
-        "from": "spec/shell.fragment.json"
-      }
-    ]
+    "merge": {
+      "ops": [
+        {
+          "fold": {
+            "from": "spec/shell.fragment.json",
+            "to": "spec/blueprint.json",
+            "into": "shell"
+          }
+        }
+      ]
+    }
   }
 }

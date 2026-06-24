@@ -35,14 +35,24 @@
     "fail": "block"
   },
   "hooks": {
-    "merge": [
-      {
-        "to": "public/assets",
-        "from": [
-          "spec/blueprint.json",
-          "asset-prompts.json"
-        ]
-      }
-    ]
+    "merge": {
+      "ops": [
+        {
+          "run": {
+            "cmd": "{{WORKSPACE}}/packages/skills/assets/gen/.venv/bin/python",
+            "args": [
+              "{{WORKSPACE}}/packages/skills/assets/gen/generate_assets.py",
+              "--blueprint",
+              "{project}/spec/blueprint.json",
+              "--prompts",
+              "{project}/asset-prompts.json",
+              "--out",
+              "{project}/public/assets"
+            ],
+            "note": "Asset image generation — the programmatic step that replaced the W3b node."
+          }
+        }
+      ]
+    }
   }
 }

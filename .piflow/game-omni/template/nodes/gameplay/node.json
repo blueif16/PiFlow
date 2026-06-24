@@ -40,15 +40,6 @@
         "to": "spec/blueprint.json",
         "from": "{{WORKSPACE}}/templates/modules/{{state.archetype}}/blueprint.template.json"
       }
-    ],
-    "project": [
-      {
-        "to": "spec/blueprint.json",
-        "from": [
-          "spec/blueprint.json",
-          "{{WORKSPACE}}/.agents/node-catalog.json"
-        ]
-      }
     ]
   }
 }

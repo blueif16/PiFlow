@@ -1396,3 +1396,159 @@ describe('runWorkflow — real cancellation (ExecOpts.signal)', () => {
     await fs.rm(outDir, { recursive: true, force: true });
   });
 });
+
+// ── S4: project/merge POST DERIVE ops — the discriminated DRIVER-MERGE grammar (fold|concat|reconcile|run)
+//        wired into runNode POST, ordered project → merge → promote. Stub exec + in-memory provider; the
+//        executor REACHED is proven by its on-disk effect (bypass the wiring ⇒ the effect is absent ⇒ RED).
+
+describe('runWorkflow — project/merge POST DERIVE ops (S4)', () => {
+  // A builder that writes EXACT file contents (JSON or text) into the node's sandbox output dir, then a
+  // return fence. Reused shape from contentBuilder, but single-quote-safe JSON via base64 is overkill —
+  // the contents here are single-quote-free.
+  function filesBuilder(files: (id: string) => Record<string, string>) {
+    return (node: { id: string; sandbox: { output: string } }): string => {
+      const out = node.sandbox.output;
+      const writes = Object.entries(files(node.id))
+        .map(([p, c]) => {
+          const dest = `${out}/${p}`;
+          const dir = dest.slice(0, dest.lastIndexOf('/'));
+          return `mkdir -p ${dir} && printf '%s' '${c}' > ${dest}`;
+        })
+        .join(' && ');
+      return `${writes} && printf '%s' '\`\`\`json\\n{"status":"ok"}\\n\`\`\`'`;
+    };
+  }
+
+  it('a `fold` merge op SETS blueprint[into] = the fragment (siblings intact) — the executor is REACHED', async () => {
+    // The node authors spec/shell.fragment.json AND a base spec/blueprint.json with a STALE shell + a meta
+    // sibling; its merge fold op must overwrite blueprint.shell with the fragment and leave meta untouched.
+    const node: NodeIntent = {
+      label: 'Shell',
+      prompt: 'author the shell fragment',
+      tools: {},
+      io: { reads: [], produces: ['spec/shell.fragment.json'], artifacts: [{ path: 'spec/shell.fragment.json' }] },
+      ops: { merge: { ops: [{ fold: { from: 'spec/shell.fragment.json', to: 'spec/blueprint.json', into: 'shell' } }] } },
+    };
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'fold',
+      outDir,
+      buildCommand: filesBuilder(() => ({
+        'spec/shell.fragment.json': '{"hud":["score"],"intro":"go"}',
+        'spec/blueprint.json': '{"meta":{"x":1},"shell":{"STALE":true}}',
+      })),
+    });
+    expect(status.nodes.shell.status).toBe('ok');
+    const bp = JSON.parse(await fs.readFile(path.join(outDir, 'spec', 'blueprint.json'), 'utf8'));
+    // REACHED: blueprint.shell is the FRAGMENT (not the stale value), and the sibling survived. If the merge
+    // wiring were bypassed, blueprint.shell would still be {STALE:true} → this assertion goes RED.
+    expect(bp.shell).toEqual({ hud: ['score'], intro: 'go' });
+    expect(bp.meta).toEqual({ x: 1 });
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a `concat` merge op concatenates the glob set into one file, each under a heading', async () => {
+    const node: NodeIntent = {
+      label: 'Scaffold',
+      prompt: 'write memory fragments',
+      tools: {},
+      io: { reads: [], produces: ['MEMORY.a.md', 'MEMORY.b.md'], artifacts: [{ path: 'MEMORY.a.md' }, { path: 'MEMORY.b.md' }] },
+      ops: { merge: { ops: [{ concat: { glob: 'MEMORY.*.md', to: 'MEMORY.md', heading: '## {name}' } }] } },
+    };
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'concat',
+      outDir,
+      buildCommand: filesBuilder(() => ({ 'MEMORY.a.md': 'A body', 'MEMORY.b.md': 'B body' })),
+    });
+    expect(status.nodes.scaffold.status).toBe('ok');
+    // Concatenated, stable lexical order, each under its heading, dest excluded.
+    expect(await fs.readFile(path.join(outDir, 'MEMORY.md'), 'utf8')).toBe(
+      '## MEMORY.a.md\n\nA body\n\n## MEMORY.b.md\n\nB body\n',
+    );
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('resolves {{WORKSPACE}}/{{RUN}} tokens in a `run` merge op before the executor runs', async () => {
+    // A run op whose cmd path tokens must be made physical by the per-node resolver ctx (not the executor's
+    // own {project} token). The node script reads {{RUN}}/marker.txt (proving {{RUN}} resolved) + a script at
+    // {{WORKSPACE}}/scripts/derive.js (proving {{WORKSPACE}} resolved) and writes a receipt.
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-ws4-'));
+    await fs.mkdir(path.join(workspace, 'scripts'), { recursive: true });
+    await fs.writeFile(
+      path.join(workspace, 'scripts', 'derive.js'),
+      `const fs=require('fs');const run=process.argv[2];fs.writeFileSync(run+'/receipt.txt','derived from '+fs.readFileSync(run+'/marker.txt','utf8'));`,
+    );
+    const node: NodeIntent = {
+      label: 'Derive',
+      prompt: 'author the marker',
+      tools: {},
+      io: { reads: [], produces: ['marker.txt'], artifacts: [{ path: 'marker.txt' }] },
+      ops: { merge: { ops: [{ run: { cmd: 'node', args: ['{{WORKSPACE}}/scripts/derive.js', '{{RUN}}'] } }] } },
+    };
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'runtok',
+      outDir,
+      workspace,
+      buildCommand: filesBuilder(() => ({ 'marker.txt': 'M1' })),
+    });
+    expect(status.nodes.derive.status).toBe('ok');
+    // The run op fired with BOTH tokens resolved physically (else node would ENOENT on the script / marker).
+    expect(await fs.readFile(path.join(outDir, 'receipt.txt'), 'utf8')).toBe('derived from M1');
+    await fs.rm(outDir, { recursive: true, force: true });
+    await fs.rm(workspace, { recursive: true, force: true });
+  });
+
+  it('runs project BEFORE merge BEFORE promote (the run.mjs POST order)', async () => {
+    // The ordering is proven by DATA DEPENDENCY across the three ops:
+    //  - project `copy` derives spec/derived.json from a frozen source subtree;
+    //  - merge `run` executes a script that writes order.txt = "project-first" IFF spec/derived.json EXISTS
+    //    when it runs (i.e. project already ran), else "merge-first";
+    //  - promote lifts a field from spec/source.json → the `phase` channel, landing in state.json LAST.
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-ws-ord-'));
+    await fs.mkdir(path.join(workspace, 'scripts'), { recursive: true });
+    await fs.writeFile(
+      path.join(workspace, 'scripts', 'order.js'),
+      `const fs=require('fs');const run=process.argv[2];const had=fs.existsSync(run+'/spec/derived.json');fs.writeFileSync(run+'/order.txt',had?'project-first':'merge-first');`,
+    );
+    const node: NodeIntent = {
+      label: 'Derive',
+      prompt: 'author the source',
+      tools: {},
+      io: { reads: [], produces: ['spec/source.json'], artifacts: [{ path: 'spec/source.json' }] },
+      ops: {
+        // project: copy the `payload` subtree of spec/source.json → spec/derived.json (a discriminated op).
+        project: [{ to: 'spec/derived.json', source: 'spec/source.json', copy: 'payload' } as unknown as { to: string; from: string }],
+        // merge: a run op that records whether the projection already landed.
+        merge: { ops: [{ run: { cmd: 'node', args: ['{{WORKSPACE}}/scripts/order.js', '{{RUN}}'] } }] },
+        // promote: lift a channel LAST (it lands at the stage barrier, after project+merge in-node).
+        promote: [{ from: 'spec/source.json:phase', to: 'phase', merge: 'set' }],
+      },
+    };
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'order',
+      outDir,
+      workspace,
+      buildCommand: filesBuilder(() => ({ 'spec/source.json': '{"phase":"P1","payload":{"k":"v"}}' })),
+    });
+    expect(status.nodes.derive.status).toBe('ok');
+    // (1) project ran: spec/derived.json holds the copied subtree.
+    expect(JSON.parse(await fs.readFile(path.join(outDir, 'spec', 'derived.json'), 'utf8'))).toEqual({ k: 'v' });
+    // (2) merge ran AFTER project (the script saw spec/derived.json already on disk).
+    expect(await fs.readFile(path.join(outDir, 'order.txt'), 'utf8')).toBe('project-first');
+    // (3) promote ran (the barrier persisted the channel to state.json) — the LAST of the three.
+    const state = JSON.parse(await fs.readFile(stateFile(outDir), 'utf8'));
+    expect(state.phase).toBe('P1');
+    await fs.rm(outDir, { recursive: true, force: true });
+    await fs.rm(workspace, { recursive: true, force: true });
+  });
+
+  it('a node with NO project/merge ops runs exactly as before (additive)', async () => {
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(compile(wf([n('Plain', [], ['p.txt'])])), { run: 'noderive', outDir, buildCommand: stubBuilder() });
+    expect(status.nodes.plain.status).toBe('ok');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});

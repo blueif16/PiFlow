@@ -132,9 +132,13 @@ export { runWorkflow, defaultExecRunner, defaultPiCommand, lastJsonBlock, writeS
 // run opts) → compile → run. The bridge is consumer-injected; env resolution lives in `loadConfig`.
 export { runFromConfig } from './runner/index.js';
 export type { ResolvedRunConfig } from './runner/index.js';
+// runFromTemplate (U8 / §10): the TEMPLATE-run join — loadTemplate → instantiateRun → compile → runWorkflow,
+// the one entry that connects the spec-compile and run-folder-materialize halves into an end-to-end run.
+export { runFromTemplate } from './runner/index.js';
+export type { RunFromTemplateOpts } from './runner/index.js';
 // loadConfig — the env layer (D5): PI_RUNNER_* env + parsed args → the run-opts object runFromConfig
 // consumes (arg > env > default; timeouts seconds→ms). The ONLY place env is parsed; runFromConfig is pure.
-export { loadConfig } from './runner/index.js';
+export { loadConfig, parseArgFlags } from './runner/index.js';
 export type { ConfigArgs, LoadConfigInput, ResolvedRunOpts } from './runner/index.js';
 // Post-node schema gate (injectable validator seam + best-effort ajv-2020 default)
 export { validateArtifactSchemas, defaultSchemaValidator } from './runner/index.js';

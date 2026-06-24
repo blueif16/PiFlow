@@ -1,0 +1,6 @@
+{
+  "id": "template-arg",
+  "name": "template-arg",
+  "description": "Single-node template fixture exercising the {{arg.*}} channel — the S5 runFromTemplate + --arg join.",
+  "phases": ["greet"]
+}
