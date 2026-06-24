@@ -18,6 +18,7 @@ import { runStatusCli } from './status.js';
 import { runWatchCli } from './watch.js';
 import { runExtractCli } from './extract.js';
 import { runRunCli } from './run.js';
+import { runInspectCli } from './inspect.js';
 
 const HELP = `piflow — drive + observe a pi-flow run over the .pi/ run layout
 
@@ -71,6 +72,9 @@ async function main(): Promise<void> {
   switch (sub) {
     case 'run':
       await runRunCli(rest);
+      break;
+    case 'inspect':
+      await runInspectCli(rest);
       break;
     case 'extract':
       await runExtractCli(rest);
