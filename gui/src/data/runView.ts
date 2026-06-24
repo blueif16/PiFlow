@@ -65,7 +65,7 @@ export interface RunView {
 }
 
 /** Fetch the distilled run-view for a run id (served from gui/public/runs/<run>/run-view.json). */
-export async function loadRunView(run = "e2e-m3"): Promise<RunView> {
+export async function loadRunView(run: string): Promise<RunView> {
   const res = await fetch(`${import.meta.env.BASE_URL}runs/${run}/run-view.json`);
   if (!res.ok) throw new Error(`Failed to load run-view for "${run}": ${res.status} ${res.statusText}`);
   return (await res.json()) as RunView;
