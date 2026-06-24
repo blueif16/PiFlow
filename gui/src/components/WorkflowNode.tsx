@@ -16,6 +16,8 @@
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import * as motion from "motion/react-client";
 import { useExpand } from "./ExpandContext";
+import { useViewMode } from "./ViewModeContext";
+import { NodeModeStrip } from "./NodeModeStrip";
 import { ProgressBar } from "./ProgressBar";
 import type { FieldTone } from "./FieldBlock";
 import type { RunViewNode } from "../data/runView";
@@ -101,6 +103,7 @@ function KindIcon({ kind }: { kind: FlowNodeData["kind"] }) {
 
 export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { expand } = useExpand();
+  const { mode } = useViewMode();
   const status: NodeStatus = data.status ?? (selected ? "selected" : "idle");
   const accentColor = data.kind === "agent" ? "var(--ds-node-agent)" : "var(--ds-node-file)";
   // show the charge bar while running, or whenever a node carries a progress value
@@ -148,6 +151,8 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       )}
 
       <Handle type="source" position={Position.Right} className="ds-handle" />
+
+      {mode && <NodeModeStrip mode={mode} data={data} />}
     </motion.div>
   );
 }

@@ -1,0 +1,13 @@
+{
+  "name": "@contract/testkit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared, reusable component-test KIT — extracted from the proven platformer drive tests. Resolvable as @contract/testkit (same alias the components use). Run a test via: node --import @contract/testkit/register.mjs <test>.",
+  "exports": {
+    ".": "./index.ts",
+    "./register.mjs": "./register.mjs",
+    "./resolve-hook.mjs": "./resolve-hook.mjs",
+    "./phaser-stub.mjs": "./phaser-stub.mjs"
+  }
+}

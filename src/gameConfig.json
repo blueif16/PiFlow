@@ -1,0 +1,102 @@
+{
+  "screenSize": {
+    "width": {
+      "value": 432,
+      "type": "number",
+      "description": "VIEWPORT design width in pixels (the browser frame, NOT the world). 9:16 PORTRAIT (432x768) so Scale.FIT FILLS on a portrait phone and LETTERBOXES centered on a landscape laptop — one fixed canvas plays on both mobile and desktop. The WORLD a level occupies is BaseLevelScene.mapWidth/mapHeight, which may be WIDER than the viewport (an N-screen scrolling level) — the camera follows the player so the viewport stays full at every scroll position; for a single-screen level mapWidth == this viewport width. OWNED BY core/gameConfig.json (the infra groups) — a module MUST mirror core's screenSize, never diverge (template-contract §4)."
+    },
+    "height": {
+      "value": 768,
+      "type": "number",
+      "description": "VIEWPORT design height in pixels. 9:16 portrait (432x768) — see width. The WORLD height is BaseLevelScene.mapHeight (normally one screen for a side-scroller); it may exceed this for a vertical-scrolling level, camera follows. OWNED BY core (template-contract §4)."
+    }
+  },
+  "debugConfig": {
+    "debug": {
+      "value": false,
+      "type": "boolean",
+      "description": "Enable physics debug rendering"
+    }
+  },
+  "renderConfig": {
+    "pixelArt": {
+      "value": true,
+      "type": "boolean",
+      "description": "Enable pixel-art (nearest-neighbour) rendering"
+    }
+  },
+  "playerConfig": {
+    "maxHealth": {
+      "value": 100,
+      "type": "number",
+      "description": "Player maximum health"
+    },
+    "walkSpeed": {
+      "value": 200,
+      "type": "number",
+      "description": "Player horizontal walk speed (px/s)"
+    },
+    "jumpPower": {
+      "value": 620,
+      "type": "number",
+      "description": "Player jump force (upward velocity)"
+    },
+    "gravityY": {
+      "value": 1200,
+      "type": "number",
+      "description": "Downward gravity applied to the player (px/s^2)"
+    },
+    "attackDamage": {
+      "value": 25,
+      "type": "number",
+      "description": "Player melee attack damage"
+    },
+    "hurtingDuration": {
+      "value": 100,
+      "type": "number",
+      "description": "Hurt-state duration in ms"
+    },
+    "invulnerableTime": {
+      "value": 1000,
+      "type": "number",
+      "description": "Invulnerability window after taking damage (ms)"
+    },
+    "timeLimit": {
+      "value": 60,
+      "type": "number",
+      "description": "Level countdown length in SECONDS for the failModel:'time' family. BaseLevelScene counts down from this to timeRemaining<=0 (=> status:'lost'); inert unless failModel === 'time'."
+    }
+  },
+  "enemyConfig": {
+    "maxHealth": {
+      "value": 50,
+      "type": "number",
+      "description": "Default enemy max health"
+    },
+    "walkSpeed": {
+      "value": 80,
+      "type": "number",
+      "description": "Default enemy movement speed (px/s)"
+    },
+    "damage": {
+      "value": 20,
+      "type": "number",
+      "description": "Default enemy contact damage"
+    }
+  },
+  "ultimateConfig": {
+    "cooldown": {
+      "value": 8000,
+      "type": "number",
+      "description": "Ultimate skill cooldown (ms)"
+    },
+    "damage": {
+      "value": 100,
+      "type": "number",
+      "description": "Ultimate skill damage"
+    }
+  },
+  "controlsHelp": [],
+  "failModel": "health",
+  "objective": ""
+}

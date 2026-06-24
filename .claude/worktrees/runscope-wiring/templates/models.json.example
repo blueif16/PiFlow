@@ -1,0 +1,38 @@
+// pi NATIVE global model config — copy to ~/.pi/agent/models.json (chmod 600), fill in your key.
+//
+// This is the ONE place the coding-plan credential lives. pi reads it natively for EVERY project,
+// so `pi --provider cp` (and the pi-runner driver) just works in any repo — no per-product .env,
+// no provider extension, no env var. Set it up ONCE per machine.
+//
+//   1. cp templates/models.json.example ~/.pi/agent/models.json
+//   2. edit: set apiKey + baseUrl + your model ids
+//   3. chmod 600 ~/.pi/agent/models.json
+//   4. verify:  pi --list-models cp   (should list your models)
+//
+// Any OpenAI-compatible coding-plan endpoint works (DashScope, OpenRouter, DeepSeek, Zhipu/GLM,
+// Moonshot/Kimi, a local vLLM, …) via api:"openai-completions". The provider NAME must stay "cp"
+// (that is what the driver passes as --provider). The first model in the list is the default.
+//
+// apiKey accepts a literal "sk-...", an env ref "$MY_KEY"/"${MY_KEY}", or a command "!op read ...".
+// Full schema + compat flags: pi's bundled docs/models.md (also https://pi.dev/docs/latest/ → Models).
+// NOTE: strip these // comments — models.json is strict JSON (no comments).
+{
+  "providers": {
+    "cp": {
+      "baseUrl": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "api": "openai-completions",
+      "apiKey": "sk-REPLACE_ME",
+      "models": [
+        {
+          "id": "qwen3.7-max",
+          "name": "qwen3.7-max",
+          "reasoning": false,
+          "input": ["text"],
+          "contextWindow": 131072,
+          "maxTokens": 8192,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}

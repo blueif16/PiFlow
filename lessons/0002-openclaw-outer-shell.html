@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lesson 0002: OpenClaw Outer Shell</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>OpenClaw Outer Shell</h1>
+        <p class="dek">
+          Learn the first domain model for OpenClaw: product, Gateway, channels,
+          nodes, agent runtime, sessions, plugins, and SDK contract.
+        </p>
+        <p class="meta">
+          Mission: <a href="../MISSION.md">Learn OpenClaw and Hermes Agent</a> |
+          Reference: <a href="../reference/openclaw-domain-glossary.html">OpenClaw Domain Glossary</a>
+        </p>
+      </header>
+
+      <section class="callout">
+        <p>
+          <strong>About the teach skill:</strong> it turns this directory into a small,
+          stateful course. The durable pieces are the mission, resources, glossary,
+          lessons, references, notes, and learning records.
+        </p>
+      </section>
+
+      <section class="callout">
+        <p>
+          <strong>Skill target:</strong> Given an OpenClaw concept or file path, classify
+          which layer it belongs to before reading implementation code.
+        </p>
+      </section>
+
+      <h2>The Smallest Useful Model</h2>
+      <p>
+        The <a href="../vendor/openclaw/README.md">OpenClaw README</a> names the product:
+        a personal AI assistant that runs on your devices. It also says the Gateway is
+        the control plane, not the whole product.
+      </p>
+      <p>
+        The local <a href="../vendor/openclaw/docs/concepts/architecture.md">Gateway architecture</a>
+        doc sharpens that: one long-lived Gateway owns messaging surfaces, exposes a
+        WebSocket API, accepts clients and nodes, emits events, and serves canvas surfaces.
+      </p>
+      <p>
+        The <a href="../vendor/openclaw/docs/concepts/agent.md">agent runtime</a> doc gives
+        the next boundary: OpenClaw has one embedded runtime per Gateway, with its own
+        workspace, bootstrap files, tools, skills, and session store.
+      </p>
+
+      <h2>First Layer Map</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Canonical Term</th>
+            <th>First Local Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Product</td>
+            <td>OpenClaw</td>
+            <td><a href="../vendor/openclaw/README.md">README.md</a></td>
+          </tr>
+          <tr>
+            <td>Control plane</td>
+            <td>Gateway</td>
+            <td><a href="../vendor/openclaw/docs/concepts/architecture.md">docs/concepts/architecture.md</a></td>
+          </tr>
+          <tr>
+            <td>Messaging ingress/egress</td>
+            <td>Channel</td>
+            <td><a href="../vendor/openclaw/docs/channels/index.md">docs/channels/index.md</a></td>
+          </tr>
+          <tr>
+            <td>Device capability peer</td>
+            <td>Node</td>
+            <td><a href="../vendor/openclaw/docs/concepts/architecture.md">docs/concepts/architecture.md</a></td>
+          </tr>
+          <tr>
+            <td>Model/tool execution</td>
+            <td>Agent Runtime</td>
+            <td><a href="../vendor/openclaw/docs/concepts/agent.md">docs/concepts/agent.md</a></td>
+          </tr>
+          <tr>
+            <td>Conversation context</td>
+            <td>Session</td>
+            <td><a href="../vendor/openclaw/docs/concepts/session.md">docs/concepts/session.md</a></td>
+          </tr>
+          <tr>
+            <td>Capability ownership</td>
+            <td>Plugin</td>
+            <td><a href="../vendor/openclaw/AGENTS.md">AGENTS.md</a></td>
+          </tr>
+          <tr>
+            <td>Core crossing point</td>
+            <td>Plugin SDK</td>
+            <td><a href="../vendor/openclaw/src/plugin-sdk/AGENTS.md">src/plugin-sdk/AGENTS.md</a></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Repository Shape</h2>
+      <p>
+        The source checkout is a pnpm workspace:
+        root package, <code>ui</code>, <code>packages/*</code>, and <code>extensions/*</code>.
+        That is declared in <a href="../vendor/openclaw/pnpm-workspace.yaml">pnpm-workspace.yaml</a>.
+      </p>
+      <p>
+        The published package is named <code>openclaw</code>, exposes the
+        <code>openclaw</code> binary through <code>openclaw.mjs</code>, and publishes many
+        <code>./plugin-sdk/*</code> subpaths for supported plugin contracts.
+      </p>
+
+      <h2>Retrieval Check</h2>
+      <div class="quiz">
+        <label for="term-answer">
+          Type the canonical term for the long-lived OpenClaw control plane.
+        </label>
+        <div class="quiz-row">
+          <input id="term-answer" autocomplete="off" spellcheck="false" />
+          <button type="button" id="term-check">Check</button>
+        </div>
+        <p class="feedback" id="term-feedback"></p>
+      </div>
+
+      <h2>Practice Task</h2>
+      <ol class="task-list">
+        <li>
+          Open <a href="../vendor/openclaw/docs/concepts/architecture.md">docs/concepts/architecture.md</a>
+          and write down one thing the Gateway owns.
+        </li>
+        <li>
+          Open <a href="../vendor/openclaw/docs/concepts/agent.md">docs/concepts/agent.md</a>
+          and write down one thing the agent runtime owns.
+        </li>
+        <li>
+          Open <a href="../vendor/openclaw/docs/concepts/session.md">docs/concepts/session.md</a>
+          and write down one rule that affects session choice.
+        </li>
+      </ol>
+
+      <h2>Primary Source To Read</h2>
+      <p>
+        Read <a href="../vendor/openclaw/docs/concepts/architecture.md">Gateway architecture</a>
+        first. It is the highest-signal local source for the control-plane vocabulary
+        that the rest of the OpenClaw map depends on.
+      </p>
+
+      <div class="next">
+        Next slice: trace one inbound message from channel to session to agent runtime to reply.
+        Ask the agent to slow down or zoom into any term that still feels fuzzy.
+      </div>
+    </main>
+
+    <script>
+      const input = document.querySelector("#term-answer");
+      const button = document.querySelector("#term-check");
+      const feedback = document.querySelector("#term-feedback");
+
+      button.addEventListener("click", () => {
+        const ok = input.value.trim().toLowerCase() === "gateway";
+        feedback.classList.toggle("correct", ok);
+        feedback.textContent = ok
+          ? "Correct. Gateway is the control-plane term; OpenClaw is the product."
+          : "Not yet. Re-read the README and Gateway architecture doc, then try again.";
+      });
+    </script>
+  </body>
+</html>

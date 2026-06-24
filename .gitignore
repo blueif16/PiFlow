@@ -1,5 +1,8 @@
 .DS_Store
 
+# Vendored third-party repos for analysis (never committed)
+vendor/
+
 # JS/TS build + deps (the packages/ SDK)
 node_modules/
 dist/

@@ -1,0 +1,138 @@
+/* ============================================================================
+   View modes — the bottom-left game-key cluster (ModeBar) + the per-node info
+   strips it paints under each node (NodeModeStrip). All values are real run-view
+   data; the strips are decoration only (pointer-events off) so they never disturb
+   node geometry, edge anchors, or canvas clicks.
+   ========================================================================== */
+
+/* ── ModeBar: portaled bottom-left, above the overlay scrim (like the MenuBar) ── */
+.ds-modebar-layer {
+  position: fixed;
+  left: 54px;                            /* clear the React Flow zoom Controls (bottom-left corner) */
+  bottom: clamp(10px, 1.6vh, 18px);
+  z-index: var(--ds-z-popover);          /* above the overlay (1000) + its scrim */
+  pointer-events: none;                  /* only the bar itself is interactive */
+}
+.ds-modebar {
+  pointer-events: auto;
+  display: flex;
+  gap: var(--ds-space-1);
+  padding: 5px;
+  border-radius: var(--ds-radius-lg);
+}
+
+/* a single grey "game key" = keycap + label */
+.ds-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  height: 30px;
+  padding: 0 var(--ds-space-3) 0 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-mode-btn:hover { background: var(--ds-bg-hover); }
+.ds-mode-btn:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* the keycap — grey, slightly raised (a real keytop edge via the bottom shadow) */
+.ds-mode-btn__cap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-neutral-200);
+  border: 1px solid var(--ds-neutral-400);
+  box-shadow: 0 1.5px 0 var(--ds-neutral-400);
+  font-family: var(--ds-font-mono);
+  font-weight: var(--ds-weight-semibold);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+.ds-mode-btn__label {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+
+/* active mode — accent the whole key */
+.ds-mode-btn.is-active { background: var(--ds-accent-subtle); border-color: var(--ds-accent); }
+.ds-mode-btn.is-active .ds-mode-btn__cap {
+  background: var(--ds-accent);
+  border-color: var(--ds-accent);
+  box-shadow: 0 1.5px 0 var(--ds-accent-active);
+  color: #fff;
+}
+.ds-mode-btn.is-active .ds-mode-btn__label { color: var(--ds-accent-active); font-weight: var(--ds-weight-medium); }
+
+/* ── NodeModeStrip: anchored just below the node card, out of flow ────────── */
+.ds-nodemode {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  pointer-events: none;                  /* clicks fall through to the canvas */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+.ds-nodemode--muted { color: var(--ds-text-disabled); font-style: italic; }
+
+/* status = two labelled mini progress bars (time + context) — the at-a-glance health */
+.ds-nodemode--status { gap: 3px; }
+.ds-minibar {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: var(--ds-space-2);
+}
+.ds-minibar__tag { color: var(--ds-text-tertiary); text-transform: uppercase; letter-spacing: var(--ds-tracking-label); }
+.ds-minibar__track {
+  position: relative;
+  height: 5px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-neutral-200);
+  overflow: hidden;
+}
+.ds-minibar__fill { position: absolute; inset: 0 auto 0 0; border-radius: var(--ds-radius-full); background: var(--ds-success); }
+.ds-minibar__track[data-tone="warn"] .ds-minibar__fill { background: var(--ds-warning); }
+.ds-minibar__track[data-tone="high"] .ds-minibar__fill { background: var(--ds-error); }
+.ds-minibar__val { font-variant-numeric: tabular-nums; color: var(--ds-text-secondary); }
+.ds-minibar__val[data-tone="warn"] { color: var(--ds-warning-fg); }
+.ds-minibar__val[data-tone="high"] { color: var(--ds-error-fg); }
+
+/* model chip ("license plate") */
+.ds-nodemode--model { align-items: flex-start; }
+.ds-modelchip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 1px 8px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border-strong);
+  color: var(--ds-text-primary);
+  font-weight: var(--ds-weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-nodemode__sub { color: var(--ds-text-tertiary); }
+
+/* artifact rows */
+.ds-artrow { display: flex; align-items: baseline; justify-content: space-between; gap: var(--ds-space-2); }
+.ds-artrow__name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-artrow[data-ok="false"] .ds-artrow__name { color: var(--ds-error-fg); text-decoration: line-through; }
+.ds-artrow__size { color: var(--ds-text-tertiary); font-variant-numeric: tabular-nums; flex: none; }
+.ds-artrow--more { color: var(--ds-text-tertiary); font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-mode-btn { transition: none; }
+}

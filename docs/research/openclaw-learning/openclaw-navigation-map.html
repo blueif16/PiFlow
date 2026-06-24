@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenClaw Navigation Map</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>OpenClaw Navigation Map</h1>
+        <p class="dek">
+          A compact reference for finding the load-bearing OpenClaw surfaces before
+          reading implementation details.
+        </p>
+        <p class="meta">Source scope: <code>vendor/openclaw</code></p>
+      </header>
+
+      <h2>One-Screen Mental Model</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Where To Look</th>
+            <th>Why It Matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Product and operator path</td>
+            <td><a href="../vendor/openclaw/README.md">README.md</a></td>
+            <td>Names the product, install path, gateway role, channels, security model, and dev loop.</td>
+          </tr>
+          <tr>
+            <td>Maintainer rules</td>
+            <td><a href="../vendor/openclaw/AGENTS.md">AGENTS.md</a></td>
+            <td>Defines core/plugin boundaries, commands, validation expectations, and review posture.</td>
+          </tr>
+          <tr>
+            <td>CLI launcher</td>
+            <td><a href="../vendor/openclaw/openclaw.mjs">openclaw.mjs</a></td>
+            <td>Shows how the published binary enters the source or built runtime and enforces Node support.</td>
+          </tr>
+          <tr>
+            <td>Core runtime</td>
+            <td><a href="../vendor/openclaw/src/">src/</a></td>
+            <td>Holds gateway, agents, sessions, channels, plugins, provider runtime, tools, and state code.</td>
+          </tr>
+          <tr>
+            <td>Plugin ring</td>
+            <td><a href="../vendor/openclaw/extensions/">extensions/</a></td>
+            <td>Contains bundled providers, channels, tools, and feature integrations kept outside core ownership.</td>
+          </tr>
+          <tr>
+            <td>Reusable packages</td>
+            <td><a href="../vendor/openclaw/packages/">packages/</a></td>
+            <td>Contains protocol, SDK, core libraries, and shared packages used by core and extensions.</td>
+          </tr>
+          <tr>
+            <td>Companion apps</td>
+            <td><a href="../vendor/openclaw/apps/">apps/</a>, <a href="../vendor/openclaw/ui/">ui/</a></td>
+            <td>Separates app/UI surfaces from the gateway and plugin runtime.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Boundary Rules To Remember</h2>
+      <p>
+        The shortest useful rule from <a href="../vendor/openclaw/AGENTS.md">AGENTS.md</a>:
+        core stays plugin-agnostic. Plugins cross into core through documented SDK and manifest
+        surfaces rather than importing internal core files.
+      </p>
+      <p>
+        The repo is a pnpm workspace with root, UI, package, and extension members declared in
+        <a href="../vendor/openclaw/pnpm-workspace.yaml">pnpm-workspace.yaml</a>. That workspace
+        shape is the first map to use before deciding where a feature or bug belongs.
+      </p>
+
+      <h2>First Commands To Recognize</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Need</th>
+            <th>Command</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Source install</td>
+            <td><code>pnpm install</code></td>
+          </tr>
+          <tr>
+            <td>Run CLI from source</td>
+            <td><code>pnpm openclaw ...</code></td>
+          </tr>
+          <tr>
+            <td>Development gateway</td>
+            <td><code>pnpm gateway:watch</code></td>
+          </tr>
+          <tr>
+            <td>Build</td>
+            <td><code>pnpm build</code></td>
+          </tr>
+          <tr>
+            <td>Docs index before docs work</td>
+            <td><code>pnpm docs:list</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>

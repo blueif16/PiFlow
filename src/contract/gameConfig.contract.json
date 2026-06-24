@@ -1,0 +1,26 @@
+{
+  "$comment": "REFERENCE SHAPE — the engine-agnostic, UNIVERSAL gameConfig groups shared across every engine (2D Phaser, 3D Three.js). It is NOT consumed by the build (each engine ships its own concrete gameConfig.json that W2 merges blueprint.config into); it DOCUMENTS the shared contract so a new engine's gameConfig.json keeps these groups identical. The 2D-only renderConfig.pixelArt and any 3D-only group (e.g. renderDistance) live in each engine's own gameConfig.json, NOT here.",
+  "screenSize": {
+    "width": {
+      "value": 432,
+      "type": "number",
+      "description": "VIEWPORT design width in pixels (the browser frame, NOT the world). 9:16 PORTRAIT (432x768) so a fixed canvas fills a portrait phone and letterboxes centered on a landscape laptop — one fixed canvas plays on both mobile and desktop. Engine-agnostic: the fixed-portrait invariant holds for 2D and 3D."
+    },
+    "height": {
+      "value": 768,
+      "type": "number",
+      "description": "VIEWPORT design height in pixels. 9:16 portrait (432x768) — see width."
+    }
+  },
+  "debugConfig": {
+    "debug": {
+      "value": false,
+      "type": "boolean",
+      "description": "Enable engine debug rendering (physics/collider visualization)."
+    }
+  },
+  "controlsHelp": [],
+  "hud": [],
+  "failModel": "health",
+  "objective": ""
+}

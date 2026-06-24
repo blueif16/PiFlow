@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Design tokens (Tier 1 · Restraint/Editorial)
+   The single source of premium: tokens, not effects.
+   Re-theme a project by editing the values below.
+   ============================================================ */
+:root {
+  /* Canvas — near-black, never #000 */
+  --canvas: #0a0a0a;
+
+  /* Foreground */
+  --fg: #ededed;
+  --fg-muted: #a1a1a1;
+
+  /* The ONE accent hue — electric green. CTA / links / status only. */
+  --accent: #3df2a7;
+  --accent-ink: #04140d; /* readable text on a solid accent fill */
+
+  /* Surface ladder — for any raised panel (used later, not in the hero) */
+  --surface-1: #0f1011;
+  --surface-2: #141516;
+  --surface-3: #18191a;
+
+  /* Hairline border — weightless, present */
+  --hairline: rgba(255, 255, 255, 0.08);
+}
+
+/* Map a few tokens into the Tailwind v4 theme so utilities can reach them. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-accent: var(--accent);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+
+  /* Geist via the `geist` package (CSS vars set on <html> in layout.tsx) */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  background: var(--canvas);
+}
+
+body {
+  background: var(--canvas);
+  color: var(--fg);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================================
+   Grain overlay — the only "effect."
+   One fixed full-viewport feTurbulence noise layer, blended.
+   ============================================================ */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  opacity: 0.03;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}

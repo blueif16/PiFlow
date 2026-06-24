@@ -46,8 +46,10 @@ import { WorkflowNode, type FlowNode } from "./WorkflowNode";
 import { NodeExpandOverlay } from "./NodeExpandOverlay";
 import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
 import { MenuBar } from "./MenuBar";
+import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
 import { ExpandContext } from "./ExpandContext";
+import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { loadRunView, toFlowGraph, buildDirectory } from "../data/runView";
 import { loadIndex, findThread, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
 import { useRunStream, liveFlowGraph, RunStreamContext } from "../data/runStream";
@@ -59,6 +61,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId ?? null);
+  const [mode, setMode] = useState<ViewMode | null>(null);
   const [ix, setIx] = useState<GlobalIndex | null>(null);
   const [activeRun, setActiveRun] = useState<string>("");
   const [viewable, setViewable] = useState<boolean>(true);
@@ -150,10 +153,16 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     [expandedId],
   );
 
+  const viewModeApi = useMemo(
+    () => ({ mode, setMode, toggle: (m: ViewMode) => setMode((cur) => (cur === m ? null : m)) }),
+    [mode],
+  );
+
   const expandedData = nodes.find((n) => n.id === expandedId)?.data ?? null;
 
   return (
     <ExpandContext.Provider value={expandApi}>
+      <ViewModeContext.Provider value={viewModeApi}>
       <RunStreamContext.Provider value={live}>
       <LayoutGroup>
         <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--ds-bg-canvas)" }}>
@@ -217,10 +226,12 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
 
           <NodeExpandOverlay id={expandedId} data={expandedData} onClose={() => setExpandedId(null)} />
           <MenuBar activeRun={activeRun} onSelectRun={selectRun} ix={ix} />
+          <ModeBar />
           <Companion activeRun={activeRun} />
         </div>
       </LayoutGroup>
       </RunStreamContext.Provider>
+      </ViewModeContext.Provider>
     </ExpandContext.Provider>
   );
 }

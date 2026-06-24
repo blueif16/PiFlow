@@ -1,0 +1,2 @@
+# secrets — NEVER commit the credential file
+.env

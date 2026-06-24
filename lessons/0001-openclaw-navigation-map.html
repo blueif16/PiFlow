@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lesson 0001: OpenClaw Navigation Map</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>OpenClaw Navigation Map</h1>
+        <p class="dek">
+          Learn the first route through OpenClaw: product overview, maintainer rules,
+          launcher, core runtime, plugins, packages, and apps.
+        </p>
+        <p class="meta">
+          Mission: <a href="../MISSION.md">Learn OpenClaw and Hermes Agent</a> |
+          Reference: <a href="../reference/openclaw-navigation-map.html">OpenClaw Navigation Map</a>
+        </p>
+      </header>
+
+      <section class="callout">
+        <p>
+          <strong>Skill target:</strong> Given a question about OpenClaw, choose the first file or
+          directory to inspect before reading implementation code.
+        </p>
+      </section>
+
+      <h2>The Smallest Useful Model</h2>
+      <p>
+        Treat OpenClaw as a local-first assistant gateway with a narrow core and a plugin ring.
+        The <a href="../vendor/openclaw/README.md">README</a> tells you what the product does.
+        The <a href="../vendor/openclaw/AGENTS.md">root AGENTS.md</a> tells you what boundaries
+        maintainers protect when changing it.
+      </p>
+      <p>
+        The first map is not a call graph. It is a boundary map:
+        <code>openclaw.mjs</code> starts the CLI, <code>src/</code> holds the core runtime,
+        <code>extensions/</code> holds plugin-owned capability, <code>packages/</code> holds
+        shared libraries and SDK surfaces, and <code>apps/</code> plus <code>ui/</code> hold
+        companion surfaces.
+      </p>
+
+      <h2>Read In This Order</h2>
+      <ol class="task-list">
+        <li>
+          Open <a href="../vendor/openclaw/README.md">vendor/openclaw/README.md</a> and identify
+          the operator path: install, onboard, gateway, channel, agent.
+        </li>
+        <li>
+          Open <a href="../vendor/openclaw/AGENTS.md">vendor/openclaw/AGENTS.md</a> and find the
+          architecture rule that says core stays plugin-agnostic.
+        </li>
+        <li>
+          Open <a href="../vendor/openclaw/openclaw.mjs">vendor/openclaw/openclaw.mjs</a> and note
+          that the binary wrapper checks Node support before entering runtime code.
+        </li>
+        <li>
+          Open <a href="../vendor/openclaw/pnpm-workspace.yaml">vendor/openclaw/pnpm-workspace.yaml</a>
+          and name the workspace members: root, <code>ui</code>, <code>packages/*</code>,
+          and <code>extensions/*</code>.
+        </li>
+      </ol>
+
+      <h2>Retrieval Check</h2>
+      <div class="quiz">
+        <label for="boundary-answer">
+          Type the canonical OpenClaw surface that plugins use to cross into core.
+        </label>
+        <div class="quiz-row">
+          <input id="boundary-answer" autocomplete="off" spellcheck="false" />
+          <button type="button" id="boundary-check">Check</button>
+        </div>
+        <p class="feedback" id="boundary-feedback"></p>
+      </div>
+
+      <h2>Why This Matters</h2>
+      <p>
+        OpenClaw has many channels, providers, apps, and tools. Without the boundary map, every
+        question looks like a search problem. With it, you can decide whether a question belongs
+        to operator docs, core runtime, plugin-owned capability, shared SDK/package surface, or an
+        app/UI shell before opening deep files.
+      </p>
+
+      <div class="next">
+        Next lesson: trace one OpenClaw user action from CLI or channel entry point into gateway,
+        session, agent runtime, and reply delivery.
+      </div>
+    </main>
+
+    <script>
+      const input = document.querySelector("#boundary-answer");
+      const button = document.querySelector("#boundary-check");
+      const feedback = document.querySelector("#boundary-feedback");
+
+      button.addEventListener("click", () => {
+        const value = input.value.trim().toLowerCase();
+        const ok = value === "plugin-sdk" || value === "openclaw/plugin-sdk";
+        feedback.classList.toggle("correct", ok);
+        feedback.textContent = ok
+          ? "Correct. Use the plugin SDK and documented plugin surfaces before touching internals."
+          : "Not yet. Re-read AGENTS.md: plugins cross into core through the plugin SDK surface.";
+      });
+    </script>
+  </body>
+</html>

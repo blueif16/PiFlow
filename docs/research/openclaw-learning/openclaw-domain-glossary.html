@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenClaw Domain Glossary</title>
+    <link rel="stylesheet" href="../assets/lesson.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>OpenClaw Domain Glossary</h1>
+        <p class="dek">
+          A compact vocabulary for reading <code>vendor/openclaw</code> without collapsing
+          product terms, runtime terms, and repository boundaries into one pile.
+        </p>
+        <p class="meta">
+          Canonical source: <a href="../CONTEXT.md">CONTEXT.md</a> |
+          First lesson: <a href="../lessons/0002-openclaw-outer-shell.html">OpenClaw Outer Shell</a>
+        </p>
+      </header>
+
+      <h2>Core Terms</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Term</th>
+            <th>Definition</th>
+            <th>Do Not Confuse With</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OpenClaw</td>
+            <td>The vendored OpenClaw repository studied first in this learning track.</td>
+            <td>Hermes Agent, generic agent frameworks</td>
+          </tr>
+          <tr>
+            <td>Gateway</td>
+            <td>The long-lived control plane for channels, sessions, tools, events, clients, and nodes.</td>
+            <td>Any backend process, any HTTP server</td>
+          </tr>
+          <tr>
+            <td>Channel</td>
+            <td>A messaging surface that carries inbound and outbound conversation traffic.</td>
+            <td>Companion app, provider, node</td>
+          </tr>
+          <tr>
+            <td>Node</td>
+            <td>A device or headless peer that connects to the Gateway and exposes declared capabilities.</td>
+            <td>Control client, channel adapter</td>
+          </tr>
+          <tr>
+            <td>Agent Runtime</td>
+            <td>The embedded execution surface for model discovery, tools, prompts, sessions, and delivery.</td>
+            <td>A standalone external agent framework</td>
+          </tr>
+          <tr>
+            <td>Agent Workspace</td>
+            <td>The working directory OpenClaw gives the runtime for tools, context, skills, and bootstrap files.</td>
+            <td>The OpenClaw source checkout</td>
+          </tr>
+          <tr>
+            <td>Session</td>
+            <td>A conversation context selected from message origin, lifecycle rules, and isolation policy.</td>
+            <td>Plain chat transcript, UI thread</td>
+          </tr>
+          <tr>
+            <td>Plugin</td>
+            <td>A capability package that owns provider, channel, tool, or feature behavior outside core.</td>
+            <td>Core runtime module</td>
+          </tr>
+          <tr>
+            <td>Plugin SDK</td>
+            <td>The supported contract plugins use to cross into core without importing internals.</td>
+            <td>Private implementation files</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>Reading Heuristic</h2>
+      <p>
+        When a file looks important, classify it before reading deeply:
+        <strong>operator path</strong>, <strong>Gateway</strong>, <strong>agent runtime</strong>,
+        <strong>session</strong>, <strong>plugin</strong>, <strong>SDK contract</strong>, or
+        <strong>companion surface</strong>. This keeps the map small while the repo stays large.
+      </p>
+
+      <h2>Primary Sources</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Question</th>
+            <th>First Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>What is the product?</td>
+            <td><a href="../vendor/openclaw/README.md">README.md</a></td>
+          </tr>
+          <tr>
+            <td>What does the Gateway own?</td>
+            <td><a href="../vendor/openclaw/docs/concepts/architecture.md">docs/concepts/architecture.md</a></td>
+          </tr>
+          <tr>
+            <td>What does the agent runtime own?</td>
+            <td><a href="../vendor/openclaw/docs/concepts/agent.md">docs/concepts/agent.md</a></td>
+          </tr>
+          <tr>
+            <td>How are conversations isolated?</td>
+            <td><a href="../vendor/openclaw/docs/concepts/session.md">docs/concepts/session.md</a></td>
+          </tr>
+          <tr>
+            <td>Where is the plugin boundary?</td>
+            <td><a href="../vendor/openclaw/AGENTS.md">AGENTS.md</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>

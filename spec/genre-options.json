@@ -1,0 +1,320 @@
+{
+  "$comment": "GENERATED per-archetype SLICE of genres.json via templates/registry/build-genres.mjs — do NOT hand-edit. The filtered view the design node (W1) reads (it is already inside one archetype); genres here share the module catalog + craft, so treat them as a palette menu, not a one-of. Edit the module's genre.json, then `npm run genres:build`. Drift fails `npm run genres:check`.",
+  "generatedBy": "templates/registry/build-genres.mjs",
+  "archetype": "platformer",
+  "genres": [
+    {
+      "id": "platformer",
+      "archetype": "platformer",
+      "physicsProfile": {
+        "hasGravity": true,
+        "perspective": "side",
+        "movementType": "continuous"
+      },
+      "oneLineIntent": "Run and jump across a side-view space, using gravity and momentum to reach a goal while threats contest the path.",
+      "coreVerbs": [
+        "move",
+        "jump"
+      ],
+      "whenToUse": [
+        "run and jump",
+        "jump across platforms",
+        "reach the exit",
+        "avoid spikes",
+        "gravity",
+        "fall off the edge",
+        "side-scroller",
+        "side view",
+        "collect coins",
+        "Mario-like",
+        "Celeste-like",
+        "obstacle course",
+        "speedrun a level"
+      ],
+      "capabilitiesRef": "modules/platformer/capabilities.json",
+      "skillRef": "modules/platformer/design-rules.md",
+      "coreBase": "core",
+      "runtimeShape": {
+        "dir": "levels",
+        "filePattern": "<level>.json",
+        "dataType": "LevelData"
+      },
+      "observableEntityTypes": [
+        "collectible",
+        "enemy",
+        "goal",
+        "obstacle",
+        "player"
+      ],
+      "configGroup": "playerConfig",
+      "projections": {
+        "runtimeData": {
+          "to": "src/levels/Level1Scene.json",
+          "assemble": {
+            "spread": "layout",
+            "fields": {
+              "scene": {
+                "value": "Level1Scene"
+              },
+              "systems": "systems",
+              "effects": "effects",
+              "hitTimePenalty": {
+                "from": "config.hazardTimePenalty",
+                "default": 0
+              },
+              "player": "@entity:weave the player entity (assetSlot + displayWidth/Height + behaviors {ref,params} incl any $custom)",
+              "goal": "@entity:weave layout.goal {id,x,y} + the goal entity assetSlot/width/height",
+              "rewards": "@entity:weave layout.rewards[] positions + each reward entity {kind,role,entityKind,assetSlot,width,height,behaviors}",
+              "threats": "@entity:transform layout.threats[] (route -> minX/maxX) + each threat entity behaviors {PatrolAI/CyclicHazard,ContactRespawn}",
+              "backgroundColor": "@entity:pick a hex from meta.artStyle",
+              "backgroundSlot": "@entity:the background-type asset slot from assetList"
+            }
+          }
+        },
+        "gameConfig": {
+          "to": "src/gameConfig.json",
+          "merge": {
+            "wrapInto": "playerConfig",
+            "from": "config",
+            "literals": {
+              "failModel": "meta.failModel",
+              "controlsHelp": "controls",
+              "objective": [
+                "meta.objective",
+                "winCondition.description"
+              ],
+              "shell": "shell",
+              "guidance": "guidance",
+              "sound": "sound"
+            }
+          }
+        },
+        "index": {
+          "to": "index.json",
+          "union": {
+            "from": [
+              "assetList",
+              "entities[].assetSlot"
+            ],
+            "key": "slot",
+            "path": {
+              "byField": "type",
+              "dir": {
+                "sprite": "sprites",
+                "animation": "sprites",
+                "image": "images",
+                "tileset": "tiles",
+                "background": "backgrounds",
+                "audio": "audio",
+                "model": "models"
+              },
+              "ext": {
+                "audio": "mp3",
+                "model": "glb"
+              },
+              "defaultDir": "sprites",
+              "defaultExt": "png"
+            },
+            "defaults": {
+              "width": 32,
+              "height": 32
+            },
+            "carry": [
+              "type",
+              "width",
+              "height",
+              "depth",
+              "frames",
+              "entityIds",
+              "description"
+            ],
+            "row": {
+              "status": "pending"
+            },
+            "envelope": {
+              "archetype": "meta.archetype",
+              "assetsDir": {
+                "value": "public/assets"
+              }
+            },
+            "itemsKey": "slots"
+          },
+          "schema": "packages/skills/scaffold/index.schema.json"
+        }
+      },
+      "palette": {
+        "behaviors": [
+          "PlatformerMovement",
+          "PatrolAI",
+          "CyclicHazard",
+          "ContactRespawn"
+        ],
+        "systems": [
+          "CollectScore",
+          "ScoreGateGoal",
+          "GoalReach"
+        ],
+        "effects": [
+          "shakeLight",
+          "shakeMedium",
+          "hitStop",
+          "showDamageNumber"
+        ],
+        "controlSchemes": [
+          "platformer-2d"
+        ],
+        "configKeys": [
+          "maxHealth",
+          "walkSpeed",
+          "jumpPower",
+          "gravityY",
+          "hurtingDuration",
+          "invulnerableTime",
+          "timeLimit"
+        ],
+        "sceneHooks": [
+          "createBackground",
+          "createTileMap",
+          "createPlayer",
+          "createDecorations",
+          "createEnemies",
+          "setupMapSize",
+          "setupCustomCollisions",
+          "onEnemyKilled",
+          "onLevelComplete",
+          "onPlayerDeath"
+        ],
+        "observables": [
+          "status",
+          "score",
+          "timeRemaining",
+          "player.x",
+          "player.y",
+          "player.vx",
+          "player.vy",
+          "player.isGrounded",
+          "player.facingDirection",
+          "player.health",
+          "entities",
+          "ready"
+        ]
+      },
+      "module": "platformer"
+    },
+    {
+      "id": "platformer:combat",
+      "archetype": "platformer",
+      "subgenre": "combat",
+      "physicsProfile": {
+        "hasGravity": true,
+        "perspective": "side",
+        "movementType": "continuous"
+      },
+      "oneLineIntent": "Move and jump while fighting enemies with melee, ranged, and an ultimate skill — the contested decision is engagement: when to strike, dodge, or spend the cooldown.",
+      "coreVerbs": [
+        "move",
+        "jump",
+        "attack"
+      ],
+      "whenToUse": [
+        "fight enemies",
+        "beat up",
+        "hack and slash",
+        "melee combat",
+        "shoot enemies",
+        "boss fight",
+        "kill all enemies",
+        "special attack",
+        "ultimate ability",
+        "combo",
+        "action platformer",
+        "brawler",
+        "Metal Slug-like",
+        "ninja",
+        "knight fights monsters",
+        "defeat the boss",
+        "clear the room of enemies"
+      ],
+      "capabilitiesRef": "modules/platformer/capabilities.json",
+      "skillRef": "modules/platformer/design-rules.md",
+      "coreBase": "core",
+      "runtimeShape": {
+        "dir": "levels",
+        "filePattern": "<level>.json",
+        "dataType": "LevelData"
+      },
+      "observableEntityTypes": [
+        "collectible",
+        "enemy",
+        "goal",
+        "obstacle",
+        "player"
+      ],
+      "configGroup": "playerConfig",
+      "palette": {
+        "behaviors": [
+          "PlatformerMovement",
+          "MeleeAttack",
+          "RangedAttack",
+          "PatrolAI",
+          "ChaseAI",
+          "DashAttackSkill",
+          "AreaDamageSkill",
+          "GroundQuakeSkill",
+          "BoomerangSkill",
+          "MultishotSkill"
+        ],
+        "systems": [
+          "ScoreGateGoal",
+          "GoalReach"
+        ],
+        "effects": [
+          "shakeMedium",
+          "shakeStrong",
+          "hitStop",
+          "showDamageNumber",
+          "createExplosion",
+          "createDefaultExplosion",
+          "createChargeEffect",
+          "createDashTrail",
+          "createVortex"
+        ],
+        "controlSchemes": [
+          "platformer-2d"
+        ],
+        "configKeys": [
+          "maxHealth",
+          "walkSpeed",
+          "jumpPower",
+          "gravityY",
+          "attackDamage",
+          "hurtingDuration",
+          "invulnerableTime"
+        ],
+        "sceneHooks": [
+          "createBackground",
+          "createTileMap",
+          "createPlayer",
+          "createEnemies",
+          "setupMapSize",
+          "setupCustomCollisions",
+          "onEnemyKilled",
+          "onLevelComplete",
+          "onPlayerDeath"
+        ],
+        "observables": [
+          "status",
+          "score",
+          "player.x",
+          "player.y",
+          "player.health",
+          "player.maxHealth",
+          "player.isDead",
+          "player.facingDirection",
+          "entities"
+        ]
+      },
+      "module": "platformer"
+    }
+  ]
+}

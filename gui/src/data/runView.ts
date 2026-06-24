@@ -106,6 +106,48 @@ export function formatBytes(b?: number): string {
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/** Compact token count: 1234 → "1.2k", 139653 → "140k", 1_200_000 → "1.2M". */
+export function formatTokens(n?: number | null): string {
+  if (n == null) return "—";
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+}
+
+/**
+ * Known model context windows, in tokens — the denominator for the Status view-mode's
+ * context bar, which shows a node's peak context as a fraction of its model's window so
+ * context pressure is readable at a glance. Matched case-insensitively by substring because
+ * provider tags drift ("MiniMax-M3", "claude-3-5-sonnet", …). Unknown models fall back to
+ * DEFAULT_CONTEXT_WINDOW; the bar still renders. Edit this table as providers change — it is
+ * the single place capacities live (none was recorded in the run telemetry).
+ */
+export const DEFAULT_CONTEXT_WINDOW = 200_000;
+const CONTEXT_WINDOWS: ReadonlyArray<[RegExp, number]> = [
+  [/gemini/i, 1_000_000],
+  [/gpt-4\.1/i, 1_000_000],
+  [/gpt-4o|gpt-4-turbo/i, 128_000],
+  [/\bo[134]\b|o3|o4/i, 200_000],
+  [/claude/i, 200_000],
+  [/deepseek/i, 128_000],
+  [/minimax/i, 200_000],
+  [/llama/i, 128_000],
+];
+
+export function contextWindowFor(model?: string | null): number {
+  if (!model) return DEFAULT_CONTEXT_WINDOW;
+  for (const [re, win] of CONTEXT_WINDOWS) if (re.test(model)) return win;
+  return DEFAULT_CONTEXT_WINDOW;
+}
+
+export type ContextTone = "ok" | "warn" | "high";
+/** <50% headroom = ok, 50–75% = warn, ≥75% = high (quality degrades as context fills). */
+export function contextTone(frac: number): ContextTone {
+  if (frac >= 0.75) return "high";
+  if (frac >= 0.5) return "warn";
+  return "ok";
+}
+
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /** Build the React Flow graph (positions by stage column / parallel-lane row) from a run-view. */

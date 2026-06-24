@@ -1,0 +1,9 @@
+.DS_Store
+
+# JS/TS build + deps (the packages/ SDK)
+node_modules/
+dist/
+*.tsbuildinfo
+
+# SVGs untracked for now (illustration library paused). Already-tracked motifs stay tracked.
+*.svg

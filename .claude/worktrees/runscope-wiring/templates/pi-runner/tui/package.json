@@ -1,0 +1,15 @@
+{
+  "name": "pi-runner-tui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Elegant terminal monitor for pi-runner: namespaces → threads → node detail, live.",
+  "bin": { "pi-tui": "./pi-tui.mjs" },
+  "scripts": { "start": "node pi-tui.mjs" },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "htm": "^3.1.1",
+    "ink": "^7.0.6",
+    "react": "^19.2.0"
+  }
+}

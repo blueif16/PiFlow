@@ -1,0 +1,254 @@
+{
+  "$comment_TEMPLATE": "HARDEN STARTING ARTIFACT — the per-archetype, SCHEMA-SHAPED blueprint skeleton for a WIN-LOSE platformer (meta.goalModel == 'win-lose', the default branch). COPY this to spec/blueprint.json, then FILL every <FILL: ...> sentinel with your hardened values (SKILL.md §0.5). Every value below is a SENTINEL that FAILS blueprint.schema.json on purpose (a string where a number/enum/min-length-1 field is required, or an empty array where minItems applies), so an unfilled copy cannot validate. Each array shows ONE placeholder element exhibiting ALL its fields — REPLACE it with the real set (multiple entities/rewards/threats/platforms/milestones/ACs). This skeleton is a STARTING POINT, not a straitjacket: if classification's goalModel is 'open-ended' use templates/modules/voxel_sandbox/blueprint.template.json (or the open-ended branch per §3b/§4.4) instead. The OPTIONAL binding buckets (genre/controlScheme/effects/systems/custom/hud/subMode/anim) are present as scaffolds — keep what your design uses, delete the rest. Delete this $comment_TEMPLATE and every other $comment_* key before returning.",
+
+  "meta": {
+    "title": "<FILL: short game title, <=6 words>",
+    "archetype": "platformer",
+    "goalModel": "win-lose",
+    "coreLoop": "<FILL: one-line core loop carried from classification.json>",
+    "coreVerb": "<FILL: the core verb carried from classification.json>",
+    "coreFantasy": "<FILL: the player fantasy this game delivers (optional but recommended)>",
+    "failModel": "<FILL: enum one of health|lives|respawn|time|none — the resource the HUD surfaces>",
+    "scoringModel": "<FILL: enum one of none|bounded-collectible|bounded-threshold|performance>",
+    "maxScore": "<FILL: number — REQUIRED when scoringModel != none; == sum of layout.rewards values; OMIT this key entirely when scoringModel == none>",
+    "artStyle": "<FILL: global medium + palette + mood ONLY; name NO single subject/entity and NO per-entity color>",
+    "assetBudget": "<FILL: integer >= 1 — max real generated asset KINDS (default 12 for platformer); every primary visible KIND gets a real slot or you CUT SCOPE>",
+    "physicsProfile": {
+      "hasGravity": "<FILL: boolean — true for a platformer>",
+      "perspective": "<FILL: enum one of side|top_down|none|first_person — 'side' for a platformer>",
+      "movementType": "<FILL: enum one of continuous|grid|path|ui_only — 'continuous' for a platformer>"
+    }
+  },
+
+  "subMode": "<FILL: OPTIONAL within-archetype variant hint for W4, or DELETE this key>",
+
+  "entities": [
+    {
+      "id": "<FILL: entity id, non-empty; the PLAYER must be entities[0] with role 'player'>",
+      "role": "<FILL: enum one of player|enemy|obstacle|collectible|goal|projectile|tower|ui>",
+      "description": "<FILL: what this entity is, non-empty>",
+      "behaviors": [
+        "<FILL: a behavior id resolving in this module's capabilities.json (kind=behavior), e.g. a movement behavior; OR replace this element with a {ref,params} binding object, OR a '$custom:<id>' string with a matching custom[] entry>"
+      ],
+      "anim": {
+        "<FILL: entity state key, e.g. idle/run>": "<FILL: an assetList slot id for that state, or DELETE the anim object if unused>"
+      },
+      "assetSlot": "<FILL: this entity's assetList slot id, or DELETE if it has none>"
+    }
+  ],
+
+  "mechanics": [
+    {
+      "name": "<FILL: mechanic name, non-empty>",
+      "description": "<FILL: what the mechanic does, non-empty>",
+      "capability": "<FILL: OPTIONAL capability id this mechanic maps to, or DELETE this key>"
+    }
+  ],
+
+  "controls": [
+    {
+      "input": "<FILL: the physical input, e.g. a key or button, non-empty>",
+      "action": "<FILL: the game action it triggers, non-empty>"
+    }
+  ],
+
+  "genre": {
+    "ref": "<FILL: a genre id from templates/genres.json whose archetype == 'platformer' (e.g. the base platformer genre or a subgenre); must resolve>",
+    "subgenre": "<FILL: OPTIONAL subgenre label from the genre record, or DELETE this key>"
+  },
+
+  "controlScheme": {
+    "scheme": "<FILL: a control-scheme id resolving in capabilities.json (kind=control-scheme)>",
+    "bindings": {
+      "<FILL: an action name, e.g. jump>": ["<FILL: a key for that action, e.g. Space>"]
+    }
+  },
+
+  "effects": [
+    {
+      "on": "<FILL: a real BUS event that triggers the effect — it MUST RESOLVE in platformer/events.catalog.json (∪ a custom[].emits[].name). Use the catalog's domain.pastTenseVerb names: enemy.died | enemy.damaged | reward.collected | player.damaged | player.died | player.shot | player.jumped | player.landed | player.respawned | hazard.activated | score.changed | level.statusChanged. NEVER an invented name (a bus the runtime never carries is a dead effect). A genuinely-new moment → declare it in a custom[].emits[] entry and key off that. non-empty>",
+      "play": "<FILL: an effect id resolving in capabilities.json (kind=effect), non-empty>",
+      "params": { "<FILL: OPTIONAL per-binding effect param key>": "<FILL: its value, or DELETE params>" }
+    }
+  ],
+
+  "systems": [
+    {
+      "ref": "<FILL: a system id resolving in capabilities.json (kind=system), e.g. the collect->score logic or the score-gated-goal logic or the pure-completion goal logic; PREFER a systems[] binding over a custom[] system>",
+      "params": { "<FILL: OPTIONAL per-game system param key drawn from the capability's declared params>": "<FILL: its value, or DELETE params>" }
+    }
+  ],
+
+  "custom": [
+    {
+      "id": "<FILL: custom capability id, referenced as '$custom:<id>' from behaviors[]; ONLY for the genuinely-novel delta no resolving id covers>",
+      "kind": "<FILL: enum one of behavior|system|visual>",
+      "implements": "<FILL: OPTIONAL the SDK interface the code targets, e.g. IBehavior, or DELETE>",
+      "attachedTo": "<FILL: OPTIONAL the entity id it attaches to, or 'scene' for a system, or DELETE>",
+      "contract": "<FILL: the OBSERVABLE behavior contract W4 implements — what it does to __GAME__ state / the world, non-empty>",
+      "emits": [
+        { "name": "<FILL: a genuinely-new BUS event this custom component publishes (domain.pastTenseVerb) — W4's surface() declares + emits it; this is what lets an effects[].on / sfx[].on / guidance on-event keyed off it RESOLVE. DELETE the whole emits[] array if this component publishes no event a chrome producer reacts to>", "drivenBy": "<FILL: the verb/moment that fires it (required when emits[] is present)>", "expect": "<FILL: the observable transition it must cause (required when emits[] is present)>" }
+      ],
+      "file": "<FILL: OPTIONAL the single file W4 writes for this entry, or DELETE>"
+    }
+  ],
+
+  "winCondition": {
+    "description": "<FILL: how the player wins, in plain terms, non-empty>",
+    "observable": "<FILL: the __GAME__ expression that is true on win, e.g. status === 'won', non-empty>"
+  },
+
+  "loseCondition": {
+    "description": "<FILL: how the player loses, in plain terms, non-empty>",
+    "observable": "<FILL: the __GAME__ expression that is true on loss, e.g. status === 'lost', non-empty>"
+  },
+
+  "config": {
+    "<FILL: a config-key id from this module's capabilities.json (kind=config-key), e.g. the gravity tunable>": "<FILL: number — the hardened value; config must be COMPLETE (every tunable the design needs) and every value a number>"
+  },
+
+  "assetList": [
+    {
+      "slot": "<FILL: the Phaser texture KEY for this asset, non-empty; one slot per primary visible KIND>",
+      "type": "<FILL: enum one of sprite|animation|tileset|background|image|audio>",
+      "description": "<FILL: a SUBJECT line (what it depicts + view direction) — NO style/palette/negatives; the W3a Art Director writes the full prompt>",
+      "frames": ["<FILL: for type 'animation' ONLY, an ordered frame id; else DELETE the frames key>"],
+      "width": "<FILL: integer >= 1 — logical display width px (per-frame for animations); the same box the §3 feasibility math uses>",
+      "height": "<FILL: integer >= 1 — logical display height px (per-frame for animations)>"
+    }
+  ],
+
+  "milestones": [
+    {
+      "id": "<FILL: milestone id matching ^M[1-9][0-9]*$, e.g. M1; supply 3-5 milestones total (min 3)>",
+      "name": "<FILL: milestone name, non-empty>",
+      "goal": "<FILL: the playable goal of this vertical slice, non-empty>",
+      "acceptanceCriteria": ["<FILL: a plain-language acceptance line for this milestone, non-empty; >=1 per milestone>"],
+      "assertions": [
+        {
+          "id": "<FILL: assertion id matching ^M[1-9][0-9]*-A[1-9][0-9]*$, e.g. M1-A1>",
+          "describe": "<FILL: what this runtime check verifies, non-empty>",
+          "setup": {
+            "scene": "<FILL: OPTIONAL scene key to load before the check, or DELETE setup>",
+            "state": { "<FILL: OPTIONAL pre-state key>": "<FILL: its value, or DELETE state>" }
+          },
+          "input": {
+            "type": "<FILL: enum one of keyPress|keyHold|click|event|none>",
+            "key": "<FILL: OPTIONAL the key for keyPress/keyHold, or DELETE>",
+            "durationMs": "<FILL: OPTIONAL integer >= 0 for keyHold, or DELETE>",
+            "target": "<FILL: OPTIONAL the click/event target, or DELETE>"
+          },
+          "observe": "<FILL: the __GAME__ field/path this assertion observes, e.g. status or score, non-empty>",
+          "expect": { "<FILL: EXACTLY ONE comparator key from decreases|increases|changes|unchanged|equals|atLeast|atMost>": "<FILL: its value (boolean for the boolean comparators; number for atLeast/atMost; number|string|boolean for equals)>" }
+        }
+      ]
+    }
+  ],
+
+  "layout": {
+    "playerSpawn": {
+      "x": "<FILL: number — player spawn x in world px; must sit INSIDE the start platform span and rest on its TOP (§6 self-critique)>",
+      "y": "<FILL: number — player spawn y in world px (rests on the start platform top)>"
+    },
+    "groundSlot": "<FILL: OPTIONAL the level-default ground/platform tile texture KEY (an assetList type 'tileset' slot); platforms without their own assetSlot tile this; or DELETE>",
+    "platforms": [
+      {
+        "id": "<FILL: platform id, non-empty>",
+        "x": "<FILL: number — platform CENTER x in world px (matches SDK createPlatform)>",
+        "y": "<FILL: number — platform CENTER y in world px>",
+        "width": "<FILL: number > 0 — platform width px>",
+        "height": "<FILL: number > 0 — platform height px>",
+        "assetSlot": "<FILL: OPTIONAL per-platform ground tile slot overriding groundSlot, or DELETE>"
+      }
+    ],
+    "goal": {
+      "id": "<FILL: the win-target entity id, non-empty>",
+      "x": "<FILL: number — goal x in world px>",
+      "y": "<FILL: number — goal y in world px>"
+    },
+    "rewards": [
+      {
+        "id": "<FILL: reward/collectible id, non-empty>",
+        "x": "<FILL: number — reward x in world px>",
+        "y": "<FILL: number — reward y in world px>"
+      }
+    ],
+    "threats": [
+      {
+        "id": "<FILL: threat id, non-empty>",
+        "kind": "<FILL: enum one of patrol|static_hazard|chaser|turret|wave_enemy|grid_blocker>",
+        "x": "<FILL: number — threat x in world px (for static_hazard/chaser; OMIT for a pure patrol that uses route)>",
+        "y": "<FILL: number — threat y in world px (as above)>",
+        "route": [
+          { "x": "<FILL: number — waypoint x (patrol only; >=2 waypoints required; else DELETE route)>", "y": "<FILL: number — waypoint y>" },
+          { "x": "<FILL: number — waypoint x>", "y": "<FILL: number — waypoint y>" }
+        ],
+        "speed": "<FILL: number > 0 — px/s (for patrol/chaser; keep the §3 passable window > 0)>",
+        "periodMs": "<FILL: number > 0 — full patrol cycle ms (patrol only; keep the §3 passable window > 0), or DELETE for a non-patrol kind>",
+        "assetSlot": "<FILL: OPTIONAL the hazard texture KEY (an assetList slot), or DELETE>"
+      }
+    ],
+    "bounds": {
+      "width": "<FILL: number > 0 — world width px (the viewport width for one screen, or N x the viewport for a scrolling level; §2.1)>",
+      "height": "<FILL: number > 0 — world height px (matches the viewport height)>"
+    }
+  },
+
+  "coupling": [
+    {
+      "for": "<FILL: the reward or goal id this entry contests (e.g. a reward id or the goal id), non-empty>",
+      "threat": "<FILL: the threat entity id that contests it, non-empty>",
+      "meetsAt": {
+        "x": "<FILL: number — x where the player path intersects the threat region>",
+        "y": "<FILL: number — y where they intersect>"
+      },
+      "passableWindowMs": "<FILL: number > 0 — the safe-reach timing window in ms (from §3 math); MUST be > 0 for a winnable+fair design>",
+      "note": "<FILL: OPTIONAL human rationale — why the threat is on this path, or DELETE>"
+    }
+  ],
+
+  "feasibility": {
+    "archetype": "platformer",
+    "checks": [
+      {
+        "what": "<FILL: what was checked, e.g. a gap clearance or a reach time, non-empty; >=1 check required>",
+        "computed": { "<FILL: a derived value key from the math, e.g. max jump height>": "<FILL: its computed number>" },
+        "required": { "<FILL: the design constraint key checked against, e.g. the gap width>": "<FILL: its number>" },
+        "verdict": "<FILL: enum one of PASS|FAIL|HARDENED>",
+        "numbersUsed": { "<FILL: an input number key used in the computation, e.g. walk speed>": "<FILL: its number — record EVERY input so a human can re-run the arithmetic>" }
+      }
+    ]
+  },
+
+  "referenceSolution": {
+    "winsVia": "<FILL: how the win is achieved (the replay strategy for VERIFY-2), e.g. controls, non-empty>",
+    "steps": [
+      {
+        "input": "<FILL: the player action, e.g. a documented control hold/press with a duration, non-empty; >=1 step required>",
+        "reaches": "<FILL: OPTIONAL a landmark/coordinate reached after this step, or DELETE>",
+        "clears": "<FILL: OPTIONAL an obstacle/gap cleared, or DELETE>",
+        "engagesThreat": "<FILL: OPTIONAL the threat id engaged at this step (prove no threat is trivially avoided), or DELETE>",
+        "observe": "<FILL: OPTIONAL a __GAME__ observable to check after this step, e.g. status, or DELETE>",
+        "expect": "<FILL: OPTIONAL the expected value of that observable (string|number|boolean), used when observe is present, or DELETE>"
+      }
+    ],
+    "engagesEveryThreat": "<FILL: boolean — true iff the reference solution engages every declared threat at least once>"
+  },
+
+  "acceptanceCriteria": [
+    {
+      "id": "<FILL: AC id matching ^AC-M[1-9][0-9]*-.+$, e.g. AC-M1-win>",
+      "milestone": "<FILL: the milestone id this AC belongs to, matching ^M[1-9][0-9]*$, e.g. M1>",
+      "assertionId": "<FILL: the gdd assertion id this AC upgrades, matching ^M[1-9][0-9]*-A[1-9][0-9]*$, in the SAME milestone, e.g. M1-A1>",
+      "given": "<FILL: the precondition in concrete hardened coordinates so VERIFY-2 can reproduce the state, non-empty>",
+      "when": "<FILL: the trigger/action, e.g. a documented control press, non-empty>",
+      "then": "<FILL: the expected observable outcome as a __GAME__ expression, e.g. status === 'won', non-empty>",
+      "observable": "<FILL: the __GAME__ field/path observed, e.g. status or score, non-empty>",
+      "expect": { "<FILL: EXACTLY ONE comparator key from decreases|increases|changes|unchanged|equals|atLeast|atMost>": "<FILL: its value (boolean | number | number|string|boolean per the comparator)>" }
+    }
+  ],
+
+  "declaredRanges": {
+    "<FILL: a dotted parameterPath, e.g. config.<tunable> or layout.rewards.<id>.x or layout.threats.<id>.speed>": ["<FILL: number — band min; both endpoints MUST keep §3 feasibility + §4.1 threat-on-path true>", "<FILL: number — band max>"]
+  }
+}
