@@ -98,6 +98,8 @@ function toNodeOps(h: LoadedNode['def']['hooks']): NodeOps | undefined {
   if (h.project) ops.project = h.project;
   if (h.merge) ops.merge = h.merge;
   if (h.promote) ops.promote = h.promote.map((p) => ({ from: p.from, to: p.to, merge: p.merge as Reducer }));
+  if (h.seedContracts) ops.seedContracts = h.seedContracts;
+  if (h.projectGenre) ops.projectGenre = h.projectGenre;
   return ops;
 }
 

@@ -36,6 +36,10 @@ export interface TemplateNode {
     /** DRIVER-MERGE op set — the `applyMergeOp` discriminated grammar (`{ ops: [{fold|concat|reconcile|run}] }`). */
     merge?: { ops: Record<string, unknown>[] };
     promote?: { from: string; to: string; merge?: string }[];
+    /** POST DERIVE — seed per-node contracts into `source.<into>` from the drift-gated `catalog` (runSeedContract). */
+    seedContracts?: { source: string; catalog: string; into?: string };
+    /** POST DERIVE — derive outputs from a frozen `source` via a genre record's `projections` map (runProjection). */
+    projectGenre?: { source: string; mapRef: string; genre: string };
   };
   return?: object;
 }

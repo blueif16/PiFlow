@@ -132,6 +132,8 @@ export const nodeSchema = {
         project: { type: 'array', items: { $ref: '#/$defs/derivedHook' } }, // POST derive
         merge: { $ref: '#/$defs/mergeHook' }, // POST merge — the DRIVER-MERGE op set
         promote: { type: 'array', items: { $ref: '#/$defs/promoteHook' } }, // POST → RunState
+        seedContracts: { $ref: '#/$defs/seedContractHook' }, // POST derive — per-node contracts from the catalog
+        projectGenre: { $ref: '#/$defs/genreProjectHook' }, // POST derive — projections from a genre record
       },
     },
     return: {
@@ -219,6 +221,28 @@ export const nodeSchema = {
         from: { type: 'string', minLength: 1, description: 'Source — "<artifact>:<field>" or a path (§3 example).' },
         to: { type: 'string', minLength: 1, description: 'Target RunState channel name.' },
         merge: { enum: ['set', 'append', 'deepMerge'], description: 'Channel reducer (default set).' },
+      },
+    },
+    seedContractHook: {
+      // POST derive (game-omni P2): seed source.<into>.<node> for every catalog node-TYPE (runSeedContract).
+      type: 'object',
+      additionalProperties: false,
+      required: ['source', 'catalog'],
+      properties: {
+        source: { type: 'string', minLength: 1, description: 'Frozen JSON the contracts are written into (run-relative).' },
+        catalog: { type: 'string', minLength: 1, description: 'Drift-gated node-catalog (token-bearing path).' },
+        into: { type: 'string', minLength: 1, description: "Field the contracts nest under (default 'contracts')." },
+      },
+    },
+    genreProjectHook: {
+      // POST derive (game-omni P3): run a genre record's `projections` map over a frozen source (runProjection).
+      type: 'object',
+      additionalProperties: false,
+      required: ['source', 'mapRef', 'genre'],
+      properties: {
+        source: { type: 'string', minLength: 1, description: 'Frozen JSON the projections derive from (run-relative).' },
+        mapRef: { type: 'string', minLength: 1, description: 'Registry index carrying each genre record (token-bearing path).' },
+        genre: { type: 'string', minLength: 1, description: 'Genre id (may be a {{state.*}} token, e.g. the archetype).' },
       },
     },
   },

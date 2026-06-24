@@ -40,6 +40,10 @@
         "to": "spec/blueprint.json",
         "from": "{{WORKSPACE}}/templates/modules/{{state.archetype}}/blueprint.template.json"
       }
-    ]
+    ],
+    "seedContracts": {
+      "source": "spec/blueprint.json",
+      "catalog": "{{WORKSPACE}}/.agents/node-catalog.json"
+    }
   }
 }

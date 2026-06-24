@@ -62,6 +62,11 @@
         "from": "{{WORKSPACE}}/templates/core-contract/src"
       }
     ],
+    "projectGenre": {
+      "source": "spec/blueprint.json",
+      "mapRef": "{{WORKSPACE}}/templates/genres.json",
+      "genre": "{{state.archetype}}"
+    },
     "merge": {
       "ops": [
         {

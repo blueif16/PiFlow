@@ -43,7 +43,8 @@ import { defaultPiCommand, type CommandBuilder } from './command.js';
 import { resolveTokens, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
 import { stageSeed } from '../workflow/ops/seed.js';
 import { runMerge } from '../workflow/ops/merge.js';
-import { applyProjectionOp } from '../workflow/ops/project.js';
+import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
+import { runSeedContract } from '../workflow/ops/seed-contract.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, barrierMerge, type NodeUpdate, type ResolvedPromote } from '../workflow/ops/promote.js';
 import { loadState, persistState } from '../workflow/state.js';
@@ -717,6 +718,19 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
         const name = String(op.op ?? Object.keys(op).find((k) => k === 'copy' || k === 'assemble' || k === 'merge') ?? 'project');
         await applyProjectionOp(name, op, spec, ctx.outDir);
       }
+    }
+    // POST DERIVE — genre-record projection (game-omni P3): the op-map lives in the registry record (mapRef),
+    // resolved by `genre` (a `{{state.archetype}}` token). Runs in the project family (BEFORE merge), so its
+    // derived index.json is on disk before the merge `reconcile` patches it.
+    if (st === 'ok' && node.ops?.projectGenre) {
+      const pg = resolveDeep(node.ops.projectGenre as unknown as Record<string, unknown>, resolveCtx) as { source: string; mapRef: string; genre: string };
+      await runProjection({ source: pg.source, mapRef: pg.mapRef, genreToken: pg.genre }, ctx.outDir);
+    }
+    // POST DERIVE — seedContracts (game-omni P2): derive per-node contracts into the frozen source's `<into>`
+    // from the drift-gated catalog (the chrome lanes' input contract). Mutates the source (blueprint), so it
+    // runs after the inline projections and before any merge/promote that reads the contracts.
+    if (st === 'ok' && node.ops?.seedContracts) {
+      await runSeedContract(resolveDeep(node.ops.seedContracts as unknown as Record<string, unknown>, resolveCtx) as { source: string; catalog: string; into?: string }, ctx.outDir);
     }
     if (st === 'ok' && node.ops?.merge) {
       // The merge spec is the `{ ops:[...] }` MergeSpec (the discriminated fold|concat|reconcile|run grammar).
