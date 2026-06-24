@@ -11,7 +11,7 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { createNodeAccumulator } from './lib/distill.mjs';
+import { createNodeAccumulator } from './distill.mjs';
 
 const SRC = '/Users/tk/Desktop/game-omni/out/e2e-m3';
 const NODE = 'w2-scaffold';

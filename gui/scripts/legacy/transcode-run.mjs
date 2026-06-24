@@ -14,10 +14,10 @@ import { promises as fs } from 'node:fs';
 import fssync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createNodeAccumulator } from './lib/distill.mjs';
+import { createNodeAccumulator } from './distill.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GUI = path.resolve(HERE, '..');
+const GUI = path.resolve(HERE, '..', '..');
 const SRC = '/Users/tk/Desktop/game-omni/out/e2e-m3';
 const RUN = 'e2e-m3';
 const OUT = path.join(GUI, 'public', 'runs', RUN);

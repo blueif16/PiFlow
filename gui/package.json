@@ -7,11 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "data:transcode": "node scripts/transcode-run.mjs",
-    "data:view": "node scripts/build-run-view.mjs",
     "data:index": "node scripts/build-index.mjs",
-    "data": "npm run data:transcode && npm run data:view && npm run data:index",
-    "test:distill": "node scripts/distill.test.mjs"
+    "data": "npm run data:index"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.5",

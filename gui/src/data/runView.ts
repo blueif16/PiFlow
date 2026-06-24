@@ -1,7 +1,7 @@
-// runView.ts — the GUI's real-data contract. Mirrors the shape build-run-view.mjs emits, loads it,
-// and maps it onto the React Flow graph + the existing FlowNodeData. Every field here is backed by a
-// real value in run-view.json (transcoded from a real run); there is no mock fallback, so a node that
-// lacks data simply renders empty — "no mock data" enforced by the type, not by discipline alone.
+// runView.ts — the GUI's real-data contract. Mirrors the shape `@piflow/core/observe` `buildRunView`
+// emits, fetches it from the `/__piflow/run-view/<run>` endpoint (which distills the run's real `.pi/`
+// on demand), and maps it onto the React Flow graph + FlowNodeData. Every field is backed by a real
+// value; there is no mock fallback, so a node that lacks data simply renders empty.
 import type { FlowNode, FlowNodeData, NodeStatus } from "../components/WorkflowNode";
 import type { DirEntry } from "../components/DirectoryPanel";
 import type { Edge } from "@xyflow/react";

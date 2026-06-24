@@ -13,10 +13,10 @@ import { promises as fs } from 'node:fs';
 import fssync from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createNodeAccumulator } from './lib/distill.mjs';
+import { createNodeAccumulator } from './distill.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GUI = path.resolve(HERE, '..');
+const GUI = path.resolve(HERE, '..', '..');
 const RUNS = path.join(GUI, 'public', 'runs');
 
 // Strip an absolute path down to a repo-relative display path (everything after `/game-omni/`).
