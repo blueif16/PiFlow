@@ -16,7 +16,7 @@ import { useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { useExpand } from "./ExpandContext";
-import { useRunStream, whereAreWe } from "../data/runStream";
+import { useRunStreamContext, whereAreWe } from "../data/runStream";
 import "../styles/companion.css";
 
 interface Msg { role: "you" | "system"; text: string }
@@ -41,7 +41,7 @@ export function Companion({ activeRun }: { activeRun: string }) {
   const [draft, setDraft] = useState("");
   const [log, setLog] = useState<Msg[]>([]);
 
-  const live = useRunStream(open ? activeRun : null); // only stream while the dock is open
+  const live = useRunStreamContext(); // shared subscription (owned by CanvasInner) — no second connection
   const where = whereAreWe(live);
   const context = expandedId ? `${activeRun} · ${expandedId}` : `${activeRun} · ${where}`;
 

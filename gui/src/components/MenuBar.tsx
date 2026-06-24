@@ -18,22 +18,17 @@ import { useReactFlow } from "@xyflow/react";
 import { GlassSurface } from "./GlassSurface";
 import { DirectoryPanel } from "./DirectoryPanel";
 import { useExpand } from "./ExpandContext";
-import { loadIndex, findThread, indexToTree, type GlobalIndex } from "../data/runIndex";
+import { findThread, indexToTree, type GlobalIndex } from "../data/runIndex";
 import { formatMs } from "../data/runView";
 import "../styles/menubar.css";
 
-export function MenuBar({ activeRun, onSelectRun }: { activeRun: string; onSelectRun: (run: string) => void }) {
+// `ix` is owned + LIVE-polled by CanvasInner (single source of truth) and passed down — the switcher
+// list + status chip stay fresh as runs start / progress without the bar holding its own loader.
+export function MenuBar({ activeRun, onSelectRun, ix }: { activeRun: string; onSelectRun: (run: string) => void; ix: GlobalIndex | null }) {
   const { expandedId, collapse } = useExpand();
   const { fitView } = useReactFlow();
-  const [ix, setIx] = useState<GlobalIndex | null>(null);
   const [open, setOpen] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    let alive = true;
-    loadIndex().then((v) => { if (alive) setIx(v); }).catch(() => { /* index optional — bar still works */ });
-    return () => { alive = false; };
-  }, []);
 
   // dismiss the switcher on any click outside it (or Esc) — the "click anywhere closes" rule
   useEffect(() => {
@@ -96,8 +91,8 @@ export function MenuBar({ activeRun, onSelectRun }: { activeRun: string; onSelec
             reverse
             onOpenFile={(entry) => {
               const hit = resolve(entry.id);
-              if (!hit || !hit.viewable) return; // not served by this GUI — ignore for now
-              onSelectRun(hit.run);
+              if (!hit) return;
+              onSelectRun(hit.run); // viewable OR live — the canvas + companion handle both
               setOpen(false);
             }}
           />
