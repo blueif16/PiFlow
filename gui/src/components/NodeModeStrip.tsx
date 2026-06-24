@@ -10,7 +10,7 @@
  */
 import type { FlowNodeData } from "./WorkflowNode";
 import type { ViewMode } from "./ViewModeContext";
-import { contextTone, contextWindowFor, formatBytes, formatMs, formatTokens, type ContextTone } from "../data/runView";
+import { contextTone, DEFAULT_CONTEXT_WINDOW, formatBytes, formatMs, formatTokens, type ContextTone } from "../data/runView";
 import "../styles/modes.css";
 
 const fileName = (p: string) => p.split("/").pop() || p;
@@ -45,7 +45,7 @@ export function NodeModeStrip({ mode, data }: { mode: ViewMode; data: FlowNodeDa
     const timeTone: ContextTone = ratio == null ? "ok" : ratio > 1.5 ? "high" : ratio > 1 ? "warn" : "ok";
     const timeVal = dur != null ? (avg ? `${formatMs(dur)} / ${formatMs(avg)}` : formatMs(dur)) : "—";
 
-    const win = contextWindowFor(rv?.model);
+    const win = rv?.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
     const ctxFrac = peak ? peak / win : 0;
     const ctxToneV = contextTone(ctxFrac);
     const ctxVal = peak ? `${formatTokens(peak)} / ${formatTokens(win)}` : "—";

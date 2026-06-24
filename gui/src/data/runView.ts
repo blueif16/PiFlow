@@ -30,6 +30,8 @@ export interface RunViewNode {
   model?: string | null;
   provider?: string | null;
   api?: string | null;
+  /** pi-native context window for this node's model (tokens) — the context-bar denominator. */
+  contextWindow?: number | null;
   toolCalls: number;
   toolBreakdown: Record<string, number>;
   timeline: TimelineSpan[];
@@ -66,9 +68,11 @@ export interface RunView {
   nodes: RunViewNode[];
 }
 
-/** Fetch the distilled run-view for a run id (served from gui/public/runs/<run>/run-view.json). */
+/** Fetch the distilled run-view for a run id. ONE path: the dev middleware (`/__piflow/run-view/<run>`)
+ *  distills the run's REAL `.pi/` on demand via the shared `@piflow/core/observe` builder — works for
+ *  live, historical, and foreign runs alike (no transcode, no per-run static file). */
 export async function loadRunView(run: string): Promise<RunView> {
-  const res = await fetch(`${import.meta.env.BASE_URL}runs/${run}/run-view.json`);
+  const res = await fetch(`/__piflow/run-view/${encodeURIComponent(run)}`);
   if (!res.ok) throw new Error(`Failed to load run-view for "${run}": ${res.status} ${res.statusText}`);
   return (await res.json()) as RunView;
 }
@@ -114,37 +118,16 @@ export function formatTokens(n?: number | null): string {
   return `${(n / 1_000_000).toFixed(1)}M`;
 }
 
-/**
- * Known model context windows, in tokens — the denominator for the Status view-mode's
- * context bar, which shows a node's peak context as a fraction of its model's window so
- * context pressure is readable at a glance. Matched case-insensitively by substring because
- * provider tags drift ("MiniMax-M3", "claude-3-5-sonnet", …). Unknown models fall back to
- * DEFAULT_CONTEXT_WINDOW; the bar still renders. Edit this table as providers change — it is
- * the single place capacities live (none was recorded in the run telemetry).
- */
+/** Fallback window when a node's model isn't in pi's native registry (rv.contextWindow is null). The
+ *  real value now comes per-node from `@piflow/core/observe` (pi's ~/.pi/agent/models.json) — no table here. */
 export const DEFAULT_CONTEXT_WINDOW = 200_000;
-const CONTEXT_WINDOWS: ReadonlyArray<[RegExp, number]> = [
-  [/gemini/i, 1_000_000],
-  [/gpt-4\.1/i, 1_000_000],
-  [/gpt-4o|gpt-4-turbo/i, 128_000],
-  [/\bo[134]\b|o3|o4/i, 200_000],
-  [/claude/i, 200_000],
-  [/deepseek/i, 128_000],
-  [/minimax/i, 200_000],
-  [/llama/i, 128_000],
-];
-
-export function contextWindowFor(model?: string | null): number {
-  if (!model) return DEFAULT_CONTEXT_WINDOW;
-  for (const [re, win] of CONTEXT_WINDOWS) if (re.test(model)) return win;
-  return DEFAULT_CONTEXT_WINDOW;
-}
 
 export type ContextTone = "ok" | "warn" | "high";
-/** <50% headroom = ok, 50–75% = warn, ≥75% = high (quality degrades as context fills). */
+/** Context-pressure zones (per telemetry research 2026): <40% ok · 40–70% warn · ≥70% high — quality
+ *  degrades as the window fills, so we flag the 70%+ band before it becomes critical. */
 export function contextTone(frac: number): ContextTone {
-  if (frac >= 0.75) return "high";
-  if (frac >= 0.5) return "warn";
+  if (frac >= 0.7) return "high";
+  if (frac >= 0.4) return "warn";
   return "ok";
 }
 

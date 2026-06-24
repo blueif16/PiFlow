@@ -137,7 +137,59 @@ function piflowRunStream(): Plugin {
   };
 }
 
+/**
+ * On-demand RUN-VIEW — `GET /__piflow/run-view/<run>` distills a run's REAL `.pi/` tree (run.json +
+ * per-node events.jsonl + io.json) into the enriched run-view the canvas/HUD render, via the SHARED
+ * `@piflow/core/observe` `buildRunView` (NOT a GUI-local copy — the data layer lives in the package, so
+ * GUI + TUI + CLI agree). This is the ONE path for EVERY run — live, historical, or foreign — replacing
+ * the old transcode-to-gui/public/run-view.json step (no run data is copied into the repo). The run dir,
+ * its sibling runs (the prior-run average), and the workspace root are resolved from the SAME live index.
+ */
+function piflowRunView(): Plugin {
+  const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    const m = req.url?.match(/^\/__piflow\/run-view\/([^/?]+)/);
+    if (!m) return next();
+    const run = decodeURIComponent(m[1]);
+
+    let runDir: string | null = null;
+    let workspaceRoot: string | null = null;
+    const historyDirs: string[] = [];
+    const lib = findUp("scripts/lib/index-snapshot.mjs");
+    if (lib) {
+      try {
+        const { loadRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
+        const ix = await buildSnapshot(loadRegistry());
+        for (const p of ix.products ?? [])
+          for (const ns of p.namespaces ?? []) {
+            const hit = (ns.threads ?? []).find((t: { run?: string; runDir?: string }) => t.run === run && t.runDir);
+            if (!hit) continue;
+            runDir = hit.runDir;
+            workspaceRoot = p.root ?? null;
+            // sibling runs of the SAME workflow are the prior-run baseline (expectedMs)
+            for (const t of ns.threads ?? []) if (t.runDir) historyDirs.push(t.runDir);
+          }
+      } catch { /* fall through to 404 */ }
+    }
+    if (!runDir) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered? (piflow gui / npm run data:index)` });
+
+    const obs = findUp("packages/core/dist/observe/index.js");
+    if (!obs) return sendJson(res, 500, { error: "@piflow/core observe dist not found — run: npm run build (at repo root)" });
+    try {
+      const { buildRunView } = await import(pathToFileURL(obs).href);
+      const { view } = buildRunView(runDir, { historyDirs, workspaceRoot });
+      sendJson(res, 200, view);
+    } catch (e) {
+      sendJson(res, 500, { error: `run-view build failed for "${run}" (${String(e)})` });
+    }
+  };
+  return {
+    name: "piflow-run-view",
+    configureServer(server) { server.middlewares.use(handler); },
+    configurePreviewServer(server) { server.middlewares.use(handler); },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), piflowGlobalIndex(), piflowRunStream()],
+  plugins: [react(), piflowGlobalIndex(), piflowRunStream(), piflowRunView()],
   server: { port: 5173, host: true },
 });
