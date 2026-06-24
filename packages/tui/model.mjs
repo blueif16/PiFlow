@@ -93,6 +93,23 @@ export function overlayRichTelemetry(view, rich) {
     if (rn.durationMs != null) row.durationMs = rn.durationMs;
   }
 
+  // STRUCTURE: adopt the rich view's phase-grouped stages + lanes — the horizontal DAG the GUI renders.
+  // readRunModel reconstructs stages from the engine's LAST published barrier, which on a FINISHED run
+  // collapses to one singleton stage per node (the DAG drew as a vertical line); the phase grouping stays
+  // correct (parallel siblings share a stage, each on its own lane). When the rich stages are present we
+  // take them (and each node's stageIndex/lane) as the layout. Edges stay the io.json-derived ones from
+  // readRunModel that the per-node inspector reads.
+  if (Array.isArray(rich.stages) && rich.stages.length) {
+    view.stages = rich.stages.map((st) => ({ index: st.index, phase: st.phase ?? null, parallel: !!st.parallel, nodeIds: [...st.nodeIds] }));
+    view.stageTimes = view.stages.map((st) => ({ index: st.index, durationMs: null }));
+    for (const rn of rich.nodes || []) {
+      const row = view.nodes[rn.id];
+      if (!row) continue;
+      if (rn.stageIndex != null) row.stageIndex = rn.stageIndex;
+      if (rn.lane != null) row.lane = rn.lane;
+    }
+  }
+
   // Real Gantt window across nodes (was a flat 0→1 band without timestamps).
   const starts = Object.values(view.nodes).map((n) => n.startMs).filter((x) => x != null);
   const ends = Object.values(view.nodes).map((n) => n.endMs).filter((x) => x != null);
