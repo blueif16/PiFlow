@@ -8,11 +8,41 @@
 // consume, and DERIVES the cosmetic live extras (the running-node text tail) from the streamed
 // `node-event` PiEvents — never by re-reading `.pi/` files.
 //
-// Fields the shared `RunModel` does not (yet) carry — Gantt start/end timestamps, per-node token/cost
-// counts, tool breakdown, thinking-char totals — are rendered as null/blank (the view null-guards them)
-// or, where they have a streamed source, accumulated from the live `node-event` stream. They are FLAGGED
-// as proposed `RunModel` extensions rather than re-derived by forking a second reader.
+// Per-node token/cost counts, tool breakdown, thinking-char totals, and Gantt start/end timestamps come
+// from the RICH run-view (`buildRunView`, the SAME distiller the GUI uses) — see `loadBuildRunView` below.
+// Where the rich view is unavailable (no built `dist`, or no `.pi/run.json`) we fall back to the lean
+// `readRunModel` snapshot, whose missing telemetry the view null-guards. The live running-node tail
+// (text · tools · thinking) is still folded from the streamed `node-event` PiEvents, never by re-reading
+// `.pi/` files.
 import { readRunModel, watchRun } from '@piflow/core';
+import { pathToFileURL, fileURLToPath } from 'node:url';
+import nodePath from 'node:path';
+
+// ── rich run-view loader — the SAME builder the GUI dynamic-imports ───────────────────────────────────
+// `buildRunView` lives in `@piflow/core/observe` but that subpath is NOT in the package's `exports` map,
+// so a bare `import '@piflow/core/observe'` is blocked (ERR_PACKAGE_PATH_NOT_EXPORTED). We mirror the GUI's
+// resolution (gui/vite.config.ts): resolve the EXPORTED main entry to find the built package on disk, then
+// file-URL `import()` the sibling `observe/index.js` — which bypasses package `exports` resolution and
+// modifies nothing in core. Cached after first load; `null` (graceful fallback) if the dist isn't built.
+let _buildRunView; // undefined = not tried; null = unavailable; fn = loaded
+async function loadBuildRunView() {
+  if (_buildRunView !== undefined) return _buildRunView;
+  try {
+    const mainPath = fileURLToPath(import.meta.resolve('@piflow/core'));
+    const obs = nodePath.join(nodePath.dirname(mainPath), 'observe', 'index.js');
+    const mod = await import(pathToFileURL(obs).href);
+    _buildRunView = typeof mod.buildRunView === 'function' ? mod.buildRunView : null;
+  } catch { _buildRunView = null; }
+  return _buildRunView;
+}
+
+/** Build the rich run-view for a run dir, or null if unavailable (dist not built / no run.json). */
+async function tryRichView(runDir) {
+  const build = await loadBuildRunView();
+  if (!build) return null;
+  try { return build(runDir).view; }
+  catch { return null; }
+}
 
 // ── snapshot: readRunModel → the legacy buildModel() view shape ──────────────────────
 // `RunModel` (the shared snapshot) is a SUPERSET of what the view needs for structure (nodes with
@@ -21,10 +51,67 @@ import { readRunModel, watchRun } from '@piflow/core';
 // shared `edges` (a write of A that B reads back = edge A→B) so the per-node inspector + the DAG still
 // draw the data flow. One definition of "the truth", many views.
 export async function buildModel({ runDir, run } = {}) {
+  // STRUCTURE from the lean snapshot: status/stage/lane + the io.json-DERIVED data-flow edges. (The rich
+  // `buildRunView` derives edges from events.jsonl writes/reads, which a run may not carry — so the
+  // io-ledger edges from `readRunModel` stay the structural source of truth.)
   let model;
   try { model = await readRunModel(runDir); }
   catch { return emptyModel(run); }
-  return adaptModel(model, run);
+  const view = adaptModel(model, run);
+  // TELEMETRY overlay: real per-node tokens/ctx/tools from the RICH run-view (the SAME distiller the GUI
+  // renders). A no-op when the rich view is unavailable (dist not built / no run.json) — rows then keep
+  // the null-rendered telemetry, exactly the prior behaviour.
+  const rich = await tryRichView(runDir);
+  if (rich) overlayRichTelemetry(view, rich);
+  return view;
+}
+
+/**
+ * Overlay the RICH `RunView` (`buildRunView`) telemetry onto an already-structured view (from
+ * `adaptModel`), keyed by node id: `tokens` (the `RunTokens` shape the renderer reads as
+ * `n.tokens.contextPeak` / `n.tokens.billable`), `contextWindow`, `model`/`provider`, `toolCalls`,
+ * `toolBreakdown`, real Gantt timestamps, and the run-level token/cost/toolCall rollups. Structure
+ * (status, stages, io edges) is left untouched. Mutates `view` in place. The live `node-event` overlay
+ * (foldLiveIntoModel) still wins for the running node (it OR-folds over these snapshot values).
+ */
+export function overlayRichTelemetry(view, rich) {
+  const byId = new Map((rich.nodes || []).map((n) => [n.id, n]));
+  for (const [id, row] of Object.entries(view.nodes)) {
+    const rn = byId.get(id);
+    if (!rn) continue;
+    if (rn.tokens) row.tokens = rn.tokens;                    // { input, output, cacheRead, cacheWrite, cost, contextPeak, billable }
+    if (rn.contextWindow != null) row.contextWindow = rn.contextWindow;
+    if (rn.model != null) row.model = rn.model;
+    if (rn.provider != null) row.provider = rn.provider;
+    if (rn.toolCalls) row.toolCalls = rn.toolCalls;
+    if (rn.toolBreakdown && Object.keys(rn.toolBreakdown).length) row.toolBreakdown = rn.toolBreakdown;
+    // Real Gantt window from the rich view's timestamps (the lean snapshot carries none).
+    const s = rn.startedAt ? Date.parse(rn.startedAt) : NaN;
+    const e = rn.endedAt ? Date.parse(rn.endedAt) : NaN;
+    if (Number.isFinite(s)) { row.startedAt = rn.startedAt; row.startMs = s; }
+    if (Number.isFinite(e)) { row.endedAt = rn.endedAt; row.endMs = e; }
+    if (rn.durationMs != null) row.durationMs = rn.durationMs;
+  }
+
+  // Real Gantt window across nodes (was a flat 0→1 band without timestamps).
+  const starts = Object.values(view.nodes).map((n) => n.startMs).filter((x) => x != null);
+  const ends = Object.values(view.nodes).map((n) => n.endMs).filter((x) => x != null);
+  if (starts.length) {
+    const tStart = Math.min(...starts);
+    const tEnd = ends.length ? Math.max(...ends) : tStart + 1;
+    view.timeline = { t0: tStart, t1: tEnd > tStart ? tEnd : tStart + 1, rows: [] };
+  }
+
+  // Run-level rollups from the rich token totals + per-node tool sums (header showed 0 before).
+  const tt = rich.tokenTotal || {};
+  view.totals = {
+    ...view.totals,
+    toolCalls: Object.values(view.nodes).reduce((a, n) => a + (n.toolCalls || 0), 0),
+    tokensBillable: tt.billable || 0,
+    cost: tt.cost || 0,
+  };
+  if (rich.provider && !view.run.provider) view.run.provider = rich.provider;
+  if (rich.model && view.run.model == null) view.run.model = rich.model;
 }
 
 /** Map the shared RunModel → the view shape. Pure (no I/O) — all data is already in `model`. */
@@ -183,7 +270,15 @@ export function subscribeRun({ runDir, run, onModel, onTail, pollMs } = {}) {
     try {
       for await (const u of watchRun(runDir, { signal: ctrl.signal, pollMs })) {
         if (ctrl.signal.aborted) break;
-        if (u.kind === 'snapshot') { onModel?.(adaptModel(u.model, run)); }
+        if (u.kind === 'snapshot') {
+          // STRUCTURE from the stream's lean model; OVERLAY real tokens/ctx/tools from the rich re-distill
+          // (a no-op when unavailable). The live running-node tail is folded separately by the consumer.
+          const model = adaptModel(u.model, run);
+          const rich = await tryRichView(runDir);
+          if (ctrl.signal.aborted) break;
+          if (rich) overlayRichTelemetry(model, rich);
+          onModel?.(model);
+        }
         else if (u.kind === 'node-status') { /* status deltas are reflected by the next snapshot poll */ }
         else if (u.kind === 'node-event') {
           const acc = accs.get(u.id) || newAcc();
@@ -212,6 +307,9 @@ export async function summarizeRun(runDir) {
   const nodesDone = nodes.filter((n) => TERMINAL_OK.has(n.status)).length;
   const running = nodes.find((n) => n.status === 'running');
   const errored = nodes.find((n) => n.status === 'error' || n.status === 'blocked');
+  // Real run-level token/cost rollup from the rich view (same source the node rows use); 0 if unavailable.
+  const view = await tryRichView(runDir);
+  const tt = view?.tokenTotal || {};
   return {
     run: m.run, runDir, statusPath: runDir,
     state: m.done ? (m.ok === false ? 'failed' : 'done') : 'running',
@@ -221,7 +319,7 @@ export async function summarizeRun(runDir) {
     nodesDone, nodesTotal: nodes.length,
     frac: m.done ? 1 : (nodes.length ? nodesDone / nodes.length : 0),
     elapsedMs: m.durationMs ?? null,
-    tokensBillable: 0, cost: 0,
+    tokensBillable: tt.billable || 0, cost: tt.cost || 0,
     provider: m.provider || null, model: m.model || null,
     updatedAt: null, staleMs: null,
     errorNode: errored?.id || null,
