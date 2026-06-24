@@ -1,0 +1,128 @@
+// runStream.ts — the GUI's LIVE run-telemetry client. Subscribes to the SSE bridge
+// (gui/vite.config.ts `/__piflow/stream/<run>`), which pipes the EXACT
+// `@piflow/core/observe` `watchRun` stream. The view types here MIRROR observe/types.ts
+// (RunModel/RunUpdate) — we only carry the fields the companion renders, but the shapes
+// are the shared contract, not a fork. Real data only; no mock fallback.
+import { useEffect, useRef, useState } from "react";
+
+export type LiveNodeStatus =
+  | "pending" | "running" | "ok" | "reused" | "gap" | "blocked" | "error" | "dry";
+
+/** A node as the live model carries it (subset of observe NodeView). */
+export interface LiveNode {
+  id: string;
+  label: string;
+  phase: string | null;
+  status: LiveNodeStatus;
+  stageIndex: number;
+  lane: number;
+}
+
+/** The live snapshot (subset of observe RunModel). */
+export interface LiveModel {
+  run: string;
+  done: boolean;
+  ok: boolean | null;
+  durationMs: number | null;
+  provider?: string;
+  model?: string | null;
+  totals: { nodes: number; ok: number; failed: number } | null;
+  nodes: LiveNode[];
+}
+
+/** A wire frame: the observe RunUpdate kinds + the bridge's `meta`/`stream-error` wrappers. */
+type Frame =
+  | { kind: "meta"; run: string; runDir: string }
+  | { kind: "snapshot"; model: LiveModel }
+  | { kind: "node-status"; id: string; status: LiveNodeStatus }
+  | { kind: "node-event"; id: string; event: Record<string, unknown> }
+  | { kind: "done" }
+  | { kind: "stream-error"; error: string };
+
+export interface RunEvent { id: string; event: Record<string, unknown> }
+
+export interface RunStreamState {
+  status: "connecting" | "live" | "done" | "error";
+  model: LiveModel | null;
+  /** rolling tail of the most recent node events — the live "what's happening now" feed. */
+  recent: RunEvent[];
+  error?: string;
+}
+
+const INITIAL: RunStreamState = { status: "connecting", model: null, recent: [] };
+const RECENT_CAP = 40;
+
+function reduce(prev: RunStreamState, f: Frame): RunStreamState {
+  switch (f.kind) {
+    case "meta":
+      return prev;
+    case "snapshot":
+      return { ...prev, status: prev.status === "done" ? "done" : "live", model: f.model };
+    case "node-status": {
+      if (!prev.model) return prev;
+      const nodes = prev.model.nodes.map((n) => (n.id === f.id ? { ...n, status: f.status } : n));
+      return { ...prev, model: { ...prev.model, nodes } };
+    }
+    case "node-event":
+      return { ...prev, recent: [...prev.recent, { id: f.id, event: f.event }].slice(-RECENT_CAP) };
+    case "done":
+      return { ...prev, status: "done" };
+    case "stream-error":
+      return { ...prev, status: "error", error: f.error };
+    default:
+      return prev;
+  }
+}
+
+/**
+ * Subscribe to a run's live telemetry. Re-subscribes when `run` changes; closes the
+ * EventSource on unmount AND on `done` (a finished run's stream is closed server-side,
+ * so we stop EventSource's auto-reconnect). A transient drop mid-run auto-reconnects
+ * (EventSource default) and the bridge re-sends a fresh snapshot — idempotent.
+ */
+export function useRunStream(run: string | null | undefined): RunStreamState {
+  const [state, setState] = useState<RunStreamState>(INITIAL);
+  const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    if (!run) { setState(INITIAL); return; }
+    setState(INITIAL);
+    const es = new EventSource(`/__piflow/stream/${encodeURIComponent(run)}`);
+    esRef.current = es;
+    es.onmessage = (e: MessageEvent) => {
+      let f: Frame;
+      try { f = JSON.parse(e.data) as Frame; } catch { return; }
+      if (f.kind === "done") es.close(); // finished run → stop auto-reconnect
+      setState((prev) => reduce(prev, f));
+    };
+    es.onerror = () => {
+      // EventSource retries on its own; only surface an error if we never got a model
+      // and the run isn't already done.
+      setState((prev) => (prev.status === "done" || prev.model ? prev : { ...prev, status: "error", error: "stream connection failed" }));
+    };
+    return () => { es.close(); esRef.current = null; };
+  }, [run]);
+
+  return state;
+}
+
+const TERMINAL_OK = new Set<LiveNodeStatus>(["ok", "reused", "gap", "dry"]);
+
+/** A one-line, REAL "where are we" summary derived from the live model (no fabrication). */
+export function whereAreWe(s: RunStreamState): string {
+  if (s.status === "connecting") return "connecting…";
+  if (s.status === "error") return "telemetry unavailable";
+  const m = s.model;
+  if (!m) return "no run data";
+  const total = m.totals?.nodes ?? m.nodes.length;
+  if (m.done) {
+    if (m.ok === false) return `failed · ${m.totals?.failed ?? 0}/${total} bad`;
+    return `done ✓ ${m.totals?.ok ?? m.nodes.filter((n) => TERMINAL_OK.has(n.status)).length}/${total}`;
+  }
+  const doneCount = m.nodes.filter((n) => TERMINAL_OK.has(n.status)).length;
+  const running = m.nodes.find((n) => n.status === "running");
+  if (running) return `running ${running.label} · ${doneCount}/${total}`;
+  const bad = m.nodes.find((n) => n.status === "error" || n.status === "blocked");
+  if (bad) return `${bad.status} · ${bad.label}`;
+  return `${doneCount}/${total} nodes`;
+}

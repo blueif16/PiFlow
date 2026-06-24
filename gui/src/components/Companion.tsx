@@ -4,16 +4,19 @@
  * the full-map and per-node views. Collapsed = a small launcher; expanded = a
  * glass-soft panel that knows the active run / open node as context.
  *
- * DEFERRED: the live wiring into the pi runtime is NOT done yet (the GUI is a
- * static viewer with no pi bridge — see ~/.piflow + the project notes). Per the
- * "no mock data" rule we do NOT fabricate assistant replies: a sent message is
- * echoed (it's real — the user typed it) and answered with an honest status
- * line. `sendToPi` is the single seam to wire when the bridge lands.
+ * LIVE: the companion subscribes to the run's telemetry SSE bridge
+ * (useRunStream → /__piflow/stream/<run> → observe.watchRun) so its context line
+ * shows the REAL current state ("running W2 scaffold · 3/9", "done ✓ 9/9"). The
+ * pi CHAT round-trip (talk-back / edits) is the NEXT step — `sendToPi` is the
+ * single seam. Per the "no mock data" rule we do NOT fabricate assistant replies:
+ * a sent message is echoed (the user typed it) and answered with an honest status
+ * line that now carries the real run state.
  */
 import { useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { useExpand } from "./ExpandContext";
+import { useRunStream, whereAreWe } from "../data/runStream";
 import "../styles/companion.css";
 
 interface Msg { role: "you" | "system"; text: string }
@@ -24,17 +27,19 @@ export function Companion({ activeRun }: { activeRun: string }) {
   const [draft, setDraft] = useState("");
   const [log, setLog] = useState<Msg[]>([]);
 
-  const context = expandedId ? `${activeRun} · ${expandedId}` : activeRun;
+  const live = useRunStream(open ? activeRun : null); // only stream while the dock is open
+  const where = whereAreWe(live);
+  const context = expandedId ? `${activeRun} · ${expandedId}` : `${activeRun} · ${where}`;
 
   function send(e: FormEvent) {
     e.preventDefault();
     const text = draft.trim();
     if (!text) return;
-    // sendToPi(text, { run: activeRun, node: expandedId })  ← wire here when the pi bridge lands
+    // sendToPi(text, { run: activeRun, node: expandedId })  ← wire the pi chat spawn here (step 2)
     setLog((l) => [
       ...l,
       { role: "you", text },
-      { role: "system", text: "Not connected to the pi runtime yet — companion wiring is deferred." },
+      { role: "system", text: `Run ${activeRun} — ${where}. Live pi chat isn't wired yet (next step); this is real run telemetry, not a stub.` },
     ]);
     setDraft("");
   }
@@ -58,7 +63,7 @@ export function Companion({ activeRun }: { activeRun: string }) {
             {log.length === 0 ? (
               <div className="ds-companion__empty">
                 Ask about this run or node.
-                <span className="ds-companion__soon">Live pi connection coming soon.</span>
+                <span className="ds-companion__soon">{activeRun} · {where}</span>
               </div>
             ) : (
               log.map((m, i) => <div key={i} className={`ds-companion__msg ds-companion__msg--${m.role}`}>{m.text}</div>)
