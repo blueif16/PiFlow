@@ -65,25 +65,43 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const { fitView } = useReactFlow();
 
-  // Open on the REAL current run from the global index (running > newest) — no demo default.
+  // LIVE-poll the global index (every 4s) so runs that start / progress after launch appear without a
+  // manual re-index. CanvasInner is the single owner; MenuBar reads `ix` as a prop.
   useEffect(() => {
     let alive = true;
-    loadIndex()
-      .then((index) => {
+    let everLoaded = false;
+    const refresh = async () => {
+      try {
+        const index = await loadIndex();
         if (!alive) return;
+        everLoaded = true;
         setIx(index);
-        const run = pickCurrentRun(index);
-        if (run) { setActiveRun(run); setViewable(findThread(index, run)?.viewable ?? false); }
-      })
-      .catch((err) => { if (alive) setLoadError(String(err?.message ?? err)); });
-    return () => { alive = false; };
+      } catch (err) {
+        if (alive && !everLoaded) setLoadError(String((err as Error)?.message ?? err));
+      }
+    };
+    refresh();
+    const id = setInterval(refresh, 4000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
+
+  // Derive the focused run + its viewability from the (live) index: open on the REAL current run
+  // (running > newest — no demo default), and keep viewability fresh as the active run's state changes.
+  useEffect(() => {
+    if (!ix) return;
+    if (!activeRun) {
+      const run = pickCurrentRun(ix);
+      if (run) { setActiveRun(run); setViewable(findThread(ix, run)?.viewable ?? false); }
+    } else {
+      setViewable(findThread(ix, activeRun)?.viewable ?? false);
+    }
+  }, [ix, activeRun]);
 
   // Build the graph from the active run's real run-view — no mock seed. The canvas renders a transcoded
   // run-view.json (viewable runs only); a LIVE/foreign run has none yet, so we clear the graph and let
   // the companion stream it. Re-runs when the switcher picks a different run.
   useEffect(() => {
-    if (!activeRun || !viewable) { setNodes([]); setEdges([]); setDir({ tree: [], fileToNode: {} }); setLoadError(null); return; }
+    if (!activeRun || !viewable) { setNodes([]); setEdges([]); setDir({ tree: [], fileToNode: {} }); return; }
     let alive = true;
     setLoadError(null);
     loadRunView(activeRun)
@@ -183,7 +201,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           </ReactFlow>
 
           <NodeExpandOverlay id={expandedId} data={expandedData} onClose={() => setExpandedId(null)} />
-          <MenuBar activeRun={activeRun} onSelectRun={selectRun} />
+          <MenuBar activeRun={activeRun} onSelectRun={selectRun} ix={ix} />
           <Companion activeRun={activeRun} />
         </div>
       </LayoutGroup>
