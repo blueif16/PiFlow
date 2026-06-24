@@ -40,6 +40,22 @@ describe('instantiateRun (init-RUN) — the four §10 buckets over the real temp
     await fs.rm(runDir, { recursive: true, force: true });
   });
 
+  it('PRESERVES a pre-existing state.json on re-instantiation (a --from resume must NOT wipe promoted channels)', async () => {
+    const runDir = await tmpRun();
+    // First run: instantiate stubs {}, then an upstream node promotes a channel into RunState.
+    await instantiateRun(FIXTURE, runDir, { workspace: '/canon/ws' });
+    await fs.writeFile(stateFile(runDir), JSON.stringify({ archetype: 'platformer' }));
+
+    // A --from resume re-instantiates the run (runFromTemplate calls instantiateRun every time). The
+    // promoted state MUST survive — else a reused upstream node's channel vanishes and a downstream
+    // {{state.archetype}} consumer fails with "unresolved state channel".
+    await instantiateRun(FIXTURE, runDir, { workspace: '/canon/ws' });
+
+    expect(JSON.parse(await fs.readFile(stateFile(runDir), 'utf8'))).toEqual({ archetype: 'platformer' });
+
+    await fs.rm(runDir, { recursive: true, force: true });
+  });
+
   it('BUCKET 1 — copies each node.json BYTE-IDENTICAL (verbatim, no token resolution in node.json)', async () => {
     const runDir = await tmpRun();
     await instantiateRun(FIXTURE, runDir, { workspace: '/canon/ws' });
