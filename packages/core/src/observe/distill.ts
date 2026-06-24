@@ -46,6 +46,14 @@ export interface RichNode {
   writes: RichWrite[];
   bash: BashCall[];
   tokens: RichTokens;
+  /** count of `auto_retry_start` events — provider rate-limit/overload retries, invisible to the model. */
+  retries: number;
+  /** the assistant's final `message.stopReason` (last seen) — `'max_tokens'`/`'length'` ⇒ truncated. */
+  stopReason: string | null;
+  /** derived: the output was cut off by the token cap (stopReason `'max_tokens'` or `'length'`). */
+  truncated: boolean;
+  /** total `thinking_delta` characters — extended-thinking volume for this node. */
+  thinkingChars: number;
   coverage: { eventsSeen: number; usageEvents: number; byType: Record<string, number> };
   startedAt?: string;
   endedAt?: string;
@@ -96,6 +104,7 @@ export function createNodeAccumulator(): NodeAccumulator {
   const open = new Map<string, { name: string; tStartMs: number | null; path: string | null }>();
   const timeline: TimelineSpan[] = [];
   let toolCalls = 0;
+  let retries = 0, stopReason: string | null = null, thinkingChars = 0;
   let model: string | null = null, provider: string | null = null, api: string | null = null;
   let firstT: number | null = null, lastT: number | null = null;
   let firstRt: string | null = null, lastRt: string | null = null;
@@ -149,10 +158,22 @@ export function createNodeAccumulator(): NodeAccumulator {
         // reading it too would DOUBLE-count — we deliberately ignore turn_end for usage.
         case 'message_end': {
           seeModel(e.message);
-          const msg = e.message as { role?: string; usage?: unknown } | undefined;
-          if (msg && msg.role === 'assistant') addUsage(msg.usage);
+          const msg = e.message as { role?: string; usage?: unknown; stopReason?: unknown } | undefined;
+          if (msg && msg.role === 'assistant') {
+            addUsage(msg.usage);
+            // stopReason='max_tokens'/'length' ⇒ the output was truncated by the token cap.
+            if (typeof msg.stopReason === 'string') stopReason = msg.stopReason;
+          }
           break;
         }
+        // provider rate-limit/overload retry (429/overload) — counted, invisible to the model.
+        case 'auto_retry_start':
+          retries += 1;
+          break;
+        // extended-thinking volume: sum the delta string lengths (the TUI reads this event too).
+        case 'thinking_delta':
+          if (typeof e.delta === 'string') thinkingChars += e.delta.length;
+          break;
         case 'tool_execution_start': {
           toolCalls += 1;
           const name = e.toolName as string;
@@ -208,6 +229,9 @@ export function createNodeAccumulator(): NodeAccumulator {
         writes: writeArr,
         bash,
         tokens: { ...tok, billable: tok.input + tok.output },
+        retries, stopReason,
+        truncated: stopReason === 'max_tokens' || stopReason === 'length',
+        thinkingChars,
         coverage: { eventsSeen, usageEvents, byType },
         startedAt, endedAt, durationMs,
       };

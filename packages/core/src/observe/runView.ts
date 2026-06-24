@@ -50,6 +50,14 @@ export interface RunViewNode {
   artifacts: ArtifactRef[];
   bash: BashCall[];
   tokens?: RunTokens;
+  /** provider rate-limit/overload retries (count of `auto_retry_start`) — per-node. */
+  retries: number;
+  /** the assistant's final `message.stopReason` (null if none seen). */
+  stopReason: string | null;
+  /** the output was cut off by the token cap (stopReason `'max_tokens'`/`'length'`). */
+  truncated: boolean;
+  /** total `thinking_delta` characters for this node. */
+  thinkingChars: number;
   summary?: string;
   issues?: string[];
   stageIndex?: number;
@@ -198,6 +206,7 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       contextWindow: rich.model ? contextWindowFor(rich.model, catalog) : null,
       toolCalls: rich.toolCalls, toolBreakdown: rich.toolBreakdown, timeline: rich.timeline,
       reads, scopes, writes, artifacts, bash: rich.bash, tokens: { ...rich.tokens },
+      retries: rich.retries, stopReason: rich.stopReason, truncated: rich.truncated, thinkingChars: rich.thinkingChars,
       summary: rec.summary, issues: rec.issues || [],
     });
   }
