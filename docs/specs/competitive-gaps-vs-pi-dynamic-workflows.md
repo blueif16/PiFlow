@@ -6,7 +6,8 @@
 >
 > **Progress (2026-06-25):** ✅ **G2**, ✅ **G4**, ✅ **G5** shipped (10 commits, +46 tests, typecheck
 > green; see `wiring-g{2,4,5}-*.md`). **G1** in progress (separate session — see
-> `per-node-routing-and-fusion.md`). Remaining: G3, G6–G10.
+> `per-node-routing-and-fusion.md`). 📐 **G6** designed (`wiring-g6-agenttype.md` — thin presets +
+> author-time expansion). Remaining: G3, G7–G10 (+ G6 impl).
 
 ## 0. TL;DR
 
@@ -214,20 +215,30 @@ policy actions are `block|warn|stop` automated consequences (`types.ts:151`), no
 **console (Claude Code) resolves** — fits our "steer by talking to agents in the terminal" model.
 Headless default keeps background runs unattended. Journal the reply for resume (§G4).
 
-### G6 — `agentType` consumption · severity: MED · effort: LOW–MED
+### G6 — `agentType` consumption · severity: MED · effort: LOW–MED · 📐 DESIGNED
+
+> **Design (2026-06-25):** `wiring-g6-agenttype.md`. Re-scoped with the owner to a **thin preset +
+> branding** model, **author-time expansion** (NOT a runtime resolver): `piflow-init` flattens a preset
+> into the node's concrete `tools`/`prompt` and keeps `agentType` as a *label*; the runner is untouched.
+> A preset = canonical skills + a base tool set + a role-prompt + a `display{icon,label,color}`; it does
+> **NOT** carry model/tier (G1 owns those). Merge is additive (node adds/removes tools; task prompt
+> appended to the role-prompt). Catalog = product data in `~/.piflow/agents/` (+ seeds bundled with the
+> init skill); the icon rides the ONE observe run-view to the GUI. Seeds: `market-research`,
+> `paper-analyzer`, `interview`. Core touch is small (pure `mergePreset` + template/observe passthrough).
 
 **PDW.** `agentType` resolves a `.pi/agents/<name>.md` definition binding **tools (name allow/deny) +
 model + role prompt** (`src/agent-registry.ts`; applied `src/workflow.ts:371-375`). (Reminder: its
 `mcp`/`skills` are parsed-but-ignored — §1a.)
 
 **piflow.** `NodeSpec.agentType` is **carried but unconsumed** (`types.ts:31`); it never reaches the
-command builder.
+command builder — AND the template format has no `agentType` field at all (`template/types.ts:19`,
+`loader.ts:116`), so the primary authoring path can't even declare it (see the design doc ⚠️).
 
-**Delta.** Field exists, no binding.
+**Delta.** Field exists on the dense spec only, no binding, no template/observe surface.
 
-**How we close it.** Resolve `agentType` at instantiate time and **merge** its tools/model/prompt into
-the node envelope. We can go **further than PDW**: bind real MCP/community tools per `agentType`
-(the additive thing their model structurally can't do — §1b).
+**How we close it.** Author-time expansion (above): bind real MCP/community tools per `agentType` —
+the additive thing PDW's in-process model structurally can't do (§1b) — while keeping presets thin,
+overridable, and branded.
 
 ### G7 — Background + auto-continue delivery · severity: LOW–MED · effort: LOW
 
@@ -333,7 +344,8 @@ optional per-stage token budget. Cost stays blocked until pi reports it.
    G5's reply is journaled into G4's `journal.json`).
 3. **G1 per-node model routing** — 🚧 in progress (separate session); reuses the live `timeoutMs`/`retries`
    pattern; `command.ts` already takes `ctx.model` per call. Folds into G4's envelope hash when it lands.
-4. **G6 `agentType` consumption** — LOW–MED; unlocks per-node reuse and, uniquely for us, per-node
-   MCP/community binding.
+4. **G6 `agentType` presets** — 📐 DESIGNED (`wiring-g6-agenttype.md`); thin presets + author-time
+   expansion. Unlocks branded, reusable starting points and, uniquely for us, per-node MCP/community
+   binding per preset. Ready to implement (small core touch).
 5. **G3 quality-verb node templates** + **G9 sub-DAG composition** — MED+; ship the verify-node story.
 6. **G8 repair loop**, **G7 detach**, **G10 tok/s** — LOW, opportunistic.
