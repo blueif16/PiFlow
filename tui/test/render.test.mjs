@@ -1,4 +1,4 @@
-// ── packages/tui/test/render.test.mjs ───────────────────────────────────────────
+// ── tui/test/render.test.mjs ───────────────────────────────────────────
 // The MIGRATION oracle: the ink monitor, rendered headlessly against a real `.pi/` fixture run dir,
 // must show each node and a status indicator that reflects the run — ok ✔, blocked ⊘, running. This
 // REDDENS if the adapter mis-maps the SHARED RunModel statuses to rows (mutation-proven). The data

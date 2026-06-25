@@ -119,7 +119,7 @@ for s in piflow-init piflow-enhance piflow-start; do
   ln -sfn "$(pwd)/.claude/skills/$s" ~/.claude/skills/$s
 done
 npm --prefix packages/cli link        # the global `piflow` bin
-npm --prefix packages/tui link        # the global `piflow-tui` monitor (optional)
+npm --prefix tui link                 # the global `piflow-tui` monitor (optional)
 ```
 
 Claude Code surfaces `piflow-init` to create/port a workflow, `piflow-start` to run/monitor one, and

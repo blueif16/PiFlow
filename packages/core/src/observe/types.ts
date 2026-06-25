@@ -2,7 +2,7 @@
 // ONE reader, ONE model, ONE live stream that the CLI (`piflow status`), the TUI (`piflow-tui`), and a
 // future GUI all render. `RunModel` is the snapshot every view derives from; `RunUpdate` is the live
 // delta the stream yields. Both are a SUPERSET of what packages/cli/src/status.ts (`RunView`/`NodeView`)
-// and packages/tui/model.mjs (`buildModel`) each build today over the `.pi/` run layout (D7) — so a
+// and tui/model.mjs (`buildModel`) each build today over the `.pi/` run layout (D7) — so a
 // consumer reading this source needs nothing the legacy readers had and that source did not carry.
 //
 // These types live HERE (src/observe/), NOT src/types.ts — a parallel branch edits src/types.ts; the

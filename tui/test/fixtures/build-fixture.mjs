@@ -1,4 +1,4 @@
-// ── packages/tui/test/fixtures/build-fixture.mjs ────────────────────────────────
+// ── tui/test/fixtures/build-fixture.mjs ────────────────────────────────
 // Materialize a real `.pi/` run dir on disk using @piflow/core's OWN layout helpers, so the render
 // test exercises the migrated reader against the exact paths the engine writes — never a hand-rolled
 // path. Covers the three load-bearing statuses (ok · blocked · running) + a parallel lane + an io

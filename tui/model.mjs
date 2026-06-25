@@ -1,4 +1,4 @@
-// ── packages/tui/model.mjs ───────────────────────────────────────────────────────
+// ── tui/model.mjs ───────────────────────────────────────────────────────
 // The renderer-AGNOSTIC data layer for visualizing ONE pi-flow run — now a THIN ADAPTER over the SHARED
 // observability source (`@piflow/core/observe`). It reads the run through `readRunModel(runDir)` — the
 // ONE reader the CLI, the TUI, and a future GUI all share — and subscribes to `watchRun(runDir)` for

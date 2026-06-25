@@ -211,7 +211,7 @@ export { generateRunName, ADJECTIVES, PIES, pieSlug, pieSlugList, type Rng } fro
 // Observability source (the shared CONTRACT): ONE reader, ONE model, ONE live stream that the CLI, the
 // TUI, and a future GUI all render. `readRunModel(runDir)` is the one-shot snapshot; `watchRun(runDir)`
 // is the live stream of `RunUpdate`s. Built over the engine-owned `.pi/` layout — a superset of what
-// packages/cli + packages/tui derive today.
+// packages/cli + tui derive today.
 export { readRunModel, readRunJson, deriveStatus, watchRun } from './observe/index.js';
 export type {
   RunModel,

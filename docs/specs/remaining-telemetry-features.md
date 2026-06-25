@@ -69,7 +69,7 @@ bug, note it; fix it in Task 2.
   - `case 'auto_retry_start': retries += 1; break;` (rate-limit/overload retry — invisible to the model).
   - In `message_end` (assistant): `if (typeof msg.stopReason === 'string') stopReason = msg.stopReason;`
   - `case 'thinking_delta':` if `typeof e.delta === 'string'` → `thinkingChars += e.delta.length;` (the
-    TUI already reads this event type — see `packages/tui/model.mjs`).
+    TUI already reads this event type — see `tui/model.mjs`).
 - Extend the `RichNode` interface + the `finalize()` `rich` object with:
   `retries`, `stopReason` (string|null), `truncated: stopReason === 'max_tokens' || stopReason === 'length'`,
   `thinkingChars`.
@@ -185,7 +185,7 @@ or any >2-category data.
 
 ## Task 6 (OPTIONAL) — TUI parity
 Make the TUI render the shared rich model so `tokens`/`contextPeak` aren't `null`. In
-`packages/tui/model.mjs`, replace the lean `readRunModel`-only path with `buildRunView` from
+`tui/model.mjs`, replace the lean `readRunModel`-only path with `buildRunView` from
 `@piflow/core/observe` (same source the GUI uses), mapping its `RunViewNode` into the TUI row shape.
 Keep the live `node-event` accumulator for the running-node tail. Acceptance: the TUI node rows show real
 `ctx`/token numbers (it already references `n.tokens?.contextPeak`). Scope: TUI only; do not change core.

@@ -22,7 +22,7 @@ export const GLOBAL_DIR = path.join(os.homedir(), '.piflow');
 export const PRODUCTS_FILE = path.join(GLOBAL_DIR, 'products.json');
 export const INDEX_FILE = path.join(GLOBAL_DIR, 'index.json');
 
-// The terminal-OK statuses summarizeRun counts as "done" (mirrors packages/tui/model.mjs).
+// The terminal-OK statuses summarizeRun counts as "done" (mirrors tui/model.mjs).
 const TERMINAL_OK = new Set(['ok', 'reused', 'gap', 'dry']);
 
 // ── registry (products.json) ──────────────────────────────────────────────────────────────────────────

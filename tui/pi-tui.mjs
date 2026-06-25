@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ── packages/tui/pi-tui.mjs ─────────────────────────────────────────────────────
+// ── tui/pi-tui.mjs ─────────────────────────────────────────────────────
 // The pi-flow terminal monitor entry. MIGRATED from the legacy pi-runner pi-tui.mjs: a run dir is now
 // self-describing (the `.pi/` layout), so there is no global registry / namespace scan — you point it
 // at ONE run dir and it renders that run's DAG + per-node inspector, live.

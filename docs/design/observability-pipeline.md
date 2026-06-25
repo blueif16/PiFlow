@@ -31,7 +31,7 @@ builds the `RunModel`; every surface renders that model and never touches `.pi/`
 **The load-bearing invariant — a surface NEVER reads `.pi/` itself.** ALL run-file reading and
 model-building (status derivation, stage/lane reconstruction, the io-derived data-flow edges) lives in
 `packages/core/src/observe/`. `packages/cli/src/status.ts`, `packages/cli/src/watch.ts`, and
-`packages/tui/model.mjs` each carry NO bespoke `.pi/` reader — they import `readRunModel` / `watchRun`
+`tui/model.mjs` each carry NO bespoke `.pi/` reader — they import `readRunModel` / `watchRun`
 from `@piflow/core` and only render. One definition of "the truth," many views. This is what makes the
 *verified, not trusted* rule (§4) impossible for a surface to bypass.
 
@@ -351,7 +351,7 @@ for await (const u of watchRun(rundir, { signal })) {
 
 ### TUI — `readRunModel` + `watchRun` (subscribe)
 
-`packages/tui/model.mjs`. `buildModel({ runDir })` calls `readRunModel(runDir)` and `adaptModel` maps
+`tui/model.mjs`. `buildModel({ runDir })` calls `readRunModel(runDir)` and `adaptModel` maps
 the shared `RunModel` into the view shape the renderers already consume (re-keying `nodes` into an
 `{id: node}` map, reconstructing per-node inputs/outputs from the shared `edges`). `subscribeRun`
 drives the live tail: it `for await`s `watchRun(runDir, { signal, pollMs })`, fires `onModel` on each
@@ -460,5 +460,5 @@ every surface gets it for free.
 | `NodeIo` ledger type | `packages/core/src/types.ts` |
 | CLI `status` / `watch` / front door | `packages/cli/src/{status.ts,watch.ts,cli.ts}` |
 | CLI `logs` (own tail today) | `packages/core/src/runner/logs.ts` (`runLogsCli` / `followRun`) |
-| TUI adapter | `packages/tui/model.mjs` |
+| TUI adapter | `tui/model.mjs` |
 | The D7 run-layout rationale | `docs/design/sdk-canonical-build-plan.md` → "Uniform run layout (D7)" |

@@ -9,4 +9,4 @@ NEVER store product-specific info, collected data, snapshots, or a global index 
   there, never into the repo. Parallels the pi runtime's `~/.pi/`.
 - The GUI is a static viewer: NEVER commit collected data into it (no `gui/public/index.json`);
   read the global index from `~/.piflow/` via a dev mechanism (e.g. a Vite middleware).
-- Reuse shared shapes (e.g. `summarizeRun` from `packages/tui/model.mjs`) so TUI + GUI agree.
+- Reuse shared shapes (e.g. `summarizeRun` from `tui/model.mjs`) so TUI + GUI agree.
