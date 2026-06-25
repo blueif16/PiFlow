@@ -221,3 +221,10 @@ export type {
   EdgeView,
   WatchOpts,
 } from './observe/index.js';
+
+// The ENRICHED run-view: `buildRunView(runDir)` replays each node's `events.jsonl` through the shared
+// distiller for per-node `tokens` (input/output/cacheRead/cacheWrite/cost/contextPeak/billable) + tool
+// breakdown + read/write/artifact ledgers — a superset of the lean `RunModel`. The CLI, the TUI, and a
+// GUI build the SAME view from here (no view-local copy). Used by consumers that show cost/token panels.
+export { buildRunView } from './observe/index.js';
+export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens } from './observe/index.js';
