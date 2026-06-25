@@ -129,6 +129,19 @@ describe('piflow run --dry-run — realized commands, no model', () => {
     expect(plan).toContain('@'); // the prompt is referenced as @<file>
   });
 
+  it('renders the per-node effective model (G1) — a node override vs the run default', async () => {
+    const wf = compile({
+      meta: { name: 't', description: 'd' },
+      nodes: [
+        { label: 'Router', prompt: 'x', tools: {}, model: 'm-node', io: { reads: [], produces: ['r.txt'], artifacts: [{ path: 'r.txt' }] } },
+        { label: 'Plain', prompt: 'y', tools: {}, io: { reads: [], produces: ['p.txt'], artifacts: [{ path: 'p.txt' }] } },
+      ],
+    });
+    const plan = dryRunPlan(wf, { promptDir: '/run/_pi', model: 'm-run' });
+    expect(plan).toMatch(/\[router\][^\n]*--model m-node/); // node pin wins
+    expect(plan).toMatch(/\[plain\][^\n]*--model m-run/);   // inherits the run default
+  });
+
   it('renders --thinking faithfully — present when set, absent when not (a dry-run that drops a flag the LIVE run emits is a lying preview)', async () => {
     const wf = compile(await loadTemplate(TEMPLATE_MIN));
     // set ⇒ the cap appears on every realized command, mirroring defaultPiCommand's `opts.thinking` branch.

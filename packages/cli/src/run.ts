@@ -22,6 +22,9 @@ import {
   compile,
   DefaultToolRegistry,
   defaultPiCommand,
+  resolveNodeModel,
+  loadModelTiers,
+  loadModelsIndex,
   nodePromptFile,
   generateRunName,
   type Workflow,
@@ -163,6 +166,9 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
   const registry = new DefaultToolRegistry();
   const promptDir = opts.promptDir ?? '_pi';
   const provider = opts.provider ?? 'cp';
+  // G1 — resolve the SAME per-node effective model/provider the runner will (read-only global config).
+  const tiers = loadModelTiers();
+  const modelsIndex = loadModelsIndex();
   const profileNote = opts.profile ? ` [profile: ${opts.profile}]` : '';
   const lines: string[] = [
     `dry-run plan for "${wf.meta.name}"${profileNote} — ${Object.keys(wf.nodes).length} nodes, ${wf.stages.length} stages (no model invoked)`,
@@ -182,7 +188,15 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
         resolved = { piTools: [] as string[] };
         note = `  # NOTE: tools unresolved at preview (${(e as Error).message})`;
       }
-      const cmd = defaultPiCommand(node, resolved, { promptFile, provider, model: opts.model }, { thinking: opts.thinking });
+      // Resolve THIS node's effective model/provider (precedence in core's model-routing.ts). An
+      // unresolvable tier is NOTED in the preview rather than crashing the free dry-run.
+      let eff: { model?: string; provider?: string } = { model: opts.model, provider };
+      try {
+        eff = resolveNodeModel(node, { model: opts.model, provider, tiers, modelsIndex });
+      } catch (e) {
+        note += `  # NOTE: model routing — ${(e as Error).message}`;
+      }
+      const cmd = defaultPiCommand(node, resolved, { promptFile, provider: eff.provider ?? provider, model: eff.model }, { thinking: opts.thinking });
       lines.push(`    [${id}] ${cmd}${note}`);
     }
   }
