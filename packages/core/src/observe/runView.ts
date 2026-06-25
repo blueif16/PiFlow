@@ -95,22 +95,25 @@ export interface BuildRunViewOpts {
   workflow?: { stages?: string[][]; nodes?: Record<string, { phase?: string | null; deps?: string[] }> } | null;
 }
 
-// Strip an absolute path to a workspace-relative display path (workspace root first, then the legacy
-// `/game-omni/` heuristic for the older demo capture, then a bare basename).
-function makeDisplayPath(workspaceRoot: string | null) {
-  const root = workspaceRoot ? path.resolve(workspaceRoot) : null;
+// Strip an absolute path to a clean DISPLAY path using the run's two roots. A file inside the run sandbox
+// ({{RUN}}) shows relative to it (`spec/blueprint.json`); a file in the shared tree ({{WORKSPACE}}) shows
+// relative to it (`packages/skills/...`); anything else falls back to a bare basename. runDir is checked
+// FIRST because it nests under workspaceRoot, so a run file never displays as the long `.piflow/.../runs/…`.
+function makeDisplayPath(runDir: string | null, workspaceRoot: string | null) {
+  const run = runDir ? path.resolve(runDir) : null;
+  const ws = workspaceRoot ? path.resolve(workspaceRoot) : null;
   return (abs: unknown): string => {
     if (typeof abs !== 'string') return String(abs);
-    if (root && abs.startsWith(root + path.sep)) return abs.slice(root.length + 1);
-    const i = abs.indexOf('/game-omni/');
-    if (i >= 0) return abs.slice(i + '/game-omni/'.length);
+    if (run && abs.startsWith(run + path.sep)) return abs.slice(run.length + 1);
+    if (ws && abs.startsWith(ws + path.sep)) return abs.slice(ws.length + 1);
     if (!abs.startsWith('/')) return abs;
     return abs.replace(/^.*\//, '');
   };
 }
 
+// Scope bucket from the WORKSPACE-relative display path. 'run' is detected upstream by {{RUN}} membership
+// (run files display run-relative, with no distinguishing prefix), so it is not inferred here.
 function scopeKind(dp: string): ScopeKind {
-  if (dp.startsWith('out/')) return 'run';
   if (dp.startsWith('packages/skills/')) return 'skill';
   if (dp.startsWith('templates/')) return 'template';
   if (dp.startsWith('packages/')) return 'package';
@@ -176,7 +179,15 @@ interface RunJson {
 export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { view: RunView; audit: NodeAudit[] } {
   const rj = JSON.parse(fssync.readFileSync(path.join(runDir, '.pi', 'run.json'), 'utf8')) as RunJson;
   const { expected, samples } = buildHistory(opts.historyDirs ?? []);
-  const displayPath = makeDisplayPath(opts.workspaceRoot ?? null);
+  const runResolved = path.resolve(runDir);
+  const displayPath = makeDisplayPath(runResolved, opts.workspaceRoot ?? null);
+  // UNIFORM PATH RULE: every file path the view emits is ABSOLUTE. Reads/writes arrive absolute from the
+  // event stream; declared artifacts arrive RELATIVE to `{{RUN}}` (the contract states `MEMORY.w4-M2.md`,
+  // not a full path). A node's tools run with cwd = the run sandbox (= `{{RUN}}` = runDir), so any relative
+  // path resolves against runDir. Resolving here — once, at the single data source — means every consumer
+  // (GUI read-back, TUI, CLI) gets one unambiguous path and never has to guess a base.
+  const toAbs = (p: string) => (path.isAbsolute(p) ? p : path.join(runResolved, p));
+  const underRun = (abs: string) => abs === runResolved || abs.startsWith(runResolved + path.sep);
   const catalog = opts.catalog ?? loadModelCatalog();
 
   const nodes: RunViewNode[] = [];
@@ -207,8 +218,9 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
     }
 
     const reads: ReadRef[] = rich.reads.map((r) => {
-      const dp = displayPath(r.path);
-      return { path: r.path, displayPath: dp, via: r.via, scope: scopeKind(dp), preview: r.preview };
+      const abs = toAbs(r.path);
+      const dp = displayPath(abs);
+      return { path: abs, displayPath: dp, via: r.via, scope: underRun(abs) ? 'run' : scopeKind(dp), preview: r.preview };
     });
     const buckets: Partial<Record<ScopeKind, string[]>> = {};
     for (const r of reads) (buckets[r.scope] = buckets[r.scope] || []).push(r.displayPath);
@@ -216,8 +228,8 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       kind, label: SCOPE_LABEL[kind], count: buckets[kind]!.length, paths: buckets[kind]!,
     }));
 
-    const writes: WriteRef[] = rich.writes.map((w) => ({ path: w.path, displayPath: displayPath(w.path), verified: w.verified, bytes: w.bytes }));
-    const artifacts: ArtifactRef[] = (rec.artifacts || []).map((a) => ({ path: a.path, displayPath: displayPath(a.path), exists: !!a.exists, bytes: a.bytes ?? 0 }));
+    const writes: WriteRef[] = rich.writes.map((w) => { const abs = toAbs(w.path); return { path: abs, displayPath: displayPath(abs), verified: w.verified, bytes: w.bytes }; });
+    const artifacts: ArtifactRef[] = (rec.artifacts || []).map((a) => { const abs = toAbs(a.path); return { path: abs, displayPath: displayPath(abs), exists: !!a.exists, bytes: a.bytes ?? 0 }; });
 
     nodes.push({
       id, label: rec.label || id, phase, status: rec.status,
