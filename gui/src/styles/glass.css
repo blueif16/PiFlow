@@ -269,9 +269,10 @@
   height: var(--ds-progress-h);
   border-radius: var(--ds-radius-full);
   background: var(--ds-progress-track);
-  contain: layout;             /* isolate layout; let the fill's glow halo escape */
-  /* note: the sheen is clipped by the FILL's own overflow:hidden, not here, so
-     the track stays un-clipped and the leading-edge "charged" glow can bloom. */
+  contain: layout;             /* isolate layout */
+  overflow: hidden;            /* clip the fill (and its leading-edge glow) to the
+                                  track so the charged green never bleeds past the
+                                  bar's bounding box; honors the track's radius. */
 }
 .ds-progress--node  { height: var(--ds-progress-h);       border-radius: 0; }
 .ds-progress--block { height: var(--ds-progress-h-block); border-radius: var(--ds-radius-full); }
