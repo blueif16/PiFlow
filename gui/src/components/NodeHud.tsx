@@ -6,23 +6,21 @@
  *      └──────────── BOTTOM ──────────────┘   progress (avg-of-prior-runs ETA)
  *
  * IDENT (top-left) is the morph target: the canvas node grows into the identity card
- * (shared layoutId). CENTER is the content viewer — an at-rest Overview (summary +
- * phase/issues/context/timing), replaced on HOVER of any region (full detail) or
- * CLICK of an input file (its content). A short grace timer bridges the cursor gap.
- * Exit lives in the persistent top-right MenuBar (shell), so it survives the file
- * panel covering the card.
+ * (shared layoutId). CENTER is ONE in-place content surface — an at-rest Overview that
+ * is REPLACED directly (no floating card, no container background) by a region's full
+ * detail on HOVER, or an input file's parsed content on CLICK. The swap is STICKY: it
+ * stays after the cursor leaves and only returns to the Overview on a background click
+ * (or the in-panel "back" control). A down-chevron cue stands in for the scrollbar.
  *
  * Every value is real (data.rv = the distilled run-view node). Nothing is mocked;
  * a region with no backing data renders empty.
  */
-import { useRef, useState, type ReactNode, type Ref } from "react";
-import { AnimatePresence } from "motion/react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import * as motion from "motion/react-client";
 import { Button } from "./Button";
 import { ProgressBar } from "./ProgressBar";
 import { StatusPill, HudCorners } from "./HudBits";
 import { MarkdownReader } from "./MarkdownReader";
-import { ToolStackBar } from "./ToolStackBar";
 import { CacheDonut } from "./CacheDonut";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
@@ -30,8 +28,12 @@ import { formatMs, formatBytes, type RunViewNode, type ScopeKind, type ReadRef }
 import "../styles/hud.css";
 import "../styles/reader.css";
 
-type RegionKey = "model" | "tools" | "files" | "output" | "progress";
-const REGION_KEYS: readonly RegionKey[] = ["model", "tools", "files", "output", "progress"];
+type RegionKey = "model" | "tools" | "output" | "progress";
+const REGION_KEYS: readonly RegionKey[] = ["model", "tools", "output", "progress"];
+
+// what the CENTER shows beyond the at-rest Overview: a hovered region's detail (sticky)
+// or a clicked input file's content. `null` = the Overview.
+type CenterView = { kind: "region"; region: RegionKey } | { kind: "file"; idx: number } | null;
 
 // Deep-link a region open via `?peek=<region>` (also how the hover-expand is verified/screenshotted).
 const initialPeek: RegionKey | null =
@@ -51,6 +53,9 @@ const initialFile: number | null =
       })()
     : null;
 
+const initialView: CenterView =
+  initialFile != null ? { kind: "file", idx: initialFile } : initialPeek ? { kind: "region", region: initialPeek } : null;
+
 const SCOPE_META: Record<ScopeKind, { label: string; hint: string }> = {
   run: { label: "Run workspace", hint: "filesystem" },
   skill: { label: "Skill", hint: "loaded skill" },
@@ -60,7 +65,6 @@ const SCOPE_META: Record<ScopeKind, { label: string; hint: string }> = {
 };
 
 // tool → accent class (read=accent, write/edit=success, others neutral) for the bar chart + tags.
-// Exported so ToolStackBar colors segments with the exact same mapping.
 export const TOOL_TONE: Record<string, string> = {
   read: "accent", grep: "accent", ls: "muted", find: "muted",
   edit: "success", write: "success", bash: "warn", submit_result: "accent",
@@ -85,16 +89,11 @@ export interface NodeHudProps {
 export function NodeHud({ id, data, onClose, reduce, dialogRef }: NodeHudProps) {
   const rv = data.rv;
   const status = data.status ?? "idle";
-  // focus drives which region is HOVER-expanded into MIDDLE (top/right/bottom). `?peek=` deep-links it.
-  const [focus, setFocus] = useState<RegionKey | null>(initialPeek);
-  // fileIdx is the CLICK-selected input file whose content shows in MIDDLE (persists until closed).
-  const [fileIdx, setFileIdx] = useState<number | null>(initialFile);
-  const clearTimer = useRef<number | undefined>(undefined);
-
-  // hover bridge: keep a region open while the cursor travels from it into the MIDDLE detail
-  const hold = (k: RegionKey) => { window.clearTimeout(clearTimer.current); setFocus(k); };
-  const release = () => { window.clearTimeout(clearTimer.current); clearTimer.current = window.setTimeout(() => setFocus(null), 160); };
-  const selectFile = (i: number) => { window.clearTimeout(clearTimer.current); setFocus(null); setFileIdx(i); };
+  // the single CENTER state: a hovered region (sticky), a clicked file, or null (Overview)
+  const [view, setView] = useState<CenterView>(initialView);
+  const pin = (region: RegionKey) => setView({ kind: "region", region });
+  const selectFile = (idx: number) => setView({ kind: "file", idx });
+  const reset = () => setView(null);
 
   // progress: a completed node is 100%; the ETA is the mean of prior runs (rv.expectedMs)
   const done = status === "success" || status === "error";
@@ -119,12 +118,9 @@ export function NodeHud({ id, data, onClose, reduce, dialogRef }: NodeHudProps) 
     items: rv.reads.map((r, i) => ({ r, i })).filter(({ r }) => r.scope === s.kind),
   }));
 
-  // what MIDDLE overlays over the identity: a hover region (transient) wins, else a clicked file
-  const overlay = focus
-    ? { kind: "region" as const, key: focus, title: DETAIL_TITLE[focus], region: focus }
-    : fileIdx != null && rv.reads[fileIdx]
-      ? { kind: "file" as const, key: `file-${fileIdx}`, title: rv.reads[fileIdx].displayPath }
-      : null;
+  const pinnedRegion = view?.kind === "region" ? view.region : null;
+  const pinnedFile = view?.kind === "file" ? view.idx : null;
+  const fileRef = pinnedFile != null ? rv.reads[pinnedFile] : null;
 
   return (
     <div
@@ -134,20 +130,20 @@ export function NodeHud({ id, data, onClose, reduce, dialogRef }: NodeHudProps) 
       aria-label={`${data.title} details`}
       tabIndex={-1}
       ref={dialogRef}
-      onMouseLeave={release}
+      onClick={(e) => { if (e.target === e.currentTarget) reset(); }}
     >
       {/* ── TOP-LEFT: identity (morph target). TOP-RIGHT corner is left free for the floating MenuBar. ── */}
       <Identity id={id} data={data} reduce={reduce} onClose={onClose} status={status} />
 
       {/* ── TOP-CENTER: model/provider · tool-call telemetry ── */}
       <div className="ds-hud__meta">
-        <Region rk="model" label="Model" focus={focus} hold={hold} release={release}>
+        <Region rk="model" label="Model" active={pinnedRegion === "model"} onEnter={() => pin("model")}>
           <div className="ds-hud-stat">
             <span className="ds-hud-stat__v">{rv.model ?? "—"}</span>
             <span className="ds-hud-stat__k">{rv.provider ?? "provider"}{rv.api ? ` · ${rv.api}` : ""}</span>
           </div>
         </Region>
-        <Region rk="tools" label="Tool calls" focus={focus} hold={hold} release={release}>
+        <Region rk="tools" label="Tool calls" active={pinnedRegion === "tools"} onEnter={() => pin("tools")}>
           <div className="ds-hud-stat">
             <span className="ds-hud-stat__v">{rv.toolCalls}</span>
             <span className="ds-hud-stat__k ds-hud-stat__k--wrap">
@@ -159,7 +155,7 @@ export function NodeHud({ id, data, onClose, reduce, dialogRef }: NodeHudProps) 
         </Region>
       </div>
 
-      {/* ── LEFT: input SOURCES (no wrapper) — click any file to read it in MIDDLE ── */}
+      {/* ── LEFT: input SOURCES (no wrapper) — click any file to read it in the CENTER ── */}
       <div className="ds-hud__left" style={{ gridArea: "left" }}>
         {sources.length === 0 && <div className="ds-hud-empty">no reads recorded</div>}
         {sources.map((g) => (
@@ -174,7 +170,7 @@ export function NodeHud({ id, data, onClose, reduce, dialogRef }: NodeHudProps) 
                 <button
                   key={r.path}
                   type="button"
-                  className={`ds-filebtn${fileIdx === i ? " is-sel" : ""}`}
+                  className={`ds-filebtn${pinnedFile === i ? " is-sel" : ""}`}
                   onClick={() => selectFile(i)}
                   title={r.path}
                 >
@@ -186,42 +182,28 @@ export function NodeHud({ id, data, onClose, reduce, dialogRef }: NodeHudProps) 
         ))}
       </div>
 
-      {/* ── CENTER: content viewer — an at-rest overview, the detail/file on interaction ── */}
-      <div className="ds-hud__mid" style={{ gridArea: "mid" }}>
-        <Overview rv={rv} status={status} expected={expected} />
-        <AnimatePresence>
-          {overlay && (
-            <motion.div
-              key={overlay.key}
-              className={`ds-hud-detail ds-glass ds-glass--soft${overlay.kind === "file" ? " ds-hud-detail--file" : ""}`}
-              initial={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.985 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={reduce ? { opacity: 0 } : { opacity: 0, scale: 0.99 }}
-              transition={{ duration: reduce ? 0 : 0.16, ease: easing.standard }}
-              onMouseEnter={() => { if (overlay.kind === "region") hold(overlay.region); }}
-              onMouseLeave={release}
-            >
-              <HudCorners />
-              <div className="ds-hud-detail__head">
-                <span className="ds-hud-detail__title">{overlay.title}</span>
-                {overlay.kind === "file" && (
-                  <button type="button" className="ds-detail-x" aria-label="Close file" onClick={() => setFileIdx(null)}>
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-                  </button>
-                )}
-              </div>
-              <div className="ds-hud-detail__body">
-                {overlay.kind === "region"
-                  ? <Detail region={overlay.region} rv={rv} expected={expected} pct={pct} />
-                  : <FileContent file={rv.reads[fileIdx!]} />}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      {/* ── CENTER: one in-place surface — Overview at rest, REPLACED by a region detail (hover,
+           sticky) or a file's parsed content (click). Click the gutter/background to return. ── */}
+      <div
+        className="ds-hud__mid"
+        style={{ gridArea: "mid" }}
+        onClick={(e) => { if (e.target === e.currentTarget) reset(); }}
+      >
+        {view === null && <Overview rv={rv} status={status} expected={expected} />}
+        {pinnedRegion && (
+          <CenterPanel key={`r-${pinnedRegion}`} title={DETAIL_TITLE[pinnedRegion]} onBack={reset} reduce={reduce}>
+            <Detail region={pinnedRegion} rv={rv} expected={expected} pct={pct} />
+          </CenterPanel>
+        )}
+        {fileRef && (
+          <CenterPanel key={`f-${pinnedFile}`} title={fileRef.displayPath} onBack={reset} reduce={reduce} wide>
+            <FileContent file={fileRef} />
+          </CenterPanel>
+        )}
       </div>
 
       {/* ── RIGHT: output panel (distinct, "emitted" feel) ────────────────── */}
-      <Region rk="output" area="right" label={`Output · ${rv.artifacts.length || rv.writes.length}`} focus={focus} hold={hold} release={release}>
+      <Region rk="output" area="right" label={`Output · ${rv.artifacts.length || rv.writes.length}`} active={pinnedRegion === "output"} onEnter={() => pin("output")}>
         <div className="ds-out">
           {rv.artifacts.length === 0 && rv.writes.length === 0 && <div className="ds-hud-empty">no artifacts</div>}
           {rv.artifacts.map((a) => (
@@ -242,7 +224,7 @@ export function NodeHud({ id, data, onClose, reduce, dialogRef }: NodeHudProps) 
       </Region>
 
       {/* ── BOTTOM: quiet 8px bar with state + % head and elapsed/avg meta ── */}
-      <Region rk="progress" area="bottom" label="Progress" bare focus={focus} hold={hold} release={release}>
+      <Region rk="progress" area="bottom" label="Progress" bare active={pinnedRegion === "progress"} onEnter={() => pin("progress")}>
         <div className="ds-prog">
           <div className="ds-prog__head">
             <span className="ds-prog__state">{STATUS_LABEL[status]}</span>
@@ -286,8 +268,8 @@ function Identity({ id, data, reduce, onClose, status }: { id: string; data: Flo
 }
 
 /* ── CENTER overview (at rest): the summary + the REAL extra telemetry not shown
-   elsewhere — phase, issues/warnings, context peak, timing. Covered by the detail
-   overlay on hover/click. (Token cost is intentionally NOT shown — broken upstream.) ── */
+   elsewhere — phase, issues/warnings, context peak, timing. Replaced in-place by the
+   region/file panel on hover/click. (Token cost is intentionally NOT shown — broken upstream.) ── */
 function Overview({ rv, status, expected }: { rv: RunViewNode; status: NonNullable<FlowNodeData["status"]>; expected: number | null }) {
   const ctxPeak = rv.tokens?.contextPeak ?? 0;
   return (
@@ -329,21 +311,19 @@ function Fact({ k, v }: { k: string; v: ReactNode }) {
   );
 }
 
-/* ── a hoverable region box ─────────────────────────────────────────────── */
-function Region({ rk, area, label, focus, hold, release, children, bare }: {
-  rk: RegionKey; area?: string; label: string; focus: RegionKey | null;
-  hold: (k: RegionKey) => void; release: () => void; children: ReactNode; bare?: boolean;
+/* ── a hoverable region box — hovering PINS its detail into the center (sticky) ──── */
+function Region({ rk, area, label, active, onEnter, children, bare }: {
+  rk: RegionKey; area?: string; label: string; active: boolean;
+  onEnter: () => void; children: ReactNode; bare?: boolean;
 }) {
   return (
     <section
-      className={`ds-hud-region${focus === rk ? " is-active" : ""}${bare ? " ds-hud-region--bare" : ""}`}
+      className={`ds-hud-region${active ? " is-active" : ""}${bare ? " ds-hud-region--bare" : ""}`}
       style={area ? { gridArea: area } : undefined}
       data-area={area}
       tabIndex={0}
-      onMouseEnter={() => hold(rk)}
-      onMouseLeave={release}
-      onFocus={() => hold(rk)}
-      onBlur={release}
+      onMouseEnter={onEnter}
+      onFocus={onEnter}
       aria-label={label}
     >
       {!bare && (
@@ -357,11 +337,68 @@ function Region({ rk, area, label, focus, hold, release, children, bare }: {
   );
 }
 
+/* ── the in-place CENTER panel: a hairline header (back + title) over a scroll-hinted
+   body. No card, no background — the content rides directly on the frosted scrim. ── */
+function CenterPanel({ title, onBack, reduce, wide, children }: {
+  title: string; onBack: () => void; reduce: boolean; wide?: boolean; children: ReactNode;
+}) {
+  return (
+    <motion.div
+      className={`ds-center${wide ? " ds-center--wide" : ""}`}
+      initial={reduce ? { opacity: 0 } : { opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduce ? 0 : 0.16, ease: easing.standard }}
+    >
+      <div className="ds-center__head">
+        <button type="button" className="ds-center__back" onClick={onBack} aria-label="Back to overview">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M10 3 5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          back
+        </button>
+        <span className="ds-center__title" title={title}>{title}</span>
+      </div>
+      <ScrollHint>{children}</ScrollHint>
+    </motion.div>
+  );
+}
+
+/* ── a scroll region with NO scrollbar — a soft down-chevron cue appears while more
+   content sits below (fades out at the bottom; click nudges the scroll). ──────────── */
+function ScrollHint({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  const measure = () => {
+    const el = ref.current;
+    if (el) setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 6);
+  };
+  // re-measure after every render (view/content change) and on viewport resize
+  useEffect(() => { measure(); });
+  useEffect(() => {
+    const onResize = () => measure();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const nudge = () => ref.current?.scrollBy({ top: ref.current.clientHeight * 0.8, behavior: "smooth" });
+  return (
+    <div className="ds-scrollhint">
+      <div ref={ref} className="ds-scrollhint__scroll" onScroll={measure}>{children}</div>
+      <button
+        type="button"
+        className={`ds-scrollhint__cue${more ? " is-show" : ""}`}
+        aria-label="Scroll for more"
+        tabIndex={more ? 0 : -1}
+        onClick={nudge}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+    </div>
+  );
+}
+
 const DETAIL_TITLE: Record<RegionKey, string> = {
-  model: "Model · tokens", tools: "Tool calls", files: "Input files", output: "Output artifacts", progress: "Timeline",
+  model: "Model · tokens", tools: "Tool calls", output: "Output artifacts", progress: "Timeline",
 };
 
-/* ── the full-detail panels shown in MIDDLE on hover ───────────────────── */
+/* ── the full-detail panels shown in the CENTER on hover ───────────────── */
 function Detail({ region, rv, expected, pct }: { region: RegionKey; rv: RunViewNode; expected: number | null; pct?: number }) {
   if (region === "model") {
     const t = rv.tokens;
@@ -385,43 +422,54 @@ function Detail({ region, rv, expected, pct }: { region: RegionKey; rv: RunViewN
   }
 
   if (region === "tools") {
+    // ONE per-tool bar chart (sorted desc, count + %), NOT a pie — per the telemetry research
+    // (docs/research/telemetry-observability-2026.md §4.1). The chips above are the signals that
+    // actually matter for tool use: error rate (§3.5), provider retries (§3.8), truncation (§3.7),
+    // single-tool dominance (§3.9). All derived from real fields.
     const bars = Object.entries(rv.toolBreakdown).sort((a, b) => b[1] - a[1]);
+    const total = bars.reduce((s, [, c]) => s + c, 0) || rv.toolCalls || 1;
     const max = Math.max(1, ...bars.map(([, c]) => c));
+    const errors = rv.timeline.filter((s) => !s.ok).length;
+    const errRate = rv.toolCalls ? errors / rv.toolCalls : 0;
+    const top = bars[0];
+    const dominance = top ? top[1] / total : 0;
     return (
-      <div className="ds-detail-cols">
-        <ToolStackBar breakdown={rv.toolBreakdown} />
+      <div className="ds-tools-detail">
+        <div className="ds-tools-flags">
+          <span className="ds-tools-total"><b>{rv.toolCalls}</b> calls · {bars.length} tool{bars.length === 1 ? "" : "s"}</span>
+          {errors > 0 && (
+            <span className="ds-flag" data-tone={errRate > 0.15 ? "error" : errRate > 0.05 ? "warn" : "muted"} title="failed tool-call spans / total calls">
+              {errors} error{errors === 1 ? "" : "s"} · {Math.round(errRate * 100)}%
+            </span>
+          )}
+          {rv.retries > 0 && (
+            <span className="ds-flag" data-tone={rv.retries >= 5 ? "error" : "warn"} title="provider rate-limit / overload retries">
+              {rv.retries} retr{rv.retries === 1 ? "y" : "ies"}
+            </span>
+          )}
+          {rv.truncated && <span className="ds-flag" data-tone="error" title="output was cut off by the token cap">truncated</span>}
+          {top && dominance > 0.8 && rv.toolCalls > 5 && (
+            <span className="ds-flag" data-tone="warn" title="one tool dominates — possible stuck loop">{top[0]} {Math.round(dominance * 100)}%</span>
+          )}
+        </div>
         <div className="ds-bars">
+          {bars.length === 0 && <div className="ds-hud-empty">no tool calls recorded</div>}
           {bars.map(([t, c]) => (
             <div key={t} className="ds-bar" data-tone={toolTone(t)}>
               <span className="ds-bar__label">{t}</span>
               <span className="ds-bar__track"><span className="ds-bar__fill" style={{ width: `${(c / max) * 100}%` }} /></span>
-              <span className="ds-bar__val">{c}</span>
+              <span className="ds-bar__val">{c}<span className="ds-bar__pct">{Math.round((c / total) * 100)}%</span></span>
             </div>
           ))}
         </div>
         {rv.bash.length > 0 && (
-          <div className="ds-cmds">
-            <div className="ds-cmds__head">bash · {rv.bash.length}</div>
-            {rv.bash.slice(0, 24).map((b, i) => <code key={i} className="ds-cmd" title={b.command}>$ {b.command}</code>)}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (region === "files") {
-    return (
-      <div className="ds-files">
-        {rv.reads.map((r) => (
-          <details key={r.path} className="ds-file" data-scope={r.scope} open={rv.reads.length <= 3}>
-            <summary className="ds-file__sum">
-              <ScopeGlyph kind={r.scope} />
-              <span className="ds-file__path" title={r.path}>{r.displayPath}</span>
-              <span className="ds-file__via">{r.via}</span>
-            </summary>
-            {r.preview ? <pre className="ds-file__preview">{r.preview}</pre> : <div className="ds-hud-empty">content not captured</div>}
+          <details className="ds-cmds" open={rv.bash.length <= 6}>
+            <summary className="ds-cmds__head">bash · {rv.bash.length}</summary>
+            <div className="ds-cmds__list">
+              {rv.bash.slice(0, 24).map((b, i) => <code key={i} className="ds-cmd" title={b.command}>$ {b.command}</code>)}
+            </div>
           </details>
-        ))}
+        )}
       </div>
     );
   }
@@ -444,6 +492,7 @@ function Detail({ region, rv, expected, pct }: { region: RegionKey; rv: RunViewN
             <span className="ds-out__meta">{w.bytes != null ? formatBytes(w.bytes) : "wrote"}{w.verified ? " ✓" : ""}</span>
           </div>
         ))}
+        {rv.artifacts.length === 0 && rv.writes.length === 0 && <div className="ds-hud-empty">no artifacts emitted</div>}
       </div>
     );
   }
@@ -469,7 +518,7 @@ function Detail({ region, rv, expected, pct }: { region: RegionKey; rv: RunViewN
       </div>
       <div className="ds-timeline__list">
         {rv.timeline.map((s, i) => (
-          <div key={i} className="ds-timeline__row" data-tone={toolTone(s.name)}>
+          <div key={i} className="ds-timeline__row" data-tone={toolTone(s.name)} data-ok={s.ok}>
             <span className="ds-timeline__t">t+{formatMs(s.tStartMs ?? 0)}</span>
             <span className="ds-timeline__name">{s.name}</span>
             <span className="ds-timeline__dur">{formatMs(s.durMs)}</span>
@@ -480,14 +529,13 @@ function Detail({ region, rv, expected, pct }: { region: RegionKey; rv: RunViewN
   );
 }
 
-/* ── a clicked input file's REAL content (markdown rendered; everything else raw) ── */
+/* ── a clicked input file's REAL content, rendered BARE (no card/background): markdown
+   parsed to themed nodes, everything else as plain mono text. ── */
 function FileContent({ file }: { file: ReadRef }) {
   if (!file?.preview) return <div className="ds-hud-empty">content not captured for this read</div>;
   const ext = (file.displayPath.split(".").pop() || "").toLowerCase();
-  if (ext === "md" || ext === "markdown") {
-    return <div className="ds-reader ds-fileview"><MarkdownReader source={file.preview} /></div>;
-  }
-  return <pre className="ds-reader ds-reader--code ds-fileview ds-glass__legible">{file.preview}</pre>;
+  if (ext === "md" || ext === "markdown") return <MarkdownReader source={file.preview} />;
+  return <pre className="ds-codeblock">{file.preview}</pre>;
 }
 
 function KV({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {
