@@ -9,39 +9,57 @@
    The single source of premium is the tokens, not the effects.
    ============================================================ */
 :root {
-  /* Canvas — near-black, never #000 */
-  --canvas: #0a0a0a;
+  /* Canvas — the GREY engineered field (the page floor). White lives in the
+     containers (cards/panels) that float on top, exactly like the reference. */
+  --canvas: #f1f1f3;                /* grey field — the page floor */
+  --canvas-soft: #e9e9ec;           /* a touch greyer — sunken bands / wells */
 
-  /* Foreground */
-  --fg: #ededed;
-  --fg-muted: #a1a1a1;
-  --fg-faint: #6b6b6b;
+  /* Foreground — Geist ink ladder, never pure #000 */
+  --fg: #171717;                    /* ink — primary text */
+  --fg-muted: #525252;              /* secondary text */
+  --fg-faint: #8a8a8a;              /* tertiary / quiet labels */
 
-  /* The ONE accent hue — electric green. CTA / status / focus / pulses only. */
-  --accent: #3df2a7;
-  --accent-ink: #04140d;            /* readable text on a solid accent fill */
-  --accent-60: rgba(61, 242, 167, 0.6);
-  --accent-30: rgba(61, 242, 167, 0.3);
-  --accent-glow: rgba(61, 242, 167, 0.18);
+  /* The ONE accent hue — orange. RATIONED to the scarcest spark: the brand
+     mark, ONE status/charge, the focus ring. Almost everything else is grey &
+     white. Orange is never a fill, never a wash, never the primary button. */
+  --accent: #ff5a1f;                /* vivid brand / logo orange — marks & status */
+  --accent-strong: #c2410c;         /* AA-safe orange for the rare inline link */
+  --accent-ink: #ffffff;            /* text on a solid accent fill (almost never) */
+  --accent-60: rgba(255, 90, 31, 0.6);
+  --accent-30: rgba(255, 90, 31, 0.3);
+  --accent-glow: rgba(255, 90, 31, 0.16);
+  --accent-subtle: #fff1ea;         /* peach wash — selected / soft fills (rare) */
 
-  /* Surface ladder — raised panels (not drop shadows) */
-  --surface-1: #0f1011;
-  --surface-2: #141516;
-  --surface-3: #18191a;
-  --surface-4: #1d1e20;
+  /* Ink action ladder — the PRIMARY button is ink, not orange */
+  --ink: #171717;
+  --ink-hover: #000000;
 
-  /* Hairline borders — weightless, present */
-  --hairline: rgba(255, 255, 255, 0.08);
-  --hairline-2: rgba(255, 255, 255, 0.14);
+  /* Surface ladder — raised white cards on the field (Geist shadow-as-border) */
+  --surface-1: #ffffff;
+  --surface-2: #fafafa;
+  --surface-3: #f5f5f5;
+  --surface-4: #ebebeb;
+
+  /* Hairline borders — dark-alpha, weightless on light */
+  --hairline: rgba(0, 0, 0, 0.08);
+  --hairline-2: rgba(0, 0, 0, 0.14);
+
+  /* Geist shadow ladder — shadow-as-border + soft elevation */
+  --shadow-sm: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 8px 20px -8px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 22px 48px -16px rgba(0, 0, 0, 0.18);
 }
 
 /* Map tokens into the Tailwind v4 theme so utilities can reach them. */
 @theme inline {
   --color-canvas: var(--canvas);
+  --color-canvas-soft: var(--canvas-soft);
   --color-fg: var(--fg);
   --color-fg-muted: var(--fg-muted);
   --color-fg-faint: var(--fg-faint);
   --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-subtle: var(--accent-subtle);
   --color-surface-1: var(--surface-1);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
@@ -106,7 +124,7 @@ body {
   z-index: 60;
   pointer-events: none;
   opacity: 0.035;
-  mix-blend-mode: overlay;
+  mix-blend-mode: multiply;          /* faint paper tooth on a light field */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 160px 160px;
 }
@@ -121,12 +139,12 @@ body {
   height: 150%;
   z-index: 0;
   pointer-events: none;
-  filter: blur(70px);
-  opacity: 0.5;
+  filter: blur(80px);
+  opacity: 0.7;
+  /* Whisper of warmth, not an orange wash — mostly a soft grey lift. */
   background:
-    radial-gradient(38% 50% at 28% 30%, rgba(61, 242, 167, 0.22), transparent 70%),
-    radial-gradient(34% 46% at 72% 38%, rgba(61, 242, 167, 0.12), transparent 70%),
-    radial-gradient(48% 60% at 50% 82%, rgba(61, 242, 167, 0.08), transparent 72%);
+    radial-gradient(40% 50% at 30% 22%, rgba(255, 90, 31, 0.05), transparent 70%),
+    radial-gradient(44% 54% at 72% 34%, rgba(0, 0, 0, 0.025), transparent 72%);
   animation: aurora-drift 26s ease-in-out infinite alternate;
 }
 @keyframes aurora-drift {
@@ -142,10 +160,29 @@ body {
   inset: -25% 0;
   z-index: 0;
   pointer-events: none;
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
   background-size: 30px 30px;
   -webkit-mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 30%, transparent 75%);
   mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, #000 30%, transparent 75%);
+}
+
+/* ============================================================
+   Grid-paper — the "engineered field": faint graph-paper lines,
+   masked to a soft vignette so they fade at the edges. This is the
+   signature light-system texture (replaces the dark dot field).
+   ============================================================ */
+.gridpaper {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(0, 0, 0, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.055) 1px, transparent 1px);
+  background-size: 72px 72px;
+  background-position: center top;
+  -webkit-mask-image: radial-gradient(ellipse 78% 64% at 50% 32%, #000 42%, transparent 100%);
+  mask-image: radial-gradient(ellipse 78% 64% at 50% 32%, #000 42%, transparent 100%);
 }
 
 /* ============================================================
@@ -203,7 +240,7 @@ body {
   .flow {
     stroke-dasharray: 9 250;
     animation: flow-travel 3.4s linear infinite;
-    filter: drop-shadow(0 0 4px rgba(61, 242, 167, 0.5));
+    filter: drop-shadow(0 0 4px var(--accent-30));
   }
   .station-glow { animation: station-pulse 6s ease-in-out infinite; }
 }
@@ -220,7 +257,48 @@ body {
 @keyframes iso-float { from { transform: translateY(3px); } to { transform: translateY(-5px); } }
 
 /* Accent cubes/edges get a real glow (the "expensive" lift). Static — safe always-on. */
-.iso-glow { filter: drop-shadow(0 0 7px rgba(61, 242, 167, 0.45)) drop-shadow(0 0 2px rgba(61, 242, 167, 0.6)); }
+.iso-glow { filter: drop-shadow(0 0 7px var(--accent-30)) drop-shadow(0 0 2px var(--accent-60)); }
+
+/* ============================================================
+   Buttons — the action system. PRIMARY is ink (grey/black/white),
+   never orange; SECONDARY is a hairline ghost. Orange stays
+   rationed to marks & status, so the page reads grey & white.
+   ============================================================ */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.75rem;
+  padding: 0 1.5rem;
+  border-radius: 9999px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.3s ease;
+}
+.btn-primary:hover { background: var(--ink-hover); transform: translateY(-1px); box-shadow: var(--shadow-md); }
+.btn-primary:active { transform: translateY(0); }
+
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.75rem;
+  padding: 0 1.4rem;
+  border-radius: 9999px;
+  border: 1px solid var(--hairline-2);
+  background: var(--surface-1);
+  color: var(--fg);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+}
+.btn-ghost:hover { border-color: var(--fg); background: var(--surface-2); transform: translateY(-1px); }
+.btn-ghost:active { transform: translateY(0); }
 
 /* ============================================================
    Motif — recolor an external SVG via alpha-mask + tint bg, then
@@ -303,7 +381,7 @@ body {
 }
 @keyframes nav-solidify {
   to {
-    background: rgba(10, 10, 10, 0.72);
+    background: rgba(255, 255, 255, 0.72);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
     border-bottom-color: var(--hairline);
@@ -341,11 +419,11 @@ body {
 .doc-content > * + * { margin-top: 1rem; }
 .doc-content h2 { color: var(--fg); font-size: 1.3rem; font-weight: 600; letter-spacing: -0.01em; margin-top: 2.75rem; }
 .doc-content h3 { color: var(--fg); font-size: 1.05rem; font-weight: 600; margin-top: 1.85rem; }
-.doc-content a { color: var(--accent); text-decoration: none; }
+.doc-content a { color: var(--accent-strong); text-decoration: none; }
 .doc-content a:hover { text-decoration: underline; }
 .doc-content strong { color: var(--fg); font-weight: 600; }
-.doc-content code { font-family: var(--font-mono); font-size: 0.85em; background: var(--surface-2); border: 1px solid var(--hairline); border-radius: 4px; padding: 0.1em 0.36em; color: var(--fg); }
-.doc-content pre { background: var(--surface-1); border: 1px solid var(--hairline); border-radius: 10px; padding: 1rem 1.1rem; overflow-x: auto; margin-top: 1.25rem; }
+.doc-content code { font-family: var(--font-mono); font-size: 0.85em; background: var(--surface-3); border: 1px solid var(--hairline); border-radius: 4px; padding: 0.1em 0.36em; color: var(--fg); }
+.doc-content pre { background: var(--canvas-soft); border: 1px solid var(--hairline); border-radius: 10px; padding: 1rem 1.1rem; overflow-x: auto; margin-top: 1.25rem; }
 .doc-content pre code { background: none; border: 0; padding: 0; font-size: 0.82rem; line-height: 1.6; }
 .doc-content ul { list-style: disc; padding-left: 1.25rem; }
 .doc-content ol { list-style: decimal; padding-left: 1.25rem; }

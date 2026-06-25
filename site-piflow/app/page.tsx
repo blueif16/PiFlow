@@ -1,4 +1,3 @@
-import Nav from "./_sections/Nav";
 import Hero from "./_sections/Hero";
 import Loop from "./_sections/Loop";
 import LayerCards from "./_sections/LayerCards";
@@ -15,7 +14,6 @@ export default function Home() {
   return (
     <>
       <div className="grain" aria-hidden />
-      <Nav />
       <main>
         <Hero />
         <Loop />

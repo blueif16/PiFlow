@@ -13,7 +13,7 @@ const LINKS = [
 export default function Nav() {
   return (
     <header className="fixed inset-x-0 top-3 z-50 px-3 sm:px-5">
-      <nav className="mx-auto grid h-14 w-full max-w-6xl grid-cols-[1fr_auto_1fr] items-center rounded-2xl border border-[var(--hairline)] bg-[rgba(12,12,13,0.5)] px-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04),0_10px_30px_-14px_rgba(0,0,0,0.7)] backdrop-blur-xl sm:px-5">
+      <nav className="mx-auto grid h-14 w-full max-w-6xl grid-cols-[1fr_auto_1fr] items-center rounded-2xl border border-[var(--hairline)] bg-[rgba(255,255,255,0.7)] px-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.7),0_10px_30px_-14px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:px-5">
         {/* Wordmark */}
         <a
           href="#top"
