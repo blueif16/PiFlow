@@ -55,6 +55,9 @@ export {
   FUSION_OBLIGATIONS,
   judgePresetId,
 } from './workflow/fusion/presets.js';
+// The read-only global fusion defaults reader (`~/.piflow/fusion.json`) — the analogue of `loadModelTiers`.
+export { loadFusionConfig, defaultFusionConfigPath } from './runner/fusion-config.js';
+export type { FusionConfig } from './runner/fusion-config.js';
 
 // RunState (D6): the per-thread channel object + its reducers + the only state I/O. `RunState`/`Reducer`
 // types come via `export * from './types.js'` above.
