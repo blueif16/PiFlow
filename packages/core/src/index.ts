@@ -38,6 +38,11 @@ export { instantiateRun } from './workflow/template/instantiate.js';
 export type { InstantiateRunOpts, InstantiateRunResult, InstantiatedNode } from './workflow/template/instantiate.js';
 export { renderRealizedPrompt } from './workflow/template/render.js';
 
+// G6 — agentType presets: the PURE author-time merge utility + the read-only catalog adapter. The catalog
+// (named types, icons, role-prompts) is PRODUCT DATA in ~/.piflow/agents/ — only this LOGIC lives in core.
+export { mergePreset, parseAgentPreset, loadAgentPreset, defaultAgentsDir } from './workflow/agent-preset.js';
+export type { AgentPreset, PresetMergeable } from './workflow/agent-preset.js';
+
 // RunState (D6): the per-thread channel object + its reducers + the only state I/O. `RunState`/`Reducer`
 // types come via `export * from './types.js'` above.
 export { applyReducer, mergeUpdate, loadState, persistState } from './workflow/state.js';
