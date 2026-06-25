@@ -40,15 +40,18 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
   live, e.g. `/Users/tk/Desktop/game-omni`). It resolves the `{{WORKSPACE}}` tokens in every seed/hook path; a
   wrong workspace makes hooks read nothing. The TEMPLATE may live in a different repo (e.g.
   `piflow/.piflow/game-omni/template`) — that's fine; `--workspace` is what binds the run to the content.
-- **`--out` is the run/project dir (`{{RUN}}`/`{project}`)** — put it UNDER the consumer's `out/` so the
-  gallery discovers the built game (e.g. `/Users/tk/Desktop/game-omni/out/<id>`).
+- **NEVER pass `--out` — the run's home is SDK-derived and canonical.** A template at `.piflow/<wf>/template/`
+  makes the SDK land every run in `.piflow/<wf>/runs/<id>/` (`{{RUN}}`/`{project}`) — the single place discovery,
+  the global index, and `status`/`watch` read. `--out` cannot relocate that (it is IGNORED, with a warning, when
+  a canonical home resolves; it applies only to a loose template that has no `.piflow/<wf>/template/` layout). To
+  keep a copy elsewhere, EXPORT a copy — never redirect the original, or observation splits across two homes.
 
 ## The procedure
 1. **Dry-run (free, no model) — always first.** Confirms the template loads, the DAG compiles, args resolve,
    and prints each realized `pi` command:
    ```bash
    piflow run <templateDir> \
-     --workspace <consumerRepo> --out <consumerRepo>/out/<id> --run <id> \
+     --workspace <consumerRepo> --run <id> \
      --provider <gw> --arg prompt="<the bank entry's prompt>" --dry-run
    ```
    (`piflow` is the global linked bin — the consumer repo needs no install; `--workspace` points it at the
@@ -61,16 +64,19 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
    run in the background:
    ```bash
    piflow run <templateDir> \
-     --workspace <consumerRepo> --out <consumerRepo>/out/<id> --run <id> \
+     --workspace <consumerRepo> --run <id> \
      --provider <gw> --thinking low --sandbox local \
      --arg prompt="…" [--from <node>] [--until <node>] \
-     > <consumerRepo>/out/<id>/run.console.log 2>&1   # launch in the background
+     > /tmp/piflow-<id>.console.log 2>&1   # launch in the background
    ```
-   (Proven game-omni invocation: `--provider mmgw --thinking low --sandbox local`, template
-   `<piflow>/.piflow/game-omni/template`, `--workspace <game-omni> --out <game-omni>/out/<id>`.)
-3. **Monitor — poll, don't block.** The run writes `out/<id>/.pi/{run.json,state.json}` + per-node
-   `out/<id>/.pi/nodes/<node>/{events.jsonl,io.json,node.json}`; produced artifacts land under `out/<id>/`
-   (e.g. `spec/*.json`). Watch with `piflow status <out/<id>>` / `piflow watch <out/<id>>` / `piflow logs`, or
+   (The console log goes to `/tmp` — a path that exists before the run; the AUTHORITATIVE per-node logs live
+   in the canonical run dir. Proven game-omni invocation: `--provider mmgw --thinking low --sandbox local`,
+   template `<game-omni>/.piflow/game-omni/template`, `--workspace <game-omni>` — the run lands in
+   `<game-omni>/.piflow/game-omni/runs/<id>/`, no `--out`.)
+3. **Monitor — poll, don't block.** The run writes `<runDir>/.pi/{run.json,state.json}` + per-node
+   `<runDir>/.pi/nodes/<node>/{events.jsonl,io.json,node.json}` (where `<runDir>` = the canonical
+   `.piflow/<wf>/runs/<id>/`); produced artifacts land under `<runDir>/` (e.g. `spec/*.json`). Watch with
+   `piflow status <runDir>` / `piflow watch <runDir>` / `piflow logs`, or
    tail a node's `events.jsonl`. Confirm liveness by the **artifact on disk + the VCS/file evidence**, never a
    self-report.
 

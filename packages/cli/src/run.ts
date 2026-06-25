@@ -241,7 +241,14 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   // that overwrote a prior `out/run` on every unnamed run.
   const runId = parsed.run ?? generateName(listExistingRuns(landingHome));
   const canonicalHome = runsHome ? path.join(runsHome, runId) : null;
-  const outDir = parsed.outDir ?? canonicalHome ?? `out/${runId}`;
+  // A resolvable canonical home ALWAYS wins: `--out` must NEVER relocate a canonical run — every
+  // observation surface (discovery, the global index, status/watch) reads from the fixed
+  // `.piflow/<wf>/runs/<id>/` home, so moving it would split the source of truth. `--out` therefore
+  // applies ONLY when there is no canonical home (a loose template outside `.piflow/<wf>/template/`).
+  if (canonicalHome && parsed.outDir) {
+    console.warn(`piflow run: --out is ignored — the run lands in its canonical home ${canonicalHome}; a canonical run is never relocated (export a copy instead).`);
+  }
+  const outDir = canonicalHome ?? parsed.outDir ?? `out/${runId}`;
   // PROMPT METADATA: carry an `--arg prompt`/`--arg promptId` as run metadata (run.json `promptId`), so the
   // run is traceable to its prompt WITHOUT the run id BEING the prompt id.
   const promptId = parsed.args.promptId ?? parsed.args.prompt;

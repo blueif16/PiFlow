@@ -42,7 +42,9 @@ RUN
   --provider <gw>  the pi --provider gateway (e.g. mmgw).
   --thinking <v>   reasoning-depth cap → pi --thinking.
   --model <m>      model pin → pi --model.
-  --out <dir>      host run dir (= {{RUN}}); default out/<run>.
+  --out <dir>      host run dir (= {{RUN}}) — FALLBACK ONLY. A template under .piflow/<wf>/template/
+                   ALWAYS uses its canonical .piflow/<wf>/runs/<run>/ home and IGNORES --out (a
+                   canonical run is never relocated). Default: canonical home, else out/<run>.
   --from / --until <substr>  resume / truncate the stage window.
 
 INSPECT

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -259,6 +259,67 @@ describe('piflow run — LIVE branch routes through core runFromTemplate, thread
       deps,
     );
     expect(optsSeen?.provider).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (B2) CANONICAL HOME WINS — a template under `.piflow/<wf>/template/` resolves the run to its canonical
+// `.piflow/<wf>/runs/<id>/` home, and `--out` can NEVER relocate it (observation reads the fixed home).
+// These FAIL if the precedence regresses to `parsed.outDir ?? canonicalHome` (the old --out-wins order).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('piflow run — a canonical run home is never relocated by --out', () => {
+  let wfRoot: string;   // the `.piflow/<wf>/` dir; its `template/` child gives runsHome = <wfRoot>/runs
+  let canonTemplate: string;
+  let elsewhere: string;
+  beforeAll(async () => {
+    wfRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-canon-wf-'));
+    canonTemplate = path.join(wfRoot, 'template');
+    await fs.cp(FIXTURE, canonTemplate, { recursive: true });
+    elsewhere = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-canon-elsewhere-'));
+  });
+  afterAll(async () => {
+    await fs.rm(wfRoot, { recursive: true, force: true });
+    await fs.rm(elsewhere, { recursive: true, force: true });
+  });
+
+  it('resolves runDir to the canonical <wf>/runs/<id> and IGNORES an explicit --out pointing elsewhere', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      print: () => {},
+    };
+
+    await runTemplate(
+      { templateDir: canonTemplate, dryRun: false, run: 'canon1', args: {}, outDir: elsewhere, sandbox: 'inmemory' },
+      deps,
+    );
+
+    // canonical home wins — NOT the --out path.
+    expect(optsSeen?.runDir).toBe(path.join(wfRoot, 'runs', 'canon1'));
+    expect(optsSeen?.runDir).not.toBe(elsewhere);
+    // and the operator is told --out was ignored (a silent override would mislead).
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('--out is ignored'));
+    warn.mockRestore();
+  });
+
+  it('with NO --out, a canonical template still lands in <wf>/runs/<id> (no warning)', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => { optsSeen = opts; return { status: { ok: true } as never, outDir: opts.runDir }; },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: canonTemplate, dryRun: false, run: 'canon2', args: {}, sandbox: 'inmemory' },
+      deps,
+    );
+    expect(optsSeen?.runDir).toBe(path.join(wfRoot, 'runs', 'canon2'));
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 });
 
