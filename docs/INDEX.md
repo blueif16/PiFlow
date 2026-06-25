@@ -44,6 +44,7 @@ This folder is the **design canon + the buildable spec**. Read in this order.
 | **Borrow-vs-build** | Borrow durability + structure-search + GEPA credit-assignment; **own** full-agent nodes + efficient-fleet economics + online-durable self-optimization. | substrate §10 |
 | **The white-space** | A control agent that **generates → verifies → human-approves → durably registers** a new tool/node/hook in production. Nobody occupies it. | substrate §11.5 |
 | **The fork** | Substrate-as-product vs means-to-better-games. **Resolved: product** (see ROADMAP). | substrate §12 |
+| **Fusion node** | A `fusion` block makes a node a panel-of-agents whose answers a judge fuses into one (moa/best-of-n). | [fusion-nodes](fusion-nodes.md) |
 
 ## Provenance
 
