@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { listPages, getNav } from "../lib/docs.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SITE_URL = (process.env.SITE_URL || "https://piflow.dev").replace(/\/$/, "");
+const SITE_URL = (process.env.SITE_URL || "https://piflow.sh").replace(/\/$/, "");
 
 const pages = listPages();
 const nav = getNav();
