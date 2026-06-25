@@ -76,6 +76,27 @@ export const nodeSchema = {
       minimum: 0,
       description: 'Per-node retry budget — extra attempts after the first on error/blocked. 0/omitted ⇒ one attempt.',
     },
+    model: {
+      // PER-NODE model id → `pi --model` (G1 routing). Provider-scoped (the id pi's models.json exposes).
+      // Omitted ⇒ tier, else the run-level model, else pi's provider default. Precedence: runner/model-routing.ts.
+      type: 'string',
+      minLength: 1,
+      description: 'Per-node model id → pi --model. Omitted ⇒ tier, else run-level model, else pi default.',
+    },
+    provider: {
+      // PER-NODE provider/gateway → `pi --provider`. Omitted ⇒ auto-resolved from the model (models.json),
+      // else the run-level provider, else `cp`. Lets one node hit a different gateway than the rest.
+      type: 'string',
+      minLength: 1,
+      description: 'Per-node provider/gateway → pi --provider. Omitted ⇒ auto from model, else run, else cp.',
+    },
+    tier: {
+      // PER-NODE tier ALIAS → resolved to a model via ~/.piflow/model-tiers.json (when active). The names are
+      // FREE DATA (small/medium/large AND/OR fast/balanced/deep — the product owns them); core never enumerates.
+      type: 'string',
+      minLength: 1,
+      description: 'Per-node tier alias → ~/.piflow/model-tiers.json (free-data names). Omitted ⇒ none.',
+    },
     inject: {
       // KIND 1 — FORCED reads (§6a): small · always-needed · stable files auto-injected into the prompt.
       type: 'array',

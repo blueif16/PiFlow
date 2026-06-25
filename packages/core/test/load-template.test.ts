@@ -116,6 +116,25 @@ describe('loadTemplate — HAPPY PATH (the unmodified fixture LOADS)', () => {
     expect(wf.nodes['w2a-levels'].ops?.seed?.[0].to).toBe('spec/level-skeleton.json');
   });
 
+  // G1 — the loader must CARRY the authored per-node routing fields (model/provider/tier) through to the
+  // compiled NodeSpec so the runner can route a different model per node. Mirrors the timeoutMs/retries carry.
+  it('carries per-node model/provider/tier onto the compiled NodeSpec (G1 routing)', async () => {
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.model = 'glm-4.6';
+    n.provider = 'openrouter';
+    n.tier = 'deep';
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    const wf = compile(await loadTemplate(dir));
+    expect(wf.nodes['w0-classify'].model).toBe('glm-4.6');
+    expect(wf.nodes['w0-classify'].provider).toBe('openrouter');
+    expect(wf.nodes['w0-classify'].tier).toBe('deep');
+    // additive: a node that declares none stays undefined downstream (byte-identical to today).
+    expect(wf.nodes['w2a-levels'].model).toBeUndefined();
+    expect(wf.nodes['w2a-levels'].provider).toBeUndefined();
+    expect(wf.nodes['w2a-levels'].tier).toBeUndefined();
+  });
+
   it('a NodeIntent with NO ops compiles to a NodeSpec with ops undefined (additive — absence stays absent)', () => {
     // The additivity guarantee: an authored node that declares no ops is byte-for-byte op-free downstream.
     const wf = compile({

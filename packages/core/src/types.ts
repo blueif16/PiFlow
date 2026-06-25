@@ -29,6 +29,16 @@ export interface NodeSpec {
   skill?: string;
   /** Optional agent-type hint (for a custom sub-agent system prompt). */
   agentType?: string;
+  /**
+   * G1 ROUTING — per-node model id → `pi --model`. The runner resolves the EFFECTIVE model via
+   * `runner/model-routing.ts` (the single home of the precedence): `model` > `tier` (when active) >
+   * run-level model > pi's provider default. Undefined ⇒ inherit the run-level model.
+   */
+  model?: string;
+  /** Per-node provider/gateway → `pi --provider`. Undefined ⇒ auto-resolved from the model, else the run default. */
+  provider?: string;
+  /** Per-node tier ALIAS resolved to a model via `~/.piflow/model-tiers.json` (when active). Undefined ⇒ none. */
+  tier?: string;
 
   /** 1. Where it runs. */
   sandbox: SandboxSpec;
@@ -547,7 +557,7 @@ export interface ToolRegistry {
  * metadata (a display label, §5) carried through so a PROFILE predicate can select nodes by it — it
  * NEVER drives ordering/parallelism (deps + owns do).
  */
-export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentType' | 'tools'> & {
+export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentType' | 'tools' | 'model' | 'provider' | 'tier'> & {
   io: NodeIO;
   /** Generic phase label (display metadata; the elision predicate may select by it). Optional/additive. */
   phase?: string;

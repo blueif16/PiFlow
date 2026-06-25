@@ -144,6 +144,10 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   };
   // Additive: only attach `ops` when the node authored a hooks block (a node with none stays op-free).
   if (ops) intent.ops = ops;
+  // (G1) Carry the per-node routing fields verbatim; the runner resolves the effective model (model-routing.ts).
+  if (n.def.model) intent.model = n.def.model;
+  if (n.def.provider) intent.provider = n.def.provider;
+  if (n.def.tier) intent.tier = n.def.tier;
   // (G5) Carry a HUMAN CHECKPOINT block verbatim onto the spec (the runtime CheckpointSpec) when authored —
   // additive, the same way `ops` is carried. A node with no checkpoint behaves exactly as before.
   if (n.def.checkpoint) intent.checkpoint = n.def.checkpoint;

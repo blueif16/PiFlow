@@ -24,6 +24,12 @@ export interface TemplateNode {
   timeoutMs?: number;
   /** Per-node retry budget — extra attempts after the first on error/blocked → runtime `io.retries`. Omitted ⇒ one attempt. */
   retries?: number;
+  /** Per-node model id → `pi --model` (G1 routing). Omitted ⇒ tier, else the run-level model, else pi's default. */
+  model?: string;
+  /** Per-node provider/gateway → `pi --provider`. Omitted ⇒ auto-resolved from the model, else the run default. */
+  provider?: string;
+  /** Per-node tier alias → resolved to a model via `~/.piflow/model-tiers.json` (when active). Omitted ⇒ none. */
+  tier?: string;
   contract: {
     artifacts: string[];
     owns: string[];
