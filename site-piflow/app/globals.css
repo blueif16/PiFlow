@@ -301,6 +301,56 @@ body {
 .btn-ghost:active { transform: translateY(0); }
 
 /* ============================================================
+   HUD / game-UI geometry — angular panels that echo the GUI
+   flowmap (packages/gui). A structural surface reads as a
+   "sci-fi rectangle": hard right angles, with ONE beveled
+   diagonal (top-right + bottom-left) so two square corners
+   remain for the targeting brackets. This is BORDER/SHAPE only
+   — the white/grey/orange color system is unchanged, and the
+   brackets are INK so the orange spark stays rationed.
+   Line: structural SURFACES go angular; small status PILLS stay
+   round (see .btn-primary / nav pills), exactly like the GUI.
+   ============================================================ */
+/* The cut vocabulary — same bevel language, VARIED silhouettes so the chrome
+   reads versatile instead of stamped from one mold. Every cut degrades to a
+   hard rectangle (still angular) where corner-shape is unsupported; --hud-bevel
+   tunes the size. Pick a different cut per neighbouring element:
+     .hud-frame      diagonal  (top-right + bottom-left)  — frames / stages
+     .hud-frame-anti anti-diag (top-left + bottom-right)  — the mirror / a pair
+     .hud-cut-tr / -tl / -br / -bl   a single beveled corner — small chrome / chips */
+.hud-frame, .hud-frame-anti,
+.hud-cut-tr, .hud-cut-tl, .hud-cut-br, .hud-cut-bl { border-radius: 0; }
+@supports (corner-shape: bevel) {
+  .hud-frame, .hud-frame-anti,
+  .hud-cut-tr, .hud-cut-tl, .hud-cut-br, .hud-cut-bl { corner-shape: bevel; }
+  .hud-frame      { border-start-end-radius: var(--hud-bevel, 22px);   /* TR */
+                    border-end-start-radius: var(--hud-bevel, 22px); } /* BL */
+  .hud-frame-anti { border-start-start-radius: var(--hud-bevel, 22px); /* TL */
+                    border-end-end-radius: var(--hud-bevel, 22px); }   /* BR */
+  .hud-cut-tr     { border-start-end-radius: var(--hud-bevel, 12px); }
+  .hud-cut-tl     { border-start-start-radius: var(--hud-bevel, 12px); }
+  .hud-cut-br     { border-end-end-radius: var(--hud-bevel, 12px); }
+  .hud-cut-bl     { border-end-start-radius: var(--hud-bevel, 12px); }
+}
+
+/* Corner brackets — the HUD targeting cue, placed ONLY on the two
+   SQUARE corners (top-left + bottom-right). The beveled diagonal
+   carries the chamfer, where a right-angle bracket would read as
+   cut off (matches the GUI's HudCorners rule). Ink, never orange —
+   an accent bracket is reserved for a focal/active element. */
+.hud-corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--fg-muted);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 20;
+}
+.hud-corner--tl { top: 10px; left: 10px; border-right: none; border-bottom: none; }
+.hud-corner--br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+/* ============================================================
    Motif — recolor an external SVG via alpha-mask + tint bg, then
    animate with a VARIED motion (spin/pulse) for visual variety.
    ============================================================ */
@@ -344,8 +394,15 @@ body {
 .editor {
   background: var(--surface-1);
   border: 1px solid var(--hairline);
-  border-radius: 12px;
+  border-radius: 0;                  /* angular HUD window — matches the panels */
   overflow: hidden;
+}
+@supports (corner-shape: bevel) {
+  .editor {
+    border-start-end-radius: 12px;   /* beveled diagonal, in scale with the frame */
+    border-end-start-radius: 12px;
+    corner-shape: bevel;
+  }
 }
 .editor-bar {
   display: flex;

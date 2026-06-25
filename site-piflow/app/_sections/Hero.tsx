@@ -1,9 +1,12 @@
 /* ============================================================
-   Hero — copies the reference layout: a grey page, a white
-   passe-partout FRAME, and a light-grey inner panel that holds
-   two top pills (nav), the iso-block illustration (upper-right),
-   the original coding panel (lower-right), and a big two-line
-   title at the lower-left. Color system unchanged — layout only.
+   Hero — the reference layout, re-cut with the GUI's angular
+   game-UI geometry: the white passe-partout FRAME and the inner
+   panel are "sci-fi rectangles" (hard corners + one beveled
+   diagonal) with ink targeting brackets on the two square
+   corners. Holds two top pills (nav, kept round), the iso-block
+   illustration (upper-right), the coding panel (lower-right),
+   and a two-line title (lower-left). Color system unchanged —
+   only the BORDER/SHAPE is angular (brackets are ink, not orange).
    ============================================================ */
 import HeroBlocksLight from "@/components/iso/art/HeroBlocksLight";
 
@@ -13,7 +16,7 @@ const GITHUB_URL = "https://github.com/blueif16/PiFlow";
 // reference's logo chip seated at the left edge of the left pill.
 function LogoMark() {
   return (
-    <span className="grid size-8 place-items-center rounded-[10px] bg-[var(--ink)] text-white">
+    <span className="hud-cut-tl [--hud-bevel:7px] grid size-8 place-items-center bg-[var(--ink)] text-white">
       <svg viewBox="0 0 24 24" className="size-4" fill="currentColor" aria-hidden>
         <rect x="3.5" y="6" width="4" height="12" rx="1" />
         <rect x="10" y="9.5" width="4" height="8.5" rx="1" />
@@ -75,17 +78,22 @@ function CodeEditor() {
 export default function Hero() {
   return (
     <section id="top" className="px-3 pt-3 sm:px-5 sm:pt-5">
-      {/* outer WHITE frame on the grey page (the "outside white edge") */}
-      <div className="mx-auto w-full max-w-[1200px] rounded-[2.25rem] bg-white p-3 shadow-[var(--shadow-lg)] sm:p-4">
-        {/* inner light-grey panel — holds nav, illustration, code, title */}
-        <div className="relative overflow-hidden rounded-[1.6rem] bg-[var(--surface-3)] px-5 pt-4 pb-10 sm:px-8 sm:pt-5 sm:pb-14">
+      {/* outer WHITE frame — angular sci-fi rectangle (beveled diagonal) */}
+      <div className="hud-frame [--hud-bevel:28px] mx-auto w-full max-w-[1200px] bg-white p-3 shadow-[var(--shadow-lg)] sm:p-4">
+        {/* inner light-grey panel — the HUD stage: angular + corner brackets */}
+        <div className="hud-frame [--hud-bevel:20px] relative overflow-hidden bg-[var(--surface-3)] px-5 pt-4 pb-10 sm:px-8 sm:pt-5 sm:pb-14">
           {/* faint engineered grid inside the panel */}
           <div className="gridpaper" aria-hidden />
 
+          {/* targeting brackets on the two SQUARE corners (TL + BR); the
+              beveled diagonal (TR + BL) carries the chamfer */}
+          <span className="hud-corner hud-corner--tl" aria-hidden />
+          <span className="hud-corner hud-corner--br" aria-hidden />
+
           {/* ── TOP PILLS — imitated from the reference ───────────── */}
           <nav className="relative z-20 flex items-center justify-between gap-3">
-            {/* left pill: logo chip + minimal links */}
-            <div className="inline-flex items-center gap-1 rounded-full bg-white py-1.5 pl-1.5 pr-2 shadow-[var(--shadow-sm)]">
+            {/* left pill: logo chip + minimal links — diagonal cut (TR+BL) */}
+            <div className="hud-frame [--hud-bevel:14px] inline-flex items-center gap-1 bg-white py-1.5 pl-1.5 pr-2 shadow-[var(--shadow-sm)]">
               <LogoMark />
               <a
                 href="/docs"
@@ -101,8 +109,8 @@ export default function Hero() {
               </a>
             </div>
 
-            {/* right pill: link + black CTA nested at the right end */}
-            <div className="inline-flex items-center gap-1 rounded-full bg-white py-1.5 pl-2 pr-1.5 shadow-[var(--shadow-sm)]">
+            {/* right pill: link + black CTA — anti-diagonal cut (TL+BR), mirrors the left */}
+            <div className="hud-frame-anti [--hud-bevel:14px] inline-flex items-center gap-1 bg-white py-1.5 pl-2 pr-1.5 shadow-[var(--shadow-sm)]">
               <a
                 href={GITHUB_URL}
                 target="_blank"
@@ -113,7 +121,7 @@ export default function Hero() {
               </a>
               <a
                 href="#start"
-                className="rounded-full bg-[var(--ink)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--ink-hover)]"
+                className="hud-cut-tr [--hud-bevel:10px] bg-[var(--ink)] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[var(--ink-hover)]"
               >
                 Start a flow
               </a>
@@ -135,7 +143,7 @@ export default function Hero() {
 
           {/* ── TITLE — lower-left, greatly reduced text ───────────── */}
           <div className="relative z-10 flex min-h-[360px] flex-col justify-end sm:min-h-[460px] lg:min-h-[540px]">
-            <span className="blur-in mb-5 inline-flex w-fit items-center gap-2 rounded-full border border-[var(--hairline)] bg-white/70 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-fg-faint backdrop-blur">
+            <span className="hud-frame [--hud-bevel:8px] blur-in mb-5 inline-flex w-fit items-center gap-2 border border-[var(--hairline)] bg-white/70 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-fg-faint backdrop-blur">
               <span className="size-1.5 rounded-full bg-accent" aria-hidden />
               Agent substrate
             </span>
