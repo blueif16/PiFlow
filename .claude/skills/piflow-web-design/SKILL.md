@@ -77,30 +77,59 @@ Geist Sans (UI/display) + Geist Mono (data/labels), already loaded in `layout.ts
   + lift. The ONLY filled button.
 - `.btn-ghost` — `--surface-1` fill, `--hairline-2` border, ink text, pill; hover →
   border darkens to `--fg`.
-- **Nav pills (the hero pattern):** a white `rounded-full` pill with `--shadow-sm`;
-  left pill = dark rounded-square logo chip (`bg-[var(--ink)]`) + 1–2 mono-quiet links;
-  right pill = 1 link + a black CTA pill nested flush at the right end. Imitate this
-  exactly when adding nav.
+- **Nav pills (the hero pattern):** two white `--shadow-sm` pills, **angular & mirrored**
+  (NOT `rounded-full` — see §4): left pill `hud-frame`, right pill `hud-frame-anti`. Left =
+  dark logo chip (`bg-[var(--ink)]`, a single-corner notch via `hud-cut-tl`) + 1–2 mono-quiet
+  links; right = 1 link + the black CTA nested flush at the right end (a notched key via
+  `hud-cut-tr`). Vary the cuts per §4 — don't restamp one bevel across all four.
 - Every interactive element needs visible hover + `:focus-visible` (orange ring, global)
   + active (`translateY(0)`); never ship a flat state-less control.
 
-## 4. Surfaces, shadows, radius, grid
+## 4. Surfaces, shadows, radius, grid — and the angular HUD geometry
 - **Containers are white on the grey field**, separated by Geist *shadow-as-border*
   (`--shadow-sm/md/lg` carry a `0 0 0 1px` ring + soft drop). Don't use heavy drop
   shadows or borders alone.
-- Radius ladder: pills `rounded-full` · cards `rounded-2xl` (1rem) · inner hero panel
-  `rounded-[1.6rem]` · the outer white frame `rounded-[2.25rem]`. Game-block geometry
-  may go sharper/beveled to echo the GUI, but stay in this family.
+- Radius ladder (curves, for soft chrome): cards `rounded-2xl` (1rem) · small chrome
+  `rounded-md`. Most of the hero is now cut ANGULAR instead (below) — keep curves and
+  cuts deliberate, not mixed at random.
+
+**Angular / game-UI geometry — we obey the GUI flowmap (`packages/gui`).** Calm editorial
+field, but the *surfaces and chrome are cut like a sci-fi HUD*, not soft SaaS cards. This is
+BORDER/SHAPE only — the white/grey/orange color system is untouched.
+- **Sci-fi rectangle.** A surface is **hard right angles with a beveled diagonal**. Utility
+  `.hud-frame` (+ Tailwind `[--hud-bevel:Npx]`) bevels **top-right + bottom-left**;
+  `.hud-frame-anti` bevels the **other** diagonal (TL + BR); `.hud-cut-tr|tl|br|bl` bevel a
+  **single** corner. All are `border-radius:0` with a `corner-shape:bevel` enhancement that
+  degrades to a hard rectangle. **Never `clip-path` a chamfer** — it eats the shadow-ring + border.
+- **Vary the cut — don't stamp one mold.** This is the rule the system cares about most: give
+  *neighbouring* elements different silhouettes so the chrome reads versatile. The reference
+  set in `Hero.tsx`: outer frame `hud-frame` 28px · inner stage `hud-frame` 20px + brackets ·
+  left nav pill `hud-frame` 14px ↔ right nav pill `hud-frame-anti` 14px (mirrored) · logo chip
+  `hud-cut-tl` 7px · ink CTA `hud-cut-tr` 10px · eyebrow tag `hud-frame` 8px · code-window 12px.
+  Pills/chips are NOT all `rounded-full` and NOT all the same bevel — mirror the diagonals,
+  mix in single-corner notches, scale the bevel to the element. One deliberately-round element
+  as a change-up is fine; a row of identical cuts is the FAIL.
+- **Targeting brackets** (`.hud-corner--tl` / `--br`) ride the two SQUARE corners only — the
+  beveled diagonal carries the cut, so a bracket there reads as clipped. Brackets are **INK**
+  (`--fg-muted`, ~0.5 opacity), **never orange**; an *accent* bracket is reserved for a single
+  focal/active element (mirrors the GUI: accent bracket = selected/running).
+- Bevel scale tracks the surface (big frame → small chip), and nested frames stay roughly
+  concentric. The ink button is still the only filled action (§3) even when it's a notched key.
+- ✅ GOOD: a beveled frame, ink corner brackets, and a nav whose two pills mirror each other
+  with a notched logo chip and a notched CTA between them. ❌ FAIL: every corner identical ·
+  a `clip-path` chamfer that clips the shadow · orange brackets competing with the one spark.
+
 - **The engineered field:** `.gridpaper` (72px graph-paper cells, masked vignette) is
   the signature texture — put it behind hero/section content, never as a loud overlay.
   `.grain` is a near-invisible paper tooth; `.aurora` is a *whisper* of warmth, not an
   orange wash. If in doubt, less.
 
 ## 5. The hero layout pattern (reference-matched) + iso illustration
-Hero = grey page → **white passe-partout frame** (`max-w-[1200px] rounded-[2.25rem]
-bg-white p-3/4 shadow-lg`) → **inner light-grey panel** (`rounded-[1.6rem]
-bg-[var(--surface-3)]`) holding: top pills (§3), the iso illustration upper-right, the
-coding panel lower-right, and a two-line title lower-left. See `app/_sections/Hero.tsx`.
+Hero = grey page → **white passe-partout frame** (`max-w-[1200px] hud-frame
+[--hud-bevel:28px] bg-white p-3/4 shadow-lg`) → **inner light-grey panel** (`hud-frame
+[--hud-bevel:20px] bg-[var(--surface-3)]` + the two corner brackets) holding: top pills
+(§3, angular & varied per §4), the iso illustration upper-right, the coding panel
+lower-right, and a two-line title lower-left. See `app/_sections/Hero.tsx`.
 
 Illustrations reuse the iso kit (`components/iso/*`, RSC-safe, author as DATA not paths).
 Light recolor convention (see `HeroBlocksLight.tsx`): white tops, grey shaded sides
@@ -117,7 +146,8 @@ Audit the change; every line must PASS (revise any FAIL):
 3. **Type:** display ≤ weight 600 with negative tracking; labels are Geist Mono uppercase;
    copy is concise. (§2)
 4. **Containers:** white surface on the grey field, separated by the shadow ladder +
-   hairline; radius is on the ladder. (§4)
+   hairline; surfaces are cut angular and the cuts VARY (no restamped bevel); brackets
+   are ink on the square corners. (§4)
 5. **States:** interactive elements have hover + focus-visible + active. (§3)
 6. **Motion:** reduced-motion-safe; ambient effects stay faint. (§4–5)
 7. **Contrast:** body/links meet AA (use `--accent-strong`, not `--accent`, for orange text).
