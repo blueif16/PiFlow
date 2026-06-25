@@ -203,6 +203,11 @@ export {
   writeNodeIo,
 } from './runner/layout.js';
 
+// Docker-style run-name generation (`<bake-adjective>-<pie>`, e.g. "flaky-pecan"): the CLI mints a
+// memorable, collision-checked run name when `--run/--id` is omitted, decoupling a run's identity from
+// any prompt id. `pieSlug`/`pieSlugList` back the regenerable `pies.json` (CSV → generate-pies.mjs).
+export { generateRunName, ADJECTIVES, PIES, pieSlug, pieSlugList, type Rng } from './names/index.js';
+
 // Observability source (the shared CONTRACT): ONE reader, ONE model, ONE live stream that the CLI, the
 // TUI, and a future GUI all render. `readRunModel(runDir)` is the one-shot snapshot; `watchRun(runDir)`
 // is the live stream of `RunUpdate`s. Built over the engine-owned `.pi/` layout — a superset of what

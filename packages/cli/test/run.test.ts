@@ -238,6 +238,79 @@ describe('piflow run — LIVE branch routes through core runFromTemplate, thread
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (C2) AUTO-NAMING — when `--run/--id` is OMITTED the CLI mints a memorable `<adjective>-<pie>` run name
+// (collision-checked against existing run dirs) and threads it as BOTH `run` and `name`; an explicit
+// `--run` ALWAYS wins. A `--arg prompt`/`promptId` is carried as run METADATA (`promptId`), decoupling the
+// run's identity from the prompt id. These FAIL if the old `?? 'run'` constant fallback returns, if an
+// explicit id stops winning, or if the prompt metadata is dropped.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('piflow run — Docker-style auto-naming when --run is omitted', () => {
+  let out: string;
+  beforeAll(async () => {
+    out = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-run-name-out-'));
+  });
+  afterAll(async () => {
+    await fs.rm(out, { recursive: true, force: true });
+  });
+
+  it('mints an auto-name (threaded as run + name) when --run is omitted, and carries promptId from --arg prompt', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    let existingSeen: string[] | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      generateName: (existing) => {
+        existingSeen = existing;
+        return 'flaky-pecan';
+      },
+      listExistingRuns: () => ['golden-banoffee'], // the collision-check input the namer must receive
+      print: () => {},
+    };
+
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, args: { prompt: 'p06' }, outDir: out, sandbox: 'inmemory' },
+      deps,
+    );
+
+    // the minted name is threaded as BOTH the run id AND the memorable name (run.json `name`).
+    expect(optsSeen?.run).toBe('flaky-pecan');
+    expect(optsSeen?.name).toBe('flaky-pecan');
+    // the namer was collision-checked against the existing run dirs.
+    expect(existingSeen).toEqual(['golden-banoffee']);
+    // the prompt id is carried as run METADATA, not as the run id.
+    expect(optsSeen?.promptId).toBe('p06');
+  });
+
+  it('an EXPLICIT --run ALWAYS wins — the auto-namer is NOT called and the id is used verbatim', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    let nameGenCalls = 0;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      generateName: () => {
+        nameGenCalls++;
+        return 'should-not-be-used';
+      },
+      print: () => {},
+    };
+
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'p06', args: {}, outDir: out, sandbox: 'inmemory' },
+      deps,
+    );
+
+    expect(nameGenCalls).toBe(0); // explicit id ⇒ the generator is never consulted
+    expect(optsSeen?.run).toBe('p06');
+    expect(optsSeen?.name).toBe('p06');
+    expect(optsSeen?.promptId).toBeUndefined(); // no --arg prompt ⇒ no prompt metadata
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (D) FAILURE SURFACING — a finished LIVE run that ended `done && ok===false` (a blocked resume preflight
 // or an errored/blocked node) must produce a LOUD, specific verdict (the silent-no-op / empty-log / exit-0
 // regression). runFailureReport is the pure core of that: it FAILS this suite if it drops the blocking

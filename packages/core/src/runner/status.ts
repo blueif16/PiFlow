@@ -70,6 +70,17 @@ export interface RunTotals {
 /** The whole run-status record (faithful to run.mjs's shape for a future viz). */
 export interface RunStatus {
   run: string;
+  /**
+   * The run's MEMORABLE identity — the Docker-style `<bake-adjective>-<pie>` name (e.g. "flaky-pecan")
+   * the CLI mints when `--run/--id` is omitted, or the explicit `--run <id>` when one was passed. This
+   * decouples a run's identity from any prompt id; absent on older records (additive, optional).
+   */
+  name?: string;
+  /**
+   * The originating prompt id, when the run carried one (`--arg prompt=<id>` / `--arg promptId=<id>`).
+   * Carried as run METADATA so the run is traceable to its prompt WITHOUT the run id BEING the prompt id.
+   */
+  promptId?: string;
   source?: string;
   /** The active run PROFILE name (the reduced DAG this run reflects); null/absent ⇒ the full DAG. */
   profile?: string | null;

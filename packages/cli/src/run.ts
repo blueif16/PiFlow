@@ -23,6 +23,7 @@ import {
   DefaultToolRegistry,
   defaultPiCommand,
   nodePromptFile,
+  generateRunName,
   type Workflow,
   type WorkflowSpec,
   type LoadConfigInput,
@@ -35,6 +36,22 @@ import {
   type RunResult,
 } from '@piflow/core';
 import path from 'node:path';
+import { readdirSync } from 'node:fs';
+
+/**
+ * List the run-NAME basenames already present under a runs home (the canonical `.piflow/<wf>/runs/`), so
+ * auto-naming collision-checks against real on-disk runs. Returns [] when the dir is absent/unreadable (a
+ * first run) — never throws. The DEFAULT for `RunDeps.listExistingRuns`; a test injects a fixed set.
+ */
+export function listExistingRunNames(runsHome: string): string[] {
+  try {
+    return readdirSync(runsHome, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  } catch {
+    return [];
+  }
+}
 
 /** The injectable seam — defaults are the real core calls; a test passes spies + an in-memory spec. */
 export interface RunDeps {
@@ -51,6 +68,10 @@ export interface RunDeps {
   runFromTemplate?: (templateDir: string, opts: RunFromTemplateOpts) => Promise<RunResult>;
   /** Factory for the `--sandbox local` real-exec provider (injectable so a test asserts the instance). */
   makeLocalProvider?: () => SandboxProvider;
+  /** Mint a memorable run name not in `existing` (default: core `generateRunName`; a test injects a stub). */
+  generateName?: (existing: string[]) => string;
+  /** List the run-name basenames already present under a runs home (default: read the dir; '' if absent). */
+  listExistingRuns?: (runsHome: string) => string[];
   print?: (line: string) => void;
 }
 
@@ -173,20 +194,34 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   const instantiateRun = deps.instantiateRun ?? coreInstantiateRun;
   const runFromTemplate = deps.runFromTemplate ?? coreRunFromTemplate;
   const makeLocalProvider = deps.makeLocalProvider ?? (() => new LocalSandboxProvider());
+  const generateName = deps.generateName ?? ((existing: string[]) => generateRunName(existing));
+  const listExistingRuns = deps.listExistingRuns ?? listExistingRunNames;
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
 
   const { templateDir } = parsed;
   if (!templateDir) throw new Error('piflow run: a template directory is required (piflow run <templateDir>).');
 
   const workspace = parsed.workspace ?? process.cwd();
-  // The run's CANONICAL HOME is `.piflow/<wf>/runs/<id>` (sdk-canonical-build-plan §D9) — the single place
-  // discovery + the global index read runs from. Derive it from the template's own `.piflow/<wf>/template/`
-  // layout so a bare `piflow run <templateDir>` lands the `.pi/` thread where the GUI/TUI will find it. An
-  // explicit --out wins; a template outside that layout falls back to `out/<id>`.
-  const runId = parsed.run ?? 'run';
   const tdir = path.resolve(templateDir);
-  const canonicalHome = path.basename(tdir) === 'template' ? path.join(path.dirname(tdir), 'runs', runId) : null;
+  // The run's CANONICAL HOME is `.piflow/<wf>/runs/<id>` (sdk-canonical-build-plan §D9) — the single place
+  // discovery + the global index read runs from. Derive the `runs/` parent from the template's own
+  // `.piflow/<wf>/template/` layout so a bare `piflow run <templateDir>` lands under it; a template outside
+  // that layout has no canonical home (falls back to `out/<id>`).
+  const runsHome = path.basename(tdir) === 'template' ? path.join(path.dirname(tdir), 'runs') : null;
+  // The directory a sibling run lands in (and so the collision-check namespace): the canonical `runs/`
+  // home, else the parent of an explicit `--out`, else the `out/` fallback. Auto-naming checks against
+  // the run dirs ALREADY present there, so a fresh name never overwrites a prior run in EITHER layout.
+  const landingHome = runsHome ?? (parsed.outDir ? path.dirname(path.resolve(parsed.outDir)) : path.resolve('out'));
+  // RUN NAME: an explicit `--run/--id` ALWAYS wins (identical behavior to before). When omitted, mint a
+  // memorable Docker-style `<adjective>-<pie>` name (decoupling the run's identity from any prompt id),
+  // COLLISION-CHECKED against the existing run dirs. This replaces the old `?? 'run'` constant fallback
+  // that overwrote a prior `out/run` on every unnamed run.
+  const runId = parsed.run ?? generateName(listExistingRuns(landingHome));
+  const canonicalHome = runsHome ? path.join(runsHome, runId) : null;
   const outDir = parsed.outDir ?? canonicalHome ?? `out/${runId}`;
+  // PROMPT METADATA: carry an `--arg prompt`/`--arg promptId` as run metadata (run.json `promptId`), so the
+  // run is traceable to its prompt WITHOUT the run id BEING the prompt id.
+  const promptId = parsed.args.promptId ?? parsed.args.prompt;
 
   // ── DRY-RUN: build + materialize + print, but invoke NO model. ──
   if (parsed.dryRun) {
@@ -207,7 +242,11 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   const provider = parsed.sandbox === 'local' ? makeLocalProvider() : undefined;
   return runFromTemplate(templateDir, {
     runDir: outDir,
-    run: parsed.run,
+    run: runId,
+    // The resolved memorable identity (explicit `--run` or the auto-minted name) + the prompt metadata —
+    // recorded into run.json by the core writer (status.name / status.promptId).
+    name: runId,
+    ...(promptId ? { promptId } : {}),
     workspace,
     args: parsed.args,
     from: parsed.from,
@@ -252,9 +291,9 @@ export async function runRunCli(argv: string[]): Promise<void> {
   // and exit non-zero. Without this a blocked `--from` resume wrote an EMPTY log and returned 0 — the only
   // signal was a separate `piflow status`. The status/event archives stay the deep view; this is the loud
   // top-level verdict every CLI consumer (and a backgrounded run's exit code) can rely on. (dry-run → no result.)
-  const report = result?.status
-    ? runFailureReport(result.status, parsed.outDir ?? `out/${parsed.run ?? '<id>'}`)
-    : null;
+  // Use the RESULT's resolved `outDir` for the status hint — it is the real run dir, including any
+  // auto-generated `<adjective>-<pie>` name (which the caller can't reconstruct from `parsed.run`).
+  const report = result?.status ? runFailureReport(result.status, result.outDir) : null;
   if (report) {
     process.stderr.write(report + '\n');
     process.exitCode = 1;

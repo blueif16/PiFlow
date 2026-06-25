@@ -85,6 +85,14 @@ export interface ExecWatchdogOpts {
 export interface RunOptions {
   /** Run id (status `run` field + default outDir suffix). */
   run?: string;
+  /**
+   * The run's memorable IDENTITY recorded into `run.json`'s `name` — the Docker-style `<adjective>-<pie>`
+   * the CLI mints when `--run` is omitted, or the explicit `--run` value. Defaults to `run` when unset
+   * (so a library consumer that only passes `run` still gets a `name`).
+   */
+  name?: string;
+  /** The originating prompt id (if any) recorded into `run.json`'s `promptId` — run metadata, not the id. */
+  promptId?: string;
   /** Host-side run dir — the filesystem-as-contract namespace across sandboxes. Default `out/<run>`. */
   outDir?: string;
   /** Base checkout root for a run-scoped provider (worktree-path source / prompt-rewrite anchor). Default cwd. */
@@ -864,6 +872,11 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     },
     status: {
       run,
+      // The memorable run identity (Docker-style `<adjective>-<pie>`) the CLI minted, or `run` itself when
+      // a consumer passed only an id — recorded so a viewer/index keys on a stable, human-friendly name.
+      name: opts.name ?? run,
+      // The originating prompt id, when one was supplied — run METADATA, traceable but NOT the run id.
+      ...(opts.promptId ? { promptId: opts.promptId } : {}),
       source: wf.meta.name,
       profile: opts.profile ?? null,
       provider: opts.providerName ?? 'cp',
