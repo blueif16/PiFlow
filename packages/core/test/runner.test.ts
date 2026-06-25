@@ -247,6 +247,35 @@ describe('runWorkflow — node-timeout watchdog', () => {
   });
 });
 
+// ── G1 per-node model routing (the runner threads the effective model into the command ctx) ──────────
+
+describe('per-node model routing (G1)', () => {
+  it('routes a per-node model into the command context; a node without one inherits the run default', async () => {
+    const g = compile(wf([
+      n('Router', [], ['r.txt'], { model: 'm-node' }),
+      n('Plain', [], ['p.txt']),
+    ]));
+    const seen: Record<string, { model?: string; provider?: string }> = {};
+    // A builder that RECORDS the ctx it was handed, then still writes the artifacts (clean run).
+    const recording = (node: NodeSpec, resolved: any, ctx: { model?: string; provider?: string }) => {
+      seen[node.id] = { model: ctx.model, provider: ctx.provider };
+      return stubBuilder()(node);
+    };
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(g, {
+      run: 'g1', outDir, buildCommand: recording, model: 'm-run', providerName: 'cp',
+    });
+    expect(seen.router.model).toBe('m-node'); // the node override wins
+    expect(seen.plain.model).toBe('m-run');   // no node model ⇒ the run-level default
+    // a fake id is in no models.json, so provider falls back to the run default for both
+    expect(seen.router.provider).toBe('cp');
+    // the EFFECTIVE model is recorded on the status record (observability)
+    expect(status.nodes.router.model).toBe('m-node');
+    expect(status.nodes.plain.model).toBe('m-run');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
 // ── command builder (the production default's flag shape) ────────────────────────────────────────
 
 describe('defaultPiCommand — production headless flags', () => {

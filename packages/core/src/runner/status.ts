@@ -49,6 +49,8 @@ export interface NodeStatusRecord {
   killedStall?: boolean;
   exitCode?: number;
   command?: string;
+  /** G1 — the EFFECTIVE model this node ran on (after the routing precedence). Null/absent ⇒ pi's provider default. */
+  model?: string | null;
   /** Declarative integrity-check results (explicit ∪ auto fill-sentinel), when any were run. */
   checks?: CheckResult[];
   /** The effective return-handshake mode this node was judged under ('optional' | 'required'). */

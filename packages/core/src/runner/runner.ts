@@ -41,6 +41,13 @@ import { validateArtifactSchemas, defaultSchemaValidator, type SchemaValidator }
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
 import { defaultPiCommand, type CommandBuilder } from './command.js';
+import {
+  resolveNodeModel,
+  loadModelTiers,
+  loadModelsIndex,
+  type ModelTiers,
+  type EffectiveModel,
+} from './model-routing.js';
 import { resolveTokens, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
 import { stageSeed } from '../workflow/ops/seed.js';
 import { runMerge } from '../workflow/ops/merge.js';
@@ -487,6 +494,11 @@ interface RunContext {
   execRunner: ExecRunner;
   providerName: string;
   model?: string;
+  /**
+   * G1 — global routing config (the activatable tier map + pi's models.json index), loaded ONCE at run start.
+   * The per-node effective model/provider is resolved from this via `resolveNodeModel` at the build call.
+   */
+  modelRouting: { tiers: ModelTiers; modelsIndex: Map<string, string> };
   /** ENV-FREE command-builder opts (thinking / extra -e extensions) forwarded at the call site. */
   commandOpts: PiCommandOptions;
   recordEvents: boolean;
@@ -877,7 +889,21 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
       return finishNode(ctx, node, rec, t0, 'error', `pre-hook failed: ${(e as Error).message}`, []);
     }
 
-    const cmd = ctx.buildCommand(node, resolved, { promptFile, model: ctx.model, provider: ctx.providerName, extensionFile }, ctx.commandOpts);
+    // G1 — resolve THIS node's effective model/provider (the §2 precedence lives in model-routing.ts). An
+    // unresolvable tier throws → fail the node cleanly (never crash the run, never silently mis-route).
+    let eff: EffectiveModel;
+    try {
+      eff = resolveNodeModel(node, {
+        model: ctx.model,
+        provider: ctx.providerName,
+        tiers: ctx.modelRouting.tiers,
+        modelsIndex: ctx.modelRouting.modelsIndex,
+      });
+    } catch (e) {
+      return finishNode(ctx, node, rec, t0, 'error', (e as Error).message, []);
+    }
+    rec.model = eff.model ?? null; // record the effective model (null ⇒ pi's provider default)
+    const cmd = ctx.buildCommand(node, resolved, { promptFile, model: eff.model, provider: eff.provider, extensionFile }, ctx.commandOpts);
     rec.command = cmd;
 
     const nodeTimeoutMs = node.sandbox.timeoutMs ?? ctx.watchdog.nodeTimeoutMs;
@@ -1286,6 +1312,8 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     execRunner: opts.execRunner ?? defaultExecRunner,
     providerName: opts.providerName ?? 'cp',
     model: opts.model,
+    // G1 — load the global routing config once (read-only; graceful absence ⇒ inactive tiers + empty index).
+    modelRouting: { tiers: loadModelTiers(), modelsIndex: loadModelsIndex() },
     commandOpts: { thinking: opts.thinking, extraExtensions: opts.extensions },
     recordEvents: opts.recordEvents ?? true,
     onEvent: opts.onEvent,
