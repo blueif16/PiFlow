@@ -21,6 +21,7 @@ import { Button } from "./Button";
 import { ProgressBar } from "./ProgressBar";
 import { StatusPill, HudCorners } from "./HudBits";
 import { MarkdownReader } from "./MarkdownReader";
+import { JsonReader } from "./JsonReader";
 import { CacheDonut } from "./CacheDonut";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
@@ -581,6 +582,7 @@ function FileView({ run, file }: { run: string; file: FileTarget }) {
 function renderFileText(displayPath: string, text: string) {
   const ext = (displayPath.split(".").pop() || "").toLowerCase();
   if (ext === "md" || ext === "markdown") return <MarkdownReader source={text} />;
+  if (ext === "json") return <JsonReader source={text} />;
   return <pre className="ds-codeblock">{text}</pre>;
 }
 
