@@ -140,11 +140,13 @@ The uncommitted WIP (`timeoutMs`/`retries` template wiring, 5 files) sits on `fe
 - **Change:** add `fusion?: { mode: 'moa'|'best-of-n'; n?: number; panel?: string[]; judge?: string;
   obligations?: boolean; verify?: boolean }` to `TemplateNode`; matching schema object (`mode` enum required
   when `fusion` present; `additionalProperties:false`); carry verbatim through `toNodeIntent` → a new
-  `NodeIntent.fusion` (and `NodeSpec.fusion`, types.ts). **Carry-only — no expansion here.**
+  `NodeIntent.fusion` (types.ts). **Carry-only — no expansion here.** **Do NOT add `NodeSpec.fusion`:**
+  `expandFusion` (T2.2) runs on the WorkflowSpec (the `NodeIntent` bag) BEFORE `compile`, so it reads
+  `NodeIntent.fusion`; after expansion no node carries `fusion`, so the materialized `NodeSpec` never needs it.
 - **Acceptance:** a node with a valid `fusion` block validates; bad `mode` FAILS; nodes without it unchanged.
 - **Verify:** `npm test -- template-schema load-template`.
 - **Scope fence:** no expansion, no runner. **Depends on Phase 1 merged.**
-- **Failure path:** HALT if adding `NodeSpec.fusion` conflicts with frozen-spine comments — report for a doc note.
+- **Failure path:** HALT if `NodeIntent.fusion` cannot be added in the additive style the other intent fields use.
 
 ### T2.2 — `expandFusion(spec, fusionDefaults)` — the sibling+judge transform (CORE)
 - **Objective:** turn each fusion-activated node into siblings + a judge, per spec §4, so the existing compiler
@@ -186,9 +188,11 @@ The uncommitted WIP (`timeoutMs`/`retries` template wiring, 5 files) sits on `fe
 
 ### T2.4 — Wire `expandFusion` into the run path
 - **Objective:** runs honor fusion automatically.
-- **Files:** `packages/core/src/runner/entry.ts` (`runFromTemplate` ~L86–93; `runFromConfig` ~L56).
-- **Change:** after `loadTemplate`/`instantiate` and BEFORE `compile`, call
-  `spec = expandFusion(spec, loadFusionConfig())`. Same insertion in `runFromConfig` before its `compile`.
+- **Files:** `packages/core/src/runner/entry.ts` (`runFromTemplate`: after `applyProfileByName` L91, before
+  `compile` L93; `runFromConfig`: after `applyProfileByName` L55, before `compile` L56).
+- **Change:** insert `spec = expandFusion(spec, loadFusionConfig())` AFTER `applyProfileByName` and immediately
+  BEFORE `compile`, in BOTH entries. **Order matters:** expand AFTER the profile elides nodes, so a fusion node
+  a profile dropped is never expanded (and a surviving fusion node's siblings enter the graph the profile sees).
 - **Acceptance:** `entry.test.ts`: a template with a fusion node runs as the expanded DAG end-to-end with a stub
   `buildCommand` (siblings + judge execute; judge reads partials). A non-fusion template is unaffected.
 - **Verify:** `npm test -- entry`.
