@@ -1387,7 +1387,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   const seed = (stage: Stage, status: NodeStatusRecord['status']): void => {
     for (const id of stage.nodeIds) {
       const n = wf.nodes[id];
-      ctx.status.nodes[id] = { id, label: n.label, status, artifacts: [], issues: [] };
+      ctx.status.nodes[id] = { id, label: n.label, ...(n.agentType ? { agentType: n.agentType } : {}), status, artifacts: [], issues: [] };
     }
   };
   for (const s of skipped) seed(s, 'reused');
@@ -1395,7 +1395,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     for (const id of s.nodeIds) {
       const n = wf.nodes[id];
       const status: NodeStatusRecord['status'] = reusedSet.has(id) ? 'reused' : 'pending';
-      ctx.status.nodes[id] = { id, label: n.label, status, artifacts: [], issues: [] };
+      ctx.status.nodes[id] = { id, label: n.label, ...(n.agentType ? { agentType: n.agentType } : {}), status, artifacts: [], issues: [] };
     }
   }
   await writeStatus(outDir, ctx.status);

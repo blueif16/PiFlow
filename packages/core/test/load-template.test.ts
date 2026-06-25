@@ -150,6 +150,20 @@ describe('loadTemplate — HAPPY PATH (the unmodified fixture LOADS)', () => {
     expect(spec.nodes.find((nd) => nd.label === 'w2a-levels')!.fusion).toBeUndefined();
   });
 
+  // G6 — the loader must CARRY the authored `agentType` LABEL through to the compiled NodeSpec (the GUI
+  // keys the preset icon off it via observe). Today the template format has NO agentType field and the
+  // loader drops it, so this guards the new wiring. Mirrors the G1 routing carry.
+  it('carries the authored `agentType` label onto the compiled NodeSpec (G6)', async () => {
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.agentType = 'market-research';
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    const wf = compile(await loadTemplate(dir));
+    expect(wf.nodes['w0-classify'].agentType).toBe('market-research');
+    // additive: a node that declares none stays undefined downstream (byte-identical to today).
+    expect(wf.nodes['w2a-levels'].agentType).toBeUndefined();
+  });
+
   it('a NodeIntent with NO ops compiles to a NodeSpec with ops undefined (additive — absence stays absent)', () => {
     // The additivity guarantee: an authored node that declares no ops is byte-for-byte op-free downstream.
     const wf = compile({

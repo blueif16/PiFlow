@@ -31,6 +31,8 @@ export interface RunViewNode {
   id: string;
   label: string;
   phase: string | null;
+  /** (G6) The agent-PRESET label (branding) — the GUI maps it to {icon,label,color} from ~/.piflow/agents/. */
+  agentType?: string;
   status: string;
   startedAt?: string;
   endedAt?: string;
@@ -178,7 +180,7 @@ function buildHistory(historyDirs: string[]) {
 }
 
 interface RunJsonNode {
-  id: string; label?: string; phase?: string | null; status: string;
+  id: string; label?: string; agentType?: string; phase?: string | null; status: string;
   startedAt?: string; endedAt?: string; durationMs?: number;
   artifacts?: { path: string; exists?: boolean; bytes?: number }[];
   summary?: string; issues?: string[];
@@ -272,6 +274,7 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
 
     nodes.push({
       id, label: rec.label || id, phase, status,
+      ...(rec.agentType ? { agentType: rec.agentType } : {}), // (G6) verbatim passthrough → GUI icon
       startedAt: rec.startedAt, endedAt: rec.endedAt, durationMs: rec.durationMs,
       expectedMs: expected[id] ?? rec.durationMs ?? null, priorSamples: samples[id] ?? 0,
       model: rich.model, provider: rich.provider, api: rich.api,

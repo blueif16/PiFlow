@@ -13,6 +13,7 @@ import type { RunStatus, NodeStatusRecord } from '../src/runner/status.js';
 import type { NodeIo } from '../src/types.js';
 import type { PiEvent } from '../src/runner/events.js';
 import { readRunModel } from '../src/observe/read.js';
+import { buildRunView } from '../src/observe/runView.js';
 import { watchRun } from '../src/observe/watch.js';
 import type { RunUpdate } from '../src/observe/types.js';
 
@@ -125,6 +126,26 @@ const mkRunDir = (): string => mkdtempSync(path.join(tmpdir(), 'piflow-observe-'
 // (2) readRunModel — the one-shot snapshot
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 describe('readRunModel — the shared one-shot snapshot over a .pi/ run dir', () => {
+  // G6 — the agentType LABEL is a verbatim passthrough from the node record through BOTH shared readers
+  // (the lean readRunModel snapshot and the enriched buildRunView), so the GUI can key the preset icon off
+  // it. FAILS if a reader drops it (the icon would never render). Additive: a node with none → undefined.
+  it('surfaces the node record\'s agentType through readRunModel AND buildRunView (G6)', async () => {
+    const runDir = mkRunDir();
+    const { status, nodes } = baseFixture();
+    status.nodes.w0.agentType = 'market-research';
+    await writeFixture(runDir, status, nodes);
+
+    const model = await readRunModel(runDir);
+    const byId = Object.fromEntries(model.nodes.map((n) => [n.id, n]));
+    expect(byId.w0.agentType).toBe('market-research');
+    expect(byId.b2.agentType).toBeUndefined();
+
+    const { view } = buildRunView(runDir);
+    const vById = Object.fromEntries(view.nodes.map((n) => [n.id, n]));
+    expect(vById.w0.agentType).toBe('market-research');
+    expect(vById.b2.agentType).toBeUndefined();
+  });
+
   it('maps status (verified-not-trusted), verified/total artifacts, the parallel lane, and io edges', async () => {
     const runDir = mkRunDir();
     const { status, nodes } = baseFixture();

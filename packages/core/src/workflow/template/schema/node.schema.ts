@@ -42,6 +42,14 @@ export const nodeSchema = {
         skill: { type: 'string', minLength: 1, description: 'Optional SKILL.md pointer inlined into the realized prompt.' },
       },
     },
+    agentType: {
+      // (G6) The agent-PRESET label this node adopted. `piflow-init` expands the preset INTO the node's
+      // concrete tools/prompt at author time and keeps this as a branding LABEL the GUI keys the icon off
+      // (via observe). The runner treats it as opaque. Omitted ⇒ none.
+      type: 'string',
+      minLength: 1,
+      description: 'Agent-preset LABEL (branding) — expanded into tools/prompt at init; GUI icon key. Omitted ⇒ none.',
+    },
     tools: {
       type: 'object',
       additionalProperties: false,

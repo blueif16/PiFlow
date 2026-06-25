@@ -131,6 +131,7 @@ export async function readRunModel(runDir: string): Promise<RunModel> {
     nodes.push({
       id: rec.id,
       label: rec.label,
+      ...(rec.agentType ? { agentType: rec.agentType } : {}), // (G6) verbatim passthrough → GUI icon
       phase: io?.phase ?? null,
       reported: rec.status,
       status: deriveStatus(rec.status, missing, checkpoint),

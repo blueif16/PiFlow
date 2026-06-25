@@ -39,6 +39,8 @@ export interface CheckpointView {
 export interface NodeView {
   id: string;
   label: string;
+  /** (G6) The agent-PRESET label (branding) — the GUI maps it to {icon,label,color} from ~/.piflow/agents/. */
+  agentType?: string;
   phase: string | null;
   /** The verdict the view SHOWS — derived from on-disk artifact reality, not the raw record field. */
   status: NodeStatus;

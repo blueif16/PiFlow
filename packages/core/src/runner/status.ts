@@ -37,6 +37,8 @@ export interface ArtifactState {
 export interface NodeStatusRecord {
   id: string;
   label: string;
+  /** (G6) The agent-PRESET label (branding) carried verbatim from the NodeSpec → observe → GUI icon. */
+  agentType?: string;
   status: NodeStatus;
   startedAt?: string;
   endedAt?: string;

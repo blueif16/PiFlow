@@ -17,6 +17,12 @@ export interface TemplateNode {
   phase: string;
   deps: string[];
   prompt: { file: string; skill?: string };
+  /**
+   * (G6) The agent-PRESET label this node adopted (e.g. "market-research"). `piflow-init` expands the
+   * preset INTO the node's concrete `tools`/`prompt` at author time and keeps this as a branding LABEL —
+   * the runner treats it as opaque; observe carries it so the GUI renders the preset's icon. Omitted ⇒ none.
+   */
+  agentType?: string;
   tools?: { allow?: string[]; deny?: string[] };
   mcp?: { servers?: Record<string, unknown>; ref?: string };
   inject?: string[];

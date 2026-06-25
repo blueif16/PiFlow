@@ -144,6 +144,9 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   };
   // Additive: only attach `ops` when the node authored a hooks block (a node with none stays op-free).
   if (ops) intent.ops = ops;
+  // (G6) Carry the agent-PRESET label verbatim (the preset was already expanded into tools/prompt at init);
+  // it rides to observe so the GUI renders the icon. Additive — a node with none stays label-free.
+  if (n.def.agentType) intent.agentType = n.def.agentType;
   // (G1) Carry the per-node routing fields verbatim; the runner resolves the effective model (model-routing.ts).
   if (n.def.model) intent.model = n.def.model;
   if (n.def.provider) intent.provider = n.def.provider;
