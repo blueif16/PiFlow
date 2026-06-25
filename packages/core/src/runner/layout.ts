@@ -45,6 +45,22 @@ export const nodeMcpFile = (run: string, id: string): string =>
 export const nodeEventsFile = (run: string, id: string): string =>
   path.join(nodeDir(run, id), 'events.jsonl');
 
+// ── (G5) human-checkpoint marker/reply files — per-run data in the RUN dir (SDK/data boundary). ──
+// Each checkpoint node owns a nodeId-scoped pair under `.pi/checkpoints/`: the runner WRITES `<id>.json`
+// (the question), a courier (GUI/console/TUI) WRITES `<id>.reply.json` (the answer). nodeId-scoped so ≥2
+// concurrent checkpoints never collide (the same per-node isolation as `.pi/nodes/<id>/`).
+
+/** `${run}/.pi/checkpoints` — the checkpoint marker/reply namespace. */
+export const checkpointsDir = (run: string): string => path.join(piDir(run), 'checkpoints');
+
+/** `${run}/.pi/checkpoints/<id>.json` — the pending-question MARKER (runner-written). */
+export const checkpointMarkerFile = (run: string, id: string): string =>
+  path.join(checkpointsDir(run), `${id}.json`);
+
+/** `${run}/.pi/checkpoints/<id>.reply.json` — the human REPLY (courier-written). */
+export const checkpointReplyFile = (run: string, id: string): string =>
+  path.join(checkpointsDir(run), `${id}.reply.json`);
+
 /**
  * Write a node's `io.json` ledger record (mkdir -p the node dir first; pretty-printed). Returns the
  * path written. The ONE I/O helper here — every other layout helper is a pure join.

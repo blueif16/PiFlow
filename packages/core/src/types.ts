@@ -46,6 +46,44 @@ export interface NodeSpec {
    * behaves exactly as before. Carried verbatim from `node.json.hooks` by the template loader.
    */
   ops?: NodeOps;
+  /**
+   * 6. (G5 — HITL) When present, this node is a HUMAN CHECKPOINT: it spawns NO `pi` (no tools/model), it
+   * WRITES a marker, PARKS its lane (without holding a G2 limiter slot) until a reply file appears or the
+   * timeout elapses, VALIDATES the reply, JOURNALS it, and finishes `ok` carrying the chosen value. With
+   * no courier attached the SAFETY rule (`headless`) keeps a background run from hanging. Optional/additive
+   * — a node with no `checkpoint` behaves exactly as before. See `CheckpointSpec`.
+   */
+  checkpoint?: CheckpointSpec;
+}
+
+// 6 ── HUMAN CHECKPOINT (G5 — HITL) ────────────────────────────────────────────
+
+/**
+ * A human checkpoint declared on a node (G5). The node's "work" is to ASK a human and resume on their
+ * reply; it spawns no `pi`. The runner writes a marker from this spec, parks the lane watching for a
+ * reply file, validates it, and journals the chosen value. Translated from PDW's `CheckpointOptions`
+ * (`kind`/`choices`/`default`/`headless`/`timeoutMs`) onto the filesystem-coordinated fleet.
+ */
+export interface CheckpointSpec {
+  /** The question shape: a yes/no `confirm`, a free-text `input`, or a one-of-`choices` `select`. */
+  kind: 'confirm' | 'input' | 'select';
+  /** The question shown to the human (and folded into the marker hash, so an edit re-prompts on resume). */
+  prompt: string;
+  /** For `select`: the allowed values. The runner rejects a reply whose value is not one of these. */
+  choices?: string[];
+  /** The value taken headlessly (no courier/reply) under `headless:'default'` — journaled like a real reply. */
+  default?: unknown;
+  /**
+   * SAFETY policy when no reply arrives within `timeoutMs` (or immediately on a detached run): `'default'`
+   * takes `default` and journals it (the run never hangs); `'abort'` finishes the node `error` and HALTS.
+   * Default `'default'`.
+   */
+  headless?: 'default' | 'abort';
+  /**
+   * Bound on the interactive wait (ms). Omit ⇒ wait indefinitely while a courier could still reply (an
+   * attended run). On elapse the `headless` policy fires. A tiny value drives the headless path in tests.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -510,6 +548,8 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
   sandbox?: Partial<SandboxSpec>;
   hooks?: NodeSpec['hooks'];
   ops?: NodeSpec['ops'];
+  /** (G5) A human checkpoint on this node — carried verbatim onto the dense NodeSpec. */
+  checkpoint?: NodeSpec['checkpoint'];
 };
 
 /**

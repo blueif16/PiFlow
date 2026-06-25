@@ -140,6 +140,22 @@ export const nodeSchema = {
       type: 'object',
       description: "Optional JSON-Schema for the node's structured result (the fenced-JSON tail).",
     },
+    checkpoint: {
+      // (G5 — HITL) A HUMAN CHECKPOINT on this node: it spawns no `pi`, writes a marker, parks for a reply,
+      // validates + journals it. `kind`/`prompt` required; `choices`/`default`/`headless`/`timeoutMs` optional.
+      type: 'object',
+      additionalProperties: false,
+      required: ['kind', 'prompt'],
+      description: 'A human checkpoint (G5): pause, ask the human, resume on their reply (or a headless default).',
+      properties: {
+        kind: { enum: ['confirm', 'input', 'select'], description: 'confirm (yes/no) | input (free text) | select (one of choices).' },
+        prompt: { type: 'string', minLength: 1, description: 'The question shown to the human.' },
+        choices: { type: 'array', items: { type: 'string', minLength: 1 }, description: 'For select: the allowed values.' },
+        default: { description: 'Value taken headlessly (no reply) under headless:default. Any type.' },
+        headless: { enum: ['default', 'abort'], description: 'No-reply policy: default (take default, journal it) | abort (error + halt). Default default.' },
+        timeoutMs: { type: 'integer', minimum: 0, description: 'Bound on the interactive wait (ms). Omit ⇒ wait while a courier could reply.' },
+      },
+    },
   },
   $defs: {
     check: {

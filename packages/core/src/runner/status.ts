@@ -23,6 +23,7 @@ export type NodeStatus =
   | 'blocked'   // a required artifact is missing (contract breach) — beats any self-report
   | 'error'     // killed (timeout/stall) or nonzero exit / degenerate run
   | 'reused'    // skipped upstream node whose artifacts were reused (--from resume)
+  | 'awaiting-input' // (G5) a human checkpoint is PARKED — its marker is pending, waiting for a reply
   | 'dry';      // dry-run: command built, not executed
 
 /** One verified artifact: did it exist on the host after collection, and how big. */

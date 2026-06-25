@@ -40,6 +40,15 @@ export interface TemplateNode {
     registryProject?: { source: string; mapRef: string; key: string };
   };
   return?: object;
+  /** (G5 — HITL) A human checkpoint on this node → runtime `NodeSpec.checkpoint`. Spawns no `pi`. */
+  checkpoint?: {
+    kind: 'confirm' | 'input' | 'select';
+    prompt: string;
+    choices?: string[];
+    default?: unknown;
+    headless?: 'default' | 'abort';
+    timeoutMs?: number;
+  };
 }
 
 /** The authored `meta.json` (template-format.md §5). */

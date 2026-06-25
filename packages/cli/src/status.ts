@@ -24,6 +24,7 @@ const ICON: Record<NodeStatus, string> = {
   gap: '~',
   blocked: '✗',
   error: '✗',
+  'awaiting-input': '⏸',
   dry: '∅',
 };
 const sec = (ms?: number | null): string => (ms == null ? '' : `${Math.round(ms / 1000)}s`);
