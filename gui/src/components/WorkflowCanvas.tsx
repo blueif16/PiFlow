@@ -62,6 +62,8 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId ?? null);
   const [mode, setMode] = useState<ViewMode | null>(null);
+  const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
+
   const [ix, setIx] = useState<GlobalIndex | null>(null);
   const [activeRun, setActiveRun] = useState<string>("");
   const [dir, setDir] = useState<{ tree: DirEntry[]; fileToNode: Record<string, string> }>({ tree: [], fileToNode: {} });
@@ -216,8 +218,8 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
 
           <NodeExpandOverlay id={expandedId} data={expandedData} onClose={() => setExpandedId(null)} />
           <MenuBar activeRun={activeRun} onSelectRun={selectRun} ix={ix} />
-          <ModeBar />
-          <Companion activeRun={activeRun} />
+          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} />
+          <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
         </div>
       </LayoutGroup>
       </RunStreamContext.Provider>

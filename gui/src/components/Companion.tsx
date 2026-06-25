@@ -13,6 +13,8 @@
  * line that now carries the real run state.
  */
 import { useState, type FormEvent } from "react";
+// `open` is owned by CanvasInner so the bottom-left ModeBar's "P" key (and the global
+// p-keypress) can launch this bottom-right pi chat; the launcher/collapse just flip it.
 import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { useExpand } from "./ExpandContext";
@@ -35,9 +37,8 @@ function PiMark({ size = 18 }: { size?: number }) {
   );
 }
 
-export function Companion({ activeRun }: { activeRun: string }) {
+export function Companion({ activeRun, open, onOpenChange }: { activeRun: string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { expandedId } = useExpand();
-  const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [log, setLog] = useState<Msg[]>([]);
 
@@ -68,7 +69,7 @@ export function Companion({ activeRun }: { activeRun: string }) {
             </span>
             <span className="ds-companion__title">Companion</span>
             <span className="ds-companion__ctx" title={context}>{context}</span>
-            <button type="button" className="ds-companion__min" aria-label="Collapse companion" onClick={() => setOpen(false)}>
+            <button type="button" className="ds-companion__min" aria-label="Collapse companion" onClick={() => onOpenChange(false)}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
             </button>
           </header>
@@ -98,7 +99,7 @@ export function Companion({ activeRun }: { activeRun: string }) {
           </form>
         </GlassSurface>
       ) : (
-        <button type="button" className="ds-companion-launch" aria-label="Open companion" onClick={() => setOpen(true)}>
+        <button type="button" className="ds-companion-launch" aria-label="Open companion" onClick={() => onOpenChange(true)}>
           <PiMark size={20} />
         </button>
       )}

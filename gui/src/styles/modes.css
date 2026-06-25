@@ -21,6 +21,14 @@
   border-radius: var(--ds-radius-lg);
 }
 
+/* hairline divider between the view-mode keys and the chat (action) key */
+.ds-modebar__sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 2px;
+  background: var(--ds-border-hairline);
+}
+
 /* a single grey "game key" = keycap + label */
 .ds-mode-btn {
   display: inline-flex;
