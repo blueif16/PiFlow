@@ -290,6 +290,17 @@ them, and where an edit must be reconciled against the rest. For every node:
   file: give each lane its own per-node fragment and add a tiny SERIAL JOIN node after the parallel stage to
   merge them deterministically. (The script has no fs at eval time, so the join is a NODE, never raw fs in the workflow.)
 
+- **Agent-type presets (G6) — a node may START from a branded preset, then customize above it.** When an
+  author assigns a node `agentType: <id>` (e.g. `market-research`), EXPAND it at author time — do not treat the
+  name as magic: read `~/.piflow/agents/<id>.md`, call `mergePreset` (`@piflow/core`) to fold its base tools +
+  role-prompt INTO the node's concrete `tools`/`prompt` (additive: the node ADDS tools and its task is appended
+  to the role), keep `agentType` as the branding LABEL (the GUI renders its icon via observe), and choose the
+  node's `model`/`tier` yourself — a preset NEVER sets a model. Unknown `<id>` ⇒ HALT, never invent one.
+  Presets are an optional convenience, not a lock-in — skipping them and wiring `tools`/`prompt`/`model` by
+  hand is the common path. **Full contract + the seed presets + how to author a new one:**
+  `references/agent-presets/README.md`. On init, materialize any missing seed into `~/.piflow/agents/`
+  (create-if-absent — never overwrite a user-edited preset).
+
 **The node I/O map** — `<repo>/.agents/skill-system-io-map.md`, the THIRD standing artifact beside the
 skill-system map (composition) and the criteria fixture (quality). It is the producer→consumer ledger keyed by
 ARTIFACT: for each on-disk artifact, which node PRODUCES it, which nodes CONSUME it, and HOW (strict parse vs
