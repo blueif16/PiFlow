@@ -143,6 +143,16 @@ export type { ResolvedRunConfig } from './runner/index.js';
 // the one entry that connects the spec-compile and run-folder-materialize halves into an end-to-end run.
 export { runFromTemplate } from './runner/index.js';
 export type { RunFromTemplateOpts } from './runner/index.js';
+// G1 — per-node model/provider ROUTING: the single home of the override order (model > tier > run > default).
+export {
+  resolveNodeModel,
+  ModelRoutingError,
+  loadModelTiers,
+  loadModelsIndex,
+  defaultTiersPath,
+  defaultModelsPath,
+} from './runner/index.js';
+export type { ModelTiers, NodeRouting, RunRouting, EffectiveModel } from './runner/index.js';
 // loadConfig — the env layer (D5): PI_RUNNER_* env + parsed args → the run-opts object runFromConfig
 // consumes (arg > env > default; timeouts seconds→ms). The ONLY place env is parsed; runFromConfig is pure.
 export { loadConfig, parseArgFlags } from './runner/index.js';

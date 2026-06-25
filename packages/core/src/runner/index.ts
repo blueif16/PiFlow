@@ -79,3 +79,13 @@ export type { FollowOpts, NodeDiagnosis } from './logs.js';
 // Static pre-run tool/wiring audit over a compiled workflow.
 export { auditWorkflow, hasToolFindings } from './audit.js';
 export type { NodeToolAudit } from './audit.js';
+// G1 — per-node model/provider routing: the single home of the override order.
+export {
+  resolveNodeModel,
+  ModelRoutingError,
+  loadModelTiers,
+  loadModelsIndex,
+  defaultTiersPath,
+  defaultModelsPath,
+} from './model-routing.js';
+export type { ModelTiers, NodeRouting, RunRouting, EffectiveModel } from './model-routing.js';
