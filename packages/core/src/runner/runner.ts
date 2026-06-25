@@ -469,6 +469,22 @@ function toPosixRel(rel: string): string {
  * built command under the watchdog → downloadDir(output)→host → verify io.artifacts by host-stat →
  * POST hooks → dispose → write status.
  */
+/**
+ * Run a node with its per-node RETRY budget (`io.retries`): the first attempt plus up to `retries`
+ * MORE attempts whenever the node ends `error`/`blocked` (a transient model/timeout failure). Each
+ * attempt is a FRESH `runNode` (own sandbox, re-seed, re-exec); the LAST attempt's record is returned
+ * (last-wins). `ok`/`warn` never retries; `retries` 0/undefined ⇒ exactly one attempt (today's
+ * behavior). Worst-case wall = (retries+1) × the node's timeout.
+ */
+async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope: RunScope): Promise<NodeStatusRecord> {
+  const maxAttempts = 1 + Math.max(0, node.io.retries ?? 0);
+  let rec = await runNode(ctx, node, scope);
+  for (let attempt = 2; attempt <= maxAttempts && (rec.status === 'error' || rec.status === 'blocked'); attempt++) {
+    rec = await runNode(ctx, node, scope);
+  }
+  return rec;
+}
+
 async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promise<NodeStatusRecord> {
   const rec = ctx.status.nodes[node.id];
   rec.status = 'running';
@@ -715,13 +731,18 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     // present-but-invalid artifact); under `optional` it is advisory (recorded as a warn, never blocks; a
     // missing result is the existing handshake clause's job, never this gate's). Skips when no return
     // schema is declared, no result was parsed, or no validator resolved.
+    // RETURN-SCHEMA IS OPT-IN — a CHOICE, never forced. We validate the structured return ONLY when the
+    // node CHOOSES to force one (returnMode === 'required'). A filesystem-write node (returnMode 'optional'
+    // or the artifact-backed default) proves its work by the artifact ON DISK, so its structured return is
+    // NEVER gated — the return-schema mechanism stays available for rigid workflows without ever blocking
+    // (or warning on) a node that simply writes its files. Under 'required' a non-conforming result is a
+    // contract breach that BLOCKS (mirrors the artifact schema gate).
     let returnSchemaInvalid: string[] = [];
-    if (node.io.returnSchema && Object.keys(node.io.returnSchema).length && parsed && ctx.validateSchema) {
+    if (returnMode === 'required' && node.io.returnSchema && Object.keys(node.io.returnSchema).length && parsed && ctx.validateSchema) {
       const r = ctx.validateSchema(node.io.returnSchema, parsed);
       if (!r.ok) returnSchemaInvalid = r.errors;
     }
     if (returnSchemaInvalid.length) rec.returnSchemaInvalid = returnSchemaInvalid;
-    // The breach BLOCKS only under `required`; under `optional` it is advisory (a warn issue below).
     const returnSchemaBreach = returnSchemaInvalid.length > 0 && returnMode === 'required';
 
     let st: NodeStatusRecord['status'];
@@ -751,8 +772,6 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
       st = 'ok';
     }
     if (warningChecks.length) issues.push(`integrity warn — ${warningChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
-    // An OPTIONAL node whose present result violates its returnSchema: advisory (recorded above, surfaced here), never blocks.
-    if (returnSchemaInvalid.length && !returnSchemaBreach) issues.push(`return-schema warn — ${returnSchemaInvalid.join('; ')}`);
     if (schema.skipped) issues.push(`schema gate skipped — ${schema.skipped}`);
     if (parsed?.issues?.length) issues.push(...parsed.issues);
 
@@ -995,7 +1014,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
       await writeStatus(outDir, ctx.status);
 
       // Parallel lanes within a stage (run.mjs 1313).
-      const results = await Promise.all(s.nodeIds.map((id) => runNode(ctx, wf.nodes[id], scope)));
+      const results = await Promise.all(s.nodeIds.map((id) => runNodeWithRetries(ctx, wf.nodes[id], scope)));
 
       // STAGE-BARRIER MERGE (D6 / LangGraph super-step): fold every lane's promoted update into RunState
       // SERIALLY + deterministically (in node order), persist ONCE, and advance ctx.runState so the NEXT

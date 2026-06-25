@@ -7,11 +7,13 @@ import { loadTemplate } from '../src/workflow/template/loader.js';
 import type { NodeIntent, WorkflowSpec } from '../src/index.js';
 import { runWorkflow } from '../src/runner/index.js';
 
-// ── The post-node RETURN-SCHEMA gate (the dormant authored `return` made live) ─────────────────────
+// ── The post-node RETURN-SCHEMA gate — OPT-IN, a CHOICE never forced ───────────────────────────────
 // A node's authored `returnSchema` (node.json top-level `return`) constrains the SHAPE of its structured
-// result. This proves the loader WIRES it onto NodeIO and the runner ENFORCES it — VALIDATE-IF-PRESENT,
-// respecting `returnMode` (required ⇒ a non-conforming result BLOCKS; optional ⇒ advisory; a MISSING
-// result under optional is the handshake clause's job, never this gate's). 100% GENERIC — no domain knowledge.
+// result. This proves the loader WIRES it onto NodeIO and the runner ENFORCES it ONLY when the node opts in
+// via `returnMode: 'required'` (a non-conforming result BLOCKS, mirroring the artifact schema gate). Under
+// 'optional' / the artifact-backed default, the gate is INERT — a filesystem-write node proves its work by
+// the file on disk, so its structured return is never validated, never warns, never blocks. The mechanism
+// stays available for rigid workflows without forcing it. 100% GENERIC — no domain knowledge.
 
 function n(label: string, reads: string[], produces: string[], over: Partial<NodeIntent> = {}): NodeIntent {
   return {
@@ -105,8 +107,8 @@ describe('post-node returnSchema gate — authored `return` enforced (required)'
   });
 });
 
-describe('post-node returnSchema gate — optional / absence semantics', () => {
-  it("optional + MISSING result → NOT blocked (validate-if-present; absence is never this gate's job)", async () => {
+describe('post-node returnSchema gate — optional is INERT (opt-in only)', () => {
+  it("optional + MISSING result → NOT blocked (the gate never fires under optional)", async () => {
     // An artifact-backed node ⇒ returnMode defaults to 'optional'; it emits NO return fence.
     const node = n('Solo', [], ['s.txt'], {
       io: { reads: [], produces: ['s.txt'], artifacts: [{ path: 's.txt' }], returnSchema: RETURN_SCHEMA },
@@ -115,12 +117,12 @@ describe('post-node returnSchema gate — optional / absence semantics', () => {
     const outDir = await tmpOut();
     const { status } = await runWorkflow(g, { run: 'rs-opt-missing', outDir, buildCommand: returnBuilder(null) });
     expect(status.nodes.solo.returnMode).toBe('optional');
-    expect(status.nodes.solo.status).toBe('ok'); // missing optional return is advisory, never blocked
+    expect(status.nodes.solo.status).toBe('ok'); // missing optional return is never this gate's concern
     expect(status.nodes.solo.returnSchemaInvalid).toBeUndefined();
     await fs.rm(outDir, { recursive: true, force: true });
   });
 
-  it('optional + present VIOLATING result → advisory warn, NOT blocked', async () => {
+  it('optional + present VIOLATING result → NOT validated, NOT warned, NOT blocked (file IS the contract)', async () => {
     const node = n('Solo', [], ['s.txt'], {
       io: { reads: [], produces: ['s.txt'], artifacts: [{ path: 's.txt' }], returnSchema: RETURN_SCHEMA },
     });
@@ -129,14 +131,14 @@ describe('post-node returnSchema gate — optional / absence semantics', () => {
     const { status } = await runWorkflow(g, {
       run: 'rs-opt-bad',
       outDir,
-      // status='ok' (so the self-report clause does NOT fire) but `summary` is the WRONG type → a pure
-      // schema violation, isolating the advisory-warn path from the self-report ladder.
+      // A return that flagrantly violates RETURN_SCHEMA (`summary` wrong type). Under the opt-in rule the
+      // gate does NOT even run for an optional node → no recorded invalidity, no warn, status stays ok.
       buildCommand: returnBuilder({ status: 'ok', summary: 123 }),
     });
     expect(status.nodes.solo.returnMode).toBe('optional');
-    expect(status.nodes.solo.status).toBe('ok'); // optional ⇒ a present violation is advisory only
-    expect(status.nodes.solo.returnSchemaInvalid?.length).toBeGreaterThan(0);
-    expect(status.nodes.solo.issues.join(' ')).toMatch(/return-schema warn/i);
+    expect(status.nodes.solo.status).toBe('ok'); // optional ⇒ the return schema is never enforced
+    expect(status.nodes.solo.returnSchemaInvalid).toBeUndefined(); // not validated at all
+    expect(status.nodes.solo.issues.join(' ')).not.toMatch(/return-schema/i); // no advisory warn either
     await fs.rm(outDir, { recursive: true, force: true });
   });
 });
