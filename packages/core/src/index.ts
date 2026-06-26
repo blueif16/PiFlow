@@ -271,3 +271,30 @@ export type {
 // GUI build the SAME view from here (no view-local copy). Used by consumers that show cost/token panels.
 export { buildRunView } from './observe/index.js';
 export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens } from './observe/index.js';
+
+// The FLEET tier of the observe surface — ONE registry + ONE discovery + ONE snapshot the CLI, the TUI, and
+// the GUI all share, so every view is exposed to the SAME registered repos. `registerProductRoot` is the
+// write side a run calls at start (runFromTemplate) so discovery needs no manual `--root`. See observe/discover.ts.
+export {
+  globalDir,
+  productsFile,
+  indexFile,
+  loadRegistry,
+  upsertRoot,
+  saveRegistry,
+  registerProductRoot,
+  discoverNamespaces,
+  discoverRunDirs,
+  summarizeRun,
+  buildSnapshot,
+} from './observe/index.js';
+export type {
+  ProductEntry,
+  Registry,
+  NamespaceDesc,
+  NamespaceMeta,
+  ThreadRow,
+  SnapshotNamespace,
+  SnapshotProduct,
+  Snapshot,
+} from './observe/index.js';
