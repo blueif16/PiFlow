@@ -157,6 +157,11 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   // (Phase 2) Carry a FUSION activation block verbatim onto the intent when authored — `expandFusion`
   // consumes it before compile (the activated node becomes a judge + N siblings). Additive: no block ⇒ no change.
   if (n.def.fusion) intent.fusion = n.def.fusion;
+  // (G11) Carry the per-node external MCP gateway config verbatim onto the intent when authored —
+  // `assembleRunTools` reads `mcp.servers` off the spec to build the run's merged `mcpConfig`, and the
+  // runner stages it into a bridge-tool node's `_pi/mcp.json`. Authoring layer only (never the dense
+  // NodeSpec — the `fusion?`/`checkpoint?` precedent). Additive: no block ⇒ no change (#3 was dead until now).
+  if (n.def.mcp) intent.mcp = n.def.mcp;
   return intent;
 }
 

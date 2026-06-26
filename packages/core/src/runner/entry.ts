@@ -17,7 +17,26 @@ import { instantiateRun } from '../workflow/template/instantiate.js';
 import { expandFusion, type FusionExpandOpts } from '../workflow/fusion/expand.js';
 import { loadFusionConfig } from './fusion-config.js';
 import { loadModelTiers } from './model-routing.js';
+import { assembleRunTools } from './tool-config.js';
 import { runWorkflow, type RunOptions, type RunResult } from './runner.js';
+
+/**
+ * Resolve the run's `registry`/`mcpConfig` with the EXPLICIT-CALLER-WINS guard: if the caller already set
+ * either `registry` or `mcpConfig`, pass BOTH through unchanged (a library consumer that built its own
+ * registry — every `runner.test.ts` — keeps full control). Otherwise self-assemble the seeded catalog +
+ * merged MCP config from the spec via `assembleRunTools`, so the canonical (CLI / template) path binds
+ * `oc.*`/`mcp.*` tools instead of falling through to a bare `DefaultToolRegistry` (the G11 blocker fix).
+ */
+function resolveRunTools(
+  spec: WorkflowSpec,
+  runOpts: RunOptions,
+): { registry: RunOptions['registry']; mcpConfig: RunOptions['mcpConfig'] } {
+  if (runOpts.registry || runOpts.mcpConfig) {
+    return { registry: runOpts.registry, mcpConfig: runOpts.mcpConfig };
+  }
+  const tools = assembleRunTools({ spec });
+  return { registry: tools.registry, mcpConfig: tools.mcpConfig };
+}
 
 /**
  * (Phase 2) The fusion-expansion inputs, resolved from the read-only global config once per run: the
@@ -69,8 +88,11 @@ export async function runFromConfig(config: ResolvedRunConfig): Promise<RunResul
   // dropped node) and BEFORE compile (the compiler draws siblings→judge from the generated reads/produces).
   // No fusion node ⇒ the spec is returned unchanged.
   spec = expandFusion(spec, fusionExpandOpts());
+  // (G11) Seed the tool catalog into the run AFTER fusion expansion (so judge/sibling nodes are seen),
+  // honoring an explicit caller's registry/mcpConfig. `secretResolver` is forwarded as-is (the host seam).
+  const tools = resolveRunTools(spec, runOpts as RunOptions);
   const workflow = compile(spec);
-  return runWorkflow(workflow, runOpts as RunOptions);
+  return runWorkflow(workflow, { ...(runOpts as RunOptions), registry: tools.registry, mcpConfig: tools.mcpConfig });
 }
 
 /**
@@ -107,7 +129,17 @@ export async function runFromTemplate(templateDir: string, opts: RunFromTemplate
   let spec = applyProfileByName(loaded, (runOpts as RunOptions).profile);
   // (2.6) (Phase 2) expand fusion-activated nodes into siblings + judge — AFTER profile elision, BEFORE compile.
   spec = expandFusion(spec, fusionExpandOpts());
-  // (3) build the DAG + (4) run it, collecting into the SAME run root.
+  // (2.7) (G11) seed the tool catalog into the run AFTER fusion expansion, honoring an explicit caller's
+  // registry/mcpConfig. This is the canonical CLI/template path the blocker (#1) lived on — a node
+  // declaring `oc.*`/`mcp.*` now binds instead of falling through to a bare DefaultToolRegistry.
+  const tools = resolveRunTools(spec, runOpts as RunOptions);
+  // (3) build the DAG + (4) run it, collecting into the SAME run root. `secretResolver` rides the spread.
   const workflow = compile(spec);
-  return runWorkflow(workflow, { ...(runOpts as RunOptions), outDir: path.resolve(runDir), workspace });
+  return runWorkflow(workflow, {
+    ...(runOpts as RunOptions),
+    outDir: path.resolve(runDir),
+    workspace,
+    registry: tools.registry,
+    mcpConfig: tools.mcpConfig,
+  });
 }

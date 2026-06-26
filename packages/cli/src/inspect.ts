@@ -16,6 +16,8 @@ import {
   loadTemplate as coreLoadTemplate,
   compile,
   DefaultToolRegistry,
+  seededRegistry,
+  SUBMIT_RESULT_TOOL,
   type WorkflowSpec,
   type NodeSpec,
 } from '@piflow/core';
@@ -130,7 +132,12 @@ export async function inspectTemplate(parsed: ParsedInspectArgs, deps: InspectDe
 
   const spec = await loadTemplate(templateDir);
   const wf = compile(spec);
-  const registry = new DefaultToolRegistry();
+  // (G11) Use the SEEDED registry (builtins + the oc.calc:add seed + the community catalog) so the free
+  // preview RESOLVES `oc.*`/`mcp.*` selections instead of falsely reporting them UNRESOLVED — it must
+  // mirror the registry the canonical run path now assembles (`assembleRunTools`). `seededRegistry()` alone
+  // DROPS the first-party `submit_result` (catalog.ts:58), so re-add it (the SAME superset assembleRunTools
+  // builds) — else a node declaring `submit_result` falsely reads UNRESOLVED here.
+  const registry = seededRegistry([SUBMIT_RESULT_TOOL]);
   const validIds = Object.keys(wf.nodes);
 
   let ids: string[];

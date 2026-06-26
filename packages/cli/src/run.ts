@@ -20,7 +20,8 @@ import {
   applyProfileByName,
   LocalSandboxProvider,
   compile,
-  DefaultToolRegistry,
+  seededRegistry,
+  SUBMIT_RESULT_TOOL,
   defaultPiCommand,
   resolveNodeModel,
   loadModelTiers,
@@ -159,13 +160,16 @@ export interface DryRunPlanOpts {
 
 /**
  * Render the realized per-node `pi` command(s) for a compiled workflow — the dry-run preview. PURE: it
- * resolves each node's toolset (the same `DefaultToolRegistry` the runner uses) and builds the headless
- * command via `defaultPiCommand`, but spawns NOTHING. A node whose declared tools are not in the builtin
- * catalog (a template that binds runtime-only tools like `submit_result`) still renders — its unresolved
- * tools are NOTED rather than crashing the free preview.
+ * resolves each node's toolset (the SEEDED registry the canonical run path now assembles via
+ * `assembleRunTools`) and builds the headless command via `defaultPiCommand`, but spawns NOTHING. A node
+ * whose declared tools are not in the catalog still renders — its unresolved tools are NOTED rather than
+ * crashing the free preview. (G11) Seeding here stops the free preview from falsely reporting `oc.*`/`mcp.*`
+ * as unresolved.
  */
 export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
-  const registry = new DefaultToolRegistry();
+  // `seededRegistry()` alone DROPS the first-party `submit_result` (catalog.ts:58), so re-add it — the SAME
+  // superset `assembleRunTools` builds — else a node declaring `submit_result` falsely reads UNRESOLVED.
+  const registry = seededRegistry([SUBMIT_RESULT_TOOL]);
   const promptDir = opts.promptDir ?? '_pi';
   const provider = opts.provider ?? 'cp';
   // G1 — resolve the SAME per-node effective model/provider the runner will (read-only global config).
