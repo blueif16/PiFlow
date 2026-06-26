@@ -8,9 +8,10 @@
 > ✅ **G5**, ✅ **G6** all shipped. G1 per-node model routing landed (`runner/model-routing.ts`, template
 > carries `model/provider/tier`, dry-run prints the effective model). G6 `agentType` presets landed
 > (`workflow/agent-preset.ts` `mergePreset`, init seeds, GUI chip icons + "Basis" view mode). **Fusion
-> nodes** (T2.x — siblings + judge sub-DAG expansion) also shipped — the compile-time expansion precedent
-> G9 should reuse. **Remaining:** **G7, G8, G9** (not started) · **G3** PARTIAL (fusion delivers the
-> judge/best-of-N verb; `verify`/`loop-until-dry`/`completeness` templates still to ship) · **G10** PARTIAL
+> nodes** (T2.x — siblings + judge sub-DAG expansion) also shipped — the precedent G9 reused. ◑ **G9**
+> shipped v1 (`expandSubworkflow` — dep-wired sub-DAG splice; `inputs`/`outputs` path-rewiring + catalog
+> deferred to v2). **Remaining:** **G7, G8** (not started; designs ready) · **G3** PARTIAL (fusion delivers
+> the judge/best-of-N verb; `verify`/`loop-until-dry`/`completeness` templates still to ship) · **G10** PARTIAL
 > (a separate telemetry backlog — `remaining-telemetry-features.md` — covers truncation/retries/cache/tool
 > charts; tok/s rate + per-phase budgets still unbuilt; cost stays blocked upstream).
 
@@ -34,7 +35,7 @@ are, in priority order:
 6. **`agentType` consumption** — §G6 · ✅ shipped
 7. **Background + auto-continue** — §G7 · ⬜ not started
 8. **Structured-output repair loop** — §G8 · ⬜ not started
-9. **Saved & nested (sub-)workflows** — §G9 · ⬜ not started
+9. **Saved & nested (sub-)workflows** — §G9 · ◑ shipped (v1: dep-wired splice)
 10. tok/s + per-phase budgets (telemetry) — §G10 · ◑ PARTIAL (telemetry backlog open; tok/s + budgets unbuilt)
 
 Everything else is parity or a place where **we are ahead** (§3).
@@ -299,12 +300,20 @@ full fresh node re-run (`io.retries`).
 **How we close it.** On a return-schema miss, one bounded repair re-prompt to the same node process
 before counting a full `io.retries` attempt.
 
-### G9 — Saved & nested (sub-)workflows · severity: LOW–MED · effort: MED–HIGH · ⬜ NOT STARTED
+### G9 — Saved & nested (sub-)workflows · severity: LOW–MED · effort: MED–HIGH · ◑ SHIPPED (v1)
 
-> **Design:** `wiring-g9-subworkflow.md`. G9 is a near-mechanical **port of the shipped `expandFusion`**:
-> a `subworkflow` block expands (async) before compile, between profile and fusion in `entry.ts`, reusing
-> fusion's id-namespacing + disjoint-dir + in-memory-prompt discipline. The "saved workflow" half is a
-> read-only `~/.piflow/workflows/` catalog convention, not a core feature. Unblocks G3 as sub-DAGs.
+> **Done (2026-06-25):** `workflow/subworkflow/expand.ts` `expandSubworkflow` — a pre-compile spec→spec
+> transform (async; runs in `entry.ts` between profile elision and `expandFusion`) that REPLACES a
+> `node.subworkflow` node with the referenced sub-template's nodes: id-namespaced under X (`X__<child>`),
+> child entry nodes inherit X's upstream deps, every parent dep on X rewired to the child terminal(s).
+> Template `ref` resolves via `loadTemplate` relative to the template root (full §8 gate); cycles /
+> depth-cap / unresolvable refs throw `SubworkflowConfigError`. +9 tests (mutation-checked). Mirrors the
+> `expandFusion` precedent. Design: `wiring-g9-subworkflow.md`.
+>
+> **Deferred (v2):** `subworkflow.inputs`/`outputs` path-rewiring (v1 wires by `dependsOn` + the
+> `{{RUN}}`-relative path convention, so the child terminal must write the path the parent expects; X's own
+> contract is not transferred to the exit). The read-only `~/.piflow/workflows/` catalog (bare-name refs)
+> is also deferred — v1 resolves path refs relative to the template root.
 
 **PDW.** `workflow('name', args)` runs a saved workflow inline (shares caps), one level deep
 (`src/workflow.ts:607-632`); `/workflows save` turns a run into a `/<name>` command
@@ -388,8 +397,10 @@ optional per-stage token budget. Cost stays blocked until pi reports it.
 4. ~~**G6 `agentType` presets**~~ — ✅ SHIPPED 2026-06-25 (`workflow/agent-preset.ts` `mergePreset`,
    author-time expansion, GUI chip icons + "Basis" view mode). + **Fusion nodes** (T2.x) shipped — the
    compile-time sub-DAG expansion precedent G9 reuses.
-5. **G9 sub-DAG composition** + **G3 quality-verb node templates** — NEXT, MED+. G9 first (reuse the
-   `expandFusion` compile-time expansion), then G3 patterns (`verify`/`loop-until-dry`/`completeness`) ship
-   as composable sub-DAGs on top; fusion already covers the judge/best-of-N verb. (Research in flight.)
-6. **G8 repair loop**, **G7 detach**, **G10 tok/s + budgets** — LOW, opportunistic. (G7/G8 research in
-   flight; G10 telemetry tracked in `remaining-telemetry-features.md`.)
+5. ~~**G9 sub-DAG composition**~~ — ◑ SHIPPED v1 2026-06-25 (`expandSubworkflow`; dep-wired splice +
+   namespacing + cycle/depth guards; `inputs`/`outputs` path-rewiring + catalog deferred to v2). **G3
+   quality-verb node templates** — NEXT: `verify`/`loop-until-dry`/`completeness` ship as composable
+   sub-DAGs on top of G9; fusion already covers the judge/best-of-N verb.
+6. **G8 repair loop**, **G7 detach**, **G10 tok/s + budgets** — designs ready (`wiring-g7-detach.md`,
+   `wiring-g8-repair-loop.md`). G8 modifies the core `runNode` path (needs the exec→validate closure
+   extraction); G7 is CLI-only (`--detach` threading the shipped `checkpointReply:'default'`).
