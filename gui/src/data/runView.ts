@@ -102,6 +102,21 @@ export async function loadPreview(run: string, overrides: Record<string, string>
   return (await res.json()) as RunView;
 }
 
+/** BAKE the current fusion overrides into THIS run (POST /__piflow/save-run) — rewrites the run's
+ *  `.pi/workflow.json` + `run.json` to the edited structure (NOT the template). Returns ok/error. */
+export async function saveRunFusion(run: string, overrides: Record<string, string>): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const q = encodeURIComponent(JSON.stringify(overrides));
+    const res = await fetch(`/__piflow/save-run/${encodeURIComponent(run)}?overrides=${q}`, { method: "POST" });
+    if (res.ok) return { ok: true };
+    let error = `${res.status} ${res.statusText}`;
+    try { const body = await res.json(); if (body?.error) error = body.error; } catch { /* keep status */ }
+    return { ok: false, error };
+  } catch (e) {
+    return { ok: false, error: String((e as Error)?.message ?? e) };
+  }
+}
+
 /** (G6) A preset's branding, as the catalog endpoint returns it (the node carries only `agentType`). */
 export interface AgentDisplay { label?: string; icon?: string; color?: string; }
 /** agentType id → its display branding, from `~/.piflow/agents/` via `/__piflow/agents.json`. */
