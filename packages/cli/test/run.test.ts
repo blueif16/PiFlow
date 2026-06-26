@@ -286,6 +286,50 @@ describe('piflow run — LIVE branch routes through core runFromTemplate, thread
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (G7) DETACH / UNATTENDED — `--detach` runs the workflow UNATTENDED: it threads the already-shipped
+// (G5) `checkpointReply: 'default'` so a backgrounded run takes each checkpoint's declared default
+// instead of parking forever. The CLI never threaded this before — the load-bearing G7 gap.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('piflow run — --detach (unattended) threads checkpointReply', () => {
+  it('parseRunArgs recognizes --detach', () => {
+    expect(parseRunArgs([TEMPLATE_MIN, '--detach']).detach).toBe(true);
+    expect(parseRunArgs([TEMPLATE_MIN]).detach).toBeFalsy();
+  });
+
+  it('runTemplate threads checkpointReply:"default" into runFromTemplate when --detach', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gdetach', args: {}, sandbox: 'inmemory', detach: true },
+      deps,
+    );
+    expect(optsSeen?.checkpointReply).toBe('default');
+  });
+
+  it('an ATTENDED run (no --detach) does NOT set checkpointReply (it parks for the courier)', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gattended', args: {}, sandbox: 'inmemory' },
+      deps,
+    );
+    expect(optsSeen?.checkpointReply).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (B2) CANONICAL HOME WINS — a template under `.piflow/<wf>/template/` resolves the run to its canonical
 // `.piflow/<wf>/runs/<id>/` home, and `--out` can NEVER relocate it (observation reads the fixed home).
 // These FAIL if the precedence regresses to `parsed.outDir ?? canonicalHome` (the old --out-wins order).
