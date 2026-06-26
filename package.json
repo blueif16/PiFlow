@@ -14,9 +14,13 @@
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "npm run build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@modelcontextprotocol/server-everything": "^2026.1.26",
     "@modelcontextprotocol/server-memory": "^2026.1.26",
     "@types/node": "^24.0.0",
