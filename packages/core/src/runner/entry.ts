@@ -15,6 +15,7 @@ import { applyProfileByName } from '../workflow/profile.js';
 import { loadTemplate } from '../workflow/template/loader.js';
 import { instantiateRun } from '../workflow/template/instantiate.js';
 import { expandFusion, type FusionExpandOpts } from '../workflow/fusion/expand.js';
+import { expandSubworkflow, SubworkflowConfigError } from '../workflow/subworkflow/expand.js';
 import { loadFusionConfig } from './fusion-config.js';
 import { loadModelTiers } from './model-routing.js';
 import { runWorkflow, type RunOptions, type RunResult } from './runner.js';
@@ -65,6 +66,16 @@ export async function runFromConfig(config: ResolvedRunConfig): Promise<RunResul
   // Apply the active run PROFILE (elide nodes by the declared predicate, rewire deps) BEFORE compile.
   // No profile + no defaultProfile ⇒ the spec is returned verbatim (the full DAG).
   spec = applyProfileByName(spec, (runOpts as RunOptions).profile);
+  // (G9) Inline subworkflow-activated nodes as sub-DAGs BEFORE fusion + compile. The literal-spec consumer
+  // path has no template dir to resolve a `ref` against, so a `ref` here is a loud error (subworkflow refs
+  // are a template-path feature). No subworkflow node ⇒ the spec is returned unchanged (loadChild unused).
+  spec = await expandSubworkflow(spec, {
+    loadChild: (ref) => {
+      throw new SubworkflowConfigError(
+        `subworkflow ref "${ref}" cannot be resolved on the literal-spec run path (runFromConfig) — use a template run (runFromTemplate)`,
+      );
+    },
+  });
   // (Phase 2) Expand fusion-activated nodes into siblings + a judge AFTER profile elision (never expand a
   // dropped node) and BEFORE compile (the compiler draws siblings→judge from the generated reads/produces).
   // No fusion node ⇒ the spec is returned unchanged.
@@ -105,6 +116,12 @@ export async function runFromTemplate(templateDir: string, opts: RunFromTemplate
   await instantiateRun(templateDir, runDir, { workspace });
   // (2.5) apply the active run PROFILE (elide nodes by the declared predicate, rewire deps) BEFORE compile.
   let spec = applyProfileByName(loaded, (runOpts as RunOptions).profile);
+  // (2.55) (G9) inline subworkflow-activated nodes as sub-DAGs — AFTER profile (never expand a dropped node),
+  // BEFORE fusion + compile. A `ref` resolves to a sub-template dir relative to the template root; the child
+  // loads through the SAME fail-closed §8 gate. No subworkflow node ⇒ the spec is returned unchanged.
+  spec = await expandSubworkflow(spec, {
+    loadChild: (ref) => loadTemplate(path.resolve(templateDir, ref)),
+  });
   // (2.6) (Phase 2) expand fusion-activated nodes into siblings + judge — AFTER profile elision, BEFORE compile.
   spec = expandFusion(spec, fusionExpandOpts());
   // (3) build the DAG + (4) run it, collecting into the SAME run root.

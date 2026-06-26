@@ -48,6 +48,10 @@ export type { AgentPreset, PresetMergeable } from './workflow/agent-preset.js';
 // nodes via `agentType`. The verbatim Appendix-A prompt bodies + token fillers live in `fusion/prompts`.
 export { expandFusion, FusionConfigError } from './workflow/fusion/expand.js';
 export type { FusionDefaults, FusionExpandOpts } from './workflow/fusion/expand.js';
+// (G9) Saved & nested sub-workflows: the pre-compile sub-DAG inlining (runs before `expandFusion`). It
+// REPLACES a `node.subworkflow` node with the referenced sub-template's nodes, id-namespaced under it.
+export { expandSubworkflow, SubworkflowConfigError, DEFAULT_MAX_DEPTH } from './workflow/subworkflow/expand.js';
+export type { SubworkflowExpandOpts } from './workflow/subworkflow/expand.js';
 export {
   FUSION_PRESETS,
   FUSION_JUDGE_MOA,
