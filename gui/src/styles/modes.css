@@ -169,6 +169,44 @@
 .ds-artrow__size { color: var(--ds-text-tertiary); font-variant-numeric: tabular-nums; flex: none; }
 .ds-artrow--more { color: var(--ds-text-tertiary); font-style: italic; }
 
+/* ── NodeFusionToggle: the ONE interactive node strip (Fusion mode) — moa / best-of-n ──────────────
+   Unlike NodeModeStrip (decoration, pointer-events off) this strip TAKES clicks: each button activates
+   the SDK fusion expansion for the node. Anchored just below the card like the info strips. */
+.ds-fusiontoggle {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  pointer-events: auto;                  /* interactive — the only node strip that is */
+  display: flex;
+  gap: var(--ds-space-1);
+}
+.ds-fusiontoggle__btn {
+  flex: 1;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-bg-surface);
+  border-radius: var(--ds-radius-sm);
+  cursor: pointer;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              color var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-fusiontoggle__btn:hover { background: var(--ds-bg-hover); }
+.ds-fusiontoggle__btn:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.ds-fusiontoggle__btn.is-active {
+  background: var(--ds-accent);
+  border-color: var(--ds-accent);
+  color: #fff;
+  font-weight: var(--ds-weight-medium);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ds-mode-btn { transition: none; }
+  .ds-fusiontoggle__btn { transition: none; }
 }

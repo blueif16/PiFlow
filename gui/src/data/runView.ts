@@ -87,6 +87,21 @@ export async function loadRunView(run: string): Promise<RunView> {
   return (await res.json()) as RunView;
 }
 
+/** Fetch a FUSION/STRUCTURE PREVIEW for a run's template with per-node fusion overrides applied
+ *  (`{ "<nodeId>": "moa" | "best-of-n" }`). The `/__piflow/preview/<run>` endpoint re-compiles the
+ *  template through the SDK's OWN `withNodeFusion → expandFusion → compile → previewView` and returns the
+ *  SAME RunView shape — so the canvas renders the real siblings+judge DAG, never a view-local rewrite. */
+export async function loadPreview(run: string, overrides: Record<string, string>): Promise<RunView> {
+  const q = encodeURIComponent(JSON.stringify(overrides));
+  const res = await fetch(`/__piflow/preview/${encodeURIComponent(run)}?overrides=${q}`);
+  if (!res.ok) {
+    let detail = `${res.status} ${res.statusText}`;
+    try { const body = await res.json(); if (body?.error) detail = body.error; } catch { /* keep status */ }
+    throw new Error(`Fusion preview failed for "${run}": ${detail}`);
+  }
+  return (await res.json()) as RunView;
+}
+
 /** (G6) A preset's branding, as the catalog endpoint returns it (the node carries only `agentType`). */
 export interface AgentDisplay { label?: string; icon?: string; color?: string; }
 /** agentType id → its display branding, from `~/.piflow/agents/` via `/__piflow/agents.json`. */

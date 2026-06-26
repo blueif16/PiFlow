@@ -18,6 +18,7 @@ import * as motion from "motion/react-client";
 import { useExpand } from "./ExpandContext";
 import { useViewMode } from "./ViewModeContext";
 import { NodeModeStrip } from "./NodeModeStrip";
+import { NodeFusionToggle } from "./NodeFusionToggle";
 import { ProgressBar } from "./ProgressBar";
 import type { FieldTone } from "./FieldBlock";
 import type { RunViewNode } from "../data/runView";
@@ -218,7 +219,7 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
 
       <Handle type="source" position={Position.Right} className="ds-handle" />
 
-      {mode && <NodeModeStrip mode={mode} data={data} />}
+      {mode === "fusion" ? <NodeFusionToggle nodeId={id} /> : mode && <NodeModeStrip mode={mode} data={data} />}
     </motion.div>
   );
 }
