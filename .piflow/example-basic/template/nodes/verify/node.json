@@ -1,0 +1,24 @@
+{
+  "id": "verify",
+  "phase": "verify",
+  "deps": ["execute"],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "submit_result"], "deny": ["write", "edit"] },
+  "inject": ["{{RUN}}/out/result.md", "{{RUN}}/plan/plan.md"],
+  "contract": {
+    "artifacts": [],
+    "owns": [],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "required"
+  },
+  "return": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["status"],
+    "properties": {
+      "status": { "type": "string", "enum": ["pass", "fail"] },
+      "notes": { "type": "string" }
+    }
+  },
+  "policy": { "fail": "block" }
+}

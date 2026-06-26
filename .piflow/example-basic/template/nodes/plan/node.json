@@ -1,0 +1,17 @@
+{
+  "id": "plan",
+  "phase": "plan",
+  "deps": ["explore"],
+  "agentType": "plan",
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": [] },
+  "inject": ["{{RUN}}/findings/survey.md"],
+  "contract": {
+    "artifacts": ["plan/plan.md"],
+    "owns": ["plan/**"],
+    "readScope": ["{{RUN}}", "{{WORKSPACE}}"],
+    "returnMode": "optional"
+  },
+  "checks": { "post": [{ "kind": "non-empty", "path": "plan/plan.md" }] },
+  "policy": { "fail": "block" }
+}

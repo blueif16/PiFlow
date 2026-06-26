@@ -1,0 +1,1 @@
+Review out/result.md against plan/plan.md. Judge whether the result satisfies the plan; do not modify any file. This is a bespoke gate node — it inherits from no agent preset (the GUI 'Basis' mode shows it as "bespoke · no base"). Return your verdict as the fenced JSON tail (status: pass | fail, plus notes).

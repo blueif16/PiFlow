@@ -1,0 +1,17 @@
+{
+  "id": "execute",
+  "phase": "execute",
+  "deps": ["plan"],
+  "agentType": "general-purpose",
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "edit", "bash", "submit_result"], "deny": [] },
+  "inject": ["{{RUN}}/plan/plan.md"],
+  "contract": {
+    "artifacts": ["out/result.md"],
+    "owns": ["out/**"],
+    "readScope": ["{{RUN}}", "{{WORKSPACE}}"],
+    "returnMode": "optional"
+  },
+  "checks": { "post": [{ "kind": "non-empty", "path": "out/result.md" }] },
+  "policy": { "fail": "block" }
+}

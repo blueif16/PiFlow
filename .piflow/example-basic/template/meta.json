@@ -1,0 +1,6 @@
+{
+  "id": "example-basic",
+  "name": "example-basic",
+  "description": "Example piflow workflow demonstrating agent-type inheritance (G6): explore → plan → execute, each BASED ON a Claude Code default agent preset, then a bespoke verify gate. Open the GUI 'Basis' view mode (key b) to see each node's base agent.",
+  "phases": ["explore", "plan", "execute", "verify"]
+}

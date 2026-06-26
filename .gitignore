@@ -20,3 +20,6 @@ gui/public/runs/*/.pi/
 # `piflow run` from this repo stages per-node prompts/configs into the cwd (transient, regenerable).
 /_pi/
 /.pi/
+
+# piflow example workflows: the template is committed; per-run threads are regenerable.
+.piflow/*/runs/

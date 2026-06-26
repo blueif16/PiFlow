@@ -1,0 +1,17 @@
+{
+  "id": "explore",
+  "phase": "explore",
+  "deps": [],
+  "agentType": "explore",
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": [] },
+  "inject": ["{{RUN}}/spec/request.json"],
+  "contract": {
+    "artifacts": ["findings/survey.md"],
+    "owns": ["findings/**"],
+    "readScope": ["{{RUN}}", "{{WORKSPACE}}"],
+    "returnMode": "optional"
+  },
+  "checks": { "post": [{ "kind": "non-empty", "path": "findings/survey.md" }] },
+  "policy": { "fail": "block" }
+}
