@@ -77,8 +77,11 @@ export interface RunDeps {
   runFromConfig?: (config: ResolvedRunConfig) => Promise<RunResult>;
   /** The LIVE template-run join — loadTemplate → instantiateRun → compile → runWorkflow, INSIDE core. */
   runFromTemplate?: (templateDir: string, opts: RunFromTemplateOpts) => Promise<RunResult>;
-  /** Factory for the `--sandbox local` real-exec provider (injectable so a test asserts the instance). */
-  makeLocalProvider?: () => SandboxProvider;
+  /**
+   * Factory for the `--sandbox local` real-exec provider (injectable so a test asserts the instance).
+   * `dangerous:true` ⇒ the `danger-full-access` bypass (read-scope jail OFF); default ⇒ secure-by-default.
+   */
+  makeLocalProvider?: (opts?: { dangerous?: boolean }) => SandboxProvider;
   /** Mint a memorable run name not in `existing` (default: core `generateRunName`; a test injects a stub). */
   generateName?: (existing: string[]) => string;
   /** List the run-name basenames already present under a runs home (default: read the dir; '' if absent). */
@@ -86,8 +89,19 @@ export interface RunDeps {
   print?: (line: string) => void;
 }
 
-/** Which sandbox backend the LIVE run uses. `inmemory` = core default (no `pi`); `local` = real in-place exec. */
-export type SandboxChoice = 'inmemory' | 'local';
+/**
+ * Which sandbox backend the LIVE run uses:
+ *   - `inmemory` (default) = core in-memory provider, NO `pi` (structural/dry).
+ *   - `local` = real in-place `pi` exec, SECURE BY DEFAULT — each node's reads are jailed to its declared
+ *     `readScope` + toolchain (kernel-enforced via seatbelt on darwin; unsandboxed-with-a-warning until the
+ *     Linux bwrap backend lands).
+ *   - `danger-full-access` = real in-place `pi` exec with the read-scope jail OFF (the agent can read the
+ *     whole filesystem) — the loud, explicit escape hatch.
+ */
+export type SandboxChoice = 'inmemory' | 'local' | 'danger-full-access';
+
+/** The accepted `--sandbox` values — a typo (e.g. `seatbelt`) must error loudly, not silently degrade to inmemory. */
+export const SANDBOX_CHOICES: readonly SandboxChoice[] = ['inmemory', 'local', 'danger-full-access'];
 
 /** The parsed `run` argv. `args` carries the repeated `--arg k=v` pairs (and the run id, mirrored in). */
 export interface ParsedRunArgs {
@@ -108,7 +122,7 @@ export interface ParsedRunArgs {
   /** Active run PROFILE name → resolved against the template's declared `profiles` (elides nodes before compile). */
   profile?: string;
   args: Record<string, string>;
-  /** Sandbox backend: `inmemory` (default, core in-memory provider) or `local` (real in-place `pi` exec). */
+  /** Sandbox backend: `inmemory` (default) · `local` (real in-place, read-scope-jailed) · `danger-full-access`. */
   sandbox: SandboxChoice;
   /** The pi `--provider` gateway → threaded to the runner as `providerName`. */
   provider?: string;
@@ -227,15 +241,17 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
  * print the realized commands, then STOP (no model). LIVE: route through core `runFromTemplate` (the
  * template-run join — loadTemplate → instantiateRun → compile → runWorkflow, INSIDE core), THREADING the
  * resolved options the CLI collected: `args` (`{{arg.*}}` delivery), `workspace` (`{{WORKSPACE}}` root),
- * the sandbox provider (`--sandbox local` ⇒ a real `LocalSandboxProvider`; `inmemory` ⇒ omit, core
- * default), `providerName` (pi `--provider`), `thinking`, `model`, and the from/until resume window.
+ * the sandbox provider (`--sandbox local` ⇒ a real `LocalSandboxProvider`, read-scope-jailed by default;
+ * `danger-full-access` ⇒ the jail OFF; `inmemory` ⇒ omit, core default), `providerName` (pi `--provider`),
+ * `thinking`, `model`, and the from/until resume window.
  * `runFromConfig` stays in the seam for library consumers that already hold a spec.
  */
 export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Promise<RunResult | undefined> {
   const loadTemplate = deps.loadTemplate ?? coreLoadTemplate;
   const instantiateRun = deps.instantiateRun ?? coreInstantiateRun;
   const runFromTemplate = deps.runFromTemplate ?? coreRunFromTemplate;
-  const makeLocalProvider = deps.makeLocalProvider ?? (() => new LocalSandboxProvider());
+  const makeLocalProvider =
+    deps.makeLocalProvider ?? ((o?: { dangerous?: boolean }) => new LocalSandboxProvider({ enforceReadScope: !o?.dangerous }));
   const generateName = deps.generateName ?? ((existing: string[]) => generateRunName(existing));
   const listExistingRuns = deps.listExistingRuns ?? listExistingRunNames;
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
@@ -329,8 +345,28 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   }
 
   // ── LIVE: route through the core template-run join, threading every collected option. ──
-  // --sandbox local ⇒ the real in-place exec provider; inmemory ⇒ omit (core's in-memory default).
-  const provider = parsed.sandbox === 'local' ? makeLocalProvider() : undefined;
+  // Reject a typo'd backend loudly rather than silently degrading to `inmemory` (= no model, a confusing
+  // no-op for someone who asked for isolation).
+  if (!SANDBOX_CHOICES.includes(parsed.sandbox)) {
+    throw new Error(
+      `piflowctl run: unknown --sandbox "${parsed.sandbox}" (expected one of ${SANDBOX_CHOICES.join(', ')}).`,
+    );
+  }
+  // Provider selection. `inmemory` ⇒ omit (core's in-memory default, no model). `local` ⇒ the real
+  // in-place exec provider, SECURE BY DEFAULT (read-scope jail on). `danger-full-access` ⇒ the same
+  // provider with the jail OFF — surfaced loudly so the bypass is never silent.
+  let provider: SandboxProvider | undefined;
+  if (parsed.sandbox === 'local') {
+    provider = makeLocalProvider();
+    print(
+      process.platform === 'darwin'
+        ? 'piflowctl run: read-scope isolation ON — each node is jailed to its declared readScope (seatbelt, kernel-enforced).'
+        : `piflowctl run: ⚠ read-scope isolation is NOT enforced on ${process.platform} yet (Linux bwrap backend unwired) — running UNSANDBOXED. Run on macOS for enforcement.`,
+    );
+  } else if (parsed.sandbox === 'danger-full-access') {
+    provider = makeLocalProvider({ dangerous: true });
+    print('piflowctl run: ⚠ DANGER — read-scope isolation BYPASSED (--sandbox danger-full-access): the agent can read your entire filesystem.');
+  }
   // (G7) `--detach` ⇒ UNATTENDED: take each (G5) checkpoint's declared default so a backgrounded run never
   // hangs on a human gate. The run is already durable; the caller backgrounds the process (`&`/harness).
   if (parsed.detach) {
