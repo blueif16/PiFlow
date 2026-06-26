@@ -88,14 +88,19 @@ function sliceBetween(nodes: NodeIntent[], fromLabel: string, toLabel: string): 
   return nodes.filter((n) => inSlice.has(n.label));
 }
 
-/** Deep-clone a NodeIO with reads/produces/artifacts/sandbox-write rewritten through `remap`. */
-function remapIo(io: NodeIO, remap: (f: string) => string, extraReads: string[]): NodeIO {
+/**
+ * Deep-clone a NodeIO with reads/produces/artifacts/sandbox-write rewritten through `remap` (the file
+ * namespacing) AND `dependsOn` rewritten through `depRemap` (in-slice node labels → their same-attempt
+ * clones). A deps-coordinated slice (game-omni: dependsOn set, empty reads) chains ONLY if its label deps
+ * are remapped too — copying them verbatim would leave a clone pointing at attempt 1.
+ */
+function remapIo(io: NodeIO, remap: (f: string) => string, extraReads: string[], depRemap: (l: string) => string): NodeIO {
   const reads = [...new Set([...(io.reads ?? []).map(remap), ...extraReads])];
   return {
     reads,
     produces: (io.produces ?? []).map(remap),
     ...(io.externalInputs ? { externalInputs: [...io.externalInputs] } : {}),
-    ...(io.dependsOn ? { dependsOn: [...io.dependsOn] } : {}),
+    ...(io.dependsOn ? { dependsOn: io.dependsOn.map(depRemap) } : {}),
     artifacts: (io.artifacts ?? []).map((a) => ({ ...a, path: remap(a.path) })),
     ...(io.checks ? { checks: io.checks } : {}),
     ...(io.policy ? { policy: io.policy } : {}),
@@ -112,7 +117,7 @@ function consultPreamble(evidence: string[]): string {
 }
 
 /** Expand ONE reroute-activated verify node V into [gate, ...clone-slice] × (max-1) attempts. */
-function expandNode(spec: WorkflowSpec, v: NodeIntent): { generated: NodeIntent[]; downstreamRemap: Map<string, string> } {
+function expandNode(spec: WorkflowSpec, v: NodeIntent): { generated: NodeIntent[]; downstreamRemap: Map<string, string>; downstreamDepRemap: Map<string, string> } {
   const r = v.reroute as RerouteSpec;
   if (r.max < 1) throw new RerouteConfigError(`reroute on "${v.label}" requires max >= 1 (got ${r.max})`);
 
@@ -129,6 +134,7 @@ function expandNode(spec: WorkflowSpec, v: NodeIntent): { generated: NodeIntent[
   }
 
   const slice = sliceBetween(spec.nodes, target.label, v.label);
+  const sliceLabels = new Set(slice.map((n) => n.label)); // in-slice labels whose deps remap to the clone
   const ns = slugify(v.label, 0); // the attempt namespace key (V's slug)
   const dir = (i: number): string => `reroute-${ns}-r${i}`;
   const evidence = r.evidence ?? [];
@@ -161,7 +167,8 @@ function expandNode(spec: WorkflowSpec, v: NodeIntent): { generated: NodeIntent[
         ...(n.model ? { model: n.model } : {}),
         ...(n.provider ? { provider: n.provider } : {}),
         ...(n.tier ? { tier: n.tier } : {}),
-        io: remapIo(n.io, remap, extraReads),
+        // in-slice label deps → the same-attempt clone's SLUG id (what `compile`/`inferEdges` resolve on).
+        io: remapIo(n.io, remap, extraReads, (l) => (sliceLabels.has(l) ? slugify(`${l}__r${i}`, 0) : l)),
         sandbox: { ...(n.sandbox ?? {}), write: (n.io.produces ?? []).map(remap) },
       };
       cloneIds.push(slugify(cloned.label, 0));
@@ -200,7 +207,11 @@ function expandNode(spec: WorkflowSpec, v: NodeIntent): { generated: NodeIntent[
     const last = lastV[idx];
     if (last && last !== canon) downstreamRemap.set(canon, last);
   });
-  return { generated, downstreamRemap };
+  // Deps-coordinated convergence: a downstream that depends on V BY LABEL is re-pointed onto the LAST
+  // attempt's V clone (`V__r{max}`). Only when clones exist (max >= 2); else the file remap above suffices.
+  const downstreamDepRemap = new Map<string, string>();
+  if (r.max >= 2) downstreamDepRemap.set(slugify(v.label, 0), slugify(`${v.label}__r${r.max}`, 0));
+  return { generated, downstreamRemap, downstreamDepRemap };
 }
 
 /**
@@ -212,7 +223,8 @@ export function expandReroute(spec: WorkflowSpec): WorkflowSpec {
   if (!spec.nodes.some((n) => n.reroute)) return spec;
 
   const generated: NodeIntent[] = [];
-  const downstreamRemap = new Map<string, string>(); // canonical V output → last-attempt namespaced output
+  const downstreamRemap = new Map<string, string>(); // canonical V output → last-attempt namespaced output (files)
+  const downstreamDepRemap = new Map<string, string>(); // rerouted V label → last-attempt clone label (deps)
   const skipLabels = new Set<string>(); // the canonical V nodes whose `reroute` is consumed (drop the field)
 
   for (const node of spec.nodes) {
@@ -220,18 +232,24 @@ export function expandReroute(spec: WorkflowSpec): WorkflowSpec {
     const out = expandNode(spec, node);
     generated.push(...out.generated);
     for (const [k, v] of out.downstreamRemap) downstreamRemap.set(k, v);
+    for (const [k, v] of out.downstreamDepRemap) downstreamDepRemap.set(k, v);
     skipLabels.add(node.label);
   }
 
   // Build the new node list: every original node (with `reroute` stripped from the activated ones and
   // downstream reads re-pointed onto the last attempt's output), then the generated gate+clone chain.
   const remapRead = (f: string): string => downstreamRemap.get(f) ?? f;
+  const remapDep = (l: string): string => downstreamDepRemap.get(l) ?? l;
   const nodes: NodeIntent[] = spec.nodes.map((n) => {
     // Re-point a downstream node's reads (NOT a node that itself produces the canonical file).
     const producesCanonical = (n.io.produces ?? []).some((p) => downstreamRemap.has(p));
     let next = n;
     if (!producesCanonical && (n.io.reads ?? []).some((f) => downstreamRemap.has(f))) {
       next = { ...n, io: { ...n.io, reads: (n.io.reads ?? []).map(remapRead) } };
+    }
+    // Deps-coordinated convergence: re-point a downstream `dependsOn` on a rerouted V onto its last clone.
+    if ((next.io.dependsOn ?? []).some((d) => downstreamDepRemap.has(d))) {
+      next = { ...next, io: { ...next.io, dependsOn: (next.io.dependsOn ?? []).map(remapDep) } };
     }
     if (skipLabels.has(n.label)) {
       const { reroute: _drop, ...rest } = next;
