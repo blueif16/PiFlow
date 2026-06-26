@@ -261,10 +261,15 @@ overridable, and branded.
 
 ### G7 — Background + auto-continue delivery · severity: LOW–MED · effort: LOW · ⬜ NOT STARTED
 
+> **Design:** `wiring-g7-detach.md`. Key finding: the gap is smaller than it looks — runs are already
+> durable + detachable + pollable (`run.json.done` + `watchRun`); the real miss is the CLI never threads
+> the shipped `RunOptions.checkpointReply:'default'` (so a detached checkpoint parks forever) + no liveness
+> signal. Recommendation: a thin `--detach` (reuse G5), `--notify`, and a `run.json.updatedAt` heartbeat.
+
 **PDW.** Background by default: the turn ends immediately, a live panel tracks runs, and each result is
 delivered back so the conversation auto-continues.
 
-**piflow.** `piflow run` is **foreground-only** (`packages/cli/src/run.ts:243-288`); backgrounding is
+**piflow.** `piflow run` is **foreground-only** (`packages/cli/src/run.ts:278-296`); backgrounding is
 left to the shell; the GUI Companion's talk-back is a commented-out stub
 (`gui/src/components/Companion.tsx:55`). The `watchRun` SSE/poll stream exists (read-only).
 
@@ -276,13 +281,18 @@ and be re-invoked on completion.
 
 ### G8 — Structured-output repair loop · severity: LOW–MED · effort: LOW · ⬜ NOT STARTED
 
+> **Design:** `wiring-g8-repair-loop.md`. PDW's same-session re-prompt does NOT transfer (we're
+> `--no-session`, stdin closed). Recommendation: a **fresh bounded repair call in the still-alive
+> sandbox** built from the failing output (`runner.ts:1033`) + ajv errors + schema, before counting an
+> `io.retries` attempt; new per-node `maxRepairAttempts` (default 0); envelope hash unchanged.
+
 **PDW.** On a schema miss the subagent is re-prompted up to `maxSchemaRetries` (tools restricted to
 `structured_output`), then strict prose extraction, else a surfaced `SCHEMA_NONCOMPLIANCE`
 (`src/agent.ts:113-155`).
 
 **piflow.** We validate the artifact schema (`runner/schema.ts`, ajv-2020) and the return-schema tail
-(`runner.ts:735`) and **block/warn** — but there is **no repair re-prompt**; the only retry is a full
-fresh node re-run (`io.retries`).
+(`runner.ts:1049-1054`) and **block/warn** — but there is **no repair re-prompt**; the only retry is a
+full fresh node re-run (`io.retries`).
 
 **Delta.** No bounded in-node repair.
 
@@ -290,6 +300,11 @@ fresh node re-run (`io.retries`).
 before counting a full `io.retries` attempt.
 
 ### G9 — Saved & nested (sub-)workflows · severity: LOW–MED · effort: MED–HIGH · ⬜ NOT STARTED
+
+> **Design:** `wiring-g9-subworkflow.md`. G9 is a near-mechanical **port of the shipped `expandFusion`**:
+> a `subworkflow` block expands (async) before compile, between profile and fusion in `entry.ts`, reusing
+> fusion's id-namespacing + disjoint-dir + in-memory-prompt discipline. The "saved workflow" half is a
+> read-only `~/.piflow/workflows/` catalog convention, not a core feature. Unblocks G3 as sub-DAGs.
 
 **PDW.** `workflow('name', args)` runs a saved workflow inline (shares caps), one level deep
 (`src/workflow.ts:607-632`); `/workflows save` turns a run into a `/<name>` command
