@@ -12,7 +12,7 @@ import { spawn } from 'child_process';
 // (@piflow/core/observe, via ./model.mjs) — `buildModel`/`discoverNamespaces` map a `readRunModel`
 // snapshot into this view shape; `subscribeRun` folds the live `watchRun` node-event stream into the
 // per-node text tail. The TUI opens NO `.pi/` file itself. The view layer below is unchanged.
-import { discoverNamespaces, buildModel, subscribeRun } from './model.mjs';
+import { discoverNamespaces, discoverFleet, buildModel, subscribeRun } from './model.mjs';
 import { StageDag, runToMermaid, dagViewport, scrollStart } from './dag.mjs';
 
 export const html = htm.bind(React.createElement);
@@ -372,8 +372,9 @@ export function App({ config }) {
   const refresh = useCallback(async () => {
     // A transient discover failure (or a momentary empty read while a run writes its files) must NOT blank
     // the whole UI — that empty frame was a periodic flash. Keep the last good list instead.
+    // FLEET mode discovers ALL registered repos' runs (config.fleet); SINGLE mode projects the one run dir.
     let namespaces = null;
-    try { namespaces = await discoverNamespaces(config); } catch { /* transient — keep last good */ }
+    try { namespaces = config.fleet ? await discoverFleet() : await discoverNamespaces(config); } catch { /* transient — keep last good */ }
     if (namespaces && namespaces.length) setNss(namespaces);
     const list = namespaces && namespaces.length ? namespaces : nssRef.current;
     const ns = list[Math.min(ni, Math.max(0, list.length - 1))];
