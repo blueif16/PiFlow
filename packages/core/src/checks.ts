@@ -247,10 +247,12 @@ export function consultPreamble(n: FailureSignals): string {
 }
 
 /**
- * Preserve `io.retries` verbatim as a `RetrySpec`: max=retries, classes=['infra','degenerate'] — today's
- * exact semantics (a transient model/timeout failure retries; a real capability/contract breach does not,
- * because today `io.retries` fires only on error/blocked transients). Undefined/0 ⇒ max 0 (one attempt).
+ * Preserve `io.retries` verbatim as a `RetrySpec`: today's `runNodeWithRetries` re-ran on ANY `error`/
+ * `blocked` verdict up to N times, so legacy retry is UNFILTERED (`on: undefined` ⇒ every non-`halt`
+ * class). The only refinement over the pre-M4 loop is the `halt` guard (a missing UPSTREAM input —
+ * escalation/retry cannot manufacture one), a strict safety improvement that never spins uselessly.
+ * Undefined/0 ⇒ max 0 (one attempt, today's exact behavior).
  */
 export function legacyRetry(retries: number | undefined): RetrySpec {
-  return { max: Math.max(0, retries ?? 0), on: ['infra', 'degenerate'] };
+  return { max: Math.max(0, retries ?? 0) };
 }
