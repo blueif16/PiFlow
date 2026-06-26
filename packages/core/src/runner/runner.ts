@@ -26,17 +26,20 @@ import type {
   ResolveResult,
   ExecResult,
   SecretResolver,
+  Escalator,
   PiCommandOptions,
   ReturnMode,
   RunState,
   CheckpointSpec,
+  RetrySpec,
+  FailureClass,
 } from '../types.js';
-import { defaultSecretResolver } from '../types.js';
+import { defaultSecretResolver, defaultEscalator } from '../types.js';
 import { DefaultToolRegistry } from '../tools/registry.js';
 import { verifyToolBinding } from '../tools/verify.js';
 import { InMemorySandboxProvider } from '../sandbox/index.js';
 import { markersFromNode, emitMarkers } from '../contract.js';
-import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } from '../checks.js';
+import { effectiveChecks, evaluateChecks, actionForVerdict, classifyFailure, consultPreamble, legacyRetry, type FileBytes, type FailureSignals } from '../checks.js';
 import { validateArtifactSchemas, defaultSchemaValidator, type SchemaValidator } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
@@ -152,6 +155,18 @@ export interface RunOptions {
   providerName?: string;
   /** Optional model pin. */
   model?: string;
+  /**
+   * (G1) Routing config injection seam — the activatable tier map + pi's models.json index. Omit ⇒ the
+   * runner loads both from disk (`loadModelTiers`/`loadModelsIndex`, today's behavior). A test injects a
+   * deterministic map so escalation's `escalate.tier`/`escalate.model` resolution is model-free.
+   */
+  modelRouting?: { tiers: ModelTiers; modelsIndex: Map<string, string> };
+  /**
+   * (G12 — M4) The notification host seam — where `notify` (and a `policy.fail:'notify'`-class surface)
+   * binds to a real channel. Mirrors `SecretResolver`: core owns the action VOCABULARY, the host owns the
+   * BINDING. Omit ⇒ `defaultEscalator` (a no-op that `console.warn`s), so a notify never crashes a run.
+   */
+  escalator?: Escalator;
   /** Reasoning-depth cap forwarded to the command builder as `pi --thinking <v>`. Omit ⇒ no flag. */
   thinking?: string | boolean;
   /** Extra `-e <path>` extensions forwarded to the builder, emitted BEFORE the staged tool extension. */
@@ -513,6 +528,14 @@ interface RunContext {
   providerKind: SandboxProvider['kind'];
   /** Per-node secret resolver (the scoped-token / sealing-broker seam). Undefined ⇒ `defaultSecretResolver`. */
   secretResolver?: SecretResolver;
+  /** (G12 — M4) The notify host seam. Undefined ⇒ `defaultEscalator` (warn → console). */
+  escalator: Escalator;
+  /**
+   * (G12 — M4) The per-node FailureSignals `runNode` computed at its verdict point, keyed by node id —
+   * the EMPIRICAL inputs `classifyFailure`/`consultPreamble` read in `runNodeWithRetries` (the retry /
+   * escalate lanes). Set on every terminal verdict; absent ⇒ no failure to classify (the node ran ok).
+   */
+  failureSignals: Map<string, FailureSignals>;
   /** Run-level default for the return handshake (a node's own `returnMode` wins; else this; else the artifact heuristic). */
   returnProtocol?: ReturnMode;
   /** `{{WORKSPACE}}` — the canonical out-of-thread tree tokens resolve against (default repoRoot). */
@@ -752,11 +775,61 @@ async function finishCheckpoint(
   return rec;
 }
 
+/**
+ * (G12 — M4) The trigger-action runtime — the bounded retry-by-failure-class + escalate-with-evidence
+ * lanes around `runNode`, ported from run.mjs `runNodeWithEscalation`. ADDITIVE: a node that declares
+ * NEITHER `io.retry` NOR `io.escalate` runs `legacyRetry(io.retries)` — today's EXACT semantics (max
+ * extra attempts on a transient error/blocked, classes ['infra','degenerate']; no escalation).
+ *
+ * On each failed attempt the runner DERIVES a `FailureClass` from the signals `runNode` captured (never a
+ * self-score) and routes: `halt` → stop immediately (escalation can't manufacture a missing input);
+ * a same-model `retry` while the class is in the retry set AND budget remains; else, once the retry
+ * budget is spent (or `escalate.after` is reached), ONE cross-family `escalate` on the stronger
+ * `escalate.tier`/`escalate.model`-resolved model fed `consultPreamble` evidence. The last attempt wins.
+ */
 async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope: RunScope): Promise<NodeStatusRecord> {
-  const maxAttempts = 1 + Math.max(0, node.io.retries ?? 0);
+  const retry: RetrySpec = node.io.retry ?? legacyRetry(node.io.retries);
+  const escalate = node.io.escalate;
+  const retryAllows = (cls: FailureClass): boolean => (retry.on ? retry.on.includes(cls) : cls !== 'halt');
+  const escAllows = (cls: FailureClass): boolean => (escalate?.on ? escalate.on.includes(cls) : cls !== 'halt');
+
   let rec = await runNode(ctx, node, scope);
-  for (let attempt = 2; attempt <= maxAttempts && (rec.status === 'error' || rec.status === 'blocked'); attempt++) {
-    rec = await runNode(ctx, node, scope);
+  let retriesLeft = Math.max(0, retry.max);
+  let escalatedYet = false;
+  // `escalate.after` (default: after the retry budget is spent) gates how many same-model attempts run
+  // before the consult. With no explicit `after`, escalation waits until `retriesLeft` reaches 0.
+  let attemptsRun = 1;
+
+  while (rec.status === 'error' || rec.status === 'blocked') {
+    const sig = ctx.failureSignals.get(node.id);
+    if (!sig) break; // no captured signals (e.g. a pre-exec bind/stage error) — nothing to classify.
+    const cls = classifyFailure(sig);
+    if (cls === 'halt') break; // a missing upstream input — refuse to spin a retry/escalate.
+
+    const afterReached = escalate?.after !== undefined ? attemptsRun >= escalate.after : retriesLeft <= 0;
+    if (retriesLeft > 0 && retryAllows(cls) && !(escalate && afterReached && escAllows(cls))) {
+      // Same-model retry: a FRESH attempt (re-seed + re-exec), no consult prefix, the node's own model.
+      retriesLeft--;
+      attemptsRun++;
+      rec = await runNode(ctx, node, scope);
+    } else if (escalate && !escalatedYet && escAllows(cls)) {
+      // Cross-family CONSULT: resolve the stronger target through model-routing, prepend the verified
+      // evidence. ONE escalation only (a second would just re-spend on the same class).
+      escalatedYet = true;
+      attemptsRun++;
+      let eff: EffectiveModel;
+      try {
+        eff = resolveNodeModel(
+          { model: escalate.model, tier: escalate.tier },
+          { model: ctx.model, provider: ctx.providerName, tiers: ctx.modelRouting.tiers, modelsIndex: ctx.modelRouting.modelsIndex },
+        );
+      } catch {
+        break; // an unresolvable escalation tier ⇒ keep the failed record (loud via its own issue).
+      }
+      rec = await runNode(ctx, node, scope, { promptPrefix: consultPreamble(sig), model: eff.model, provider: eff.provider });
+    } else {
+      break; // budget spent and no escalation applies — the failed record stands.
+    }
   }
   return rec;
 }
@@ -817,11 +890,24 @@ async function runRerouteGate(ctx: RunContext, node: NodeSpec): Promise<NodeStat
   return rec;
 }
 
-async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promise<NodeStatusRecord> {
+/**
+ * (G12 — M4) A per-attempt OVERRIDE for an ESCALATION/CONSULT re-run: prepend the verified-evidence
+ * `promptPrefix` (consultPreamble) and route to a STRONGER `model`/`provider`. Absent on the cheap first
+ * attempt and on a same-model `retry` (those re-run with the node's own prompt + resolved model).
+ */
+interface AttemptOverride {
+  promptPrefix?: string;
+  model?: string;
+  provider?: string;
+}
+
+async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: AttemptOverride = {}): Promise<NodeStatusRecord> {
   const rec = ctx.status.nodes[node.id];
   rec.status = 'running';
   rec.startedAt = nowISO();
   const t0 = Date.now();
+  // A re-run STARTS FRESH: clear the prior attempt's signals so a successful re-run leaves none.
+  ctx.failureSignals.delete(node.id);
   await writeStatus(ctx.outDir, ctx.status);
 
   // PRE-NODE BIND CHECK ("Verified, not trusted", spine #8): the node DECLARED its toolset; confirm
@@ -927,10 +1013,11 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     }
 
     // The prompt carries the machine-readable contract markers (artifacts/owns/read-scope/tools) so a
-    // future node-contract extension can self-gate; we append them exactly as run.mjs does.
+    // future node-contract extension can self-gate; we append them exactly as run.mjs does. An escalation
+    // attempt PREPENDS the verified-evidence consult prefix (M4 — runNodeWithEscalation's promptPrefix).
     const markers = emitMarkers(markersFromNode(node, resolved));
     const promptFile = path.posix.join(nodeStage, 'prompt.md');
-    await sandbox.writeFile(promptFile, resolvedPrompt + (markers ? `\n\n${markers}` : ''));
+    await sandbox.writeFile(promptFile, (over.promptPrefix ?? '') + resolvedPrompt + (markers ? `\n\n${markers}` : ''));
 
     // Stage the generated tool `-e` extension (binds the node's declared sdk/mcp tools) and pass its
     // in-sandbox path to the command builder. Absent when the node selected only builtins.
@@ -968,8 +1055,11 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
     } catch (e) {
       return finishNode(ctx, node, rec, t0, 'error', (e as Error).message, []);
     }
-    rec.model = eff.model ?? null; // record the effective model (null ⇒ pi's provider default)
-    const cmd = ctx.buildCommand(node, resolved, { promptFile, model: eff.model, provider: eff.provider, extensionFile }, ctx.commandOpts);
+    // M4 — an escalation attempt overrides the resolved model/provider with the stronger target.
+    const effModel = over.model ?? eff.model;
+    const effProvider = over.provider ?? eff.provider;
+    rec.model = effModel ?? null; // record the effective model (null ⇒ pi's provider default)
+    const cmd = ctx.buildCommand(node, resolved, { promptFile, model: effModel, provider: effProvider, extensionFile }, ctx.commandOpts);
     rec.command = cmd;
 
     const nodeTimeoutMs = node.sandbox.timeoutMs ?? ctx.watchdog.nodeTimeoutMs;
@@ -1181,6 +1271,28 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promis
 
     if (killed === 'timeout') rec.killedTimeout = true;
     if (killed === 'stall') rec.killedStall = true;
+
+    // (G12 — M4) CAPTURE the EMPIRICAL failure signals for `runNodeWithRetries` (the retry / escalate
+    // lanes). Set ONLY on a non-ok verdict so a clean node leaves none — `classifyFailure`/`consultPreamble`
+    // read EXACTLY these (artifact stat, schema gate, integrity checks, watchdog kills, stderr, return
+    // parse), never a model self-score. The schema-only-breach flag drives the G8 repair lane below.
+    if (st !== 'ok') {
+      ctx.failureSignals.set(node.id, {
+        status: st,
+        issues: [...issues],
+        summary: parsed?.summary ?? '',
+        missing,
+        schemaInvalid: schema.invalid,
+        returnSchemaInvalid,
+        failedChecks: failedChecks.map((c) => ({ kind: c.kind, path: c.path, reason: c.reason })),
+        killedTimeout: killed === 'timeout',
+        killedStall: killed === 'stall',
+        exitCode: result.code,
+        stderrTail: (result.stderr || '').slice(-400),
+        parsedOk: parsed != null,
+      });
+    }
+
     const summary = killed
       ? `killed (${killed})`
       : parsed?.summary ?? result.stdout.trim().slice(-200);
@@ -1405,8 +1517,9 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     execRunner: opts.execRunner ?? defaultExecRunner,
     providerName: opts.providerName ?? 'cp',
     model: opts.model,
-    // G1 — load the global routing config once (read-only; graceful absence ⇒ inactive tiers + empty index).
-    modelRouting: { tiers: loadModelTiers(), modelsIndex: loadModelsIndex() },
+    // G1 — the global routing config (read-only; graceful absence ⇒ inactive tiers + empty index). An
+    // injected `modelRouting` (tests / a host) wins so escalation's tier/model resolution stays model-free.
+    modelRouting: opts.modelRouting ?? { tiers: loadModelTiers(), modelsIndex: loadModelsIndex() },
     commandOpts: { thinking: opts.thinking, extraExtensions: opts.extensions },
     recordEvents: opts.recordEvents ?? true,
     onEvent: opts.onEvent,
@@ -1414,6 +1527,8 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     mcpConfig: opts.mcpConfig,
     providerKind: provider.kind,
     secretResolver: opts.secretResolver,
+    escalator: opts.escalator ?? defaultEscalator,
+    failureSignals: new Map(),
     returnProtocol: opts.returnProtocol,
     workspace: opts.workspace ?? repoRoot,
     args: opts.args ?? {},

@@ -550,6 +550,32 @@ export type SecretResolver = (
 /** The default resolver — preserves today's behavior: read the raw value straight from `process.env`. */
 export const defaultSecretResolver: SecretResolver = (name) => process.env[name];
 
+// ── ESCALATOR (horizontal seam — notify binding) ─────────────────────────────
+// G12 — M4. The host seam where a model-free `notify` action binds to a real channel (Slack/email/…).
+// Mirrors `SecretResolver`: core owns the action VOCABULARY (the `channel` key + payload paths), the host
+// owns the BINDING — no product noun (no Slack URL, no channel name) ever lives in core. Default: a no-op
+// that warns, so an authored `notify` never crashes a run on a host that wired no escalator.
+
+/** A user-facing notification fired by a `notify` action: a host-seam channel key + the gathered facts. */
+export interface EscalationNotice {
+  /** The node that failed/notified. */
+  nodeId: string;
+  /** The host-seam channel key the host maps to a real destination (e.g. 'ops-alerts'). */
+  channel: string;
+  /** A short human summary of why it fired. */
+  summary: string;
+  /** The verified evidence (issue lines / artifact paths) — never a model self-score. */
+  evidence?: string[];
+}
+
+/** The notify host seam. Called when a `notify` action fires. Omit ⇒ `defaultEscalator` (warn → console). */
+export type Escalator = (notice: EscalationNotice) => void | Promise<void>;
+
+/** The default escalator — preserves a no-op host: warn to console so a notify is visible but never fatal. */
+export const defaultEscalator: Escalator = (notice) => {
+  console.warn(`[notify:${notice.channel}] ${notice.nodeId} — ${notice.summary}`);
+};
+
 // ── TOOL REGISTRY (horizontal seam — the searchable catalog) ──────────────────
 
 /**
