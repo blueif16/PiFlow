@@ -779,6 +779,27 @@ export interface RerouteGate {
 }
 
 /**
+ * (G9) A node's SUBWORKFLOW activation (template `node.json` `subworkflow`). Like `fusion`, it lives ONLY
+ * on the authoring/intent layer: `expandSubworkflow(spec)` consumes it BEFORE `compile` (and BEFORE
+ * `expandFusion`), REPLACING the activated node X with the referenced sub-template's nodes — id-namespaced
+ * under X, X's upstream deps inherited by the child entry nodes, and every parent dep on X rewired to the
+ * child's terminal node(s). So by the time a node is materialized into a dense `NodeSpec`, no `subworkflow`
+ * remains (which is why `NodeSpec` carries no `subworkflow` field). Mirrors the fusion expansion precedent.
+ */
+export interface SubworkflowSpec {
+  /** The sub-template to inline — a path (node-relative) or a catalog name, resolved by the injected loader. */
+  ref: string;
+  /**
+   * RESERVED (not yet wired): parent→child input wiring `{ childExternalInput: parentArtifactPath }`. Until
+   * implemented, the parent + child coordinate by the existing `{{RUN}}`-relative path convention (the child
+   * terminal writes the path the parent expects). A later increment rewrites paths from this map.
+   */
+  inputs?: Record<string, string>;
+  /** RESERVED (not yet wired): child→parent output wiring `{ parentArtifact: childArtifactPath }`. See `inputs`. */
+  outputs?: Record<string, string>;
+}
+
+/**
  * The AUTHORED subset of a node — what the COMPOSE agent fills. Mechanics (id, edges, stage/lane,
  * sandbox profile, provider/workspace defaults) are SDK-filled by `compile`. `phase` is generic node
  * metadata (a display label, §5) carried through so a PROFILE predicate can select nodes by it — it
@@ -818,6 +839,8 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
    * the dense `NodeSpec` (the `fusion?`/`checkpoint?` precedent). Secret-bearing values carry `$VAR` refs.
    */
   mcp?: { servers?: Record<string, unknown>; ref?: string };
+  /** (G9) Subworkflow activation — consumed by `expandSubworkflow` BEFORE compile/fusion; never reaches the dense NodeSpec. */
+  subworkflow?: SubworkflowSpec;
 };
 
 /**

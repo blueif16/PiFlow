@@ -1,0 +1,20 @@
+{
+  "id": "consensus",
+  "phase": "consensus",
+  "deps": ["review-a", "review-b"],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "contract": {
+    "artifacts": ["verify/verdict.json"],
+    "owns": ["verify/verdict.json"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "checks": {
+    "post": [
+      { "kind": "json-parses", "path": "verify/verdict.json" },
+      { "kind": "field-present", "path": "verify/verdict.json", "param": "verdict", "severity": "fail" }
+    ]
+  },
+  "policy": { "fail": "block", "warn": "warn" }
+}

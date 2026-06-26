@@ -175,6 +175,48 @@ describe('piflow run --dry-run — realized commands, no model', () => {
     expect(out).toMatch(/\bpi\b/);
   });
 
+  // (G9) the dry-run must show the EXPANDED subworkflow sub-DAG — the SAME nodes the live run executes.
+  // A preview that printed the un-expanded `gate` node (the subworkflow reference holder) and OMITTED the
+  // spliced reviewer/consensus children would be a lying preview (run.ts promises the SAME expanded DAG).
+  // Builds a parent template with a `gate` node referencing the shipped `verify` sub-template as a subdir,
+  // then asserts the dry-run plan carries the namespaced child nodes and DROPS the un-expanded parent node.
+  it('run --dry-run renders the EXPANDED subworkflow sub-DAG (namespaced children), not the un-expanded ref node', async () => {
+    const verifySrc = path.resolve(HERE, '../../../templates/quality/verify');
+    const tplSub = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-cli-subwf-'));
+    // parent: prep → gate(subworkflow→verify) → publish; verify is copied UNDER the parent so `ref` resolves.
+    await fs.writeFile(
+      path.join(tplSub, 'meta.json'),
+      JSON.stringify({ id: 'sub-parent', name: 'sub-parent', description: 'subworkflow parent fixture', phases: ['prep', 'gate', 'publish'] }, null, 2),
+    );
+    const mkNode = async (id: string, def: object, prompt: string) => {
+      const dir = path.join(tplSub, 'nodes', id);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(path.join(dir, 'node.json'), JSON.stringify(def, null, 2));
+      await fs.writeFile(path.join(dir, 'prompt.md'), prompt);
+    };
+    const contract = (artifact: string) => ({ artifacts: [artifact], owns: [artifact], readScope: ['{{RUN}}'], returnMode: 'optional' });
+    await mkNode('prep', { id: 'prep', phase: 'prep', deps: [], prompt: { file: 'prompt.md' }, tools: { allow: ['read', 'write', 'submit_result'] }, contract: contract('verify/subject.md') }, 'stage the subject');
+    await mkNode('gate', { id: 'gate', phase: 'gate', deps: ['prep'], prompt: { file: 'prompt.md' }, tools: { allow: ['read', 'write', 'submit_result'] }, contract: contract('verify/verdict.json'), subworkflow: { ref: 'verify' } }, 'verify the subject');
+    await mkNode('publish', { id: 'publish', phase: 'publish', deps: ['gate'], prompt: { file: 'prompt.md' }, tools: { allow: ['read', 'write', 'submit_result'] }, contract: contract('out/done.md') }, 'act on the verdict');
+    await fs.cp(verifySrc, path.join(tplSub, 'verify'), { recursive: true });
+
+    const ws = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-subwf-ws-'));
+    const out = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-subwf-out-'));
+    const lines: string[] = [];
+    await runTemplate(
+      { templateDir: tplSub, dryRun: true, run: 'subdry', args: {}, workspace: ws, outDir: out },
+      { runFromConfig: async () => ({ status: {} as never, outDir: out }), print: (s) => lines.push(s) },
+    );
+    const printed = lines.join('\n');
+    // the spliced sub-DAG (namespaced reviewers + consensus) AND the untouched prep/publish appear in the plan.
+    for (const id of ['prep', 'gate-review-a', 'gate-review-b', 'gate-consensus', 'publish']) expect(printed).toContain(`[${id}]`);
+    // the un-expanded subworkflow REFERENCE node must NOT survive as a standalone node — the splice REPLACED it.
+    expect(printed).not.toMatch(/\[gate\]/);
+    // 2 reviewers + consensus + prep + publish = 5 nodes (vs the lying 3-node un-expanded preview).
+    expect(printed).toContain('5 nodes');
+    for (const d of [tplSub, ws, out]) await fs.rm(d, { recursive: true, force: true });
+  });
+
   // (Phase 2 · T2.4/T2.6) the dry-run must show the EXPANDED fusion DAG — the SAME sub-graph the live run
   // executes. A preview that printed the un-expanded `draft` node would be a lying preview.
   it('run --dry-run renders the EXPANDED fusion DAG (panel siblings + judge) with per-node models', async () => {
@@ -282,6 +324,50 @@ describe('piflow run — LIVE branch routes through core runFromTemplate, thread
       deps,
     );
     expect(optsSeen?.provider).toBeUndefined();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (G7) DETACH / UNATTENDED — `--detach` runs the workflow UNATTENDED: it threads the already-shipped
+// (G5) `checkpointReply: 'default'` so a backgrounded run takes each checkpoint's declared default
+// instead of parking forever. The CLI never threaded this before — the load-bearing G7 gap.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('piflow run — --detach (unattended) threads checkpointReply', () => {
+  it('parseRunArgs recognizes --detach', () => {
+    expect(parseRunArgs([TEMPLATE_MIN, '--detach']).detach).toBe(true);
+    expect(parseRunArgs([TEMPLATE_MIN]).detach).toBeFalsy();
+  });
+
+  it('runTemplate threads checkpointReply:"default" into runFromTemplate when --detach', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gdetach', args: {}, sandbox: 'inmemory', detach: true },
+      deps,
+    );
+    expect(optsSeen?.checkpointReply).toBe('default');
+  });
+
+  it('an ATTENDED run (no --detach) does NOT set checkpointReply (it parks for the courier)', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gattended', args: {}, sandbox: 'inmemory' },
+      deps,
+    );
+    expect(optsSeen?.checkpointReply).toBeUndefined();
   });
 });
 

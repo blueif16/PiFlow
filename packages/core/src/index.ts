@@ -52,6 +52,10 @@ export type { FusionDefaults, FusionExpandOpts } from './workflow/fusion/expand.
 // acyclic clones (the `expandFusion` move), with a zero-pi existence-gate short-circuit (#17). Runs before
 // `compile`, immediately after `expandFusion`.
 export { expandReroute, RerouteConfigError } from './workflow/reroute/expand.js';
+// (G9) Saved & nested sub-workflows: the pre-compile sub-DAG inlining (runs before `expandFusion`). It
+// REPLACES a `node.subworkflow` node with the referenced sub-template's nodes, id-namespaced under it.
+export { expandSubworkflow, SubworkflowConfigError, DEFAULT_MAX_DEPTH } from './workflow/subworkflow/expand.js';
+export type { SubworkflowExpandOpts } from './workflow/subworkflow/expand.js';
 export {
   FUSION_PRESETS,
   FUSION_JUDGE_MOA,

@@ -192,6 +192,9 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   // (M5 · G13) The action:rerouteTo sugar lowered to the canonical M3 NodeIntent.reroute — consumed by
   // `expandReroute` BEFORE compile (the `fusion?` precedent: never reaches the dense NodeSpec). Additive.
   if (actions.reroute) intent.reroute = actions.reroute;
+  // (G9) Carry a SUBWORKFLOW activation block verbatim onto the intent when authored — `expandSubworkflow`
+  // consumes it before fusion + compile (the node is replaced by the referenced sub-template). Additive.
+  if (n.def.subworkflow) intent.subworkflow = n.def.subworkflow;
   return intent;
 }
 

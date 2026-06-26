@@ -27,6 +27,7 @@ import {
   loadModelTiers,
   loadModelsIndex,
   expandFusion,
+  expandSubworkflow,
   loadFusionConfig,
   nodePromptFile,
   generateRunName,
@@ -113,6 +114,13 @@ export interface ParsedRunArgs {
   model?: string;
   /** Max node processes in-flight at once (the G2 concurrency cap) → runner `maxConcurrent`. Default 8, clamped [1,16]. */
   maxConcurrent?: number;
+  /**
+   * (G7) UNATTENDED mode — threads the (G5) `checkpointReply: 'default'` so any human checkpoint takes its
+   * declared default instead of parking forever (a backgrounded run never hangs). The run itself is already
+   * durable/detached (it survives the controller dying); pair `--detach` with `&` or a background runner to
+   * detach the PROCESS. Omit ⇒ ATTENDED: a checkpoint parks for the courier reply.
+   */
+  detach?: boolean;
 }
 
 /** Parse the flat `run` argv → `ParsedRunArgs`. First positional = the template dir. */
@@ -133,6 +141,7 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
     else if (k === '--thinking') out.thinking = argv[++i];
     else if (k === '--model') out.model = argv[++i];
     else if (k === '--max-concurrent') out.maxConcurrent = Number(argv[++i]);
+    else if (k === '--detach' || k === '--unattended') out.detach = true;
     else if (k === '--arg') {
       const kv = argv[++i] ?? '';
       const eq = kv.indexOf('='); // only the FIRST '=' splits k from v (values may contain '=').
@@ -265,6 +274,10 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // Apply the active profile (elide nodes by the declared predicate) so the dry-run plan reflects the
     // SAME reduced DAG the live run would execute — an unknown name errors loudly here too.
     let spec = applyProfileByName(loaded, parsed.profile);
+    // (G9) Inline subworkflow-activated nodes as sub-DAGs — AFTER profile, BEFORE fusion + compile —
+    // mirroring core's runFromTemplate (entry.ts) so the dry-run preview shows the SAME expanded DAG the
+    // live run executes (the child template loads through the same fail-closed §8 gate). Never lie.
+    spec = await expandSubworkflow(spec, { loadChild: (ref) => coreLoadTemplate(path.resolve(templateDir, ref)) });
     // (Phase 2) Expand fusion nodes (siblings + judge) — AFTER profile, BEFORE compile — so the dry-run
     // preview shows the SAME expanded DAG the live run (core's runFromTemplate) executes. Never lie.
     spec = expandFusion(spec, { defaults: loadFusionConfig().defaults, tiers: loadModelTiers() });
@@ -279,6 +292,11 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   // ── LIVE: route through the core template-run join, threading every collected option. ──
   // --sandbox local ⇒ the real in-place exec provider; inmemory ⇒ omit (core's in-memory default).
   const provider = parsed.sandbox === 'local' ? makeLocalProvider() : undefined;
+  // (G7) `--detach` ⇒ UNATTENDED: take each (G5) checkpoint's declared default so a backgrounded run never
+  // hangs on a human gate. The run is already durable; the caller backgrounds the process (`&`/harness).
+  if (parsed.detach) {
+    print(`piflow run: detached/unattended — checkpoints take their default; run dir: ${outDir} (monitor: piflow watch ${outDir})`);
+  }
   return runFromTemplate(templateDir, {
     runDir: outDir,
     run: runId,
@@ -296,6 +314,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     thinking: parsed.thinking,
     model: parsed.model,
     ...(parsed.maxConcurrent !== undefined ? { maxConcurrent: parsed.maxConcurrent } : {}),
+    ...(parsed.detach ? { checkpointReply: 'default' as const } : {}),
     ...(provider ? { provider } : {}),
   });
 }

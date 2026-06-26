@@ -1,0 +1,20 @@
+{
+  "id": "review-b",
+  "phase": "review",
+  "deps": [],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "contract": {
+    "artifacts": ["verify/review-b.json"],
+    "owns": ["verify/review-b.json"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "checks": {
+    "post": [
+      { "kind": "json-parses", "path": "verify/review-b.json" },
+      { "kind": "field-present", "path": "verify/review-b.json", "param": "verdict", "severity": "fail" }
+    ]
+  },
+  "policy": { "fail": "block", "warn": "warn" }
+}

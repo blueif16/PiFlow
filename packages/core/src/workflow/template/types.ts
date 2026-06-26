@@ -80,6 +80,20 @@ export interface TemplateNode {
     obligations?: boolean;
     verify?: boolean;
   };
+  /**
+   * (G9) Subworkflow activation → intent `subworkflow`, consumed by `expandSubworkflow` before compile/
+   * fusion: this node is REPLACED by the referenced sub-template's nodes (id-namespaced under it). A v1
+   * subworkflow node is a pure reference holder — author its `contract` so the child terminal writes the
+   * declared `artifacts` path (the parent's downstream reads it by the `{{RUN}}`-relative convention).
+   */
+  subworkflow?: {
+    /** The sub-template to inline — a path resolved relative to the template root (e.g. "subflows/verify"). */
+    ref: string;
+    /** RESERVED (not yet wired): parent→child input path-mapping. See `SubworkflowSpec.inputs`. */
+    inputs?: Record<string, string>;
+    /** RESERVED (not yet wired): child→parent output path-mapping. See `SubworkflowSpec.outputs`. */
+    outputs?: Record<string, string>;
+  };
 }
 
 /** The authored `meta.json` (template-format.md §5). */

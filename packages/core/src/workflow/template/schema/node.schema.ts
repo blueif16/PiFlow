@@ -227,6 +227,22 @@ export const nodeSchema = {
       description: 'The unified node-op envelope (G13) — one ordered list; each entry has exactly one body.',
       items: { $ref: '#/$defs/op' },
     },
+    subworkflow: {
+      // (G9) Opt this node into the SUB-DAG inlining: `expandSubworkflow` REPLACES the node with the
+      // referenced sub-template's nodes (id-namespaced under it), before fusion + compile. `ref` is the
+      // required path to the sub-template (relative to the template root). `inputs`/`outputs` are RESERVED
+      // for a follow-up that rewrites paths; until then the child terminal writes the node's declared
+      // artifact path (the `{{RUN}}`-relative handoff convention). Twin of the `fusion` block above.
+      type: 'object',
+      additionalProperties: false,
+      required: ['ref'],
+      description: 'Inline a sub-template as a sub-DAG in place of this node (G9). `ref` required.',
+      properties: {
+        ref: { type: 'string', minLength: 1, description: 'Path to the sub-template dir, relative to the template root (e.g. "subflows/verify").' },
+        inputs: { type: 'object', additionalProperties: { type: 'string' }, description: 'RESERVED (not yet wired): parent→child input path-mapping.' },
+        outputs: { type: 'object', additionalProperties: { type: 'string' }, description: 'RESERVED (not yet wired): child→parent output path-mapping.' },
+      },
+    },
   },
   $defs: {
     op: {
