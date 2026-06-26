@@ -55,6 +55,8 @@ export interface NodeStatusRecord {
   model?: string | null;
   /** Declarative integrity-check results (explicit ∪ auto fill-sentinel), when any were run. */
   checks?: CheckResult[];
+  /** (M5 · #11) PRE-gate results — the `when:'pre'` gate ops run over staged inputs BEFORE the model. */
+  preChecks?: CheckResult[];
   /** The effective return-handshake mode this node was judged under ('optional' | 'required'). */
   returnMode?: ReturnMode;
   /** Artifacts present but VIOLATING their declared schema (a contract breach → blocked). */

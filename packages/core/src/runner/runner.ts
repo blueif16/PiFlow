@@ -51,7 +51,7 @@ import {
   type ModelTiers,
   type EffectiveModel,
 } from './model-routing.js';
-import { resolveTokens, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
+import { resolveTokens, resolveAll, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
 import { stageSeed } from '../workflow/ops/seed.js';
 import { runMerge } from '../workflow/ops/merge.js';
 import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
@@ -960,6 +960,37 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
     );
   }
 
+  // The per-node resolver ctx — ONE ctx threads the prompt resolve, the seed/op resolution, AND the io/
+  // sandbox/checks PATH resolution (U7). `{{RUN}}` is the host run dir (the collection namespace); state is
+  // the barrier-merged RunState loaded for this stage.
+  const resolveCtx: ResolveCtx = { run: ctx.outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
+
+  // IO/SANDBOX TOKEN RESOLUTION AT LAUNCH (U7): make `{{arg.*}}`/`{{WORKSPACE}}`/`{{RUN}}`/`{{state.*}}`
+  // PHYSICAL in the node's CONTRACT paths — io.artifacts[].path, sandbox.read (read-scope), sandbox.write
+  // (owns), and checks[].path — so the existence gate stat()s, the DRIVER-* markers, and scope.create all
+  // consume the resolved path, never a raw `{{…}}` joined under the run dir with braces intact. SAME loud
+  // discipline as the prompt below: a missing arg/channel throws (MissingArgError/MissingChannelError) →
+  // the node fails cleanly with a clear issue, never a silently-unresolved io path. We resolve ONCE into a
+  // local `node` clone and thread it; the runner consumes `node.*` from here on (raw `srcNode` is untouched).
+  const srcNode = node;
+  try {
+    node = {
+      ...srcNode,
+      io: {
+        ...srcNode.io,
+        artifacts: srcNode.io.artifacts.map((a) => ({ ...a, path: resolveTokens(a.path, resolveCtx) })),
+        checks: srcNode.io.checks?.map((c) => (c.path ? { ...c, path: resolveTokens(c.path, resolveCtx) } : c)),
+      },
+      sandbox: {
+        ...srcNode.sandbox,
+        read: resolveAll(srcNode.sandbox.read, resolveCtx),
+        write: resolveAll(srcNode.sandbox.write, resolveCtx),
+      },
+    };
+  } catch (e) {
+    return finishNode(ctx, srcNode, rec, t0, 'error', `io token resolution failed: ${(e as Error).message}`, [], [(e as Error).message]);
+  }
+
   let sandbox: Sandbox;
   try {
     sandbox = await scope.create({
@@ -975,10 +1006,6 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
   } catch (e) {
     return finishNode(ctx, node, rec, t0, 'error', `sandbox create failed: ${(e as Error).message}`, []);
   }
-
-  // The per-node resolver ctx — ONE ctx threads the prompt resolve AND the seed/op resolution (U7). `{{RUN}}`
-  // is the host run dir (the collection namespace); state is the barrier-merged RunState loaded for this stage.
-  const resolveCtx: ResolveCtx = { run: ctx.outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
 
   try {
     // STAGE io.reads from the host run dir INTO the sandbox at the same relative path (filesystem-as-
@@ -1000,6 +1027,37 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
       }
     } catch (e) {
       return finishNode(ctx, node, rec, t0, 'error', `seed staging failed: ${(e as Error).message}`, [], [(e as Error).message]);
+    }
+
+    // (M5 · #11) PRE-GATE — fire the node's `when:'pre'` gate ops over the STAGED inputs BEFORE the model.
+    // The deprecated `checks.pre` lowered to these; today's render flattened pre→post so a pre-check never
+    // ran before the model. Here a blocking pre-gate failure fails the node WITHOUT ever spawning pi — the
+    // real firing site #11 needs. Each gate's `onFailure` (default 'block') gives its consequence; an
+    // `advisory`/`warn` gate is recorded but does not block. Reads the host run dir (= the staged inputs).
+    const preGates = (node.op ?? []).filter((o) => o.when === 'pre' && o.gate);
+    if (preGates.length) {
+      const preReadBytes = (rel: string): FileBytes => {
+        try {
+          const absPath = path.resolve(ctx.outDir, rel);
+          return { bytes: readFileSync(absPath, 'utf8'), size: statSync(absPath).size };
+        } catch {
+          return { bytes: null, size: 0 };
+        }
+      };
+      const preChecks = preGates.map((o) => ({
+        kind: o.gate!.kind,
+        path: o.gate!.path,
+        param: o.gate!.param,
+        // an advisory gate is a warn (never blocks); else the op's onFailure decides (warn ⇒ warn, else fail).
+        severity: (o.gate!.advisory || o.onFailure === 'warn' ? 'warn' : 'fail') as 'fail' | 'warn',
+      }));
+      const preResults = evaluateChecks(preChecks, preReadBytes);
+      rec.preChecks = preResults;
+      const blockingPre = preResults.filter((c, i) => c.verdict !== 'pass' && preChecks[i].severity !== 'warn');
+      if (blockingPre.length) {
+        const detail = blockingPre.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ');
+        return finishNode(ctx, node, rec, t0, 'blocked', `pre-gate FAILED (before the model) — ${detail}`, [], [`pre-gate: ${detail}`]);
+      }
     }
 
     // TOKEN RESOLUTION AT LAUNCH (U7): make `{{arg.*}}`/`{{WORKSPACE}}`/`{{RUN}}`/`{{state.*}}` PHYSICAL
