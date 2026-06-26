@@ -64,10 +64,13 @@ describe('expandReroute — bounded unroll into a forward-only DAG', () => {
     const { errors } = stagesOf(wf.nodes, edges);
     expect(errors).toEqual([]); // no "cycle detected among: …"
 
-    // Forward chaining: verify (attempt 1) → produce__r2 → verify__r2 → publish. No edge points BACKWARD
-    // into produce (attempt 1) from any clone.
+    // Forward chaining through the #17 existence-gate: verify (attempt 1) → verify__r2__gate → produce__r2
+    // → verify__r2 → publish. The gate (reading attempt-1's canonical artifact) sits BETWEEN the attempts,
+    // and no edge points BACKWARD into produce (attempt 1) from any clone.
+    const intoGate = wf.edges.filter((e) => e.to === 'verify-r2-gate').map((e) => e.from);
+    expect(intoGate).toContain('verify'); // the gate is fed by the failing attempt-1 verify's artifact
     const intoProduceR2 = wf.edges.filter((e) => e.to === 'produce-r2').map((e) => e.from);
-    expect(intoProduceR2).toContain('verify'); // the re-entry is gated by the failing attempt-1 verify
+    expect(intoProduceR2).toEqual(['verify-r2-gate']); // the re-entry root is gated, NOT a back-edge to verify
     const fromVerifyR2 = wf.edges.filter((e) => e.from === 'verify-r2').map((e) => e.to);
     expect(fromVerifyR2).toContain('publish'); // downstream survives, now fed by the LAST attempt
   });
@@ -93,10 +96,14 @@ describe('expandReroute — bounded unroll into a forward-only DAG', () => {
     expect(produceR2.sandbox?.write?.every((p) => p.startsWith('reroute-verify-r2/'))).toBe(true);
   });
 
-  it('chains TWO re-entries for max:3 (produce__r2→verify__r2→produce__r3→verify__r3), all acyclic', () => {
+  it('chains TWO re-entries for max:3 (gate→produce__r2→verify__r2→gate→produce__r3→verify__r3), all acyclic', () => {
     const out = expandReroute(specWith({ onFail: 'produce', max: 3 }));
+    // each re-entry attempt emits its own zero-pi existence-gate (#17) BEFORE its cloned body.
     expect(labels(out)).toEqual(
-      ['produce', 'produce__r2', 'produce__r3', 'publish', 'verify', 'verify__r2', 'verify__r3'].sort(),
+      [
+        'produce', 'produce__r2', 'produce__r3', 'publish', 'verify',
+        'verify__r2', 'verify__r2__gate', 'verify__r3', 'verify__r3__gate',
+      ].sort(),
     );
     const wf = compile(out);
     const { edges } = inferEdges(wf.nodes);

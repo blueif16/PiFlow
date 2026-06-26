@@ -48,6 +48,10 @@ export type { AgentPreset, PresetMergeable } from './workflow/agent-preset.js';
 // nodes via `agentType`. The verbatim Appendix-A prompt bodies + token fillers live in `fusion/prompts`.
 export { expandFusion, FusionConfigError } from './workflow/fusion/expand.js';
 export type { FusionDefaults, FusionExpandOpts } from './workflow/fusion/expand.js';
+// (G12 — M3) Bounded conditional reroute / self-fix: the pre-compile UNROLL of a QA loop into forward-only
+// acyclic clones (the `expandFusion` move), with a zero-pi existence-gate short-circuit (#17). Runs before
+// `compile`, immediately after `expandFusion`.
+export { expandReroute, RerouteConfigError } from './workflow/reroute/expand.js';
 export {
   FUSION_PRESETS,
   FUSION_JUDGE_MOA,

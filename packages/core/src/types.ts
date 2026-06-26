@@ -64,6 +64,13 @@ export interface NodeSpec {
    * — a node with no `checkpoint` behaves exactly as before. See `CheckpointSpec`.
    */
   checkpoint?: CheckpointSpec;
+  /**
+   * 7. (G12 — M3) When present, this is a GENERATED reroute existence-gate node: it spawns NO `pi`, stat()s
+   * the prior attempt's verify output, and (on a pass) copies it forward + marks the cloned re-entry body
+   * `reused` so it never spawns (#17). NOT author-reachable — `expandReroute` emits it pre-compile. Optional/
+   * additive: a node with no `rerouteGate` behaves exactly as before. See `RerouteGate`.
+   */
+  rerouteGate?: RerouteGate;
 }
 
 // 6 ── HUMAN CHECKPOINT (G5 — HITL) ────────────────────────────────────────────
@@ -593,6 +600,25 @@ export interface RerouteSpec {
 }
 
 /**
+ * (G12 — M3) The runner-facing marker on a GENERATED reroute GATE node — the zero-pi existence-gate
+ * preflight (#17). `expandReroute` emits it; the runner's `runRerouteGate` consumes it: it stat()s
+ * `artifact` (the prior attempt's canonical verify output) and, when present (the prior attempt PASSED),
+ * SHORT-CIRCUITS — it finishes the gate `ok` WITHOUT spawning pi, COPIES the passing artifact forward to
+ * each `copyTo` dest (so the next downstream node has its input), and marks every `skip` body id `reused`
+ * so the cloned re-entry NEVER spawns. Carried verbatim onto the dense `NodeSpec` (the `checkpoint?`
+ * precedent — a no-pi node-kind the runner specially handles). Additive: a node with no `rerouteGate`
+ * runs exactly as before.
+ */
+export interface RerouteGate {
+  /** The prior attempt's canonical verify artifact; its presence ⇒ the prior attempt PASSED ⇒ short-circuit. */
+  artifact: string;
+  /** On a pass, COPY the passing artifact forward to these dests (the next downstream reads them). */
+  copyTo: string[];
+  /** Body node ids to mark `reused` (skip-without-spawn) when the prior attempt passed. */
+  skip: string[];
+}
+
+/**
  * The AUTHORED subset of a node — what the COMPOSE agent fills. Mechanics (id, edges, stage/lane,
  * sandbox profile, provider/workspace defaults) are SDK-filled by `compile`. `phase` is generic node
  * metadata (a display label, §5) carried through so a PROFILE predicate can select nodes by it — it
@@ -607,6 +633,8 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
   ops?: NodeSpec['ops'];
   /** (G5) A human checkpoint on this node — carried verbatim onto the dense NodeSpec. */
   checkpoint?: NodeSpec['checkpoint'];
+  /** (G12 — M3) A generated reroute existence-gate marker — carried verbatim onto the dense NodeSpec. */
+  rerouteGate?: NodeSpec['rerouteGate'];
   /** (Phase 2) Fusion activation — consumed by `expandFusion` BEFORE compile; never reaches the dense NodeSpec. */
   fusion?: FusionSpec;
   /**

@@ -761,6 +761,62 @@ async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope: RunSco
   return rec;
 }
 
+/**
+ * (G12 — M3 · #17) Run a GENERATED reroute EXISTENCE-GATE node: stat the prior attempt's canonical verify
+ * artifact and SHORT-CIRCUIT the bounded re-entry when it is present. Spawns NO `pi`, holds no sandbox. On a
+ * PASS (the artifact exists): COPY it forward to each `copyTo` dest (so the downstream that was re-pointed
+ * onto this attempt's output has its input), MARK every cloned body id `reused` so it never spawns, write
+ * the gate's own `gate.ok` sentinel (the forward edge the re-entry root reads), and finish `ok`. On a MISS
+ * (the prior attempt failed): write the sentinel and finish `ok`, leaving the cloned body `pending` so the
+ * fix attempt runs. Mirrors `runCheckpoint` as a no-pi node-kind; the run loop calls it OUTSIDE the G2 limiter.
+ */
+async function runRerouteGate(ctx: RunContext, node: NodeSpec): Promise<NodeStatusRecord> {
+  const gate = node.rerouteGate!;
+  const rec = ctx.status.nodes[node.id];
+  rec.status = 'running';
+  rec.startedAt = nowISO();
+  const t0 = Date.now();
+
+  const priorOk = gate.artifact ? (await artifactState(path.resolve(ctx.outDir, gate.artifact), gate.artifact)).exists : false;
+  // The forward-edge sentinel (the re-entry root reads it, so the gate orders BEFORE the clones).
+  const sentinel = node.io.produces[0];
+  if (sentinel) {
+    const dest = path.resolve(ctx.outDir, sentinel);
+    await fs.mkdir(path.dirname(dest), { recursive: true });
+    await fs.writeFile(dest, priorOk ? 'pass' : 'fix');
+  }
+
+  if (priorOk) {
+    // Short-circuit: copy the passing artifact forward to this attempt's output(s), so the downstream node
+    // (re-pointed onto this attempt) reads it WITHOUT the clone running.
+    for (const to of gate.copyTo) {
+      const src = path.resolve(ctx.outDir, gate.artifact);
+      const dst = path.resolve(ctx.outDir, to);
+      await fs.mkdir(path.dirname(dst), { recursive: true });
+      try { await fs.copyFile(src, dst); } catch { /* best-effort: a missing src is the gate's own miss */ }
+    }
+    // Mark every cloned body `reused` — the run loop SKIPS a `reused` lane (it never spawns `pi`, never holds
+    // a slot). The bodies live in LATER stages (the gate is upstream), so flipping their seeded status here
+    // takes effect when the loop reaches them. This is the #17 short-circuit: the cloned bodies provably do
+    // not spawn on a passing attempt.
+    for (const id of gate.skip) {
+      const r = ctx.status.nodes[id];
+      if (r && r.status !== 'ok') r.status = 'reused';
+    }
+  }
+
+  const states = await Promise.all(
+    node.io.artifacts.map((a) => artifactState(path.resolve(ctx.outDir, a.path), a.path)),
+  );
+  rec.status = 'ok';
+  rec.endedAt = nowISO();
+  rec.durationMs = Date.now() - t0;
+  rec.artifacts = states;
+  rec.summary = priorOk ? 'reroute gate: prior attempt PASSED — re-entry short-circuited' : 'reroute gate: prior attempt failed — running fix';
+  await writeStatus(ctx.outDir, ctx.status);
+  return rec;
+}
+
 async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope): Promise<NodeStatusRecord> {
   const rec = ctx.status.nodes[node.id];
   rec.status = 'running';
@@ -1547,6 +1603,12 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
           // and it does NOT consume a concurrency slot or count against `maxNodesPerRun`. The
           // safety override already flipped a reused-but-missing-artifact node back to `pending`.
           if (ctx.status.nodes[id].status === 'reused') return Promise.resolve(ctx.status.nodes[id]);
+          // G12 (M3 · #17): a generated REROUTE EXISTENCE-GATE spawns NO `pi` — it stat()s the prior
+          // attempt's artifact and (on a pass) marks the cloned re-entry body `reused` so it never spawns.
+          // Like `reused`/`checkpoint` it BYPASSES the G2 limiter (no process) and does not count against
+          // `maxNodesPerRun`. It runs in an EARLIER stage than the body it skips (the gate sentinel is the
+          // forward edge), so flipping the body's seeded status here takes effect when the loop reaches it.
+          if (wf.nodes[id].rerouteGate) return runRerouteGate(ctx, wf.nodes[id]);
           // G5: a HUMAN CHECKPOINT spawns NO `pi` and PARKS waiting for a human — it must NOT hold a G2
           // limiter slot while parked, or a stage full of pending checkpoints deadlocks the pool. So it
           // BYPASSES the limiter entirely (like `reused`/`cappedRecord`, it never enters the gated lane)

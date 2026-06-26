@@ -15,6 +15,7 @@ import { applyProfileByName } from '../workflow/profile.js';
 import { loadTemplate } from '../workflow/template/loader.js';
 import { instantiateRun } from '../workflow/template/instantiate.js';
 import { expandFusion, type FusionExpandOpts } from '../workflow/fusion/expand.js';
+import { expandReroute } from '../workflow/reroute/expand.js';
 import { loadFusionConfig } from './fusion-config.js';
 import { loadModelTiers } from './model-routing.js';
 import { assembleRunTools } from './tool-config.js';
@@ -88,8 +89,12 @@ export async function runFromConfig(config: ResolvedRunConfig): Promise<RunResul
   // dropped node) and BEFORE compile (the compiler draws siblings→judge from the generated reads/produces).
   // No fusion node ⇒ the spec is returned unchanged.
   spec = expandFusion(spec, fusionExpandOpts());
-  // (G11) Seed the tool catalog into the run AFTER fusion expansion (so judge/sibling nodes are seen),
-  // honoring an explicit caller's registry/mcpConfig. `secretResolver` is forwarded as-is (the host seam).
+  // (G12 — M3) Unroll bounded conditional reroute / self-fix loops into forward-only acyclic clones AFTER
+  // fusion (so a reroute target inside a fusion judge is cloned correctly) and BEFORE compile (the compiler
+  // draws the gate→clone→downstream edges from the generated reads/produces). No reroute node ⇒ unchanged.
+  spec = expandReroute(spec);
+  // (G11) Seed the tool catalog into the run AFTER the expand passes (so judge/sibling/reroute nodes are
+  // seen), honoring an explicit caller's registry/mcpConfig. `secretResolver` is forwarded as-is (host seam).
   const tools = resolveRunTools(spec, runOpts as RunOptions);
   const workflow = compile(spec);
   return runWorkflow(workflow, { ...(runOpts as RunOptions), registry: tools.registry, mcpConfig: tools.mcpConfig });
@@ -129,7 +134,11 @@ export async function runFromTemplate(templateDir: string, opts: RunFromTemplate
   let spec = applyProfileByName(loaded, (runOpts as RunOptions).profile);
   // (2.6) (Phase 2) expand fusion-activated nodes into siblings + judge — AFTER profile elision, BEFORE compile.
   spec = expandFusion(spec, fusionExpandOpts());
-  // (2.7) (G11) seed the tool catalog into the run AFTER fusion expansion, honoring an explicit caller's
+  // (2.65) (G12 — M3) unroll bounded conditional reroute / self-fix loops into forward-only acyclic clones
+  // AFTER fusion (so a reroute target inside a fusion judge is cloned correctly) and BEFORE compile. No
+  // reroute node ⇒ the spec is returned unchanged (additivity).
+  spec = expandReroute(spec);
+  // (2.7) (G11) seed the tool catalog into the run AFTER the expand passes, honoring an explicit caller's
   // registry/mcpConfig. This is the canonical CLI/template path the blocker (#1) lived on — a node
   // declaring `oc.*`/`mcp.*` now binds instead of falling through to a bare DefaultToolRegistry.
   const tools = resolveRunTools(spec, runOpts as RunOptions);
