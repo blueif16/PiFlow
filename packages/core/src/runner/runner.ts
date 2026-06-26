@@ -1187,6 +1187,19 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
       if (node.ops?.registryProject) {
         const pg = resolveDeep(node.ops.registryProject as unknown as Record<string, unknown>, resolveCtx) as { source: string; mapRef: string; key: string };
         await runProjection({ source: pg.source, mapRef: pg.mapRef, key: pg.key }, ctx.outDir);
+      } else {
+        // (M6 · #12) A node authored in the unified `op[]` grammar carries its registry projection on
+        // `transform:{kind:'projectRegistry'}`, NOT on the legacy `node.ops.registryProject` (the loader
+        // lowers `hooks` INTO `op[]`, never back). Without this dispatch the built `union` path
+        // (project.ts:184) was silently DROPPED for an op[]-authored node — `index.json` never written.
+        // Guarded on the ELSE so a legacy node (which carries BOTH `ops` and `op`) never double-runs.
+        for (const o of node.op ?? []) {
+          const t = o.transform;
+          if (t?.kind !== 'projectRegistry') continue;
+          if (o.when && o.when !== 'post' && o.when !== 'always' && o.when !== 'on-success') continue;
+          const pg = resolveDeep({ source: t.source, mapRef: t.mapRef, key: t.key }, resolveCtx) as { source: string; mapRef: string; key: string };
+          await runProjection({ source: pg.source, mapRef: pg.mapRef, key: pg.key }, ctx.outDir);
+        }
       }
       // merge: the `{ ops:[...] }` MergeSpec (fold|concat|reconcile|run) — incl. the gen-hook `run` op. The
       // merge transform's lowered `op` carries the onFailure that a failing `run` sub-op now routes through.
