@@ -92,6 +92,10 @@ export interface RunModel {
   run: string;
   done: boolean;
   ok: boolean | null;
+  /** Run wall-clock start / last-write (ISO). Carried so a LIVE view can show elapsed-so-far
+   *  (now − startedAt) while `durationMs` is still null (it is only stamped at completion). */
+  startedAt?: string;
+  updatedAt?: string;
   durationMs: number | null;
   provider?: string;
   model?: string | null;

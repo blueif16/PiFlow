@@ -188,7 +188,10 @@ export async function summarizeRun(runDir: string): Promise<ThreadRow | null> {
     nodesDone,
     nodesTotal: nodes.length,
     frac: m.done ? 1 : nodes.length ? nodesDone / nodes.length : 0,
-    elapsedMs: m.durationMs ?? null,
+    // A finished run carries its final durationMs; a RUNNING one has none yet, so show elapsed-so-far
+    // (now − startedAt) — this is a live snapshot, so the fleet/GUI chip can render a running run's clock.
+    // The live fallback is gated on !done so a done-but-durationless record reads "—", not a bogus now−start.
+    elapsedMs: m.durationMs ?? (!m.done && m.startedAt ? Math.max(0, Date.now() - Date.parse(m.startedAt)) : null),
     tokensBillable,
     cost,
     provider: m.provider ?? null,

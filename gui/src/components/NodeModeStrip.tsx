@@ -35,7 +35,10 @@ export function NodeModeStrip({ mode, data }: { mode: ViewMode; data: FlowNodeDa
     // the two most important health signals, as two progress bars:
     //   time = this run's duration vs the average of prior runs
     //   ctx  = peak context vs the model's window
-    const dur = rv?.durationMs ?? null;
+    // A RUNNING node has no final durationMs yet — show elapsed-so-far (now − startedAt) so the time bar
+    // fills (and flags warn/high once it overshoots the average) instead of reading "—" / "no run data".
+    const running = data.status === "running";
+    const dur = rv?.durationMs ?? (running && rv?.startedAt ? Math.max(0, Date.now() - Date.parse(rv.startedAt)) : null);
     const avg = rv?.expectedMs ?? null;
     const peak = rv?.tokens?.contextPeak ?? 0;
     if (dur == null && !peak) return <div className="ds-nodemode ds-nodemode--muted">no run data</div>;

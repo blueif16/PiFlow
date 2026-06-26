@@ -109,10 +109,25 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Live elapsed clock: a RUNNING node has no final durationMs yet, so tick once a second and render
+  // elapsed-so-far (now − startedAt). A finished node carries durationMs and needs no clock.
+  const running = status === "running";
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    setNowMs(Date.now());
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+
   // progress: a completed node is 100%; the ETA is the mean of prior runs (rv.expectedMs)
   const done = status === "success" || status === "error";
   const pct = data.progress != null ? data.progress : done ? 1 : undefined;
   const expected = rv?.expectedMs ?? rv?.durationMs ?? null;
+  // elapsed = the node's final durationMs, or — while it's still running — the live now−startedAt, so the
+  // HUD always shows how long the node has been going even before it finishes and with no prior-run average.
+  const startedMs = rv?.startedAt ? Date.parse(rv.startedAt) : NaN;
+  const elapsedMs = rv?.durationMs ?? (Number.isFinite(startedMs) ? Math.max(0, nowMs - startedMs) : null);
 
   if (!rv) {
     // graceful fallback if a node has no run-view payload (shouldn't happen with real data)
@@ -202,10 +217,10 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
         style={{ gridArea: "mid" }}
         onClick={(e) => { if (e.target === e.currentTarget) reset(); }}
       >
-        {view === null && <Overview rv={rv} status={status} expected={expected} />}
+        {view === null && <Overview rv={rv} status={status} expected={expected} elapsedMs={elapsedMs} />}
         {pinnedRegion && (
           <CenterPanel key={`r-${pinnedRegion}`} title={DETAIL_TITLE[pinnedRegion]} onBack={reset} reduce={reduce}>
-            <Detail region={pinnedRegion} rv={rv} expected={expected} pct={pct} onOpenFile={openFile} />
+            <Detail region={pinnedRegion} rv={rv} expected={expected} elapsedMs={elapsedMs} pct={pct} onOpenFile={openFile} />
           </CenterPanel>
         )}
         {view?.kind === "file" && (
@@ -253,7 +268,7 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
           </div>
           <ProgressBar size="block" value={pct} status={status} aria-label={`${data.title} progress · ${pct != null ? `${Math.round(pct * 100)}%` : "running"}`} />
           <div className="ds-prog__meta">
-            <b>{formatMs(rv.durationMs)}</b> elapsed{expected != null ? ` · avg ${formatMs(expected)} / ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}` : ""}
+            <b>{formatMs(elapsedMs)}</b> elapsed{expected != null ? ` · avg ${formatMs(expected)} / ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}` : ""}
           </div>
         </div>
       </Region>
@@ -291,8 +306,9 @@ function Identity({ id, data, reduce, onClose, status }: { id: string; data: Flo
 /* ── CENTER overview (at rest): the summary + the REAL extra telemetry not shown
    elsewhere — phase, issues/warnings, context peak, timing. Replaced in-place by the
    region/file panel on hover/click. (Token cost is intentionally NOT shown — broken upstream.) ── */
-function Overview({ rv, status, expected }: { rv: RunViewNode; status: NonNullable<FlowNodeData["status"]>; expected: number | null }) {
+function Overview({ rv, status, expected, elapsedMs }: { rv: RunViewNode; status: NonNullable<FlowNodeData["status"]>; expected: number | null; elapsedMs: number | null }) {
   const ctxPeak = rv.tokens?.contextPeak ?? 0;
+  const running = status === "running";
   return (
     <div className="ds-hud__overview">
       {rv.summary
@@ -313,7 +329,7 @@ function Overview({ rv, status, expected }: { rv: RunViewNode; status: NonNullab
       <div className="ds-hud__facts">
         {rv.phase && <Fact k="Phase" v={rv.phase} />}
         <Fact k="Status" v={STATUS_LABEL[status]} />
-        <Fact k="Duration" v={formatMs(rv.durationMs)} />
+        <Fact k={running ? "Elapsed" : "Duration"} v={formatMs(elapsedMs)} />
         {expected != null && <Fact k="Avg / prior" v={`${formatMs(expected)} · ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}`} />}
         {ctxPeak > 0 && <Fact k="Context peak" v={`${ctxPeak.toLocaleString()} tok`} />}
       </div>
@@ -420,7 +436,7 @@ const DETAIL_TITLE: Record<RegionKey, string> = {
 };
 
 /* ── the full-detail panels shown in the CENTER on hover ───────────────── */
-function Detail({ region, rv, expected, pct, onOpenFile }: { region: RegionKey; rv: RunViewNode; expected: number | null; pct?: number; onOpenFile: (f: FileTarget) => void }) {
+function Detail({ region, rv, expected, elapsedMs, pct, onOpenFile }: { region: RegionKey; rv: RunViewNode; expected: number | null; elapsedMs: number | null; pct?: number; onOpenFile: (f: FileTarget) => void }) {
   if (region === "model") {
     const t = rv.tokens;
     return (
@@ -525,7 +541,7 @@ function Detail({ region, rv, expected, pct, onOpenFile }: { region: RegionKey; 
   return (
     <div className="ds-timeline">
       <div className="ds-timeline__summary">
-        <span><b>{Math.round((pct ?? 1) * 100)}%</b> · {formatMs(rv.durationMs)} elapsed</span>
+        <span>{pct != null && <><b>{Math.round(pct * 100)}%</b> · </>}{formatMs(elapsedMs)} elapsed</span>
         {expected != null && <span className="ds-timeline__exp">avg {formatMs(expected)} / {rv.priorSamples || 1} run{(rv.priorSamples || 1) === 1 ? "" : "s"}</span>}
       </div>
       <div className="ds-timeline__track" aria-hidden="true">
