@@ -32,6 +32,20 @@ export interface CapturedTool {
   opts?: unknown;
 }
 
+/**
+ * (#20) A SURFACED OpenClaw hook-bus registration. The host/shim drive a tool's `execute` directly and
+ * bypass OpenClaw's hook bus, so a plugin that self-gates via `before_tool_call` (or persists via
+ * `tool_result_persist`) has that hook SKIPPED. Rather than swallow the registration silently (the old
+ * `registerHook`/`on` no-op — a latent trap), we RECORD it as an ADVISORY entry: observable but NON-BLOCKING
+ * (Dagster `blocking=False`). `advisory` is always `true` (the hook does not gate the tool); `hook` is the
+ * event name; `via` is which verb registered it (`registerHook` | `on`).
+ */
+export interface AdvisoryHook {
+  hook: string;
+  via: 'registerHook' | 'on';
+  advisory: true;
+}
+
 /** The fake-`api` surface OpenClaw's `register(api)` receives. registerTool captures; the rest no-op. */
 export interface CaptureApi {
   registerTool(def: OpenClawToolDef, opts?: unknown): void;
@@ -65,8 +79,13 @@ const noop = (): void => {};
  * registration method is a no-op, so a plugin's `register()` body completes without a real gateway.
  * Crucially there is NO `api.runtime`/inference/store — that absence is the purity gate at execute time.
  */
-export function makeCaptureApi(): { api: CaptureApi; captured: CapturedTool[] } {
+export function makeCaptureApi(): { api: CaptureApi; captured: CapturedTool[]; advisories: AdvisoryHook[] } {
   const captured: CapturedTool[] = [];
+  // (#20) Hook-bus registrations are RECORDED here (advisory, non-blocking) instead of silently dropped.
+  const advisories: AdvisoryHook[] = [];
+  const recordHook = (via: AdvisoryHook['via']) => (hook: unknown, ..._rest: unknown[]): void => {
+    if (typeof hook === 'string') advisories.push({ hook, via, advisory: true });
+  };
   const api: CaptureApi = {
     registerTool(def, opts) {
       captured.push(opts === undefined ? { def } : { def, opts });
@@ -77,14 +96,16 @@ export function makeCaptureApi(): { api: CaptureApi; captured: CapturedTool[] } 
     registerWebSearchProvider: noop,
     registerCommand: noop,
     registerService: noop,
-    registerHook: noop,
-    on: noop,
+    // SURFACE (not silently no-op) the hook-bus verbs as advisory entries — the tool still runs (the host
+    // drives execute directly); the advisory makes a self-gating plugin's bypassed hook OBSERVABLE (#20).
+    registerHook: recordHook('registerHook'),
+    on: recordHook('on'),
     logger: { info: noop, warn: noop, error: noop, debug: noop },
     config: {},
     pluginConfig: {},
     resolvePath: (p: unknown) => p,
   };
-  return { api, captured };
+  return { api, captured, advisories };
 }
 
 /** Unwrap an ESM-interop default: `{ default: entry }` → `entry`; a bare entry passes through. */
@@ -110,4 +131,18 @@ export function captureOpenClawTools(mod: unknown): CapturedTool[] {
   const { api, captured } = makeCaptureApi();
   entry.register(api);
   return captured;
+}
+
+/**
+ * (#20) Run an OpenClaw plugin entry's `register(api)` and return its SURFACED hook-bus registrations as
+ * ADVISORY entries (`before_tool_call`/`tool_result_persist`/…). These are non-blocking: the host drives a
+ * tool's `execute` directly and bypasses the hook bus, so this list makes a self-gating plugin OBSERVABLE
+ * instead of letting the registration vanish into a silent no-op. An empty list ⇒ the plugin registers no
+ * hooks (the hook-free path is unchanged). Pure transform of the (already-imported) module — no I/O.
+ */
+export function captureOpenClawHooks(mod: unknown): AdvisoryHook[] {
+  const entry = resolveEntry(mod);
+  const { api, advisories } = makeCaptureApi();
+  entry.register(api);
+  return advisories;
 }

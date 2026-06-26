@@ -110,8 +110,8 @@ export type { McpToolListing, McpIngestOpts } from './tools/ingest.js';
 export { openClawPluginToEntries } from './tools/ingest.js';
 export type { OpenClawManifest, OpenClawIngestOpts } from './tools/ingest.js';
 // OpenClaw capture-shim: run a plugin's register() to capture its native tool defs (+ purity gate)
-export { captureOpenClawTools, makeCaptureApi } from './tools/openclaw-shim.js';
-export type { OpenClawToolDef, CapturedTool, CaptureApi, OpenClawPluginEntry } from './tools/openclaw-shim.js';
+export { captureOpenClawTools, captureOpenClawHooks, makeCaptureApi } from './tools/openclaw-shim.js';
+export type { OpenClawToolDef, CapturedTool, CaptureApi, OpenClawPluginEntry, AdvisoryHook } from './tools/openclaw-shim.js';
 // Compile: ToolEntry[] → generated `-e` extension source (the declarative wiring)
 export { compileToolExtension, planTools, renderExtension, DEFAULT_BRIDGE_MODULE, DEFAULT_SHIM_MODULE } from './tools/compile.js';
 export type { CompiledExtension, PlannedTool, CompileOpts } from './tools/compile.js';
