@@ -157,6 +157,9 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   // (Phase 2) Carry a FUSION activation block verbatim onto the intent when authored — `expandFusion`
   // consumes it before compile (the activated node becomes a judge + N siblings). Additive: no block ⇒ no change.
   if (n.def.fusion) intent.fusion = n.def.fusion;
+  // (G9) Carry a SUBWORKFLOW activation block verbatim onto the intent when authored — `expandSubworkflow`
+  // consumes it before fusion + compile (the node is replaced by the referenced sub-template). Additive.
+  if (n.def.subworkflow) intent.subworkflow = n.def.subworkflow;
   return intent;
 }
 
