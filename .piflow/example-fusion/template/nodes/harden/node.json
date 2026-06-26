@@ -1,0 +1,18 @@
+{
+  "id": "harden",
+  "phase": "harden",
+  "deps": ["draft"],
+  "tier": "deep",
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "inject": ["{{RUN}}/draft/draft.md"],
+  "fusion": { "mode": "best-of-n", "n": 3 },
+  "contract": {
+    "artifacts": ["harden/hardened.md"],
+    "owns": ["harden/**"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "checks": { "post": [{ "kind": "non-empty", "path": "harden/hardened.md" }] },
+  "policy": { "fail": "block" }
+}

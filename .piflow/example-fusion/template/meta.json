@@ -1,0 +1,6 @@
+{
+  "id": "example-fusion",
+  "name": "example-fusion",
+  "description": "Fusion showcase — a short-explainer pipeline (plan → draft → harden → publish) that demonstrates BOTH fusion modes side by side: `draft` is a MoA panel (one sibling per model tier → a judge SYNTHESIZES across them) and `harden` is best-of-n (one model sampled N times → a judge SELECTS + repairs the strongest), each feeding the next, then a plain `publish` consumer. Dry-run it (`piflowctl run .piflow/example-fusion/template --dry-run`) to see the siblings+judge expansion, or open the GUI, press F for Fusion mode, and toggle any node between moa / best-of-n to watch the DAG re-expand live.",
+  "phases": ["plan", "draft", "harden", "publish"]
+}
