@@ -590,6 +590,13 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
   checkpoint?: NodeSpec['checkpoint'];
   /** (Phase 2) Fusion activation — consumed by `expandFusion` BEFORE compile; never reaches the dense NodeSpec. */
   fusion?: FusionSpec;
+  /**
+   * (G11) Per-node external MCP gateway config (the authored `node.json.mcp`). Lives ONLY on the
+   * authoring/intent layer: `assembleRunTools` reads `mcp.servers` off the spec to assemble the run's
+   * merged `mcpConfig` and the runner stages it into a bridge-tool node's `_pi/mcp.json`. It never reaches
+   * the dense `NodeSpec` (the `fusion?`/`checkpoint?` precedent). Secret-bearing values carry `$VAR` refs.
+   */
+  mcp?: { servers?: Record<string, unknown>; ref?: string };
 };
 
 /**
