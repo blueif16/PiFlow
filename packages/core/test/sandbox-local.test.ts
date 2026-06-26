@@ -170,3 +170,94 @@ describe('LocalSandbox — exec contract (nonzero exit, process-group kill on si
     }
   }, 15000);
 });
+
+// ── 6. READ-SCOPE JAIL: secure by default (darwin), with a danger bypass that actually turns it off ───
+
+// On darwin the in-place LocalSandbox now wraps every exec in the shared sandbox-exec read-scope jail by
+// default, so a read outside the declared scope EPERMs. Off darwin there is no kernel boundary (the bwrap
+// backend is unwired), so the EPERM assertions are darwin-only — the policy-field test below is universal.
+const darwinIt = process.platform === 'darwin' ? it : it.skip;
+
+// Stage scope fixtures under $HOME: the seatbelt template grants only specific ~/. subpaths (~/.pi,
+// ~/.piflow, ~/.npm, …), NOT $HOME itself, so a `.pf-localscope-*` sibling is genuinely outside every
+// grant and is denied unless it is the declared scope. (Staging under $TMPDIR would be readable via the
+// broad /private/var toolchain grant and could never observe a denial — the same discipline the seatbelt
+// suite uses.)
+async function homeScratch(prefix: string): Promise<string> {
+  return fs.mkdtemp(path.join(os.homedir(), `.pf-localscope-${prefix}-`));
+}
+
+describe('LocalSandbox — read-scope jail is SECURE BY DEFAULT (darwin)', () => {
+  darwinIt(
+    'default enforceReadScope: reads an in-scope file but EPERMs an out-of-scope sibling',
+    async () => {
+      // In-place at `granted` with scope=[granted]; `denied` is a SIBLING outside the workdir + scope.
+      // The default (no runtime opts) must jail reads: granted reads, denied EPERMs at the kernel.
+      const scratch = await homeScratch('jail');
+      const granted = path.join(scratch, 'granted');
+      const denied = path.join(scratch, 'denied');
+      await fs.mkdir(granted, { recursive: true });
+      await fs.mkdir(denied, { recursive: true });
+      await fs.writeFile(path.join(granted, 'in.txt'), 'IN_SCOPE_CONTENT');
+      await fs.writeFile(path.join(denied, 'secret.txt'), 'OUT_OF_SCOPE_SECRET');
+      try {
+        const sb = await LocalSandbox.create({ readScope: [granted], outputDir: 'out', workdir: granted });
+
+        const ok = await sb.exec(`cat ${JSON.stringify(path.join(granted, 'in.txt'))}`);
+        expect(ok.code).toBe(0);
+        expect(ok.stdout).toContain('IN_SCOPE_CONTENT');
+
+        // Out-of-scope read fails with a KERNEL denial — not a missing file, not a profile parse error
+        // (`sandbox-exec:` prefix), and the secret never reaches stdout.
+        const blocked = await sb.exec(`cat ${JSON.stringify(path.join(denied, 'secret.txt'))}`);
+        expect(blocked.code).not.toBe(0);
+        expect(blocked.stdout).not.toContain('OUT_OF_SCOPE_SECRET');
+        expect(blocked.stderr).not.toMatch(/^sandbox-exec:/m);
+        expect(blocked.stderr).toMatch(/Operation not permitted|Permission denied/i);
+
+        // CONTROL: the same path reads fine UNSANDBOXED, so the denial is the jail, not a missing file.
+        expect(await fs.readFile(path.join(denied, 'secret.txt'), 'utf8')).toBe('OUT_OF_SCOPE_SECRET');
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'danger bypass (enforceReadScope:false): the SAME out-of-scope read SUCCEEDS (the hatch really disables the jail)',
+    async () => {
+      // The negative control that makes the test above meaningful: flip the flag off (the
+      // danger-full-access posture) and the identical out-of-scope read must LEAK — proving the jail is
+      // gated by the flag, not hard-wired. If enforcement were always-on this fails; if the first test's
+      // EPERM is real, this success proves the two postures are genuinely different.
+      const scratch = await homeScratch('danger');
+      const work = path.join(scratch, 'work');
+      const denied = path.join(scratch, 'denied');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(denied, { recursive: true });
+      await fs.writeFile(path.join(denied, 'secret.txt'), 'BYPASS_LEAK');
+      try {
+        const sb = await LocalSandbox.create(
+          { readScope: [work], outputDir: 'out', workdir: work },
+          { enforceReadScope: false },
+        );
+        const leak = await sb.exec(`cat ${JSON.stringify(path.join(denied, 'secret.txt'))}`);
+        expect(leak.code).toBe(0);
+        expect(leak.stdout).toContain('BYPASS_LEAK');
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+});
+
+describe('LocalSandboxProvider — enforceReadScope posture (what the CLI flag selects)', () => {
+  it('defaults to secure (enforceReadScope === true); the danger option turns it off', () => {
+    // Platform-independent: the provider POLICY a CLI flag picks. `--sandbox local` → default (secure);
+    // `--sandbox danger-full-access` → { enforceReadScope: false }.
+    expect(new LocalSandboxProvider().enforceReadScope).toBe(true);
+    expect(new LocalSandboxProvider({ enforceReadScope: false }).enforceReadScope).toBe(false);
+  });
+});

@@ -325,6 +325,49 @@ describe('piflowctl run — LIVE branch routes through core runFromTemplate, thr
     );
     expect(optsSeen?.provider).toBeUndefined();
   });
+
+  it('--sandbox local is SECURE BY DEFAULT — the LocalSandboxProvider has the read-scope jail ON', async () => {
+    // The default real-run path must enforce read scope. Drop the secure default in run.ts ⇒ this goes red.
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => { optsSeen = opts; return { status: { ok: true } as never, outDir: opts.runDir }; },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gsecure', args: {}, outDir: out, sandbox: 'local' },
+      deps,
+    );
+    expect(optsSeen?.provider).toBeInstanceOf(LocalSandboxProvider);
+    expect((optsSeen?.provider as LocalSandboxProvider).enforceReadScope).toBe(true);
+  });
+
+  it('--sandbox danger-full-access ⇒ a LocalSandboxProvider with the jail OFF (the named escape hatch)', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => { optsSeen = opts; return { status: { ok: true } as never, outDir: opts.runDir }; },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gdanger', args: {}, outDir: out, sandbox: 'danger-full-access' },
+      deps,
+    );
+    // Still the real in-place provider — but the read-scope jail is explicitly disabled.
+    expect(optsSeen?.provider).toBeInstanceOf(LocalSandboxProvider);
+    expect((optsSeen?.provider as LocalSandboxProvider).enforceReadScope).toBe(false);
+  });
+
+  it('an unknown --sandbox value THROWS loudly (never silently degrades to inmemory/no-model)', async () => {
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => ({ status: { ok: true } as never, outDir: opts.runDir }),
+      print: () => {},
+    };
+    await expect(
+      runTemplate(
+        { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gbad', args: {}, outDir: out, sandbox: 'seatbelt' as never },
+        deps,
+      ),
+    ).rejects.toThrow(/unknown --sandbox/i);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

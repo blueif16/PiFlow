@@ -38,7 +38,9 @@ RUN
   --run <id>    the instance id (keys out/<id>); aliases --id. Required for a live run.
   --arg k=v     a workflow arg → {{arg.k}} (repeatable).
   --workspace <p>  the read-only {{WORKSPACE}} root (skills/templates/registry); default cwd.
-  --sandbox <local|inmemory>  exec backend; local = real in-place pi, inmemory (default) = no model.
+  --sandbox <inmemory|local|danger-full-access>  exec backend. inmemory (default) = no model;
+                   local = real in-place pi, read-scope-jailed per node (seatbelt on macOS);
+                   danger-full-access = local with the jail OFF (agent reads the whole filesystem).
   --provider <gw>  the pi --provider gateway (e.g. mmgw).
   --thinking <v>   reasoning-depth cap → pi --thinking.
   --model <m>      model pin → pi --model.

@@ -52,6 +52,7 @@
   (subpath "/dev")
   (subpath "@TMPDIR@")
   (subpath "@HOME@/.pi")
+  (subpath "@HOME@/.piflow")
   (subpath "@HOME@/.npm")
   (subpath "@HOME@/.cache")
   (subpath "@HOME@/.config")

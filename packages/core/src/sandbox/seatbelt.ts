@@ -79,6 +79,7 @@ const PROFILE_TEMPLATE = ((): string => {
     '  (subpath "/dev")',
     '  (subpath "@TMPDIR@")',
     '  (subpath "@HOME@/.pi")',
+    '  (subpath "@HOME@/.piflow")',
     '  (subpath "@HOME@/.npm")',
     '  (subpath "@HOME@/.cache")',
     '  (subpath "@HOME@/.config")',
@@ -140,12 +141,25 @@ function expand(p: string): string[] {
  */
 export function buildSeatbeltProfile(opts: { workdir: string; readScope: string[] }): string {
   const workdir = path.resolve(opts.workdir);
+  // The actual node binary + its install prefix (e.g. ~/.nvm/versions/node/v20/bin and .../v20, which
+  // holds lib/node_modules where a global `pi` lives). `process.execPath` is whatever node launched the
+  // runner — granting its dir is what lets `pi` (a node CLI) boot under the sandbox regardless of how
+  // node was installed. The .nvm subpath is also in the template, but fnm/mise/volta/pnpm install
+  // elsewhere, so resolve those manager roots from the environment too (the research brief's gotcha).
+  const nodeBin = path.dirname(process.execPath);
+  const nodePrefix = path.dirname(nodeBin);
+  const vmRoots = ['NVM_DIR', 'FNM_DIR', 'MISE_DATA_DIR', 'VOLTA_HOME', 'PNPM_HOME']
+    .map((k) => process.env[k])
+    .filter((v): v is string => !!v);
   // Auto-grants beyond the declared scope (the toolchain reads more than the lesson scope; a profile
   // that passes a static demo can still EPERM on the first real toolchain call — see the research brief).
   const auto = [
     workdir, // the node's own working tree (workspace + its out/_pi dirs live under here)
     path.join(workdir, 'node_modules'), // modules must resolve
     path.join(process.cwd(), 'node_modules'), // the host process cwd's modules (test toolchain, tsc)
+    nodeBin, // the node binary's dir — pi is a node CLI; it must read its own interpreter
+    nodePrefix, // the install prefix (lib/node_modules — a globally-installed `pi` lives here)
+    ...vmRoots, // version-manager roots (fnm/mise/volta/pnpm) when node is managed outside ~/.nvm
   ];
   // Union, realpath-expanded + de-duped. (The system roots /usr,/System,… are in the template.)
   const roots = [...new Set([...auto, ...opts.readScope].flatMap(expand))];
@@ -159,6 +173,41 @@ export function buildSeatbeltProfile(opts: { workdir: string; readScope: string[
     .replace('@SCOPE_ALLOWS@', allows);
 }
 
+// ── the shared exec-wrap seam (reused by SeatbeltSandbox AND the in-place LocalSandbox) ─────────────
+
+/** Monotonic suffix so two concurrent execs in the same process+ms get distinct profile filenames. */
+let execSeq = 0;
+
+/** The argv that runs `cmd` under a per-exec read-scope Seatbelt profile, plus the temp profile to clean up. */
+export interface SeatbeltExecPlan {
+  file: 'sandbox-exec';
+  argv: string[];
+  /** The on-disk per-exec `.sb`; the caller MUST unlink it after the child closes. */
+  profilePath: string;
+}
+
+/**
+ * Build the `sandbox-exec` wrapping for ONE command — the single place the read-scope jail is applied,
+ * so EVERY provider that wants kernel-enforced reads (the throwaway-temp `SeatbeltSandbox` AND the
+ * in-place `LocalSandbox`) shares one implementation. Writes the rendered profile under `profileDir`
+ * and returns the argv `sandbox-exec -f <profile> sh -c <cmd>`. Returns `null` on non-darwin (warning
+ * ONCE) — the caller then runs the bare command, unsandboxed. This is the seam a future Linux backend
+ * mirrors: a `bwrapExecPlan` returning `bwrap … sh -c <cmd>` from the SAME `{workdir, readScope}` policy.
+ */
+export function seatbeltExecPlan(
+  cmd: string,
+  opts: { workdir: string; readScope: string[]; profileDir: string },
+): SeatbeltExecPlan | null {
+  if (!IS_DARWIN) {
+    warnNonDarwinOnce();
+    return null;
+  }
+  const profile = buildSeatbeltProfile({ workdir: opts.workdir, readScope: opts.readScope });
+  const profilePath = path.join(opts.profileDir, `piflow-sb-${process.pid}-${Date.now()}-${execSeq++}.sb`);
+  fsSync.writeFileSync(profilePath, profile);
+  return { file: 'sandbox-exec', argv: ['-f', profilePath, 'sh', '-c', cmd], profilePath };
+}
+
 // ── the sandbox ──────────────────────────────────────────────────────────────────────────────────
 
 export class SeatbeltSandbox implements Sandbox {
@@ -169,8 +218,6 @@ export class SeatbeltSandbox implements Sandbox {
     public readonly workdir: string,
     private readonly env: Record<string, string>,
     private readonly readScope: string[],
-    /** Whether to actually wrap with sandbox-exec (darwin). False ⇒ unsandboxed, like InMemorySandbox. */
-    private readonly sandboxed: boolean,
   ) {}
 
   static async create(opts: CreateOpts): Promise<SeatbeltSandbox> {
@@ -184,7 +231,7 @@ export class SeatbeltSandbox implements Sandbox {
     const readScope = (opts.readScope ?? []).map((p) =>
       path.isAbsolute(p) ? p : path.resolve(workdir, p),
     );
-    return new SeatbeltSandbox(root, workdir, opts.env ?? {}, readScope, IS_DARWIN);
+    return new SeatbeltSandbox(root, workdir, opts.env ?? {}, readScope);
   }
 
   private abs(p: string): string {
@@ -210,33 +257,18 @@ export class SeatbeltSandbox implements Sandbox {
   exec(cmd: string, opts: ExecOpts = {}): Promise<ExecResult> {
     return new Promise((resolve) => {
       const cwd = opts.cwd ? this.abs(opts.cwd) : this.workdir;
-      // Build the spawn argv. Unsandboxed path mirrors InMemorySandbox (shell:true). Sandboxed path
-      // writes a per-exec profile (granting the cwd too, so a node may exec in a subdir of the workdir)
-      // and runs sandbox-exec -f <profile> sh -c <cmd> with shell:false so OUR argv is what runs.
-      let file: string;
-      let argv: string[];
-      let useShell: boolean;
-      let profilePath: string | undefined;
-      if (this.sandboxed) {
-        const profile = buildSeatbeltProfile({
-          workdir: this.workdir,
-          // grant both the workdir AND the exec cwd (a node may run a step in a workdir subdir).
-          readScope: [...this.readScope, cwd],
-        });
-        profilePath = path.join(this.root, `exec-${process.pid}-${Date.now()}.sb`);
-        fsSync.writeFileSync(profilePath, profile);
-        file = 'sandbox-exec';
-        argv = ['-f', profilePath, 'sh', '-c', cmd];
-        useShell = false;
-      } else {
-        file = cmd;
-        argv = [];
-        useShell = true;
-      }
-      const child = spawn(file, argv, {
+      // The shared seam: wrap in `sandbox-exec -f <profile> sh -c <cmd>` on darwin (granting the cwd too,
+      // so a node may exec in a workdir subdir), or `null` off-darwin ⇒ bare `cmd` via shell, byte-
+      // identical to InMemorySandbox. The per-exec profile is written under this.root (a temp dir).
+      const plan = seatbeltExecPlan(cmd, {
+        workdir: this.workdir,
+        readScope: [...this.readScope, cwd],
+        profileDir: this.root,
+      });
+      const child = spawn(plan ? plan.file : cmd, plan ? plan.argv : [], {
         cwd,
         env: { ...process.env, ...this.env, ...opts.env },
-        shell: useShell,
+        shell: plan ? false : true,
         // detached → the command is its own process group leader, so on cancel we can kill the WHOLE
         // tree (sandbox-exec, the wrapped sh, AND any grandchildren), not just the leader — no orphans.
         detached: true,
@@ -258,7 +290,7 @@ export class SeatbeltSandbox implements Sandbox {
       };
       const cleanup = (): void => {
         signal?.removeEventListener('abort', onAbort);
-        if (profilePath) { try { fsSync.unlinkSync(profilePath); } catch { /* already gone */ } }
+        if (plan) { try { fsSync.unlinkSync(plan.profilePath); } catch { /* already gone */ } }
       };
       const finish = (r: ExecResult): void => { if (done) return; done = true; cleanup(); resolve(r); };
       if (signal) {
