@@ -467,7 +467,7 @@ function makeHostApi(
     registerSpeechProvider: noop, // xai
     registerVideoGenerationProvider: noop, // xai
     // codex-supervisor registers a SHUTDOWN hook at register time via `api.lifecycle.registerRuntimeLifecycle`
-    // ({ id, description, dispose }) — caches a dispose callback for daemon teardown; the tool's execute
+    // ({ id, description, cleanup }) — caches a cleanup callback for daemon teardown; the tool's execute
     // never reads it. A no-op here is register-time-safe (we are not running a daemon to tear down).
     lifecycle: { registerRuntimeLifecycle: noop },
     on: noop,

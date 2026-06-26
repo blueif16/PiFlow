@@ -17,7 +17,7 @@ tool, because that intersects tool resolution).
 ## 0. Ground truth (what we run today) — do not re-derive
 
 From `reference/cli.md`, `reference/orchestration.md`, `docs/pi-agent-notes.md`,
-`templates/pi-runner/providers/coding-plan.ts`, `templates/pi-runner/extensions/node-contract.ts`: `[GROUND]`
+`templates/legacy/providers/coding-plan.ts`, `templates/pi-runner/extensions/node-contract.ts`: `[GROUND]`
 
 - pi built-ins we assume: `read bash edit write grep find ls`.
 - Headless invocation: `pi -p --mode json -a --no-session --offline --no-extensions --provider cp @<prompt-file>`.
@@ -349,7 +349,7 @@ only in the SDK/registry.
 
 ## Appendix — source list (confidence-tagged)
 - `[GROUND]` in-repo: `reference/cli.md`, `reference/orchestration.md`, `docs/pi-agent-notes.md`,
-  `templates/pi-runner/providers/coding-plan.ts`, `templates/pi-runner/extensions/node-contract.ts`.
+  `templates/legacy/providers/coding-plan.ts`, `templates/pi-runner/extensions/node-contract.ts`.
 - `[PRIMARY]` pi: https://pi.dev/docs/latest/extensions ·
   https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md ·
   .../docs/extensions.md · .../docs/sdk.md · npm `@earendil-works/pi-coding-agent`.
