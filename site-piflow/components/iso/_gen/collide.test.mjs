@@ -10,7 +10,12 @@
    ============================================================ */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { overlaps, labelAABB, boxAABB, Scene } from "./kit.mjs";
+import {
+  overlaps, labelAABB, boxAABB, Scene,
+  // shape-placement layer (RESEARCH-layout.md §3)
+  snapToGrid, assertIntegerAnchor, isoCorners, rowLine, grid, align,
+  centerGroup, depthSort, NODE_SEP,
+} from "./kit.mjs";
 
 /* ---- overlaps(a,b,pad): the core AABB predicate ---- */
 test("overlaps: true for overlapping rects", () => {
@@ -118,4 +123,81 @@ test("Scene: deco draws (shadow/nucleus ring/flow) do NOT register obstacles", (
   s.nucleus(50, 50, 0, 30, 15);
   s.flow([[0, 0, 0], [40, 40, 0]]);
   assert.equal(s.obstacles().length, 0, "no obstacle registered by pure deco");
+});
+
+/* ============================================================
+   SHAPE-PLACEMENT LAYER (RESEARCH-layout.md §3) — deterministic
+   helpers that PLACE the shapes in grid units BEFORE collision +
+   labels. Each test is constructed to FAIL when the placement math
+   is wrong (verified by mutating the impl — see the §4 self-check).
+   ============================================================ */
+
+test("snapToGrid: rounds each coord onto the integer lattice (the anti-float precondition)", () => {
+  assert.deepEqual(snapToGrid({ x: 2.4, y: 3.6, z: -0.2 }), { x: 2, y: 4, z: 0 });
+  assert.deepEqual(snapToGrid({ x: 5, y: 5 }), { x: 5, y: 5, z: 0 }, "z defaults to 0");
+});
+
+test("assertIntegerAnchor: throws on a non-integer coord, passes on integers", () => {
+  assert.throws(() => assertIntegerAnchor({ id: "a", x: 1.5, y: 0, z: 0 }), /non-integer/);
+  assert.doesNotThrow(() => assertIntegerAnchor({ id: "a", x: 1, y: 2, z: 3 }));
+});
+
+test("rowLine: equal CENTER-PITCH along one iso axis = max footprint + gap (even by construction, C7)", () => {
+  const items = [{ id: "a", w: 4, d: 4, h: 4 }, { id: "b", w: 6, d: 4, h: 4 }, { id: "c", w: 2, d: 4, h: 4 }];
+  const out = rowLine(items, "x", 3, { x: 0, y: 5, z: 0 });
+  const pitch = 6 + 3; // max(w)=6 + gap=3  (NOT per-item width — that would drift)
+  assert.deepEqual(out.map((a) => a.x), [0, pitch, 2 * pitch], "x marches by a constant pitch");
+  assert.ok(out.every((a) => a.y === 5 && a.z === 0), "cross-axis coords are constant (a true straight line)");
+  const steps = out.slice(1).map((a, i) => a.x - out[i].x);
+  assert.ok(steps.every((s) => s === pitch), "every adjacent pitch is identical (no uneven gap)");
+});
+
+test("grid: N items into cols with a constant pitch on BOTH axes (the 'simple grid' case)", () => {
+  const items = [0, 1, 2, 3].map((i) => ({ id: "n" + i, w: 4, d: 4, h: 4 }));
+  const out = grid(items, 2, 2, { x: 0, y: 0, z: 0 });
+  const p = 4 + 2;
+  assert.deepEqual(out.map((a) => [a.x, a.y]), [[0, 0], [p, 0], [0, p], [p, p]], "row-major c*pitchX, r*pitchY");
+});
+
+test("align: 'first' shares the anchor coord, 'min' the near edge, 'mean' the snapped average; other axis untouched", () => {
+  const items = [
+    { id: "a", x: 0, y: 10, z: 0, w: 1, d: 1, h: 1 },
+    { id: "b", x: 5, y: 3, z: 0, w: 1, d: 1, h: 1 },
+    { id: "c", x: 9, y: 7, z: 0, w: 1, d: 1, h: 1 },
+  ];
+  assert.ok(align(items, "y", "first").every((a) => a.y === 10), "first = items[0].y");
+  assert.ok(align(items, "y", "min").every((a) => a.y === 3), "min = shared near edge");
+  assert.ok(align(items, "y", "mean").every((a) => a.y === Math.round((10 + 3 + 7) / 3)), "mean snapped to lattice");
+  assert.deepEqual(align(items, "y", "first").map((a) => a.x), [0, 5, 9], "the OTHER axis is left alone");
+});
+
+test("depthSort: far-to-near draw order, independent of input order, deterministic tie-break", () => {
+  // near = larger near-corner key (x+w-1)+(y+d-1)-z; it must sort LAST (painted on top).
+  const near = { id: "near", x: 8, y: 8, z: 0, w: 2, d: 2, h: 2 };
+  const far = { id: "far", x: 0, y: 0, z: 0, w: 2, d: 2, h: 2 };
+  assert.deepEqual(depthSort([near, far]).map((s) => s.id), ["far", "near"], "near drawn last");
+  assert.deepEqual(depthSort([far, near]).map((s) => s.id), ["far", "near"], "order independent of input order");
+  const t1 = { id: "b", x: 0, y: 0, z: 0, w: 1, d: 1, h: 1 };
+  const t2 = { id: "a", x: 0, y: 0, z: 0, w: 1, d: 1, h: 1 };
+  assert.deepEqual(depthSort([t1, t2]).map((s) => s.id), ["a", "b"], "equal keys → stable id tie-break (byte-identical)");
+});
+
+test("centerGroup: the group's PROJECTED extent centers on the viewBox axis (symmetry that survives the shear, C9)", () => {
+  const vb = [-200, -120, 400, 320]; // x,y,w,h → screen-x mid = 0
+  const anchors = [
+    { id: "a", x: 20, y: 0, z: 0, w: 6, d: 6, h: 6 },
+    { id: "b", x: 30, y: 0, z: 0, w: 6, d: 6, h: 6 },
+  ];
+  const cornersOf = (as) => as.flatMap((a) => isoCorners(a.x, a.y, a.z, a.w, a.d, a.h));
+  const before = boxAABB(cornersOf(anchors));
+  const beforeOff = Math.abs((before.minX + before.maxX) / 2 - (vb[0] + vb[2] / 2));
+  assert.ok(beforeOff > 10, "precondition: the group starts clearly off-center ON SCREEN (so this exercises the fix)");
+
+  const centered = centerGroup(anchors, vb, "x");
+  const after = boxAABB(cornersOf(centered));
+  const afterOff = Math.abs((after.minX + after.maxX) / 2 - (vb[0] + vb[2] / 2));
+  assert.ok(afterOff <= 1.0, `centered within ~1px of the screen axis (got ${afterOff})`);
+  assert.ok(Math.abs(after.minY - before.minY) < 1e-9 && Math.abs(after.maxY - before.maxY) < 1e-9,
+    "screen-y extent unchanged — the move is a pure +screen-x shift (x+=k, y-=k)");
+  centered.forEach(assertIntegerAnchor); // stays on the integer lattice
 });

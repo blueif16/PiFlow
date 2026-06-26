@@ -380,3 +380,125 @@ function finalize(l, c, dirX, dirY, g) {
 function renderPlacedLabel(p) {
   return `<text x="${f2(p.drawX)}" y="${f2(p.baseline)}" font-family="ui-monospace,monospace" font-size="${p.size}" letter-spacing="0.7" text-anchor="${p.anchor}" fill="${p.fill}">${p.text}</text>`;
 }
+
+/* ============================================================
+   SHAPE-PLACEMENT LAYER — deliberate placement of the SHAPES
+   themselves (line / grid / align / depth-order): the stage ABOVE
+   the collision + label passes. PURE: every helper takes items +
+   spacing constants and RETURNS grid anchors (integers); none of
+   them DRAW. The author then feeds the anchors to `Scene.box(...)`,
+   which registers obstacle AABBs, after which the existing 8-point
+   label pass runs unchanged.  Stage 1 place (new) → Stage 2 collide
+   (have) → Stage 3 labels (have).
+
+   The load-bearing rule (RESEARCH-layout.md §1): decide EVERYTHING in
+   (x,y,z) integer grid units, project ONCE at emit. Equal grid spacing
+   along an iso axis reads regular; equal SCREEN spacing does not (the
+   30° shear). Every gap is one of two constants. See RESEARCH-layout.md
+   §2 (composition rules C1–C11) and §3 (these helper signatures).
+   Additive — touches nothing above; existing renders are byte-identical.
+   ============================================================ */
+
+/* the only two gap sizes in a scene (iso units): rows vs within-a-row (C7). */
+export const RANK_SEP = 3;   // gap BETWEEN rows / ranks
+export const NODE_SEP = 3;   // gap WITHIN a row, between adjacent items
+
+/* snapToGrid(p): normalize a free/derived point onto the integer lattice —
+   the precondition for everything (C2/C3: off-grid z is the "floating" look).
+   `_round0` collapses -0 → 0 so anchors compare/serialize cleanly (C11). */
+const _round0 = (v) => { const n = Math.round(v); return n === 0 ? 0 : n; };
+export const snapToGrid = ({ x, y, z = 0 }) => ({ x: _round0(x), y: _round0(y), z: _round0(z) });
+
+/* assertIntegerAnchor(a): throw if any of x,y,z is non-integer (the anti-float
+   guard, C2). Call after any derived placement before drawing. */
+export function assertIntegerAnchor(a) {
+  for (const k of ["x", "y", "z"]) {
+    if (!Number.isInteger(a[k])) throw new Error(`anchor ${a.id ?? ""} has non-integer ${k}=${a[k]} — snapToGrid first`);
+  }
+  return a;
+}
+
+/* isoCorners(x,y,z,w,d,h): the 8 projected SCREEN corners of an iso box
+   (the same corner set isoBoxAABB min/maxes over). Exposed for centerGroup
+   and any caller needing the projected silhouette. */
+export function isoCorners(x, y, z, w, d, h) {
+  const pts = [];
+  for (const dx of [0, w]) for (const dy of [0, d]) for (const dz of [0, h])
+    pts.push(proj(x + dx, y + dy, z + dz));
+  return pts;
+}
+
+/* an item to place carries its footprint {id,w,d,h}; helpers return Anchor
+   {id,x,y,z,w,d,h}. */
+const _ext = (it, axis) => (axis === "x" ? it.w : axis === "y" ? it.d : it.h);
+
+/* rowLine(items, axis, gap, start): a clean even line along ONE iso axis.
+   Center-PITCH = max footprint on that axis + gap → uniform by construction
+   (an integer index × one constant pitch cannot drift), and equal PITCH (not
+   equal edge-gap) keeps mixed-size items reading engineered (C7). The line
+   projects onto a true 30° (x/y) or vertical (z) screen line, never a skew. */
+export function rowLine(items, axis = "x", gap = NODE_SEP, start = { x: 0, y: 0, z: 0 }) {
+  const pitch = Math.max(...items.map((it) => _ext(it, axis))) + gap;
+  const dir = axis === "x" ? [1, 0, 0] : axis === "y" ? [0, 1, 0] : [0, 0, 1];
+  return items.map((it, i) => ({
+    id: it.id, w: it.w, d: it.d, h: it.h,
+    x: start.x + dir[0] * i * pitch,
+    y: start.y + dir[1] * i * pitch,
+    z: start.z + dir[2] * i * pitch,
+  }));
+}
+
+/* grid(items, cols, gap, start): a tidy N×M lattice anchored at a corner,
+   marching by a constant pitch on both axes (the "some in a simple grid"
+   case). cols defaults to round(√N) so the block reads square, not a strip. */
+export function grid(items, cols = Math.round(Math.sqrt(items.length)), gap = NODE_SEP, start = { x: 0, y: 0, z: 0 }) {
+  const c = Math.max(1, cols);
+  const pitchX = Math.max(...items.map((it) => it.w)) + gap;
+  const pitchY = Math.max(...items.map((it) => it.d)) + gap;
+  return items.map((it, k) => {
+    const col = k % c, row = Math.floor(k / c);
+    return { id: it.id, w: it.w, d: it.d, h: it.h, x: start.x + col * pitchX, y: start.y + row * pitchY, z: start.z };
+  });
+}
+
+/* align(items, axis, mode): overwrite ONE coord of every item to a shared
+   value so they line up (the rank=same / collinear primitive). The OTHER
+   coords are untouched. mode: 'first' (declared anchor — deterministic,
+   author-controlled) | 'min' (shared near edge) | 'mean' (mass-average,
+   snapped to the lattice so the shared coord stays integer, C2). */
+export function align(items, axis = "y", mode = "first") {
+  const co = (it) => it[axis];
+  const shared =
+    mode === "first" ? co(items[0]) :
+    mode === "mean" ? Math.round(items.reduce((s, it) => s + co(it), 0) / items.length) :
+    Math.min(...items.map(co));   // 'min'
+  return items.map((it) => ({ ...it, [axis]: shared }));
+}
+
+/* centerGroup(anchors, viewBox, axis): shift a whole group so its PROJECTED
+   extent centers on the canvas axis — symmetry that SURVIVES the shear (C9).
+   Centering by raw grid midpoint looks off-center on screen; we measure the
+   projected AABB and translate by the grid move (x+=k, y-=k) whose projection
+   is a pure +screen-x shift of 2C per unit (holding screen-y), snapped to the
+   lattice so anchors stay integer. (`axis` reserved; x is the screen axis.) */
+export function centerGroup(anchors, viewBox, axis = "x") {
+  const vb = Array.isArray(viewBox) ? viewBox : String(viewBox).split(/\s+/).map(Number);
+  const bb = boxAABB(anchors.flatMap((a) => isoCorners(a.x, a.y, a.z, a.w, a.d, a.h)));
+  const screenMid = vb[0] + vb[2] / 2;
+  const groupMid = (bb.minX + bb.maxX) / 2;
+  const dGrid = Math.round((screenMid - groupMid) / (2 * C));
+  return anchors.map((a) => ({ ...a, x: a.x + dGrid, y: a.y - dGrid }));
+}
+
+/* depthSort(solids): back-to-front DRAW order so near overpaints far — the
+   painter's order the Scene does NOT compute today (it emits in author order,
+   so a far box can paint over a near one — the #1 "broken 3D" defect). Key =
+   the near-bottom corner (x+w-1)+(y+d-1)-z (smaller = farther → drawn first);
+   ties break by z then stable id so output is byte-identical (C11). Use at
+   authoring time: depthSort the solids, then draw each (with its attached deco)
+   in the returned order. solids: {id,x,y,z,w,d,h,...}. */
+export function depthSort(solids) {
+  const key = (s) => (s.x + s.w - 1) + (s.y + s.d - 1) - s.z;
+  return solids.slice().sort((a, b) =>
+    (key(a) - key(b)) || (a.z - b.z) || String(a.id).localeCompare(String(b.id)));
+}
