@@ -203,8 +203,16 @@ export type CheckKind =
 /** The outcome of one check. `pass` is clean; otherwise the check's `severity`. */
 export type Verdict = 'pass' | 'warn' | 'fail';
 
-/** What a non-pass verdict DOES to the node. (`retry-once`/`subagent-fix` are reserved; treated as block.) */
-export type PolicyAction = 'block' | 'warn' | 'stop';
+/**
+ * What a non-pass verdict DOES to the node (G12 — M4: widened 3→5, realizing the IN-TYPE reserved
+ * `retry-once`/`subagent-fix` as `retry`/`escalate`). `block` fails the node + halts before the next
+ * stage; `warn` records a non-fatal issue; `retry` re-runs the node (a fresh re-seed+exec) filtered by
+ * the DERIVED failure class; `escalate` re-runs on a STRONGER model fed the verified failure evidence
+ * (`consultPreamble`). `stop` is a DOCUMENTED ALIAS of `block` (design §2.4 option B — both fail the
+ * node, drain same-stage siblings, halt before the next stage; the name is RESERVED for a future
+ * graceful-cancel primitive once a stage-cancel exists, NOT a distinct mid-stage abort today).
+ */
+export type PolicyAction = 'block' | 'warn' | 'stop' | 'retry' | 'escalate';
 
 /** Verdict→action map (consequence). Default: fail→block, warn→warn. Keyed by the non-pass verdicts. */
 export type Policy = Partial<Record<Exclude<Verdict, 'pass'>, PolicyAction>>;
@@ -280,8 +288,60 @@ export interface NodeIO {
    * Per-node RETRY budget — ADDITIONAL attempts after the first if the node ends `error`/`blocked`
    * (a transient model/timeout failure). 0/undefined ⇒ one attempt (today's behavior). Each retry is a
    * FRESH run (re-seed + re-exec); the last attempt's record wins. Worst-case wall = (retries+1) × timeout.
+   * Preserved verbatim: when no `retry`/`escalate` is declared the runner reads `legacyRetry(io.retries)`
+   * (max=retries, classes=['infra','degenerate']) — today's exact semantics.
    */
   retries?: number;
+  /**
+   * (G12 — M4 · #6) The bounded RE-RUN budget, FILTERED by the failure class the runner DERIVES (it
+   * stats the files the node was required to produce — it never asks the model "are you sure"). A fresh
+   * attempt = re-seed + re-exec. Undefined ⇒ `legacyRetry(io.retries)` (today's exact semantics).
+   */
+  retry?: RetrySpec;
+  /**
+   * (G12 — M4 · #4) Re-run on a STRONGER model fed the verified failure facts (`consultPreamble`) once
+   * the retry budget is spent (or immediately on an escalable class). The target resolves through
+   * `model-routing.ts` (`tier`/`model` → `resolveNodeModel`), NOT a new config home. Undefined ⇒ no
+   * escalation (today's behavior).
+   */
+  escalate?: EscalateSpec;
+  /**
+   * (G8 fold) Bounded IN-SANDBOX schema repair: on a schema miss SOLELY (`schemaInvalid`/return-schema
+   * breach), re-prompt the node up to N times in the STILL-ALIVE sandbox from {previousOutput, ajvErrors,
+   * schema} BEFORE spending a full `retry`/`escalate` re-run (a repair is NOT a retry). Default 0 ⇒ a
+   * schema miss SKIPS the repair lane and falls straight through to retry/escalate.
+   */
+  maxRepairAttempts?: number;
+}
+
+/**
+ * (G12 — M4) The DERIVED failure class — an EMPIRICAL taxonomy over signals the runner already computes
+ * (artifact stat, schema gate, integrity checks, watchdog kills, stderr, return parse). NEVER a model
+ * self-score. `infra` = transient noise (rate-limit/ECONN) → a same-model retry; `degenerate` = no
+ * parseable return → retry once then escalate; `schema` = a malformed-but-present output → the G8
+ * in-sandbox repair lane first; `quality-gap`/`contract` = a real capability/contract breach → escalate;
+ * `halt` = a missing upstream input escalation cannot manufacture (refuse to spin).
+ */
+export type FailureClass = 'infra' | 'degenerate' | 'schema' | 'quality-gap' | 'contract' | 'halt';
+
+/** (G12 — M4 · #6) The bounded re-run spec — `max` extra attempts, filtered by failure class. */
+export interface RetrySpec {
+  /** ADDITIONAL attempts after the first (≥0). */
+  max: number;
+  /** Only retry when the derived class is in this set. Undefined ⇒ every non-halt class. */
+  on?: FailureClass[];
+}
+
+/** (G12 — M4 · #4) Escalate-with-evidence — re-run on a stronger model fed the verified failure facts. */
+export interface EscalateSpec {
+  /** Escalate AFTER this many same-model attempts (default: after the retry budget is spent). */
+  after?: number;
+  /** The stronger model id (resolves through model-routing.ts; wins over `tier`). */
+  model?: string;
+  /** A tier alias (`~/.piflow/model-tiers.json`) the stronger target resolves through. */
+  tier?: string;
+  /** Only escalate when the derived class is in this set. Undefined ⇒ every escalable class. */
+  on?: FailureClass[];
 }
 
 // 3 ── HOOK (deterministic; never an LLM) ──────────────────────────────────────
