@@ -33,6 +33,7 @@ import type {
   CheckpointSpec,
   RetrySpec,
   FailureClass,
+  OnFailure,
 } from '../types.js';
 import { defaultSecretResolver, defaultEscalator } from '../types.js';
 import { DefaultToolRegistry } from '../tools/registry.js';
@@ -53,7 +54,7 @@ import {
 } from './model-routing.js';
 import { resolveTokens, resolveAll, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
 import { stageSeed } from '../workflow/ops/seed.js';
-import { runMerge } from '../workflow/ops/merge.js';
+import { runMerge, applyMergeOp } from '../workflow/ops/merge.js';
 import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, barrierMerge, type NodeUpdate, type ResolvedPromote } from '../workflow/ops/promote.js';
@@ -1168,6 +1169,11 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
     // blocked → the op that produces it never runs). `promote` stays AFTER the verdict (it lifts a
     // GOOD node's output into a state channel). Each op's tokens are resolved per the node ctx; a
     // missing input degrades gracefully inside the executors.
+    // (M5 · #18) POST-op failures whose exit code ROUTES to status via the lowered op's `onFailure`. Today
+    // a merge `run` op's non-zero exit is DISCARDED (the `runMerge` return is dropped); now it routes — a
+    // `block`/`stop` op blocks the node, a `warn` op surfaces an issue but stays ok. Collected here, applied
+    // in the status ladder below. The legacy `ops`/`op` executors are reused UNCHANGED; only the exit is read.
+    const opFailures: { detail: string; onFailure: OnFailure }[] = [];
     if (killed === null && result.code === 0) {
       // project: derive from a FROZEN source JSON read once (graceful no-op on an authoring-only spec).
       for (const rawOp of node.ops?.project ?? []) {
@@ -1182,9 +1188,26 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
         const pg = resolveDeep(node.ops.registryProject as unknown as Record<string, unknown>, resolveCtx) as { source: string; mapRef: string; key: string };
         await runProjection({ source: pg.source, mapRef: pg.mapRef, key: pg.key }, ctx.outDir);
       }
-      // merge: the `{ ops:[...] }` MergeSpec (fold|concat|reconcile|run) — incl. the gen-hook `run` op.
+      // merge: the `{ ops:[...] }` MergeSpec (fold|concat|reconcile|run) — incl. the gen-hook `run` op. The
+      // merge transform's lowered `op` carries the onFailure that a failing `run` sub-op now routes through.
       if (node.ops?.merge) {
-        await runMerge(resolveDeep(node.ops.merge, resolveCtx), ctx.outDir);
+        const mergeOnFailure = ((node.op ?? []).find((o) => o.transform?.kind === 'merge')?.onFailure ?? 'block') as OnFailure;
+        const merged = await runMerge(resolveDeep(node.ops.merge, resolveCtx), ctx.outDir);
+        for (const r of merged?.ops ?? []) {
+          if (r.failed) opFailures.push({ detail: `merge ${r.op} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: mergeOnFailure });
+        }
+      }
+      // (M5 · #9/#18) AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic
+      // derive/side-effect step (the now-authorable Hook.run). Reuse the merge executor's `run` impl, then
+      // route a non-zero exit through the op's `onFailure` (default 'block').
+      for (const o of node.op ?? []) {
+        const body = o.run as { cmd?: string; args?: string[]; cwd?: string } | undefined;
+        if (!body || !('cmd' in body) || !body.cmd) continue;
+        if (o.when && o.when !== 'post' && o.when !== 'always' && o.when !== 'on-success') continue; // pre/on-failure run elsewhere
+        const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
+        if (r.failed) {
+          opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: (o.onFailure ?? 'block') as OnFailure });
+        }
       }
     }
 
@@ -1328,6 +1351,12 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
     }
     if (returnSchemaInvalid.length) rec.returnSchemaInvalid = returnSchemaInvalid;
 
+    // (M5 · #18) Partition the routed op failures by their `onFailure`: `block`/`stop` are blocking, `warn`
+    // (or any non-blocking consequence) only surfaces an issue. `retry`/`escalate` are blocking at the
+    // node-status level here (the M4 retry/escalate lanes then act on the blocked verdict).
+    const blockingOpFailures = opFailures.filter((f) => f.onFailure !== 'warn');
+    const warningOpFailures = opFailures.filter((f) => f.onFailure === 'warn');
+
     let st: NodeStatusRecord['status'];
     const issues: string[] = [];
     if (killed === 'timeout' || killed === 'stall' || result.code !== 0) {
@@ -1349,6 +1378,11 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
     } else if (blockingChecks.length) {
       st = 'blocked';
       issues.push(`integrity check FAILED — ${blockingChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
+    } else if (blockingOpFailures.length) {
+      // (M5 · #18) A post `run`/`merge.run` op failed with a blocking `onFailure` — the exit code now routes
+      // to status (today it was swallowed: the `runMerge` return was discarded). The node blocks.
+      st = 'blocked';
+      issues.push(`op FAILED — ${blockingOpFailures.map((f) => f.detail).join(' | ')}`);
     } else if (returnSchemaBreach) {
       st = 'blocked';
       issues.push(`contract breach — return violates the declared returnSchema: ${returnSchemaInvalid.join('; ')}`);
@@ -1364,6 +1398,8 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
     // recorded — never let a real `downloadDir` error vanish (it may have dropped a non-required file).
     if (collectError && !missing.length) issues.push(collectError);
     if (warningChecks.length) issues.push(`integrity warn — ${warningChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
+    // (M5 · #18) A `warn`-routed op failure surfaces an issue but never blocks (NOT swallowed, NOT fatal).
+    if (warningOpFailures.length) issues.push(`op warn — ${warningOpFailures.map((f) => f.detail).join(' | ')}`);
     if (schema.skipped) issues.push(`schema gate skipped — ${schema.skipped}`);
     if (parsed?.issues?.length) issues.push(...parsed.issues);
 
