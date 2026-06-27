@@ -137,6 +137,10 @@ export type { McpCatalog, CatalogSlice } from './catalog/client.js';
 // updated_since pull + tombstones); the write-side of the catalog (entries stay an introspection step).
 export { syncMcpCatalog } from './catalog/sync.js';
 export type { SyncMcpCatalogOpts, SyncResult } from './catalog/sync.js';
+// Catalog introspection: fetch one MCP server's tools/list ONCE (the per-tool schemas the registry lacks)
+// and upsert the rows into the slice's `entries` so a node selecting `mcp.<server>:<tool>` BINDS.
+export { introspectMcpServer } from './catalog/introspect.js';
+export type { IntrospectMcpServerOpts, IntrospectResult } from './catalog/introspect.js';
 
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
