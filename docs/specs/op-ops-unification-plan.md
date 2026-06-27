@@ -85,13 +85,18 @@ Two lanes execute the SAME derive families with the SAME executors: the pi-node 
 
 ### 2.3 ⚠ Divergences (recorded, not guessed)
 
-- **D1 — doc §5 says `NodeSpec` SHEDS `ops`; as-built it does NOT.** `node-action-protocol.md:351,361`
-  asserts "the dense `NodeSpec` … SHEDS the two prior extension fields" and "the old keys lower to `op[]`
-  AT THE LOADER (never retained on the dense `NodeSpec`)." **As-built, `NodeSpec.ops?` STILL EXISTS**
-  (`types.ts:61`), `NodeIntent.ops?` still exists (`types.ts:834`), and the loader STILL sets it
-  (`loader.ts:171,182`). The §5 prose describes the migration TARGET, not the shipped reality — this plan
-  IS the work that makes §5 true. (The doc's own Reconciliation log, `:7-21`, never reconciled this row;
-  flagged for the doc owner as a separate edit once Unit U6 lands.)
+- **D1 — RESOLVED (U6, 2026-06-27): `NodeSpec` finally SHEDS `ops`, making doc §5 true.**
+  `node-action-protocol.md:351,361` asserts "the dense `NodeSpec` … SHEDS the two prior extension fields"
+  and "the old keys lower to `op[]` AT THE LOADER (never retained on the dense `NodeSpec`)." Before U6 this
+  was ASPIRATIONAL: `NodeSpec.ops?` (`types.ts:61`), `NodeIntent.ops?` (`types.ts:834`), the `NodeOps`
+  interface (`types.ts:198`), the loader back-fill (`loader.ts:171,182`), the `opsToNodeOps` bridge
+  (`lower.ts:97`), the `toNodeOps` carry (`loader.ts:96`), and the dag densification carry (`dag.ts:52`,
+  `ops: intent.ops`) all still existed. **U6 DELETED all of them.** `op[]` (`OpSpec[]`) is now the SOLE
+  derive rep; both `hooks`-authored and directly-`op[]`-authored derives flow through `op[]`, and every
+  consumer (runner, journal hash, fusion judge, channel validator, CLI inspector) reads them via
+  `derivesFromOp` (`runner/op-dispatch.ts`). PROOF: a cross-package `tsc -b` is GREEN with `NodeOps` gone,
+  and re-introducing any `node.ops` read fails the typecheck (`TS2339: Property 'ops' does not exist on type
+  'NodeSpec'`). §5 prose now describes the shipped reality.
 
 - **D2 — gates: the POST-check gate reads `io.checks`, NOT `op[]` (intentional dual-rep, keep).** The
   loader lowers `checks` BOTH into `op[]` (`lower.ts:13-14,32-37,57-58,78-79`) AND, via `collectChecks`

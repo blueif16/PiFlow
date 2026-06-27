@@ -1,28 +1,19 @@
-// (G13 — M5) op[]-derive PARITY — the silent-derive red bar. A node authored DIRECTLY in the unified
-// `op[]` envelope whose body is a DERIVE transform (seed/project/merge/promote/projectRegistry) must
-// compile to the SAME runtime `NodeSpec.ops` as its `hooks`-authored TWIN. This is load-bearing: the
-// runner's POST-derive executors read `node.ops?.{seed,project,merge,promote,registryProject}` (runner.ts
-// ~999/1048/1056/1069/1161 + ~1356/1537/1545/1564/1795). Before the loader's inverse back-fill, an
-// op[]-authored derive set `node.op` but left `node.ops` UNDEFINED — so those executors never fired and
-// the derive SILENTLY never ran. Intent-layer `node.ops` parity ⇒ runtime parity (the executors are shared).
+// (op⊖ops unification — docs/specs/op-ops-unification-plan.md) op[]-derive PARITY — the silent-derive red
+// bar. `op[]` (`OpSpec[]`) is now the SOLE runtime derive rep: the legacy `node.ops` (`NodeOps`) and its
+// loader back-fill (`opsToNodeOps`) were RETIRED in U6. The runner's POST-derive executors read derives
+// from the canonical `op[]` via `derivesFromOp` (runner/op-dispatch.ts) — there is no `node.ops` anymore.
 //
-// Written test-first: today `loadTemplate` only single-sources `node.ops` from `n.def.hooks`, so the
-// op[]-authored twin's `node.ops` is undefined and the parity assertion goes RED for the right reason.
-//
-// ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// (U0 · op⊖ops unification — docs/specs/op-ops-unification-plan.md §4) EXTENSION. This file now also pins:
-//   (1) RUNTIME parity — a `hooks`-twin and an `op[]`-twin of all FIVE derive families, run end-to-end
-//       through the REAL runner (`runWorkflow`, no-pi programmatic lane), produce BYTE-IDENTICAL artifacts
-//       + promoted `state.json` channels + node status records. This is the GOLDEN oracle every migration
-//       unit gates on (plan R4): the machine-checkable statement of the ADDITIVE/byte-identical invariant.
-//       The earlier COMPILE-time `node.ops` parity alone would NOT catch a runtime read-site regression
-//       once `node.ops` is gone — the runtime half is REQUIRED, not optional.
+// This file pins the ADDITIVE/byte-identical invariant that retirement had to preserve:
+//   (1) RUNTIME parity (the GOLDEN oracle, plan R4) — a `hooks`-twin and an `op[]`-twin of all FIVE derive
+//       families, run end-to-end through the REAL runner (`runWorkflow`, no-pi programmatic lane), produce
+//       BYTE-IDENTICAL artifacts + promoted `state.json` channels + node status records. This is the
+//       machine-checkable statement of the invariant every migration unit gated on — and the proof that
+//       both authoring paths (`hooks` alias and direct `op[]`) reach the SAME shared executors via `op[]`.
 //   (2) `derivesFromOp` (runner/op-dispatch.ts) — the SINGLE home for the `OpSpec → executor-input`
-//       adapters (plan §2.4). A direct unit test asserts it reconstructs, for all 5 families, the SAME
-//       executor inputs the current `node.ops?.{…}` runner sites consume (cross-checked against
-//       `opsToNodeOps`, the legacy bridge it principled-replaces). RED mutation (test-the-test): drop the
-//       promote `reducer→merge` NAME FLIP (lower.ts:109) in `derivesFromOp` → the promote-adapter
-//       assertion goes RED (the merged channel reducer vanishes).
+//       adapters (plan §2.4). A direct unit test asserts it reconstructs, for all 5 families, exactly the
+//       executor inputs the runner's derive sites consume. RED mutation (test-the-test): drop the promote
+//       `reducer→merge` NAME FLIP (lower.ts) in `derivesFromOp` → the promote-adapter assertion goes RED
+//       (the merged channel reducer vanishes).
 //
 // ⚠ D6 VERDICT (the `project` rich-vocabulary round-trip) — **opt-B** (the conservative, smaller-surface
 //   choice; plan §2.4 D6 amended to match). EVIDENCE (grepped 2026-06-27 over the whole repo):
@@ -31,14 +22,14 @@
 //       `union`/rich-`merge` project op-vocabularies are authored in ANY `node.json` `hooks.project`;
 //     • the rich `applyProjectionOp` vocabulary (project.ts:84-228) is reached EXCLUSIVELY through a
 //       registry-record `projections` map via `projectRegistry`/`runProjection` (see union-projection.test.ts),
-//       NEVER through `hooks.project`. `lower.ts:61-64` lowers a `hooks.project` to `{kind:'project', from}`
-//       only, and `opsToNodeOps` (lower.ts:104-105) reconstructs `{to:writes[0], from}` — the bare form;
+//       NEVER through `hooks.project`. `lower.ts` lowers a bare `hooks.project` to `{kind:'project', from}`
+//       only, and `derivesFromOp` reconstructs `{to:writes[0], from}` — the bare form;
 //     • a bare `{to, from}` project op carries NO `copy/assemble/merge/union` key, so `applyProjectionOp`
 //       hits its "no recognized op" fall-through (project.ts:230) — i.e. the inline `hooks.project` derive
 //       is itself a graceful executor-level NO-OP today (it reads the source, writes nothing).
 //   THEREFORE the rich `project` case is NOT in op[]-only scope: it was never lossy through `op[]` because
-//   it never ENTERED op[] via `hooks.project`. `derivesFromOp`'s project adapter reproduces ONLY the bare
-//   `{to: writes[0], from}` obj — byte-identical to `opsToNodeOps` and to the `node.ops.project[]` site.
+//   it never ENTERED op[] via `hooks.project`. `derivesFromOp`'s project adapter reproduces the bare
+//   `{to: writes[0], from}` obj for a bare `hooks.project`, byte-identical to the legacy derive site.
 //   (opt-A — widening `lower.ts` to carry the rich op set into `transform.ops` — is unnecessary: there is
 //   no rich `hooks.project` author shape to carry. If one is ever introduced, revisit per plan §2.4 D6.)
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -50,9 +41,8 @@ import path from 'node:path';
 import { loadTemplate, compile } from '../src/index.js';
 import { runWorkflow, type ExecRunner } from '../src/runner/index.js';
 import { derivesFromOp } from '../src/runner/op-dispatch.js';
-import { opsToNodeOps } from '../src/workflow/template/lower.js';
 import type { CommandBuilder } from '../src/index.js';
-import type { NodeOps, OpSpec } from '../src/types.js';
+import type { OpSpec } from '../src/types.js';
 
 const writeJson = (p: string, v: unknown): Promise<void> => fs.writeFile(p, JSON.stringify(v, null, 2) + '\n');
 
@@ -67,75 +57,9 @@ async function templateWith(def: Record<string, unknown>, prose = 'do the thing'
   return dir;
 }
 
-/** Compile a template dir → the single node's dense NodeSpec.ops. */
-async function compiledOps(dir: string, id: string): Promise<NodeOps | undefined> {
-  const wf = compile(await loadTemplate(dir));
-  return wf.nodes[id].ops;
-}
-
-/** The shared contract for both twins (artifacts/owns/readScope). */
-const contract = {
-  artifacts: ['out/report.json'],
-  owns: ['out/**'],
-  readScope: ['{{RUN}}'],
-};
-
 const dirs: string[] = [];
 afterEach(async () => {
   while (dirs.length) await fs.rm(dirs.pop()!, { recursive: true, force: true });
-});
-
-describe('op[]-derive parity — a directly-authored derive op[] back-fills the SAME node.ops as its hooks twin', () => {
-  it('covers ALL FIVE derive families (seed/project/merge/promote/projectRegistry)', async () => {
-    // The DERIVE families authored via the deprecated `hooks` alias (the path that already works).
-    const hooksDef = {
-      id: 'derive',
-      phase: 'build',
-      deps: [],
-      programmatic: true,
-      contract,
-      hooks: {
-        seed: [{ to: 'spec/seed.json', from: '{{WORKSPACE}}/seed.json' }],
-        project: [{ to: 'out/projected.json', from: 'in/raw.json' }],
-        merge: { ops: [{ fold: { into: 'out/merged.json', from: ['a.json', 'b.json'] } }] },
-        promote: [{ from: 'out/report.json', to: 'summary', merge: 'append' }],
-        registryProject: { source: 'out/report.json', mapRef: '{{RUN}}/index.json', key: 'derive' },
-      },
-    };
-
-    // The SAME derives authored DIRECTLY in the unified op[] envelope (the migration table, design §2.2,
-    // inverted). NOTE the NAME FLIP: the promote transform field is `reducer`; NodeOps.promote is `merge`.
-    const opDef = {
-      id: 'derive',
-      phase: 'build',
-      deps: [],
-      programmatic: true,
-      contract,
-      op: [
-        { when: 'pre', writes: ['spec/seed.json'], transform: { kind: 'seed', from: '{{WORKSPACE}}/seed.json' } },
-        { when: 'post', writes: ['out/projected.json'], reads: ['in/raw.json'], transform: { kind: 'project', from: 'in/raw.json' } },
-        { when: 'post', transform: { kind: 'merge', ops: [{ fold: { into: 'out/merged.json', from: ['a.json', 'b.json'] } }] } },
-        { when: 'post', transform: { kind: 'promote', from: 'out/report.json', to: 'summary', reducer: 'append' } },
-        { when: 'post', transform: { kind: 'projectRegistry', source: 'out/report.json', mapRef: '{{RUN}}/index.json', key: 'derive' } },
-      ],
-    };
-
-    const hooksDir = await templateWith(hooksDef);
-    dirs.push(hooksDir);
-    const hooksOps = await compiledOps(hooksDir, 'derive');
-
-    const opDir = await templateWith(opDef);
-    dirs.push(opDir);
-    const opOps = await compiledOps(opDir, 'derive');
-
-    // The hooks-authored twin always single-sources node.ops (the path that works today).
-    expect(hooksOps, 'hooks-authored derive must produce node.ops').toBeDefined();
-
-    // THE LOAD-BEARING ASSERTION (RED before the fix: opOps is undefined — the loader never derives
-    // node.ops from the op[] transforms, so the runner's derive executors never fire for an op[] node).
-    expect(opOps, 'op[]-authored derive must back-fill node.ops so the runtime executors run').toBeDefined();
-    expect(opOps).toEqual(hooksOps);
-  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -167,18 +91,6 @@ describe('derivesFromOp — reconstructs the SAME executor inputs the node.ops?.
     expect(d.promotes).toEqual([{ from: 'out/report.json:value', to: 'summary', merge: 'append' }]);
     // registryProject (runner.ts:1056/1545 → runProjection): { source, mapRef, key } from transform.
     expect(d.registryProjects).toEqual([{ source: 'out/report.json', mapRef: '{{RUN}}/index.json', key: 'derive' }]);
-  });
-
-  it('is a faithful inverse of opsToNodeOps (the legacy bridge it principled-replaces)', () => {
-    // The migration target: `derivesFromOp` reading op[] must reconstruct the SAME per-family executor inputs
-    // that `opsToNodeOps(op)` (→ node.ops → the runner sites) produces today. Cross-check field-for-field.
-    const d = derivesFromOp(op);
-    const legacy = opsToNodeOps(op)!;
-    expect(d.seeds).toEqual(legacy.seed);
-    expect(d.projects).toEqual(legacy.project);
-    expect(d.merges[0]).toEqual(legacy.merge); // node.ops carries a single merge; the helper a 1-element list
-    expect(d.promotes).toEqual(legacy.promote); // INCL. the reducer→merge flip — the RED-mutation tripwire
-    expect(d.registryProjects[0]).toEqual(legacy.registryProject);
   });
 
   it('an op-free / gate-only op[] derives NOTHING (additive — five empty lists)', () => {

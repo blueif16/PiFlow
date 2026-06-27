@@ -52,14 +52,6 @@ export interface NodeSpec {
   /** 4. The filesystem contract — and the source of the inferred DAG edges. */
   io: NodeIO;
   /**
-   * 5. The declarative DATA ops (template `node.json` `hooks`) the RUN LOOP executes around the node —
-   * PRE `seed` (stage a starting artifact), POST `project`/`merge` (derive outputs from frozen inputs),
-   * POST `promote` (lift an output into a RunState channel). DECLARATIVE (data, not `Hook` fns) so the
-   * runner owns the resolver-ctx threading + the stage barrier. OPTIONAL/additive: a node with no `ops`
-   * behaves exactly as before. Carried verbatim from `node.json.hooks` by the template loader.
-   */
-  ops?: NodeOps;
-  /**
    * 6. (G5 — HITL) When present, this node is a HUMAN CHECKPOINT: it spawns NO `pi` (no tools/model), it
    * WRITES a marker, PARKS its lane (without holding a G2 limiter slot) until a reply file appears or the
    * timeout elapses, VALIDATES the reply, JOURNALS it, and finishes `ok` carrying the chosen value. With
@@ -76,13 +68,15 @@ export interface NodeSpec {
   rerouteGate?: RerouteGate;
   /**
    * 8. (G13 — M5) The UNIFIED node-op envelope (design §2/§5): the ONE ordered list every deprecated
-   * authoring grammar (`hooks`/`ops`/`checks`/`policy`/`inject`) LOWERS into AT THE LOADER. The dense
-   * `NodeSpec` gains EXACTLY this one new field (the justified spine widen — `types.ts:10-11`); the named
-   * five concerns are unchanged. Each entry DETECTS (`gate`), DERIVES (`transform`), ACTS (`run`), or
-   * CONTROLS (`action`), all routing through ONE `onFailure` consequence vocabulary. The per-transform
-   * executors (`seed.ts`/`project.ts`/`merge.ts`/`promote.ts`/`checks.ts`) are reused UNCHANGED — the
-   * envelope changes only the authoring + dispatch frame. Optional/additive: a node with no `op` behaves
-   * exactly as before (the loader still carries the byte-identical `ops`/`io.checks`/`io.policy`).
+   * authoring grammar (`hooks`/`checks`/`policy`/`inject`) LOWERS into AT THE LOADER. Since U6 (op⊖ops) it
+   * is the SOLE derive rep — the legacy `ops`/`NodeOps` runtime field was retired; the runner reads derives
+   * from `op` via `derivesFromOp`. The dense `NodeSpec` gains EXACTLY this one field (the justified spine
+   * widen — `types.ts:10-11`); the named five concerns are unchanged. Each entry DETECTS (`gate`), DERIVES
+   * (`transform`), ACTS (`run`), or CONTROLS (`action`), all routing through ONE `onFailure` consequence
+   * vocabulary. The per-transform executors (`seed.ts`/`project.ts`/`merge.ts`/`promote.ts`/`checks.ts`)
+   * are reused UNCHANGED — the envelope changes only the authoring + dispatch frame. Optional/additive: a
+   * node with no `op` behaves exactly as before (the loader still carries the byte-identical
+   * `io.checks`/`io.policy`).
    */
   op?: OpSpec[];
   /**
@@ -188,33 +182,6 @@ export interface CheckpointSpec {
    * attended run). On elapse the `headless` policy fires. A tiny value drives the headless path in tests.
    */
   timeoutMs?: number;
-}
-
-/**
- * The authored, declarative op-specs a node carries (template `node.json` `hooks`). Each entry is DATA the
- * run loop resolves + executes; the run loop — not a closure — owns the resolver ctx, the run/workspace
- * roots, and the stage barrier. All fields optional.
- */
-export interface NodeOps {
-  /** PRE: stage a starting artifact at `to` from the (token-bearing) source `from`. */
-  seed?: { to: string; from: string }[];
-  /** POST: derive `to` from one or many frozen on-disk sources `from`. */
-  project?: { to: string; from: string | string[] }[];
-  /**
-   * POST: the DRIVER-MERGE op set (the `applyMergeOp` discriminated grammar — `{fold|concat|reconcile|run}`),
-   * carried VERBATIM from the authoring source. Shape is the executor's `MergeSpec` (`{ ops: [...] }`), so the
-   * run loop hands it straight to `runMerge`. Each op is loose DATA (the executor discriminates on the op key).
-   */
-  merge?: { ops: Record<string, unknown>[] };
-  /** POST: lift a node output (`from`) into a RunState channel (`to`) via the reducer (default 'set'). */
-  promote?: { from: string; to: string; merge?: Reducer }[];
-  /**
-   * POST DERIVE: derive a node's mechanical outputs from a frozen `source` per a registry record's
-   * `projections` map, resolved from the index at `mapRef` by `key`. Distinct from the inline `project` ops
-   * (whose op-map is authored on the node); here the op-map lives in the registry record. Handed to
-   * `runProjection`.
-   */
-  registryProject?: { source: string; mapRef: string; key: string };
 }
 
 // 1 ── SANDBOX ────────────────────────────────────────────────────────────────
@@ -831,7 +798,6 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
   phase?: string;
   sandbox?: Partial<SandboxSpec>;
   hooks?: NodeSpec['hooks'];
-  ops?: NodeSpec['ops'];
   /**
    * (G13 — M5) The unified op envelope — the loader LOWERS the deprecated `hooks`/`ops`/`checks`/`policy`/
    * `inject` aliases into this one ordered list and carries it verbatim onto the dense `NodeSpec`. Authoring

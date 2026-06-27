@@ -18,6 +18,7 @@ import {
   DefaultToolRegistry,
   seededRegistry,
   SUBMIT_RESULT_TOOL,
+  derivesFromOp,
   type WorkflowSpec,
   type NodeSpec,
 } from '@piflow/core';
@@ -92,18 +93,21 @@ export function renderNodeInspect(node: NodeSpec, registry: DefaultToolRegistry,
     lines.push(`    resolved: UNRESOLVED (${(e as Error).message})`);
   }
 
-  // ── 3. OPS — the declarative seed/project/merge/promote plumbing. ──
-  const ops = node.ops;
-  if (ops && (ops.seed?.length || ops.project?.length || ops.merge?.ops?.length || ops.promote?.length)) {
+  // ── 3. OPS — the declarative seed/project/merge/promote plumbing, read from the canonical `op[]` (the
+  // SOLE derive rep; the legacy `node.ops` was retired in U6). `derivesFromOp` reconstructs the per-family
+  // executor inputs the run loop consumes — the same view the old `node.ops` field carried. ──
+  const d = derivesFromOp(node.op);
+  const mergeOpCount = d.merges.reduce((n, m) => n + (m.ops?.length ?? 0), 0);
+  if (d.seeds.length || d.projects.length || mergeOpCount || d.promotes.length) {
     lines.push('  ops:');
-    if (ops.seed?.length) lines.push(`    seed:    ${ops.seed.map((s) => `${s.from} → ${s.to}`).join('; ')}`);
-    if (ops.project?.length)
+    if (d.seeds.length) lines.push(`    seed:    ${d.seeds.map((s) => `${s.from} → ${s.to}`).join('; ')}`);
+    if (d.projects.length)
       lines.push(
-        `    project: ${ops.project.map((p) => `${Array.isArray(p.from) ? p.from.join('+') : p.from} → ${p.to}`).join('; ')}`,
+        `    project: ${d.projects.map((p) => `${Array.isArray(p.from) ? p.from.join('+') : p.from} → ${p.to}`).join('; ')}`,
       );
-    if (ops.merge?.ops?.length) lines.push(`    merge:   ${ops.merge.ops.length} op(s)`);
-    if (ops.promote?.length)
-      lines.push(`    promote: ${ops.promote.map((p) => `${p.from} → ${p.to} (${p.merge ?? 'set'})`).join('; ')}`);
+    if (mergeOpCount) lines.push(`    merge:   ${mergeOpCount} op(s)`);
+    if (d.promotes.length)
+      lines.push(`    promote: ${d.promotes.map((p) => `${p.from} → ${p.to} (${p.merge ?? 'set'})`).join('; ')}`);
   } else {
     lines.push('  ops:   (none)');
   }

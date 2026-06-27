@@ -3,10 +3,10 @@
 // reconstructs EXACTLY the executor inputs the runner's legacy `node.ops?.{seed,project,registryProject,
 // merge,promote}` derive sites pass today (runner.ts ~999/1048/1056/1069/1161 + ~1356/1537/1545/1564/1795).
 //
-// It is the PRINCIPLED REPLACEMENT for `opsToNodeOps` (lower.ts:97 — the legacy bridge that reconstructs a
-// `NodeOps` shape): same field mappings, but READING FROM `op[]` (the canonical source) and yielding the
-// per-family executor-input lists directly (no intermediate `NodeOps` rep). U0 ships it ADDITIVE — NOT yet
-// wired into runner.ts (that is U1a/U1b); the runner still reads `node.ops` today.
+// It is the PRINCIPLED REPLACEMENT for the legacy `opsToNodeOps` bridge (which reconstructed a `NodeOps`
+// shape): same field mappings, but READING FROM `op[]` (the canonical source) and yielding the per-family
+// executor-input lists directly (no intermediate `NodeOps` rep). It is now the SOLE derive path — the runner
+// reads derives via this helper (runner.ts derive sites) and the legacy `node.ops` rep was retired in U6.
 //
 // The §2.4 adapter table, honored field-for-field:
 //   seed             → Seed { to: o.writes[0], from: transform.from }                         (seed.ts:93)

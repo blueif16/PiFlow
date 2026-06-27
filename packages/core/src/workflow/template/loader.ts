@@ -12,12 +12,12 @@
 
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
-import type { WorkflowSpec, NodeIntent, NodeOps, ReturnMode, Reducer } from '../../types.js';
+import type { WorkflowSpec, NodeIntent, ReturnMode } from '../../types.js';
 import { defaultSchemaValidator, type SchemaValidator } from '../../runner/schema.js';
 import { nodeSchema, metaSchema } from './schema/index.js';
 import type { LoadedNode, TemplateNode, TemplateMeta } from './types.js';
 import { renderRealizedPrompt, collectChecks, toPolicy } from './render.js';
-import { lowerToOps, lowerActions, opsToNodeOps } from './lower.js';
+import { lowerToOps, lowerActions } from './lower.js';
 import {
   checkSchemas,
   checkDeps,
@@ -85,25 +85,6 @@ async function scanNodes(dir: string): Promise<{ loaded: LoadedNode[]; raw: { id
   return { loaded, raw };
 }
 
-/**
- * Carry the authored `node.json.hooks` block onto the runtime `NodeOps` (the declarative DATA the run
- * loop executes: seed PRE · project/merge/promote POST). The `node.json` `hooks` shape IS `NodeOps`
- * (seed/project `{to,from}` · promote `{from,to,merge}` · merge the `{ops:[...]}` MergeSpec), so this is
- * a near-pass-through; only `promote.merge` is narrowed from the authored `string` to the `Reducer` union
- * (the schema gate already constrains it). Returns undefined when no hooks block is authored (so a node
- * with no ops stays op-free — additive).
- */
-function toNodeOps(h: LoadedNode['def']['hooks']): NodeOps | undefined {
-  if (!h) return undefined;
-  const ops: NodeOps = {};
-  if (h.seed) ops.seed = h.seed;
-  if (h.project) ops.project = h.project;
-  if (h.merge) ops.merge = h.merge;
-  if (h.promote) ops.promote = h.promote.map((p) => ({ from: p.from, to: p.to, merge: p.merge as Reducer }));
-  if (h.registryProject) ops.registryProject = h.registryProject;
-  return ops;
-}
-
 /** Dedup a string list, preserving first-seen order. */
 const unique = (xs: string[]): string[] => [...new Set(xs)];
 
@@ -113,10 +94,10 @@ const runRel = (p: string): string => p.replace(/^\{\{RUN\}\}\//, '');
 /** Map an authored TemplateNode → the runtime NodeIntent the existing DAG compiler consumes. */
 function toNodeIntent(n: LoadedNode): NodeIntent {
   const c = n.def.contract;
-  const ops = toNodeOps(n.def.hooks);
   // (M5 · G13) LOWER the deprecated aliases (inject/hooks/checks/policy) into the canonical op[] envelope.
-  // AT THE LOADER ONLY — the dense NodeSpec gains exactly this one field; the runtime ops/checks/policy
-  // carried below stay byte-identical so the runner's existing dispatch is unchanged (additive).
+  // AT THE LOADER ONLY — the dense NodeSpec gains exactly this one field; the runtime checks/policy carried
+  // below stay byte-identical so the runner's existing dispatch is unchanged (additive). `op[]` is now the
+  // SOLE derive rep — the legacy `node.ops` (and its back-fill) was retired in U6.
   const op = lowerToOps(n.def);
   // (M5 · G13) The CONTROL action ops lower to the canonical M3/M4 primitives (reroute/retry/escalate).
   const actions = lowerActions(op);
@@ -167,20 +148,11 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
       ...(n.def.timeoutMs ? { timeoutMs: n.def.timeoutMs } : {}),
     },
   };
-  // Additive: only attach `ops` when the node authored a hooks block (a node with none stays op-free).
-  if (ops) intent.ops = ops;
-  // (M5 · G13) Carry the lowered op[] envelope onto the intent → the dense NodeSpec (the one new field).
+  // (M5 · G13) Carry the lowered op[] envelope onto the intent → the dense NodeSpec. `op[]` is the SOLE
+  // derive rep (the legacy `node.ops` + its back-fill were retired in U6): both `hooks`-authored and
+  // directly-`op[]`-authored derives flow through this one field, which the runner reads via `derivesFromOp`.
   // Additive: a node declaring none of the lowerable surfaces stays op-free.
   if (op) intent.op = op;
-  // (G13 — M5) DERIVE `node.ops` from the op[] transforms for a node authored DIRECTLY in `op[]` (no
-  // `hooks` alias). `lowerToOps` returns a directly-authored `op[]` verbatim and never re-derives `hooks`,
-  // so without this the runner's POST-derive executors (which read `node.ops?.{seed/project/merge/promote/
-  // registryProject}`) never fire and the derive SILENTLY never runs. GUARD: only when no `hooks` block
-  // already single-sourced `node.ops` — never double-source. Additive: a gate/action/run-only op[] stays op-free.
-  if (!ops && op) {
-    const derived = opsToNodeOps(op);
-    if (derived) intent.ops = derived;
-  }
   // (G6) Carry the agent-PRESET label verbatim (the preset was already expanded into tools/prompt at init);
   // it rides to observe so the GUI renders the icon. Additive — a node with none stays label-free.
   if (n.def.agentType) intent.agentType = n.def.agentType;
@@ -189,7 +161,7 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   if (n.def.provider) intent.provider = n.def.provider;
   if (n.def.tier) intent.tier = n.def.tier;
   // (G5) Carry a HUMAN CHECKPOINT block verbatim onto the spec (the runtime CheckpointSpec) when authored —
-  // additive, the same way `ops` is carried. A node with no checkpoint behaves exactly as before.
+  // additive, the same way `op` is carried. A node with no checkpoint behaves exactly as before.
   if (n.def.checkpoint) intent.checkpoint = n.def.checkpoint;
   // (PROGRAMMATIC NODE) Carry the no-pi marker verbatim onto the intent → the dense NodeSpec (the runner
   // dispatches it to the declarative-ops lane). Additive: a node with none spawns `pi` exactly as before.

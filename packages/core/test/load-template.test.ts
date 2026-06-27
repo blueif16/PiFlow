@@ -14,7 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadTemplate, TemplateError } from '../src/index.js';
-import { compile } from '../src/index.js';
+import { compile, derivesFromOp } from '../src/index.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, 'fixtures', 'template-min');
@@ -83,37 +83,40 @@ describe('loadTemplate — HAPPY PATH (the unmodified fixture LOADS)', () => {
     expect(w0.prompt).toMatch(/^DRIVER-READ-SCOPE:/m);
   });
 
-  // S1(a) — the loader must CARRY the authored op-specs (node.json `hooks`) onto the NodeIntent so the
-  // run loop can stage seeds / promote at the barrier. Pre-S1 `toNodeIntent` drops `hooks` entirely.
-  it('carries the authored hooks (seed/promote) onto intent.ops', async () => {
+  // S1(a) — the loader must LOWER the authored op-specs (node.json `hooks`) onto the canonical `op[]` (the
+  // SOLE derive rep since U6) so the run loop can stage seeds / promote at the barrier. `derivesFromOp`
+  // reconstructs the per-family executor inputs the run loop consumes — the same view `node.ops` carried
+  // before retirement. Pre-S1 `toNodeIntent` dropped `hooks` entirely.
+  it('lowers the authored hooks (seed/promote/project) onto intent.op (read via derivesFromOp)', async () => {
     dir = await cloneFixture();
     const spec = await loadTemplate(dir);
     // w0-classify declares a `promote` (archetype); w2a-levels declares a `seed`.
     const w0 = spec.nodes.find((n) => n.label === 'w0-classify')!;
-    expect(w0.ops?.promote).toEqual([
+    expect(derivesFromOp(w0.op).promotes).toEqual([
       { from: 'spec/classification.json:archetype', to: 'archetype', merge: 'set' },
     ]);
     const w2a = spec.nodes.find((n) => n.label === 'w2a-levels')!;
-    expect(w2a.ops?.seed).toEqual([
+    expect(derivesFromOp(w2a.op).seeds).toEqual([
       {
         to: 'spec/level-skeleton.json',
         from: '{{WORKSPACE}}/templates/modules/{{state.archetype}}/level-skeleton.json',
       },
     ]);
-    // w2b-assets authors a `project` hook → it carries through onto ops.project (not seed/promote).
+    // w2b-assets authors a `project` hook → it lowers onto op[] as a project transform (not seed/promote).
     const w2b = spec.nodes.find((n) => n.label === 'w2b-assets')!;
-    expect(w2b.ops?.project).toEqual([
+    const w2bDerives = derivesFromOp(w2b.op);
+    expect(w2bDerives.projects).toEqual([
       { to: 'public/assets/manifest.json', from: ['spec/classification.json', 'public/assets'] },
     ]);
-    expect(w2b.ops?.seed).toBeUndefined();
-    expect(w2b.ops?.promote).toBeUndefined();
+    expect(w2bDerives.seeds).toEqual([]);
+    expect(w2bDerives.promotes).toEqual([]);
   });
 
-  it('compile passes ops through onto the dense NodeSpec', async () => {
+  it('compile passes op[] through onto the dense NodeSpec (the derives survive densification)', async () => {
     dir = await cloneFixture();
     const wf = compile(await loadTemplate(dir));
-    expect(wf.nodes['w0-classify'].ops?.promote?.[0].to).toBe('archetype');
-    expect(wf.nodes['w2a-levels'].ops?.seed?.[0].to).toBe('spec/level-skeleton.json');
+    expect(derivesFromOp(wf.nodes['w0-classify'].op).promotes[0].to).toBe('archetype');
+    expect(derivesFromOp(wf.nodes['w2a-levels'].op).seeds[0].to).toBe('spec/level-skeleton.json');
   });
 
   // G1 — the loader must CARRY the authored per-node routing fields (model/provider/tier) through to the
@@ -164,13 +167,15 @@ describe('loadTemplate — HAPPY PATH (the unmodified fixture LOADS)', () => {
     expect(wf.nodes['w2a-levels'].agentType).toBeUndefined();
   });
 
-  it('a NodeIntent with NO ops compiles to a NodeSpec with ops undefined (additive — absence stays absent)', () => {
-    // The additivity guarantee: an authored node that declares no ops is byte-for-byte op-free downstream.
+  it('a NodeIntent with NO derives compiles to a NodeSpec with op[] undefined (additive — absence stays absent)', () => {
+    // The additivity guarantee: an authored node that declares no derives is byte-for-byte op-free
+    // downstream (`op[]` is the SOLE derive rep since U6 — no `op` ⇒ derivesFromOp yields five empty lists).
     const wf = compile({
       meta: { name: 't', description: 'd' },
       nodes: [{ label: 'Plain', prompt: 'x', tools: {}, io: { reads: [], produces: ['p.txt'], artifacts: [{ path: 'p.txt' }] } }],
     });
-    expect(wf.nodes.plain.ops).toBeUndefined();
+    expect(wf.nodes.plain.op).toBeUndefined();
+    expect(derivesFromOp(wf.nodes.plain.op)).toEqual({ seeds: [], projects: [], registryProjects: [], merges: [], promotes: [] });
   });
 });
 

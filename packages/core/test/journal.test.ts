@@ -89,18 +89,16 @@ describe('envelopeHash — the per-node identity', () => {
 });
 
 // ── 1b. PURE: envelopeHash tracks the UNIFIED op[] (U1d · ⚠ D3) ───────────────────────────────────
-// The envelope must hash the canonical `op[]` (a node's side-effect derives), NOT the legacy `node.ops`.
-// An `op[]`-only node (authored directly in `op[]`, the post-U6 reality) carries `node.ops === undefined`,
-// so hashing `node.ops` collapses EVERY such node's derives to `ops:null` → two nodes whose ONLY difference
-// is their `op[]` derive content collide on one hash → a stale REUSE that silently skips the changed derive.
-// RED MUTATION (the current pre-fix code IS the mutation): `journal.ts` hashes `ops: node.ops ?? null` →
-// the two-different-derives assertion below collides → RED. The fix hashes `op: node.op ?? null` → GREEN.
+// The envelope must hash the canonical `op[]` (a node's side-effect derives) — `op[]` is the SOLE derive
+// rep since U6 retired the legacy `node.ops`. Hashing the (now-gone) `node.ops` would have collapsed EVERY
+// derive node to `ops:null` → two nodes whose ONLY difference is their `op[]` derive content collide on one
+// hash → a stale REUSE that silently skips the changed derive. The hash tracks `op: node.op ?? null`, so a
+// changed derive flips the envelope. (This was the U1d · ⚠ D3 fix; the assertion below pins it.)
 describe('envelopeHash — hashes the unified op[] (so a derive edit re-runs)', () => {
   const resolved = { piTools: ['read', 'write'] };
 
-  // Two `op[]`-only nodes (node.ops undefined — the post-U6 shape) whose ONLY difference is the derive
-  // BODY. `compile` carries `intent.op` → `NodeSpec.op` verbatim (dag.ts `materialize`), leaving `node.ops`
-  // undefined — exactly the silent-collision case D3 cures.
+  // Two nodes whose ONLY difference is the derive BODY. `compile` carries `intent.op` → `NodeSpec.op`
+  // verbatim (dag.ts `materialize`) — the derive lives entirely on `op[]`, the silent-collision case D3 cures.
   const opNode = (promoteTo: string): NodeSpec =>
     compile(wf([n('A', [], ['a.txt'], {
       op: [{ when: 'post', transform: { kind: 'promote', from: 'out/report.json', to: promoteTo, reducer: 'append' } }],
@@ -109,9 +107,8 @@ describe('envelopeHash — hashes the unified op[] (so a derive edit re-runs)', 
   it('two op[]-only nodes that differ ONLY in op[] derive content hash DIFFERENTLY', () => {
     const a = opNode('summaryA');
     const b = opNode('summaryB');
-    // Sanity: these ARE op[]-only (the collision precondition) — node.ops is the retired rep.
-    expect(a.ops).toBeUndefined();
-    expect(b.ops).toBeUndefined();
+    // `op[]` is the SOLE derive rep (the legacy `node.ops` was retired in U6) — the derive lives entirely
+    // on `op`, so the only difference between these two nodes is their `op[]` body.
     expect(a.op).not.toEqual(b.op); // the only difference is the derive body
     // THE load-bearing assertion: a changed derive must flip the envelope (else the next resume REUSEs a
     // node whose side-effect changed). RED when journal.ts hashes node.ops (both → ops:null → collide).
