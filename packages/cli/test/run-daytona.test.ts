@@ -56,7 +56,7 @@ describe('piflowctl run — --sandbox daytona constructs a cloud provider and fo
     let optsSeen: RunFromTemplateOpts | undefined;
     let factoryOpts: { image?: string; apiKey?: string } | undefined;
     const deps: RunDeps = {
-      makeDaytonaProvider: (o) => {
+      makeDaytonaProvider: async (o) => {
         factoryOpts = o;
         return fakeDaytonaProvider(o);
       },
@@ -79,7 +79,7 @@ describe('piflowctl run — --sandbox daytona constructs a cloud provider and fo
   it('derives the provider-cred allowlist from --provider and forwards it as cloudSecrets (+ a default secretResolver)', async () => {
     let optsSeen: RunFromTemplateOpts | undefined;
     const deps: RunDeps = {
-      makeDaytonaProvider: (o) => fakeDaytonaProvider(o),
+      makeDaytonaProvider: async (o) => fakeDaytonaProvider(o),
       runFromTemplate: async (_dir, opts) => {
         optsSeen = opts;
         return { status: { ok: true } as never, outDir: opts.runDir };
@@ -100,7 +100,7 @@ describe('piflowctl run — --sandbox daytona constructs a cloud provider and fo
   it('an explicit --cloud-secret NAME overrides the provider-derived var', async () => {
     let optsSeen: RunFromTemplateOpts | undefined;
     const deps: RunDeps = {
-      makeDaytonaProvider: (o) => fakeDaytonaProvider(o),
+      makeDaytonaProvider: async (o) => fakeDaytonaProvider(o),
       runFromTemplate: async (_dir, opts) => {
         optsSeen = opts;
         return { status: { ok: true } as never, outDir: opts.runDir };

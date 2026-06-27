@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DaytonaSandboxProvider } from '../src/sandbox/daytona.js';
+import { DaytonaSandboxProvider } from '../src/daytona.js';
 
 class FakeFs {
   async uploadFile(data: Uint8Array, remotePath: string): Promise<void> {

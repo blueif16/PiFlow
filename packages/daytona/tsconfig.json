@@ -4,6 +4,6 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "references": [{ "path": "../core" }, { "path": "../daytona" }, { "path": "../e2b" }],
+  "references": [{ "path": "../core" }],
   "include": ["src/**/*.ts"]
 }

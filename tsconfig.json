@@ -5,6 +5,7 @@
     { "path": "./packages/core" },
     { "path": "./packages/cli" },
     { "path": "./packages/langgraph" },
+    { "path": "./packages/daytona" },
     { "path": "./packages/e2b" }
   ]
 }

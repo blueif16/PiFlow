@@ -167,21 +167,10 @@ export { localJailPlan } from './sandbox/jail.js';
 export type { JailPlan } from './sandbox/jail.js';
 // Worktree per-run git WRITE-isolation provider (run-scoped: branch pi/<run> + sibling .pi-worktrees/<run>)
 export { WorktreeSandbox, WorktreeSandboxProvider } from './sandbox/worktree.js';
-// Daytona cloud provider (run-scoped VM lifecycle) + its dependency-inversion SDK seam.
-export { DaytonaSandbox, DaytonaSandboxProvider } from './sandbox/daytona.js';
-export type {
-  DaytonaSdk,
-  DaytonaVm,
-  DaytonaFs,
-  DaytonaProcess,
-  DaytonaCreateParams,
-  DaytonaExecResponse,
-  DaytonaSessionCommand,
-  DaytonaSessionCommandInfo,
-} from './sandbox/daytona.js';
-// Live wiring: the real `@daytona/sdk` adapter + convenience factory (the ONLY SDK-importing module).
-export { realDaytonaSdk, createDaytonaProvider } from './sandbox/daytona-sdk.js';
-export type { CreateDaytonaProviderOpts } from './sandbox/daytona-sdk.js';
+// Cloud providers (Daytona, E2B) are CHOOSE-TO-INSTALL extensions (the providers-are-extensions pattern):
+// `@piflow/daytona` / `@piflow/e2b` compile against the sandbox seam types re-exported above and are loaded
+// dynamically by the CLI on `--sandbox daytona|e2b`. Core keeps only local/inmemory/seatbelt/worktree +
+// NotImplementedProvider — it does NOT depend on a cloud SDK.
 
 // Deterministic hook runner
 export { runHooks } from './hooks/index.js';

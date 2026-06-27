@@ -49,7 +49,6 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@daytona/sdk": "^0.185.0",
     "@piflow/tool-bridge": "^0.1.0",
     "esbuild": "^0.28.1"
   }
