@@ -161,6 +161,28 @@ per-transform adapter the switched dispatch must construct from an `OpSpec`:
   switching site #3/#4; if opt-A widens the lowering, that is an ADDITIVE change to `lower.ts` gated by the
   parity oracle, not a silent behavior shift.
 
+  - **D6 — RESOLVED in U0 (2026-06-27): opt-B** (the conservative, smaller-surface choice). The rich
+    `project` case is EXPLICITLY OUT OF op[]-only scope for now; the `project` dispatch reproduces ONLY the
+    bare `{to: writes[0], from}` obj (byte-identical to `opsToNodeOps`, `lower.ts:104-105`).
+    EVIDENCE (grepped over the whole repo):
+    - the ONLY shipped `hooks.project` author shape is the BARE `{to, from}` form
+      (`packages/core/test/fixtures/template-min/nodes/w2b-assets/node.json`) — `grep -rln '"(copy|assemble|union)"'`
+      over every `node.json` returns ZERO. No rich `copy`/`assemble`/`union`/`merge` project op-vocabulary is
+      authored in ANY shipped `hooks.project`.
+    - the rich `applyProjectionOp` vocabulary (`project.ts:84-228`) is reached EXCLUSIVELY through a
+      registry-record `projections` map via `projectRegistry`/`runProjection` (`union-projection.test.ts`),
+      NEVER through `hooks.project`. `lower.ts:61-64` lowers `hooks.project` to `{kind:'project', from}` only.
+    - a bare `{to, from}` project op carries no `copy/assemble/merge/union` key, so `applyProjectionOp` hits
+      its "no recognized op" fall-through (`project.ts:230`) — the inline `hooks.project` derive is itself a
+      graceful executor-level NO-OP today (reads the source, writes nothing).
+    CONSEQUENCE: the rich `project` case was never lossy through `op[]` because it never ENTERED `op[]` via
+    `hooks.project`. opt-A (widen the lowering to carry the rich op set into `transform.ops`) is UNNECESSARY
+    — there is no rich `hooks.project` author shape to carry. U1b's `project` site (#3/#4) switches the bare
+    `{to,from}` case to `derivesFromOp(node.op).projects` with NO lowering change. If a rich `hooks.project`
+    author shape is EVER introduced, reopen D6 and re-evaluate opt-A.
+    Pinned by the U0 oracle: `op-derive-ops-parity.test.ts` (header comment + the `derivesFromOp` project-adapter
+    assertion + the runtime-parity `project` family riding the byte-identical run).
+
 ---
 
 ## 3. Target end-state (per consumer)
