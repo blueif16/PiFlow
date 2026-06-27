@@ -38,10 +38,16 @@ RUN
   --run <id>    the instance id (keys out/<id>); aliases --id. Required for a live run.
   --arg k=v     a workflow arg → {{arg.k}} (repeatable).
   --workspace <p>  the read-only {{WORKSPACE}} root (skills/templates/registry); default cwd.
-  --sandbox <inmemory|local|danger-full-access>  exec backend. inmemory (default) = no model;
+  --sandbox <inmemory|local|danger-full-access|daytona>  exec backend. inmemory (default) = no model;
                    local = real in-place pi, read-scope-jailed per node (seatbelt on macOS);
-                   danger-full-access = local with the jail OFF (agent reads the whole filesystem).
+                   danger-full-access = local with the jail OFF (agent reads the whole filesystem);
+                   daytona = real pi in a remote CLOUD VM (full isolation). Boots the promoted
+                   piflow-node-runtime snapshot by default (env: DAYTONA_API_KEY; override the image with
+                   DAYTONA_SNAPSHOT/DAYTONA_IMAGE). A custom gateway's ~/.pi/agent/models.json entry is
+                   staged into the VM + its $VAR key forwarded (allowlisted).
   --provider <gw>  the pi --provider gateway (e.g. mmgw).
+  --cloud-secret <NAME>  (daytona) extra provider-cred env var to forward into the VM (else derived from
+                   --provider / its models.json entry).
   --thinking <v>   reasoning-depth cap → pi --thinking.
   --model <m>      model pin → pi --model.
   --out <dir>      host run dir (= {{RUN}}) — FALLBACK ONLY. A template under .piflow/<wf>/template/

@@ -122,6 +122,10 @@ export function realDaytonaSdk(client: Daytona): DaytonaSdk {
       // Real `create(CreateSandboxFromImageParams)` — only forward fields we set; undefined image is
       // fine (the client falls back to its default snapshot).
       const sandbox = await client.create({
+        // Prefer a pre-built snapshot (our promoted `piflow-node-runtime`); else an image ref. The real
+        // client splits these into `CreateSandboxFromSnapshotParams` vs `…FromImageParams` — forwarding
+        // both is harmless when one is undefined, and `snapshot` wins where the API distinguishes them.
+        ...(params?.snapshot !== undefined ? { snapshot: params.snapshot } : {}),
         ...(params?.image !== undefined ? { image: params.image } : {}),
         ...(params?.envVars !== undefined ? { envVars: params.envVars } : {}),
         ...(params?.resources !== undefined ? { resources: params.resources } : {}),
@@ -147,8 +151,14 @@ export interface CreateDaytonaProviderOpts {
   apiUrl?: string;
   /** Target region for sandboxes (env `DAYTONA_TARGET`). */
   target?: string;
-  /** Run-level VM image (the per-run shared VM and per-node throwaway VMs default to this). */
+  /** Run-level VM image ref (the per-run shared VM and per-node throwaway VMs default to this). */
   image?: string;
+  /**
+   * Pre-built Daytona SNAPSHOT name to boot from (preferred over `image`) — our promoted node-runtime image
+   * (`deploy/daytona/promote-snapshot.mjs`). A snapshot is permanent + instant (no rebuild, no external
+   * registry); this is the normal production path.
+   */
+  snapshot?: string;
   /** Run-level VM sizing (cpu cores; memory/disk in GiB). */
   resources?: { cpu?: number; memory?: number; disk?: number };
   /** Idle auto-stop guard in MINUTES so a crashed run can't leak a billed VM. */
@@ -175,6 +185,7 @@ export function createDaytonaProvider(opts: CreateDaytonaProviderOpts = {}): Day
   const client = new Daytona(config);
   return new DaytonaSandboxProvider(realDaytonaSdk(client), {
     image: opts.image,
+    snapshot: opts.snapshot,
     resources: opts.resources,
     autoStopInterval: opts.autoStopInterval,
     homeDir: opts.homeDir,

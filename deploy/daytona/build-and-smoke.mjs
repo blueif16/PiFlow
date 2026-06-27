@@ -21,7 +21,7 @@ const image = Image.base('node:22-trixie-slim')
   .runCommands(
     // one chained RUN so the apt cache is never persisted in a layer
     'apt-get update' +
-      ' && apt-get install -y --no-install-recommends git ca-certificates' +
+      ' && apt-get install -y --no-install-recommends git ca-certificates ripgrep' +
       ' && rm -rf /var/lib/apt/lists/*' +
       ` && npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}` +
       ' && pi --version',

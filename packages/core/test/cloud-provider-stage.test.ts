@@ -43,6 +43,17 @@ class FakeSdk {
   async delete(): Promise<void> {}
 }
 
+// A fake that RECORDS the create params, so a test can assert which boot field (snapshot vs image) the
+// provider forwarded.
+class RecordingSdk {
+  lastCreate?: { snapshot?: string; image?: string };
+  async create(params?: { snapshot?: string; image?: string }): Promise<FakeVm> {
+    this.lastCreate = { snapshot: params?.snapshot, image: params?.image };
+    return new FakeVm();
+  }
+  async delete(): Promise<void> {}
+}
+
 async function tmp(prefix: string): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), `piflow-${prefix}-`));
 }
@@ -101,6 +112,35 @@ describe('DaytonaSandboxProvider — M1b stageHome (the custom-gateway models.js
       await provider.create({ readScope: [], outputDir: 'out', workdir: 'solo' });
       const staged = await fs.readFile(path.join(home, '.pi', 'agent', 'models.json'), 'utf8');
       expect((JSON.parse(staged) as { providers: Record<string, unknown> }).providers.nebius).toBeDefined();
+    } finally {
+      await fs.rm(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('DaytonaSandboxProvider — M1c boot from a SNAPSHOT (vs a raw image ref)', () => {
+  it('openRun forwards the configured snapshot and does NOT stuff its name into the image field', async () => {
+    const home = await tmp('vm-home');
+    const sdk = new RecordingSdk();
+    try {
+      const provider = new DaytonaSandboxProvider(sdk as never, { homeDir: home, snapshot: 'piflow-node-runtime-0.80.2' });
+      await provider.openRun({ run: 'r1', repoRoot: home, outDir: home });
+      // booted FROM the snapshot — a snapshot name is not an image ref, so `image` must stay undefined.
+      expect(sdk.lastCreate?.snapshot).toBe('piflow-node-runtime-0.80.2');
+      expect(sdk.lastCreate?.image).toBeUndefined();
+    } finally {
+      await fs.rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to a raw image ref when no snapshot is set', async () => {
+    const home = await tmp('vm-home');
+    const sdk = new RecordingSdk();
+    try {
+      const provider = new DaytonaSandboxProvider(sdk as never, { homeDir: home, image: 'ghcr.io/acme/pi:1' });
+      await provider.openRun({ run: 'r2', repoRoot: home, outDir: home });
+      expect(sdk.lastCreate?.image).toBe('ghcr.io/acme/pi:1');
+      expect(sdk.lastCreate?.snapshot).toBeUndefined();
     } finally {
       await fs.rm(home, { recursive: true, force: true });
     }

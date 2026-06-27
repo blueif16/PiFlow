@@ -49,6 +49,12 @@ import type {
 export interface DaytonaCreateParams {
   /** Container image ref (real SDK also accepts an `Image` builder or a `snapshot`). */
   image?: string;
+  /**
+   * Pre-built Daytona SNAPSHOT name to boot from (real `CreateSandboxFromSnapshotParams.snapshot`) — a
+   * permanent, instant image registered in Daytona's OWN store (no external registry). This is how a node
+   * boots from our promoted `piflow-node-runtime` image; preferred over `image` when set.
+   */
+  snapshot?: string;
   /** Per-VM environment (real field: `envVars`). */
   envVars?: Record<string, string>;
   /** VM sizing — real `Resources` shape `{ cpu, memory, disk }` (memory/disk in GiB). */
@@ -495,6 +501,8 @@ export class DaytonaSandboxProvider implements SandboxProvider {
      */
     private readonly vmDefaults: {
       image?: string;
+      /** Pre-built Daytona SNAPSHOT name to boot from (preferred over `image`) — our promoted node-runtime. */
+      snapshot?: string;
       resources?: { cpu?: number; memory?: number; disk?: number };
       /** Idle auto-stop guard so a crashed run can't leak a billed VM. */
       autoStopInterval?: number;
@@ -536,7 +544,10 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     // LATER, at the node level — `env` per `exec`, and a per-node `image` is simply UNSUPPORTED in the
     // shared-VM model (you can't reimage a running VM per node).
     const vm = await this.sdk.create({
-      image: this.vmDefaults.image,
+      // Prefer our pre-built snapshot; fall back to a raw image ref. (A snapshot name is NOT an image ref —
+      // the API distinguishes them — so this must forward `snapshot`, not stuff the name into `image`.)
+      snapshot: this.vmDefaults.snapshot,
+      image: this.vmDefaults.snapshot ? undefined : this.vmDefaults.image,
       resources: this.vmDefaults.resources,
       autoStopInterval: this.vmDefaults.autoStopInterval,
       // The run id is the natural VM label; passed via env for traceability (OpenRunOpts.run).
@@ -561,7 +572,9 @@ export class DaytonaSandboxProvider implements SandboxProvider {
     // A per-node VM CAN honor CreateOpts.image (unlike the shared-VM path) — this is the only path
     // where per-node image actually works (research note §5).
     const vm = await this.sdk.create({
-      image: opts.image ?? this.vmDefaults.image,
+      // A per-node image override wins; else the run-level snapshot (preferred) or image default.
+      snapshot: opts.image ? undefined : this.vmDefaults.snapshot,
+      image: opts.image ?? (this.vmDefaults.snapshot ? undefined : this.vmDefaults.image),
       resources: this.vmDefaults.resources,
       autoStopInterval: this.vmDefaults.autoStopInterval,
       envVars: opts.env,

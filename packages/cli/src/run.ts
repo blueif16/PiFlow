@@ -89,7 +89,12 @@ export interface RunDeps {
    * Factory for the `--sandbox daytona` cloud provider (injectable so a test asserts the instance WITHOUT a
    * real Daytona client/VM). Default builds `createDaytonaProvider({ image: DAYTONA_IMAGE, apiKey: DAYTONA_API_KEY })`.
    */
-  makeDaytonaProvider?: (opts: { image?: string; apiKey?: string; stageHome?: Record<string, string> }) => SandboxProvider;
+  makeDaytonaProvider?: (opts: {
+    image?: string;
+    snapshot?: string;
+    apiKey?: string;
+    stageHome?: Record<string, string>;
+  }) => SandboxProvider;
   /** Mint a memorable run name not in `existing` (default: core `generateRunName`; a test injects a stub). */
   generateName?: (existing: string[]) => string;
   /** List the run-name basenames already present under a runs home (default: read the dir; '' if absent). */
@@ -261,6 +266,14 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
  * authoritatively from its `~/.pi/agent/models.json` entry's `$VAR` apiKey ref (`parsePiProvider`); this map
  * is the built-in-provider default when no entry exists. An explicit `--cloud-secret` overrides both.
  */
+/**
+ * (M1c) The DEFAULT Daytona snapshot `--sandbox daytona` boots from when neither `DAYTONA_SNAPSHOT` nor
+ * `DAYTONA_IMAGE` is set — the promoted `piflow-node-runtime` image (`deploy/daytona/promote-snapshot.mjs`
+ * registers this exact name). A snapshot is permanent + instant; making it the default means `--sandbox
+ * daytona` needs ZERO image config. Keep this string in sync with the promote script's `SNAPSHOT`.
+ */
+export const DEFAULT_DAYTONA_SNAPSHOT = 'piflow-node-runtime-0-80-2';
+
 export function providerCredVar(provider?: string): string | undefined {
   const map: Record<string, string> = {
     anthropic: 'ANTHROPIC_API_KEY',
@@ -330,7 +343,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     deps.makeLocalProvider ?? ((o?: { dangerous?: boolean }) => new LocalSandboxProvider({ enforceReadScope: !o?.dangerous }));
   const makeDaytonaProvider =
     deps.makeDaytonaProvider ??
-    ((o: { image?: string; apiKey?: string; stageHome?: Record<string, string> }) => createDaytonaProvider(o));
+    ((o: { image?: string; snapshot?: string; apiKey?: string; stageHome?: Record<string, string> }) =>
+      createDaytonaProvider(o));
   const generateName = deps.generateName ?? ((existing: string[]) => generateRunName(existing));
   const listExistingRuns = deps.listExistingRuns ?? listExistingRunNames;
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
@@ -458,8 +472,13 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // from that entry's $VAR apiKey refs (authoritative). A built-in provider has no entry → no staging.
     const pi = loadPiProviderConfig(parsed.provider);
     const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
+    // (M1c) Boot from the promoted SNAPSHOT by default (zero config). A raw `DAYTONA_IMAGE` ref overrides
+    // (and suppresses the snapshot); `DAYTONA_SNAPSHOT` picks a different snapshot name.
+    const rawImage = process.env.DAYTONA_IMAGE;
+    const snapshot = process.env.DAYTONA_SNAPSHOT ?? (rawImage ? undefined : DEFAULT_DAYTONA_SNAPSHOT);
     provider = makeDaytonaProvider({
-      image: process.env.DAYTONA_IMAGE,
+      ...(rawImage ? { image: rawImage } : {}),
+      ...(snapshot ? { snapshot } : {}),
       apiKey: process.env.DAYTONA_API_KEY,
       ...(stageHome ? { stageHome } : {}),
     });
@@ -475,6 +494,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
           ? [fallback]
           : [];
     const credList = cloudSecrets.join(', ');
+    const bootFrom = rawImage ? `image ${rawImage}` : `snapshot ${snapshot}`;
+    print(`piflowctl run: cloud (daytona) — booting from ${bootFrom}.`);
     print(
       cloudSecrets.length
         ? `piflowctl run: cloud (daytona) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the VM (allowlisted; the raw value never leaves the resolver seam).`

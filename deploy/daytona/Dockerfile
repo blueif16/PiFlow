@@ -15,6 +15,9 @@
 #                     scripts needed) — also faster + avoids arbitrary postinstall.
 #   - git + ca-certificates .. git for repo clone/init a node often needs; ca-certs so
 #                     pi's HTTPS model calls + any `npx <mcp-server>` fetch verify TLS.
+#   - ripgrep ....... pi's built-in `grep`/`find` tools shell out to `rg` (pi's own
+#                     containerization Dockerfile installs it); WITHOUT it those tools
+#                     fail in the VM. Cheap + load-bearing, so it's in the base tier.
 # DELIBERATELY OMITTED (would be the ROBUST tier): build-essential, python, and
 # pre-baked stdio MCP servers. The confirmed execution model pushes per-node tool
 # wiring at runtime (the `-e` bundle is self-contained; its only externals are the
@@ -37,7 +40,7 @@ ARG PI_VERSION=0.80.2
 
 # One RUN layer: install OS deps, then pi, then clean apt cache so it never persists.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates \
+ && apt-get install -y --no-install-recommends git ca-certificates ripgrep \
  && rm -rf /var/lib/apt/lists/* \
  && npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}" \
  && pi --version
