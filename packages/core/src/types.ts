@@ -93,6 +93,11 @@ export interface NodeSpec {
    * `prompt` and no `tools`. Everything else (deps/join, contract artifacts+owns+readScope, checks, policy,
    * node-level retry/rerouteTo) is unchanged. Optional/additive — a node without it behaves exactly as
    * before (it spawns `pi`). Mirrors the `checkpoint?`/`rerouteGate?` no-pi presence flags.
+   *
+   * SANDBOX: ops run via host `spawnSync` (env:process.env), NOT the sandbox provider — so a programmatic
+   * node is ALWAYS UNSANDBOXED on the host (no read/write jail) and ALWAYS local, even under
+   * `--sandbox local`/`daytona`. Its `readScope` is vestigial (ignored). Sound: the command is fixed +
+   * repo-authored, and the read-jail exists to contain an LLM, of which there is none here.
    */
   programmatic?: true;
 }
