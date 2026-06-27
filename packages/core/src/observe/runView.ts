@@ -62,6 +62,12 @@ export interface RunViewNode {
   truncated: boolean;
   /** total `thinking_delta` characters for this node. */
   thinkingChars: number;
+  /** assistant completions in this node — how many times the model was invoked (loop signal). */
+  modelCalls: number;
+  /** most times one tool ran with identical args (≥3 ⇒ probable tool loop); 0 = no tool calls. */
+  maxToolRepeat: number;
+  /** the tool behind `maxToolRepeat` (null when none). */
+  repeatedTool: string | null;
   summary?: string;
   issues?: string[];
   stageIndex?: number;
@@ -283,6 +289,7 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       toolCalls: rich.toolCalls, toolBreakdown: rich.toolBreakdown, timeline: rich.timeline,
       reads, scopes, writes, artifacts, bash: rich.bash, tokens: { ...rich.tokens },
       retries: rich.retries, stopReason: rich.stopReason, truncated: rich.truncated, thinkingChars: rich.thinkingChars,
+      modelCalls: rich.modelCalls, maxToolRepeat: rich.maxToolRepeat, repeatedTool: rich.repeatedTool,
       summary: rec.summary, issues: rec.issues || [],
       ...(checkpoint ? { checkpoint } : {}),
     });
@@ -469,6 +476,9 @@ export function previewView(wf: Workflow, opts: PreviewViewOpts = {}): RunView {
       stopReason: null,
       truncated: false,
       thinkingChars: 0,
+      modelCalls: 0,
+      maxToolRepeat: 0,
+      repeatedTool: null,
       ...(p ? { stageIndex: p.stageIndex, lane: p.lane } : {}),
     };
   });

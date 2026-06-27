@@ -152,6 +152,52 @@ describe('createNodeAccumulator — stopReason / truncation', () => {
   });
 });
 
+// ── loop signals — the one capture the rich reducer was missing, needed for the tool-loop anomaly ───
+describe('createNodeAccumulator — loop signals (modelCalls, maxToolRepeat)', () => {
+  // modelCalls = how many times the model completed in this node (one per assistant message_end). A node
+  // that should be one-shot but shows 12 model calls is looping — the cheapest loop signal there is.
+  it('counts modelCalls = assistant message_end completions (non-assistant ignored)', () => {
+    const rich = reduce([
+      { type: 'message_end', message: { role: 'assistant', usage: { input: 1 } } },
+      { type: 'message_end', message: { role: 'assistant', usage: { input: 1 } } },
+      { type: 'message_end', message: { role: 'user' } }, // not an assistant completion ⇒ not counted
+    ]);
+    expect(rich.modelCalls).toBe(2);
+  });
+
+  // maxToolRepeat = the most times ONE tool ran with the SAME args. ≥3 of the identical call is the
+  // classic agent loop (call tool, get nothing useful, call the exact same tool again).
+  it('maxToolRepeat = max count of the SAME tool+args fingerprint', () => {
+    const rich = reduce([
+      { type: 'tool_execution_start', toolName: 'bash', toolCallId: 'a', args: { command: 'ls' }, _t: 0 },
+      { type: 'tool_execution_end', toolCallId: 'a', _t: 1 },
+      { type: 'tool_execution_start', toolName: 'bash', toolCallId: 'b', args: { command: 'ls' }, _t: 2 },
+      { type: 'tool_execution_end', toolCallId: 'b', _t: 3 },
+      { type: 'tool_execution_start', toolName: 'bash', toolCallId: 'c', args: { command: 'ls' }, _t: 4 },
+      { type: 'tool_execution_end', toolCallId: 'c', _t: 5 },
+    ]);
+    expect(rich.maxToolRepeat).toBe(3);
+    expect(rich.repeatedTool).toBe('bash');
+  });
+
+  // DIFFERENT args are legitimate work, not a loop — they must NOT inflate the counter (no false alarm).
+  it('distinct args do NOT inflate maxToolRepeat', () => {
+    const rich = reduce([
+      { type: 'tool_execution_start', toolName: 'read', toolCallId: 'a', args: { path: '/p/a' }, _t: 0 },
+      { type: 'tool_execution_end', toolCallId: 'a', _t: 1 },
+      { type: 'tool_execution_start', toolName: 'read', toolCallId: 'b', args: { path: '/p/b' }, _t: 2 },
+      { type: 'tool_execution_end', toolCallId: 'b', _t: 3 },
+    ]);
+    expect(rich.maxToolRepeat).toBe(1); // two distinct reads ⇒ no repeat
+  });
+
+  it('a tool-free node reads maxToolRepeat 0 and repeatedTool null', () => {
+    const rich = reduce([{ type: 'message_end', message: { role: 'assistant', usage: { input: 1 } } }]);
+    expect(rich.maxToolRepeat).toBe(0);
+    expect(rich.repeatedTool).toBeNull();
+  });
+});
+
 describe('createNodeAccumulator — thinking chars', () => {
   it('sums thinking_delta string lengths ⇒ "ab"+"cde" = 5', () => {
     const rich = reduce([
