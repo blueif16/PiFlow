@@ -36,16 +36,23 @@ const SDK_SEARCH: ToolEntry = {
  * GENERATED CODE actually binds the right tools + routes execute correctly — not just that a string
  * contains some substrings.
  */
-function instantiate(source: string, callTool: (...a: unknown[]) => unknown) {
+function instantiate(
+  source: string,
+  callTool: (...a: unknown[]) => unknown,
+  disposeBridge: () => unknown = () => undefined,
+) {
   const body = source
-    .replace(/^\s*import[^\n]*\n/gm, '') // drop `import {Type} from "typebox"` + bridge import
+    .replace(/^\s*import[^\n]*\n/gm, '') // drop `import {Type} from "typebox"` + bridge import (callTool, disposeBridge)
     .replace(/export\s+default\s+function/m, 'return function'); // capture the factory
   // eslint-disable-next-line @typescript-eslint/no-implied-eval
-  const make = new Function('Type', 'callTool', body);
+  const make = new Function('Type', 'callTool', 'disposeBridge', body);
   const TypeStub = { Unsafe: (s: unknown) => s, Object: (s: unknown) => s };
-  const factory = make(TypeStub, callTool) as (pi: unknown) => void;
+  const factory = make(TypeStub, callTool, disposeBridge) as (pi: unknown) => void;
   const registered: Array<Record<string, any>> = [];
-  factory({ registerTool: (def: Record<string, any>) => registered.push(def) });
+  // The bridge extension also registers a `pi.on("agent_end", …)` cleanup; the fake `pi` accepts and ignores
+  // it so the tool-binding assertions are unaffected. The dedicated cleanup test below uses its own `pi`
+  // that CAPTURES the handler and proves it disposes the bridge.
+  factory({ registerTool: (def: Record<string, any>) => registered.push(def), on: () => undefined });
   return registered;
 }
 
@@ -156,7 +163,7 @@ function instantiateSdk(source: string, pluginModules: unknown[], callTool: (...
   const TypeStub = { Unsafe: (s: unknown) => s, Object: (s: unknown) => s };
   const factory = make(TypeStub, callTool, captureOpenClawTools, ...pluginModules) as (pi: unknown) => void;
   const registered: Array<Record<string, any>> = [];
-  factory({ registerTool: (def: Record<string, any>) => registered.push(def) });
+  factory({ registerTool: (def: Record<string, any>) => registered.push(def), on: () => undefined });
   return registered;
 }
 
@@ -202,6 +209,56 @@ describe('compileToolExtension — the sdk branch (native execute, NOT the bridg
     });
     await registered[0].execute('tc-1', { repo: 'a/b' });
     expect(calls[0][0]).toBe('mcp.github:create_issue'); // mcp still routed by address
+  });
+});
+
+// ── bridge cleanup on agent_end (the MCP-node clean-exit fix) ───────────────────────────────────────
+// BUG: a node that bound an MCP tool left the bridge's Streamable-HTTP/SSE connection open, so the spawned
+// `pi` process never drained its event loop and exited NONZERO at teardown (observed: a deepwiki node exited
+// 1 / hung), which made the runner SKIP output collection (it only collects on exit 0). FIX: the generated
+// bridge extension registers a `pi.on("agent_end", …)` handler that disposes the bridge, closing the socket
+// so the node can exit 0. (The bridge's own `beforeExit` can't save it — that only fires once the loop drains,
+// and the open socket is what prevents the drain.)
+describe('compileToolExtension — bridge cleanup on agent_end (MCP node exits cleanly)', () => {
+  // Load the generated factory against a fake `pi` that CAPTURES lifecycle handlers, plus a disposeBridge spy.
+  function lifecycleHandlers(source: string, disposeBridge: () => unknown) {
+    const body = source
+      .replace(/^\s*import[^\n]*\n/gm, '')
+      .replace(/export\s+default\s+function/m, 'return function');
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const make = new Function('Type', 'callTool', 'disposeBridge', body);
+    const TypeStub = { Unsafe: (s: unknown) => s, Object: (s: unknown) => s };
+    const factory = make(TypeStub, () => ({ content: [] }), disposeBridge) as (pi: unknown) => void;
+    const handlers: Record<string, Array<(...a: unknown[]) => unknown>> = {};
+    factory({
+      registerTool: () => undefined,
+      on: (e: string, h: (...a: unknown[]) => unknown) => {
+        (handlers[e] ??= []).push(h);
+      },
+    });
+    return handlers;
+  }
+
+  it('an MCP extension imports disposeBridge alongside callTool', () => {
+    expect(compileToolExtension([MCP_ISSUE]).source).toMatch(/import\s*\{[^}]*\bdisposeBridge\b[^}]*\}\s*from/);
+  });
+
+  it('registers an agent_end handler that actually disposes the bridge', async () => {
+    let disposed = 0;
+    const handlers = lifecycleHandlers(compileToolExtension([MCP_ISSUE]).source, async () => {
+      disposed += 1;
+    });
+    // FAILS before the fix: no agent_end handler is registered at all (handlers['agent_end'] is undefined).
+    expect(handlers['agent_end']?.length).toBe(1);
+    // and the registered handler must REALLY close the bridge (not a no-op).
+    await handlers['agent_end']![0]({ type: 'agent_end', messages: [] }, {});
+    expect(disposed).toBe(1);
+  });
+
+  it('adds NO bridge disposer when no bridge tool is used (native-sdk stays bridge-free)', () => {
+    const src = compileToolExtension([SDK_FIXTURE_TOOL]).source;
+    expect(src).not.toContain('disposeBridge');
+    expect(src).not.toContain('agent_end');
   });
 });
 
