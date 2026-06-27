@@ -263,11 +263,85 @@ function parseCheck(entry: string): CheckOpt {
   return colon < 0 ? { kind: entry } : { kind: entry.slice(0, colon), path: entry.slice(colon + 1) };
 }
 
+// ── derive-hook flag parsers (each emits one canonical `op[]` entry via buildNode) ──────────────────
+// Value grammars per design §3 (docs/design/scaffold-hooks/00-design.md). Every flag is a value-flag, so
+// `parseArgs` collects it into the repeatable list already; these only shape one entry's string.
+
+/** Parse `--seed to=from` → a PRE seed (stage an input before the model). Dest LHS, source RHS (first `=`). */
+function parseSeed(entry: string): NonNullable<NodeOpts['seed']>[number] {
+  const eq = entry.indexOf('=');
+  if (eq < 1) throw new Error(`piflowctl: --seed expects to=from (got "${entry}")`);
+  return { to: entry.slice(0, eq), from: entry.slice(eq + 1) };
+}
+
+/** Parse `--promote from=to[:reducer]` → a POST promote (lift an output into a `{{state.<to>}}` channel).
+ *  `from` (`@return:<field>` | `<file>:<field>`) is the LHS of the FIRST `=` — so its own `:` is preserved;
+ *  the RHS is `to` with an optional `:set|append|deepMerge` reducer suffix (the design's `--promote-merge`,
+ *  folded inline so promote stays one flag). The loader is the oracle for an out-of-set reducer. */
+function parsePromote(entry: string): NonNullable<NodeOpts['promote']>[number] {
+  const eq = entry.indexOf('=');
+  if (eq < 1) throw new Error(`piflowctl: --promote expects from=to[:reducer] (got "${entry}")`);
+  const from = entry.slice(0, eq);
+  const rhs = entry.slice(eq + 1);
+  const colon = rhs.indexOf(':');
+  if (colon < 0) return { from, to: rhs };
+  return { from, to: rhs.slice(0, colon), merge: rhs.slice(colon + 1) as 'set' | 'append' | 'deepMerge' };
+}
+
+/** Parse `--project to=from[,from2,…]` → a POST project (derive an output from frozen inputs). `from` is one
+ *  path (string) or a comma-listed set (array — the `derivedHook` string|array form). */
+function parseProject(entry: string): NonNullable<NodeOpts['project']>[number] {
+  const eq = entry.indexOf('=');
+  if (eq < 1) throw new Error(`piflowctl: --project expects to=from[,from2] (got "${entry}")`);
+  const to = entry.slice(0, eq);
+  const parts = entry.slice(eq + 1).split(',').filter((p) => p.length > 0);
+  if (!parts.length) throw new Error(`piflowctl: --project needs at least one from (got "${entry}")`);
+  return { to, from: parts.length === 1 ? parts[0] : parts };
+}
+
+/** Parse `--merge-run cmd[:arg,arg,…][@cwd]` → a POST `run` op (a deterministic shell side-effect). `cmd` is
+ *  the token before the FIRST `:` (so a `lesson:scaffold` arg keeps its colon); comma-listed args follow; a
+ *  trailing `@cwd` sets the working dir. Rich merge bodies (fold/concat/reconcile) are hand-authored. */
+function parseMergeRun(entry: string): NonNullable<NodeOpts['mergeRun']>[number] {
+  let body = entry;
+  let cwd: string | undefined;
+  const at = body.lastIndexOf('@');
+  if (at > 0) {
+    cwd = body.slice(at + 1);
+    body = body.slice(0, at);
+  }
+  const colon = body.indexOf(':');
+  if (colon < 0) {
+    if (!body) throw new Error(`piflowctl: --merge-run expects cmd[:args][@cwd] (got "${entry}")`);
+    return { cmd: body, ...(cwd ? { cwd } : {}) };
+  }
+  const cmd = body.slice(0, colon);
+  const args = body.slice(colon + 1).split(',').filter((a) => a.length > 0);
+  return { cmd, ...(args.length ? { args } : {}), ...(cwd ? { cwd } : {}) };
+}
+
+/** Parse `--registry-project source=…,mapRef=…,key=…` → a POST registryProject (all three required). */
+function parseRegistryProject(entry: string): NonNullable<NodeOpts['registryProject']> {
+  const fields: Record<string, string> = {};
+  for (const pair of entry.split(',')) {
+    const eq = pair.indexOf('=');
+    if (eq < 1) throw new Error(`piflowctl: --registry-project expects k=v pairs (got "${pair}")`);
+    fields[pair.slice(0, eq)] = pair.slice(eq + 1);
+  }
+  const { source, mapRef, key } = fields;
+  if (!source || !mapRef || !key) {
+    throw new Error(`piflowctl: --registry-project needs source=,mapRef=,key= (got "${entry}")`);
+  }
+  return { source, mapRef, key };
+}
+
 const NEW_USAGE =
   'piflowctl new <templateDir> [--id <id>] [--name <n>] [--description <d>] [--phase <p>]...';
 const ADD_USAGE =
   'piflowctl add-node <templateDir> --id <id> [--phase <p>] [--dep <id>]... [--artifact <p>]... ' +
   '[--owns <glob>]... [--read <p>]... [--tool <t>]... [--deny <t>]... [--inject <p>]... ' +
+  '[--seed <to=from>]... [--promote <from=to[:reducer]>]... [--project <to=from[,from2]>]... ' +
+  '[--merge-run <cmd[:args][@cwd]>]... [--registry-project <source=,mapRef=,key=>] ' +
   '[--mcp <name=url>]... [--check <kind[:path]>]... [--model <m>] [--provider <g>] [--tier <t>] ' +
   '[--timeout <ms>] [--retries <n>] [--return-mode optional|required] [--schema <p>] [--skill <p>] ' +
   '[--prompt-file <f>] [--on-fail block|warn|stop] [--programmatic]';
@@ -313,6 +387,13 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     tools: flags.tool,
     deny: flags.deny,
     inject: flags.inject,
+    seed: (flags.seed ?? []).map(parseSeed),
+    promote: (flags.promote ?? []).map(parsePromote),
+    project: (flags.project ?? []).map(parseProject),
+    mergeRun: (flags['merge-run'] ?? []).map(parseMergeRun),
+    registryProject: flags['registry-project']?.[0]
+      ? parseRegistryProject(flags['registry-project'][0])
+      : undefined,
     mcp: parseMcp(flags.mcp),
     model: flags.model?.[0],
     provider: flags.provider?.[0],

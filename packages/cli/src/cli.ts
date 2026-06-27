@@ -73,6 +73,9 @@ ADD-NODE
   Edges/contract: --dep <id> · --artifact <p> · --owns <glob> · --read <p>  (each repeatable;
                 owns defaults out/**, read defaults {{RUN}}).
   Tools/io:     --tool <t> · --deny <t> · --inject <p> · --mcp <name=url>  (each repeatable).
+  Hooks:        --seed <to=from> (PRE) · --promote <from=to[:reducer]> · --project <to=from[,from2]> ·
+                --merge-run <cmd[:args][@cwd]> · --registry-project <source=,mapRef=,key=>  (emit canonical
+                op[] derives; seed runs PRE, the rest POST in project→merge→promote order; each repeatable).
   Gates:        --check <kind[:path]> (repeatable) · --on-fail block|warn|stop · --return-mode optional|required.
   Routing:      --model · --provider · --tier · --timeout <ms> · --retries <n> · --schema <p> · --skill <p>.
   --programmatic  a no-pi node (omits prompt/tools; its declarative ops ARE the node).

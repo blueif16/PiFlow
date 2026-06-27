@@ -167,4 +167,41 @@ describe('scaffold — hook flags emit a canonical op[] the real loadTemplate co
     expect(node.inject).toEqual(['{{RUN}}/x.md']); // unchanged: no hooks ⇒ no op[], inject stays the alias.
     expect(node.op).toBeUndefined();
   });
+
+  // The CLI STRING layer (`runAddNodeCli`) parses each derive flag's value-grammar (design §3) into the same
+  // op[] the builder emits. This exercises what the builder test (which passes structured objects) cannot: the
+  // PARSERS — the `--promote …:reducer` suffix, the `--project …,…` comma-array, and `--merge-run`'s
+  // first-colon cmd split / colon-preserving args / trailing `@cwd`. It reddens if any parser mis-splits.
+  it('the CLI flag layer parses all five derive grammars into the canonical op[]', async () => {
+    await runNewCli([DIR, '--name', 'h', '--description', 'd']);
+    await runAddNodeCli([
+      DIR,
+      '--id', 'setup',
+      '--artifact', 'out/pipeline.json',
+      '--return-mode', 'required',
+      '--inject', '{{RUN}}/in.json',
+      '--seed', 'spec/seed.json={{WORKSPACE}}/skel.json',
+      '--project', 'public/manifest.json=spec/classification.json,public/assets',
+      '--merge-run', 'node:gen.mjs,--out:dist@build',
+      '--promote', '@return:archetype=archetype:set',
+      '--registry-project', 'source=out/pipeline.json,mapRef={{WORKSPACE}}/index.json,key=setup',
+    ]);
+    await fs.writeFile(path.join(DIR, 'nodes', 'setup', 'prompt.md'), 'emit the pipeline\n');
+
+    const spec = await loadTemplate(DIR);
+    const setup = compile(spec).nodes['setup'];
+    const d = derivesFromOp(setup.op);
+
+    expect(d.seeds).toEqual([{ to: 'spec/seed.json', from: '{{WORKSPACE}}/skel.json' }]);
+    // --project comma-list → `from` is an ARRAY (the derivedHook string|array form); a single from stays a string.
+    expect(d.projects).toEqual([{ to: 'public/manifest.json', from: ['spec/classification.json', 'public/assets'] }]);
+    // --merge-run: cmd is the token before the FIRST `:` (so the `--out:dist` arg keeps its colon); a trailing
+    // `@cwd` is split off; args are comma-listed.
+    expect(d.merges).toEqual([{ ops: [{ run: { cmd: 'node', args: ['gen.mjs', '--out:dist'], cwd: 'build' } }] }]);
+    // --promote from=to:reducer — the `:set` suffix is the reducer (NAME-FLIP reducer→merge in derivesFromOp).
+    expect(d.promotes).toEqual([{ from: '@return:archetype', to: 'archetype', merge: 'set' }]);
+    expect(d.registryProjects).toEqual([{ source: 'out/pipeline.json', mapRef: '{{WORKSPACE}}/index.json', key: 'setup' }]);
+    // inject folded into op[] as a PRE read → io.reads carries it (runRel-stripped).
+    expect(setup.io.reads).toContain('in.json');
+  });
 });
