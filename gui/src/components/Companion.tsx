@@ -12,7 +12,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
-import { useControlSession, type ControlToolExecution, type SessionSummary } from "../data/controlSession";
+import { MarkdownReader } from "./MarkdownReader";
+import { useControlSession, type ControlMessage, type ControlToolExecution, type SessionSummary } from "../data/controlSession";
 import "../styles/companion.css";
 
 /** Relative time for a conversation's mtime ("now", "5m", "2h", "3d"). */
@@ -93,8 +94,13 @@ export function Companion({ activeRun, open, onOpenChange }: { activeRun: string
   const pct = ctrl.contextUsage?.percent;
   const meta = [ctrl.model, pct != null ? `${Math.round(pct)}% ctx` : null].filter(Boolean).join(" · ");
 
-  const hasMessages = ctrl.messages.length > 0;
-  const showEmpty = !hasMessages && !busy;
+  // Only the durable CHAT turns reach the transcript: the human's prompts and pi's replies. Tool-result
+  // and other intermediate roles (the firehose carries them as "messages" too) are folded into the tool
+  // histogram instead, not dumped into the chat — that dump was the crowding.
+  const turns = ctrl.messages.filter(
+    (m: ControlMessage) => (m.role === "user" || m.role === "assistant") && (m.text.trim() !== "" || m.streaming),
+  );
+  const showEmpty = turns.length === 0 && !busy;
   const showMeta = !!status || !!meta || ctrl.streaming;
 
   return createPortal(
@@ -173,14 +179,17 @@ export function Companion({ activeRun, open, onOpenChange }: { activeRun: string
                 </div>
               ) : (
                 <>
-                  {ctrl.messages.map((m) => (
-                    <p
-                      key={m.id}
-                      className={`ds-companion__msg ds-companion__msg--${m.role === "user" ? "you" : "pi"}${m.streaming ? " is-streaming" : ""}`}
-                    >
-                      {m.text}
-                    </p>
-                  ))}
+                  {turns.map((m) =>
+                    m.role === "user" ? (
+                      <p key={m.id} className="ds-companion__msg ds-companion__msg--you">{m.text}</p>
+                    ) : (
+                      <div key={m.id} className="ds-companion__msg ds-companion__msg--pi">
+                        {/* pi replies are markdown — parsed to themed nodes (XSS-safe, no raw HTML) */}
+                        <MarkdownReader source={m.text} />
+                        {m.streaming && <span className="ds-companion__caret" aria-hidden="true" />}
+                      </div>
+                    ),
+                  )}
                   {toolSummary && <p className="ds-companion__toolsum">{toolSummary}</p>}
                 </>
               )}

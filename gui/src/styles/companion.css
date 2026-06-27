@@ -58,25 +58,33 @@
   }
 }
 
-/* functional controls — absolute, top-left (clears the floating top-right MenuBar). No header shell. */
+/* functional controls — a floating pill mirroring the MenuBar's FORM (glass, 5px pad, radius-lg, 28px
+   icons) at the MenuBar's exact top offset, but top-LEFT of the rail so the real MenuBar keeps the
+   top-right. Floats over the scrolling transcript. */
 .ds-companion__controls {
   position: absolute;
-  top: var(--ds-space-3);
-  left: var(--ds-space-4);
-  z-index: 2;
+  top: clamp(10px, 1.6vh, 18px);
+  left: clamp(10px, 1.6vw, 18px);
+  z-index: 3;
   display: flex;
+  align-items: center;
   gap: var(--ds-space-1);
+  padding: 5px;
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-glass-bg-strong);
+  border: 1px solid var(--ds-glass-highlight);
+  box-shadow: var(--ds-shadow-md);
 }
 .ds-companion__ctl {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   border: none;
   background: transparent;
   color: var(--ds-text-tertiary);
-  border-radius: var(--ds-radius-sm);
+  border-radius: var(--ds-radius-md);
   cursor: pointer;
   transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast);
 }
@@ -92,7 +100,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-5);
-  padding: 48px var(--ds-space-8) var(--ds-space-5);   /* top pad clears the controls; generous side gutters */
+  /* top pad clears the floating controls pill AND gives the first turn breathing room below it */
+  padding: 84px var(--ds-space-8) var(--ds-space-5);
 }
 .ds-companion__empty {
   margin: auto;
@@ -115,20 +124,19 @@
 }
 .ds-companion__restart:hover { background: var(--ds-accent-subtle); }
 
-/* a turn = a paragraph of plain text. No background, no card. */
+/* a turn = plain text on glass. No background, no card. */
 .ds-companion__msg {
   margin: 0;
   max-width: 62ch;
-  font-family: var(--ds-font-sans);
-  font-size: var(--ds-text-base);
-  line-height: var(--ds-leading-relaxed);
-  color: var(--ds-text-primary);
-  white-space: pre-wrap;
   word-break: break-word;
 }
 /* the human's prompt — quieter, marked by a single accent caret (role cue, not a container) */
 .ds-companion__msg--you {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-leading-relaxed);
   color: var(--ds-text-secondary);
+  white-space: pre-wrap;
 }
 .ds-companion__msg--you::before {
   content: "›";
@@ -136,18 +144,17 @@
   color: var(--ds-accent);
   font-weight: var(--ds-weight-semibold);
 }
+/* pi's reply — themed markdown (MarkdownReader), lifted to primary ink for the chat */
+.ds-companion__msg--pi .ds-md { color: var(--ds-text-primary); font-size: var(--ds-text-base); }
+.ds-companion__msg--pi .ds-md__pre { max-width: 100%; overflow-x: auto; }
 
 /* game/terminal typing effect — a hard accent block caret that blinks while pi streams */
-.ds-companion__msg.is-streaming {
-  letter-spacing: 0.01em;                /* the faint "wider stroke" while typing */
-}
-.ds-companion__msg.is-streaming::after {
-  content: "";
+.ds-companion__caret {
   display: inline-block;
   width: 0.5em;
-  height: 1.02em;
-  margin-left: 2px;
-  vertical-align: -0.18em;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -0.15em;
   background: var(--ds-accent);
   box-shadow: 0 0 6px 0 var(--ds-accent-ring);   /* faint energized edge */
   animation: ds-caret-blink 1s steps(1) infinite;
@@ -261,7 +268,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 48px var(--ds-space-5) var(--ds-space-5);
+  padding: 84px var(--ds-space-5) var(--ds-space-5);
 }
 .ds-companion__hist-item {
   display: flex;
