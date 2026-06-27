@@ -92,6 +92,35 @@
 .ds-companion__msg--you { align-self: flex-end; background: var(--ds-accent-subtle); color: var(--ds-text-primary); }
 .ds-companion__msg--system { align-self: flex-start; background: var(--ds-bg-sunken); color: var(--ds-text-secondary); font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); }
 
+/* tool cards — tool_execution_start/end folded by toolCallId into one chip row */
+.ds-companion__tools { display: flex; flex-wrap: wrap; gap: var(--ds-space-1); align-self: flex-start; }
+.ds-companion__tool {
+  display: inline-flex; align-items: center; gap: var(--ds-space-1);
+  padding: 2px var(--ds-space-2);
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-bg-sunken);
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+.ds-companion__tool--running { border-color: var(--ds-accent-ring); }
+.ds-companion__tool--error { border-color: var(--ds-danger, #c0392b); color: var(--ds-danger, #c0392b); }
+.ds-companion__tool-name { color: var(--ds-text-primary); }
+.ds-companion__tool-phase { color: var(--ds-text-tertiary); }
+
+/* generic passthrough notices (unknown frame types, stderr) — kept low-key */
+.ds-companion__notice {
+  align-self: flex-start;
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+}
+.ds-companion__restart {
+  margin-top: var(--ds-space-1);
+  border: 1px solid var(--ds-border-hairline); border-radius: var(--ds-radius-sm);
+  background: var(--ds-bg-surface); color: var(--ds-accent);
+  font-size: var(--ds-text-xs); padding: 2px var(--ds-space-2); cursor: pointer;
+}
+
 .ds-companion__composer {
   display: flex;
   align-items: center;
@@ -99,6 +128,19 @@
   padding: var(--ds-space-2);
   border-top: 1px solid var(--ds-border-hairline);
 }
+.ds-companion__status {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  max-width: 90px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ds-companion__abort {
+  flex: 0 0 auto;
+  border: 1px solid var(--ds-border-hairline); border-radius: var(--ds-radius-sm);
+  background: var(--ds-bg-surface); color: var(--ds-text-secondary);
+  font-size: var(--ds-text-xs); padding: 0 var(--ds-space-2); height: 24px; cursor: pointer;
+}
+.ds-companion__abort:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
 .ds-companion__input {
   flex: 1 1 auto;
   min-width: 0;
