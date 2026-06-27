@@ -95,6 +95,18 @@ export interface RunDeps {
     apiKey?: string;
     stageHome?: Record<string, string>;
   }) => SandboxProvider;
+  /**
+   * Factory for the `--sandbox e2b` cloud provider (injectable so a test asserts the instance WITHOUT a real
+   * E2B client/sandbox). The default DYNAMICALLY `import('@piflow/e2b')`s the CHOOSE-TO-INSTALL extension and
+   * calls its `createE2bProvider({ apiKey: E2B_API_KEY, template: E2B_TEMPLATE, stageHome })`; on an absent
+   * package it throws a clear `npm i @piflow/e2b` message (async because the import is lazy). (Daytona stays a
+   * static core import for now; it can later move to this same external-package shape via this seam.)
+   */
+  makeE2bProvider?: (opts: {
+    template?: string;
+    apiKey?: string;
+    stageHome?: Record<string, string>;
+  }) => Promise<SandboxProvider>;
   /** Mint a memorable run name not in `existing` (default: core `generateRunName`; a test injects a stub). */
   generateName?: (existing: string[]) => string;
   /** List the run-name basenames already present under a runs home (default: read the dir; '' if absent). */
@@ -113,11 +125,15 @@ export interface RunDeps {
  *   - `daytona` = real `pi` exec inside a remote Daytona CLOUD VM (one VM per run, nodes subtree-namespaced).
  *     Reads `DAYTONA_API_KEY`/`DAYTONA_IMAGE` from env; the pi gateway credential crosses into the VM via the
  *     cloud allowlist (the var derived from `--provider`, or `--cloud-secret NAME`).
+ *   - `e2b` = real `pi` exec inside a remote E2B CLOUD sandbox (one sandbox per run, nodes subtree-namespaced),
+ *     with OPEN egress by default (the unblock for heterogeneous/remote MCP). Requires the CHOOSE-TO-INSTALL
+ *     extension `@piflow/e2b` (`npm i @piflow/e2b`); the CLI loads it DYNAMICALLY only on `--sandbox e2b`. Reads
+ *     `E2B_API_KEY`/`E2B_TEMPLATE` from env; the pi gateway credential crosses in exactly like daytona.
  */
-export type SandboxChoice = 'inmemory' | 'local' | 'danger-full-access' | 'daytona';
+export type SandboxChoice = 'inmemory' | 'local' | 'danger-full-access' | 'daytona' | 'e2b';
 
 /** The accepted `--sandbox` values — a typo (e.g. `seatbelt`) must error loudly, not silently degrade to inmemory. */
-export const SANDBOX_CHOICES: readonly SandboxChoice[] = ['inmemory', 'local', 'danger-full-access', 'daytona'];
+export const SANDBOX_CHOICES: readonly SandboxChoice[] = ['inmemory', 'local', 'danger-full-access', 'daytona', 'e2b'];
 
 /** The parsed `run` argv. `args` carries the repeated `--arg k=v` pairs (and the run id, mirrored in). */
 export interface ParsedRunArgs {
@@ -345,6 +361,20 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     deps.makeDaytonaProvider ??
     ((o: { image?: string; snapshot?: string; apiKey?: string; stageHome?: Record<string, string> }) =>
       createDaytonaProvider(o));
+  // The E2B backend is a CHOOSE-TO-INSTALL extension (`@piflow/e2b`), NOT a core dependency — so it is
+  // loaded with a DYNAMIC import only on `--sandbox e2b`, and an absent package becomes a clear, actionable
+  // install message rather than a raw module-not-found at CLI startup.
+  const makeE2bProvider =
+    deps.makeE2bProvider ??
+    (async (o: { template?: string; apiKey?: string; stageHome?: Record<string, string> }) => {
+      let mod: typeof import('@piflow/e2b');
+      try {
+        mod = await import('@piflow/e2b');
+      } catch {
+        throw new Error('--sandbox e2b requires the @piflow/e2b extension — run: npm i @piflow/e2b');
+      }
+      return mod.createE2bProvider(o);
+    });
   const generateName = deps.generateName ?? ((existing: string[]) => generateRunName(existing));
   const listExistingRuns = deps.listExistingRuns ?? listExistingRunNames;
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
@@ -500,6 +530,38 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
       cloudSecrets.length
         ? `piflowctl run: cloud (daytona) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the VM (allowlisted; the raw value never leaves the resolver seam).`
         : `piflowctl run: ⚠ cloud (daytona) — no provider config/credential resolved for --provider "${parsed.provider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the VM will have no model key.`,
+    );
+  } else if (parsed.sandbox === 'e2b') {
+    // Real pi exec inside a remote E2B CLOUD sandbox (open egress by default — the MCP unblock). The
+    // template + API key come from the environment (E2B_TEMPLATE / E2B_API_KEY); an absent key makes the
+    // real client throw at sandbox boot (loud). The `@piflow/e2b` extension is loaded DYNAMICALLY by
+    // `makeE2bProvider` — an absent package gives the `npm i @piflow/e2b` install message.
+    // (M1b parity) A CUSTOM gateway lives ONLY in the host's ~/.pi/agent/models.json; stage its entry into
+    // the sandbox so pi resolves --provider there, and read the cred var(s) from that entry's $VAR refs.
+    const pi = loadPiProviderConfig(parsed.provider);
+    const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
+    const template = process.env.E2B_TEMPLATE;
+    provider = await makeE2bProvider({
+      ...(template ? { template } : {}),
+      apiKey: process.env.E2B_API_KEY,
+      ...(stageHome ? { stageHome } : {}),
+    });
+    // Forward the pi gateway credential into the sandbox (SAME allowlist/resolver path as daytona + MCP).
+    const fallback = providerCredVar(parsed.provider);
+    cloudSecrets = parsed.cloudSecret
+      ? [parsed.cloudSecret]
+      : pi.credVars.length
+        ? pi.credVars
+        : fallback
+          ? [fallback]
+          : [];
+    const credList = cloudSecrets.join(', ');
+    const bootFrom = template ? `template ${template}` : 'the E2B default base template (no pi baked — set E2B_TEMPLATE)';
+    print(`piflowctl run: cloud (e2b) — booting from ${bootFrom}; egress OPEN by default.`);
+    print(
+      cloudSecrets.length
+        ? `piflowctl run: cloud (e2b) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the sandbox (allowlisted; the raw value never leaves the resolver seam).`
+        : `piflowctl run: ⚠ cloud (e2b) — no provider config/credential resolved for --provider "${parsed.provider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the sandbox will have no model key.`,
     );
   }
   // (G7) `--detach` ⇒ UNATTENDED: take each (G5) checkpoint's declared default so a backgrounded run never

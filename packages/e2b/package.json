@@ -1,11 +1,13 @@
 {
-  "name": "@piflow/cli",
+  "name": "@piflow/e2b",
   "version": "0.1.0",
   "type": "module",
-  "description": "Pi Flow CLI — the docker-style front door to a run. `piflowctl status` (per-node table + stage/rollup) and `piflowctl watch` (a silent-until-it-matters sentinel) read the engine-owned `.pi/` run layout via @piflow/core's path helpers; `logs` is re-exported from core (one front door).",
+  "description": "Pi Flow ↔ E2B connector — the E2B cloud-sandbox backend for @piflow/core's sandbox seam, packaged as a CHOOSE-TO-INSTALL extension. `npm i @piflow/e2b` and `piflowctl run --sandbox e2b` boots one long-lived E2B Firecracker sandbox per run (per-node workdir subtrees) with OPEN egress by default — the unblock for heterogeneous/remote MCP tools that Daytona's tier-gated egress can't serve.",
   "license": "MIT",
   "keywords": [
-    "cli",
+    "e2b",
+    "sandbox",
+    "cloud",
     "workflow",
     "orchestration",
     "pi",
@@ -14,9 +16,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/blueif16/PiFlow.git",
-    "directory": "packages/cli"
+    "directory": "packages/e2b"
   },
-  "homepage": "https://github.com/blueif16/PiFlow/tree/main/packages/cli#readme",
+  "homepage": "https://github.com/blueif16/PiFlow/tree/main/packages/e2b#readme",
   "bugs": "https://github.com/blueif16/PiFlow/issues",
   "author": "blueif16",
   "publishConfig": {
@@ -30,9 +32,6 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "bin": {
-    "piflowctl": "./dist/cli.js"
-  },
   "files": [
     "dist",
     "src"
@@ -44,7 +43,10 @@
   "dependencies": {
     "@piflow/core": "^0.1.0"
   },
-  "optionalDependencies": {
-    "@piflow/e2b": "^0.1.0"
+  "peerDependencies": {
+    "e2b": ">=2 <3"
+  },
+  "devDependencies": {
+    "e2b": "^2.0.1"
   }
 }

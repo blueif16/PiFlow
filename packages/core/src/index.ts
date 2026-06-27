@@ -142,6 +142,12 @@ export type { SyncMcpCatalogOpts, SyncResult } from './catalog/sync.js';
 export { introspectMcpServer } from './catalog/introspect.js';
 export type { IntrospectMcpServerOpts, IntrospectResult } from './catalog/introspect.js';
 
+// Sandbox SEAM types (the horizontal one-impl-per-backend contract) are PUBLIC API: an out-of-tree
+// provider extension (e.g. @piflow/e2b — the providers-are-choose-to-install-extensions pattern) compiles
+// against `Sandbox`/`SandboxProvider`/`RunScope`/`CreateOpts`/`ExecOpts`/`ExecResult`/`ProcessHandle`/
+// `OpenRunOpts`/`SandboxProviderKind`. These are already re-exported BY NAME via `export * from './types.js'`
+// (line 7) — listing them again here would be a TS2308 duplicate export. (`SecretResolver` is likewise
+// surfaced via that `export *` AND, for back-compat, explicitly below.)
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
 // Local in-place provider ('local' kind): roots the sandbox AT workdir (no temp dir), dispose is a NO-OP
