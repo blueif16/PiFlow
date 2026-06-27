@@ -14,6 +14,7 @@
 // NO run model of their own — the shared reader VERIFIES artifacts on disk (verified, not trusted).
 
 import { runLogsCli } from '@piflow/core';
+import { runNewCli, runAddNodeCli } from './scaffold.js';
 import { runStatusCli } from './status.js';
 import { runWatchCli } from './watch.js';
 import { runExtractCli } from './extract.js';
@@ -25,6 +26,8 @@ import { runGuiCli } from './gui.js';
 const HELP = `piflowctl — drive + observe a pi-flow run over the .pi/ run layout
 
 USAGE
+  piflowctl new     <templateDir> [flags]   scaffold meta.json + the nodes/ dir (then add-node + Write prose)
+  piflowctl add-node <templateDir> --id <id> [flags]  emit one schema-valid node.json (prose is yours)
   piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
   piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
   piflowctl extract <templateDir>           free DAG preview (node count + parallel lanes; no model)
@@ -58,6 +61,22 @@ RUN
                    ALWAYS uses its canonical .piflow/<wf>/runs/<run>/ home and IGNORES --out (a
                    canonical run is never relocated). Default: canonical home, else out/<run>.
   --from / --until <substr>  resume / truncate the stage window.
+
+NEW
+  <templateDir> the template dir to create (e.g. .piflow/<wf>/template). Writes meta.json + nodes/.
+  --id / --name / --description  meta fields (default id/name = the dir's workflow basename).
+  --phase <p>   a decorative phase in the display order (repeatable).
+  Emits ONLY config — author each node's prose by Writing nodes/<id>/prompt.md yourself.
+
+ADD-NODE
+  <templateDir> the template dir (must hold meta.json). --id <id> is required.
+  Edges/contract: --dep <id> · --artifact <p> · --owns <glob> · --read <p>  (each repeatable;
+                owns defaults out/**, read defaults {{RUN}}).
+  Tools/io:     --tool <t> · --deny <t> · --inject <p> · --mcp <name=url>  (each repeatable).
+  Gates:        --check <kind[:path]> (repeatable) · --on-fail block|warn|stop · --return-mode optional|required.
+  Routing:      --model · --provider · --tier · --timeout <ms> · --retries <n> · --schema <p> · --skill <p>.
+  --programmatic  a no-pi node (omits prompt/tools; its declarative ops ARE the node).
+  Emits/overwrites node.json from the flags; NEVER touches nodes/<id>/prompt.md (yours to Write).
 
 INSPECT
   <templateDir> an authored template/ dir. Compiles it and prints each node's RESOLVED view —
@@ -97,6 +116,12 @@ TIP
 async function main(): Promise<void> {
   const [sub, ...rest] = process.argv.slice(2);
   switch (sub) {
+    case 'new':
+      await runNewCli(rest);
+      break;
+    case 'add-node':
+      await runAddNodeCli(rest);
+      break;
     case 'run':
       await runRunCli(rest);
       break;
