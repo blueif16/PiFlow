@@ -18,8 +18,18 @@ export const nodeSchema = {
   title: 'piflow template node.json',
   type: 'object',
   additionalProperties: false,
-  // The core of a node: an id, its phase label, its edges, its prompt, and its write/read contract.
-  required: ['id', 'phase', 'deps', 'prompt', 'contract'],
+  // The core of a node: an id, its phase label, its edges, and its write/read contract. `prompt` is
+  // required for a NORMAL (pi-spawning) node but OMITTED on a `programmatic` node (it spawns no `pi`),
+  // so it is required CONDITIONALLY via the `allOf` below — not in this blanket list.
+  required: ['id', 'phase', 'deps', 'contract'],
+  // (PROGRAMMATIC NODE) `prompt` is required UNLESS the node is `programmatic:true`. A normal node still
+  // MUST carry a `prompt` (the malformed-case test bites); a programmatic node legitimately omits it.
+  allOf: [
+    {
+      if: { not: { properties: { programmatic: { const: true } }, required: ['programmatic'] } },
+      then: { required: ['prompt'] },
+    },
+  ],
   properties: {
     id: { type: 'string', minLength: 1, description: 'Stable node id (slug). Unique within the template.' },
     phase: {
@@ -199,6 +209,13 @@ export const nodeSchema = {
         headless: { enum: ['default', 'abort'], description: 'No-reply policy: default (take default, journal it) | abort (error + halt). Default default.' },
         timeoutMs: { type: 'integer', minimum: 0, description: 'Bound on the interactive wait (ms). Omit ⇒ wait while a courier could reply.' },
       },
+    },
+    programmatic: {
+      // (PROGRAMMATIC NODE) When true, this node runs its declarative `hooks`/`op` deterministically and
+      // spawns NO `pi` (no `prompt`, no `tools` needed). The `allOf` above drops the `prompt` requirement.
+      // Twin of the `checkpoint` no-pi marker. Omitted ⇒ the node spawns a `pi` agent exactly as before.
+      const: true,
+      description: 'No-pi node: run its declarative ops deterministically, spawn no `pi`. Omit ⇒ a normal pi node.',
     },
     fusion: {
       // (Phase 2) Opt this node into the FUSION DAG expansion (spec §4): `expandFusion` turns the node into

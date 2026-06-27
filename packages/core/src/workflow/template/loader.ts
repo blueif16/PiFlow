@@ -131,8 +131,9 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
     label: n.def.id,
     // carry the node's `phase` through to the spec so a PROFILE predicate can select by it (generic metadata).
     phase: n.def.phase,
-    prompt: renderRealizedPrompt(n.def, n.prose),
-    skill: n.def.prompt.skill,
+    // A PROGRAMMATIC node spawns no `pi`, so it has no realized prompt and no skill (its `prompt` block is
+    // absent on disk). Every other node renders its prompt + carries its skill exactly as before.
+    ...(n.def.programmatic ? {} : { prompt: renderRealizedPrompt(n.def, n.prose), skill: n.def.prompt?.skill }),
     tools: { allow: n.def.tools?.allow, deny: n.def.tools?.deny },
     io: {
       // (M5 · #10/#16) The node's declared reads = the lowered ops' reads (incl. {{RUN}}-relative injected
@@ -181,6 +182,9 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   // (G5) Carry a HUMAN CHECKPOINT block verbatim onto the spec (the runtime CheckpointSpec) when authored —
   // additive, the same way `ops` is carried. A node with no checkpoint behaves exactly as before.
   if (n.def.checkpoint) intent.checkpoint = n.def.checkpoint;
+  // (PROGRAMMATIC NODE) Carry the no-pi marker verbatim onto the intent → the dense NodeSpec (the runner
+  // dispatches it to the declarative-ops lane). Additive: a node with none spawns `pi` exactly as before.
+  if (n.def.programmatic) intent.programmatic = true;
   // (Phase 2) Carry a FUSION activation block verbatim onto the intent when authored — `expandFusion`
   // consumes it before compile (the activated node becomes a judge + N siblings). Additive: no block ⇒ no change.
   if (n.def.fusion) intent.fusion = n.def.fusion;

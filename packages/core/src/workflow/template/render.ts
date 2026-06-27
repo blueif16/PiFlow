@@ -48,7 +48,8 @@ export function renderRealizedPrompt(def: TemplateNode, prose: string): string {
     id: def.id,
     label: def.id,
     prompt: prose,
-    skill: def.prompt.skill,
+    // A PROGRAMMATIC node has no `prompt` block on disk (it spawns no `pi`); tolerate its absence.
+    skill: def.prompt?.skill,
     sandbox: { provider: 'inmemory', workspace: '.', read: c.readScope, write: c.owns, output: `out/${def.id}` },
     tools: { allow: def.tools?.allow, deny: def.tools?.deny },
     io: {

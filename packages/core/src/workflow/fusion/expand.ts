@@ -126,7 +126,7 @@ function expandNode(x: NodeIntent, opts: FusionExpandOpts): NodeIntent[] {
       label: `${x.label}__obl`,
       // The obligations role is a fusion PRESET AGENT → `agentType` brands it (observe → GUI icon).
       agentType: FUSION_OBLIGATIONS,
-      prompt: fillObligationsPrompt(FUSION_PRESETS[FUSION_OBLIGATIONS].prompt, { task: x.prompt }),
+      prompt: fillObligationsPrompt(FUSION_PRESETS[FUSION_OBLIGATIONS].prompt, { task: x.prompt ?? '' }),
       tools: x.tools, // inherit X's concrete tool set (proven for this workflow's file I/O)
       ...(x.phase ? { phase: x.phase } : {}),
       model: x.model,
@@ -146,7 +146,7 @@ function expandNode(x: NodeIntent, opts: FusionExpandOpts): NodeIntent[] {
   const judgeReads = [...partials, ...(oblPath ? [oblPath] : [])];
   const judgePreset = judgePresetId(f.mode);
   const judgePrompt = fillJudgePrompt(FUSION_PRESETS[judgePreset].prompt, {
-    task: x.prompt,
+    task: x.prompt ?? '',
     partials,
     obligations: oblPath,
   });

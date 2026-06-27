@@ -950,6 +950,256 @@ async function runRerouteGate(ctx: RunContext, node: NodeSpec): Promise<NodeStat
   return rec;
 }
 
+// ── (PROGRAMMATIC NODE) the no-pi DECLARATIVE-OPS lane ──────────────────────────────────────────────
+
+/**
+ * Run a PROGRAMMATIC node: a node carrying `programmatic:true` runs its DECLARATIVE ops deterministically
+ * and spawns NO `pi` — NO `buildCommand`, NO exec. It is the no-pi twin of `runCheckpoint`/`runRerouteGate`,
+ * for a purely-deterministic step (e.g. a render) that should be an honest DAG vertex with no vestigial
+ * agent. The lifecycle MIRRORS `runNode` but DROPS everything model-specific (sandbox, prompt staging,
+ * skill/MCP/tool resolution, the command build + exec, COLLECT/downloadDir, the return handshake, the G8
+ * schema-repair loop): PRE seeds (staged onto the host run dir = `{{RUN}}`) → PRE gates → POST DERIVE ops
+ * (project/registryProject/merge/`run`) → POST checks → status ladder → POST hooks → promote → finishNode.
+ * The op executors (`stageSeed`/`applyProjectionOp`/`runProjection`/`runMerge`/`applyMergeOp`/`evaluateChecks`)
+ * and `finishNode` are REUSED UNCHANGED — this lane only changes the dispatch frame (no model, no pi). Called
+ * OUTSIDE the G2 limiter (it holds no process/slot), exactly like the other no-pi node kinds.
+ */
+async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promise<NodeStatusRecord> {
+  const rec = ctx.status.nodes[srcNode.id];
+  rec.status = 'running';
+  rec.startedAt = nowISO();
+  const t0 = Date.now();
+  // A re-run STARTS FRESH (mirrors runNode): clear the prior attempt's signals.
+  ctx.failureSignals.delete(srcNode.id);
+  await writeStatus(ctx.outDir, ctx.status);
+
+  // IO TOKEN RESOLUTION AT LAUNCH (U7, mirrors runNode): make `{{arg.*}}`/`{{WORKSPACE}}`/`{{RUN}}`/
+  // `{{state.*}}` PHYSICAL in the node's CONTRACT paths (io.artifacts[].path, io.checks[].path) so the
+  // artifact/check gates stat the resolved path, never a raw `{{…}}`. A missing arg/channel throws loudly.
+  const resolveCtx: ResolveCtx = { run: ctx.outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
+  let node = srcNode;
+  try {
+    node = {
+      ...srcNode,
+      io: {
+        ...srcNode.io,
+        artifacts: srcNode.io.artifacts.map((a) => ({ ...a, path: resolveTokens(a.path, resolveCtx) })),
+        checks: srcNode.io.checks?.map((c) => (c.path ? { ...c, path: resolveTokens(c.path, resolveCtx) } : c)),
+      },
+    };
+  } catch (e) {
+    return finishNode(ctx, srcNode, rec, t0, 'error', `io token resolution failed: ${(e as Error).message}`, [], [(e as Error).message]);
+  }
+
+  try {
+    // PRE SEED ops (S2): stage each declared starting artifact onto the host run dir (= `{{RUN}}`). No
+    // sandbox mirror (a programmatic node spawns no pi). A `{{state.*}}` naming a not-yet-promoted channel
+    // throws → fail loudly (a real wiring error), never a silent skip.
+    try {
+      for (const seed of node.ops?.seed ?? []) {
+        await stageSeed(seed, resolveCtx, ctx.outDir);
+      }
+    } catch (e) {
+      return finishNode(ctx, node, rec, t0, 'error', `seed staging failed: ${(e as Error).message}`, [], [(e as Error).message]);
+    }
+
+    // PRE-GATE — fire the node's `when:'pre'` gate ops over the staged inputs (mirrors runNode's #11 block).
+    // A blocking pre-gate failure fails the node here. Each gate's `onFailure` (default 'block') decides;
+    // an `advisory`/`warn` gate records but does not block.
+    const preGates = (node.op ?? []).filter((o) => o.when === 'pre' && o.gate);
+    if (preGates.length) {
+      const preReadBytes = (rel: string): FileBytes => {
+        try {
+          const absPath = path.resolve(ctx.outDir, rel);
+          return { bytes: readFileSync(absPath, 'utf8'), size: statSync(absPath).size };
+        } catch {
+          return { bytes: null, size: 0 };
+        }
+      };
+      const preChecks = preGates.map((o) => ({
+        kind: o.gate!.kind,
+        path: o.gate!.path,
+        param: o.gate!.param,
+        severity: (o.gate!.advisory || o.onFailure === 'warn' ? 'warn' : 'fail') as 'fail' | 'warn',
+      }));
+      const preResults = evaluateChecks(preChecks, preReadBytes);
+      rec.preChecks = preResults;
+      const blockingPre = preResults.filter((c, i) => c.verdict !== 'pass' && preChecks[i].severity !== 'warn');
+      if (blockingPre.length) {
+        const detail = blockingPre.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ');
+        return finishNode(ctx, node, rec, t0, 'blocked', `pre-gate FAILED — ${detail}`, [], [`pre-gate: ${detail}`]);
+      }
+    }
+
+    // PRE hooks — deterministic plumbing; a blocking failure throws → error (mirrors runNode).
+    const hookCtx = { workspace: node.sandbox.workspace, inputs: node.io.reads, outputs: node.io.produces };
+    try {
+      await runHooks(node.hooks?.pre, hookCtx, { outcome: 'success' });
+    } catch (e) {
+      return finishNode(ctx, node, rec, t0, 'error', `pre-hook failed: ${(e as Error).message}`, []);
+    }
+
+    // POST DERIVE ops (project → registryProject → merge → `run`). The SAME executors runNode reuses, in the
+    // SAME order — only there is no model exit to gate on (the deterministic ops always run). A `run`/`merge`
+    // op's non-zero exit routes through the op's `onFailure` (default 'block'), collected here and applied in
+    // the status ladder below.
+    const opFailures: { detail: string; onFailure: OnFailure }[] = [];
+    // project: derive from a FROZEN source JSON read once (graceful no-op on an authoring-only spec).
+    for (const rawOp of node.ops?.project ?? []) {
+      const op = resolveDeep(rawOp as Record<string, unknown>, resolveCtx);
+      const srcRel = (op.source as string) ?? (Array.isArray(op.from) ? (op.from[0] as string) : (op.from as string));
+      const spec = srcRel ? await readJsonSafe(absUnder(ctx.outDir, srcRel)) : undefined;
+      const name = String(op.op ?? Object.keys(op).find((k) => k === 'copy' || k === 'assemble' || k === 'merge') ?? 'project');
+      await applyProjectionOp(name, op, spec, ctx.outDir);
+    }
+    // registryProject: the op-map lives in the registry record (mapRef), resolved by `key`.
+    if (node.ops?.registryProject) {
+      const pg = resolveDeep(node.ops.registryProject as unknown as Record<string, unknown>, resolveCtx) as { source: string; mapRef: string; key: string };
+      await runProjection({ source: pg.source, mapRef: pg.mapRef, key: pg.key }, ctx.outDir);
+    } else {
+      for (const o of node.op ?? []) {
+        const t = o.transform;
+        if (t?.kind !== 'projectRegistry') continue;
+        if (o.when && o.when !== 'post' && o.when !== 'always' && o.when !== 'on-success') continue;
+        const pg = resolveDeep({ source: t.source, mapRef: t.mapRef, key: t.key }, resolveCtx) as { source: string; mapRef: string; key: string };
+        await runProjection({ source: pg.source, mapRef: pg.mapRef, key: pg.key }, ctx.outDir);
+      }
+    }
+    // merge: the `{ ops:[...] }` MergeSpec (fold|concat|reconcile|run) — incl. a gen-hook `run` op.
+    if (node.ops?.merge) {
+      const mergeOnFailure = ((node.op ?? []).find((o) => o.transform?.kind === 'merge')?.onFailure ?? 'block') as OnFailure;
+      const merged = await runMerge(resolveDeep(node.ops.merge, resolveCtx), ctx.outDir);
+      for (const r of merged?.ops ?? []) {
+        if (r.failed) opFailures.push({ detail: `merge ${r.op} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: mergeOnFailure });
+      }
+    }
+    // AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic derive/side-
+    // effect step. Reuse the merge executor's `run` impl, then route a non-zero exit through `onFailure`.
+    for (const o of node.op ?? []) {
+      const body = o.run as { cmd?: string; args?: string[]; cwd?: string } | undefined;
+      if (!body || !('cmd' in body) || !body.cmd) continue;
+      if (o.when && o.when !== 'post' && o.when !== 'always' && o.when !== 'on-success') continue;
+      const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
+      if (r.failed) {
+        opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: (o.onFailure ?? 'block') as OnFailure });
+      }
+    }
+
+    // VERIFY by host-stat (mirrors runNode): a node is `ok` only if its declared artifacts exist on disk.
+    const artifacts: ArtifactState[] = await Promise.all(
+      node.io.artifacts.map((a) => artifactState(path.resolve(ctx.outDir, a.path), a.path)),
+    );
+    const missing = artifacts.filter((a) => !a.exists).map((a) => a.path);
+
+    // POST-NODE SCHEMA GATE — a present-but-invalid artifact (vs its declared schema) is a contract breach.
+    const schema = await validateArtifactSchemas(node.io.artifacts, {
+      outDir: ctx.outDir,
+      roots: [ctx.outDir],
+      validate: ctx.validateSchema,
+    });
+    if (schema.invalid.length) rec.schemaInvalid = schema.invalid;
+    if (schema.checked) rec.schemaChecked = schema.checked;
+    if (schema.skipped) rec.schemaSkipped = schema.skipped;
+
+    // DECLARATIVE INTEGRITY CHECKS (explicit ∪ the auto fill-sentinel completeness check) through the
+    // verdict→action POLICY — IDENTICAL to runNode.
+    const readBytes = (rel: string): FileBytes => {
+      try {
+        const absPath = path.resolve(ctx.outDir, rel);
+        return { bytes: readFileSync(absPath, 'utf8'), size: statSync(absPath).size };
+      } catch {
+        return { bytes: null, size: 0 };
+      }
+    };
+    const checkResults = evaluateChecks(
+      effectiveChecks(node.io.checks, node.io.fillSentinel, node.io.artifacts.map((a) => a.path)),
+      readBytes,
+    );
+    if (checkResults.length) rec.checks = checkResults;
+    const failedChecks = checkResults.filter((c) => c.verdict !== 'pass');
+    const blockingChecks = failedChecks.filter((c) => actionForVerdict(c.verdict as 'fail' | 'warn', node.io.policy) !== 'warn');
+    const warningChecks = failedChecks.filter((c) => actionForVerdict(c.verdict as 'fail' | 'warn', node.io.policy) === 'warn');
+
+    const blockingOpFailures = opFailures.filter((f) => f.onFailure !== 'warn');
+    const warningOpFailures = opFailures.filter((f) => f.onFailure === 'warn');
+
+    // The status ladder — the driver-verified contract breaches (no model exit to read, no return handshake:
+    // a programmatic node proves its work by its artifacts + checks, never a fenced-JSON tail). missing →
+    // schema-invalid → blocking integrity check → blocking op failure → ok.
+    let st: NodeStatusRecord['status'];
+    const issues: string[] = [];
+    if (missing.length) {
+      st = 'blocked';
+      issues.push(`contract breach — required artifact(s) missing: ${missing.join(', ')}`);
+    } else if (schema.invalid.length) {
+      st = 'blocked';
+      issues.push(`contract breach — artifact(s) violate the declared schema: ${schema.invalid.map((x) => `${x.path} [${x.errors.join('; ')}]`).join(' | ')}`);
+    } else if (blockingChecks.length) {
+      st = 'blocked';
+      issues.push(`integrity check FAILED — ${blockingChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
+    } else if (blockingOpFailures.length) {
+      st = 'blocked';
+      issues.push(`op FAILED — ${blockingOpFailures.map((f) => f.detail).join(' | ')}`);
+    } else {
+      st = 'ok';
+    }
+    if (warningChecks.length) issues.push(`integrity warn — ${warningChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
+    if (warningOpFailures.length) issues.push(`op warn — ${warningOpFailures.map((f) => f.detail).join(' | ')}`);
+    if (schema.skipped) issues.push(`schema gate skipped — ${schema.skipped}`);
+
+    // POST hooks — fire with the node's outcome; a blocking failure downgrades the node to error.
+    try {
+      await runHooks(node.hooks?.post, hookCtx, { outcome: st === 'ok' ? 'success' : 'failure' });
+    } catch (e) {
+      st = 'error';
+      issues.push(`post-hook failed: ${(e as Error).message}`);
+    }
+
+    // PROMOTE POST op (S3): on an OK node, LIFT each declared output into a RunState channel (the driver
+    // merges it at the stage barrier). A programmatic node has no parsed return, so an `@return:` source has
+    // no value to drill — an artifact source reads under `{{RUN}}`. A promote of nothing throws → error.
+    if (st === 'ok' && node.ops?.promote?.length) {
+      try {
+        const promotes: ResolvedPromote[] = [];
+        for (const raw of node.ops.promote) {
+          const spec = parsePromote(raw);
+          const value = await extractPromoteValue(spec, { run: ctx.outDir, returnValue: undefined });
+          promotes.push({ to: spec.to, value, merge: spec.merge });
+        }
+        ctx.promotesByNode.set(node.id, { nodeId: node.id, promotes });
+      } catch (e) {
+        st = 'error';
+        issues.push(`promote failed: ${(e as Error).message}`);
+      }
+    }
+
+    // CAPTURE the EMPIRICAL failure signals (mirrors runNode) so a node-level retry/rerouteTo can classify
+    // a programmatic node's failure. Set ONLY on a non-ok verdict (a clean node leaves none).
+    if (st !== 'ok') {
+      ctx.failureSignals.set(node.id, {
+        status: st,
+        issues: [...issues],
+        summary: '',
+        missing,
+        schemaInvalid: schema.invalid,
+        returnSchemaInvalid: [],
+        failedChecks: failedChecks.map((c) => ({ kind: c.kind, path: c.path, reason: c.reason })),
+        killedTimeout: false,
+        killedStall: false,
+        exitCode: 0,
+        stderrTail: '',
+        parsedOk: false,
+      });
+    }
+
+    const summary = st === 'ok' ? 'programmatic ops ran' : issues[0] ?? 'programmatic node failed';
+    return finishNode(ctx, node, rec, t0, st, summary, artifacts, issues);
+  } catch (e) {
+    // Anything thrown is contained to THIS node as `error` — never a rejected lane (mirrors runNode).
+    return finishNode(ctx, node, rec, t0, 'error', `node failed: ${(e as Error).message}`, []);
+  }
+}
+
 /**
  * (G12 — M4) A per-attempt OVERRIDE for an ESCALATION/CONSULT re-run: prepend the verified-evidence
  * `promptPrefix` (consultPreamble) and route to a STRONGER `model`/`provider`. Absent on the cheap first
@@ -1140,7 +1390,9 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
     // → the node fails with a clear issue, never a silently-unresolved prompt handed to the model.
     let resolvedPrompt: string;
     try {
-      resolvedPrompt = resolveTokens(node.prompt, resolveCtx);
+      // A pi-lane node always carries a prompt (the schema requires it for a non-programmatic node); the
+      // `?? ''` only satisfies the now-optional `prompt` type (a programmatic node never reaches this lane).
+      resolvedPrompt = resolveTokens(node.prompt ?? '', resolveCtx);
     } catch (e) {
       return finishNode(ctx, node, rec, t0, 'error', `prompt token resolution failed: ${(e as Error).message}`, [], [(e as Error).message]);
     }
@@ -1699,9 +1951,11 @@ function envelopeHashOf(ctx: RunContext, node: NodeSpec): string {
     resolved = { piTools: [] };
   }
   const resolveCtx: ResolveCtx = { run: ctx.outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
-  let realizedPrompt = node.prompt;
+  // A programmatic node carries no prompt — `?? ''` gives a stable empty-prompt hash (its identity is its
+  // ops/contract, not a prompt); every other node realizes its prompt + marker tail exactly as before.
+  let realizedPrompt = node.prompt ?? '';
   try {
-    const body = resolveTokens(node.prompt, resolveCtx);
+    const body = resolveTokens(node.prompt ?? '', resolveCtx);
     const markers = emitMarkers(markersFromNode(node, resolved as ResolveResult));
     realizedPrompt = body + (markers ? `\n\n${markers}` : '');
   } catch {
@@ -2065,6 +2319,10 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
           // independent lane keeps its slot and runs concurrently.
           const cp = wf.nodes[id].checkpoint;
           if (cp) return runCheckpoint(ctx, wf.nodes[id], cp);
+          // (PROGRAMMATIC NODE) a node carrying `programmatic:true` runs its DECLARATIVE ops and spawns NO
+          // `pi` — no `buildCommand`, no exec. Like `reused`/`rerouteGate`/`checkpoint` it BYPASSES the G2
+          // limiter (it holds no process/slot) and does not count against `maxNodesPerRun`.
+          if (wf.nodes[id].programmatic) return runProgrammatic(ctx, wf.nodes[id]);
           return ctx.limiter(async () => {
             if (ctx.maxNodesPerRun !== undefined && ctx.spawnedNodes.n >= ctx.maxNodesPerRun) {
               return cappedRecord(ctx, id);

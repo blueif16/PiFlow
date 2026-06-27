@@ -245,7 +245,8 @@ export function checkProducers(nodes: LoadedNode[]): string[] {
 export async function checkRefs(nodes: LoadedNode[]): Promise<string[]> {
   const errs: string[] = [];
   for (const n of nodes) {
-    const refs: string[] = [n.def.prompt.file];
+    // A PROGRAMMATIC node spawns no `pi`, so it carries no `prompt` block (no prompt file to exist-check).
+    const refs: string[] = n.def.prompt?.file ? [n.def.prompt.file] : [];
     // Any string field that points into the node's own scripts/ folder is a per-node ref that ships
     // with the copy (§2) and must exist. Conservatively scan hook/check paths under "scripts/".
     const scriptish: (string | undefined)[] = [];
