@@ -1,18 +1,24 @@
 // M1 — the credential-gated CLOUD e2e: ONE node in a REAL Daytona VM produces its artifact via a REAL
-// model call, with the provider gateway key injected by M1's cloud allowlist.
+// model call. Covers BOTH provider shapes:
+//   • a BUILT-IN provider (anthropic/deepseek/…) — pi reads `<PROVIDER>_API_KEY`; M1 forwards it via the
+//     cloud allowlist (`cloudSecrets`).
+//   • a CUSTOM gateway (mmgw/nebius/…) — defined ONLY in the host's `~/.pi/agent/models.json`; M1b stages
+//     that entry into the VM (`stageHome`) so pi resolves `--provider <gw>` there, and forwards the entry's
+//     `$VAR` key (or, for a literal-key gateway, the key rides IN the staged config — no env var needed).
+// M1c lets the VM boot from a pre-built SNAPSHOT (the promoted `piflow-node-runtime`), not just a raw image.
 //
-// Design: docs/design/daytona-cloud-integration.md §Milestone 2 + docs/design/credential-architecture.md §4.
-// This is the stronger proof above the unit (`cloud-provider-cred.test.ts`): the unit pins that the declared
-// provider var crosses the SAME SecretResolver+allowlist as MCP creds; THIS proves it end-to-end — pi boots
-// in the remote VM, makes a real model call with the forwarded key, and writes the declared artifact, which
-// the runner collects back to the host. It asserts on the WRITTEN ARTIFACT + the agent's OWN event stream
-// (a tool_execution_end), never on prose.
+// This is the stronger proof above the units: pi boots in the remote VM, makes a real model call, and writes
+// the declared artifact, which the runner collects back to the host. Asserts on the WRITTEN ARTIFACT + the
+// run verdict, never on prose.
 //
-// GATE: skipIf(!DAYTONA_API_KEY) — a real VM costs money + needs a real cloud account, so it never runs in a
-// default `vitest run` (CI). The unit carries the always-on red bar.
+// GATE: a real VM costs money + needs a real account, so it never runs in a default `vitest run`. Opt in:
+//   built-in:  DAYTONA_API_KEY=… DAYTONA_SNAPSHOT=piflow-node-runtime-0-80-2 ANTHROPIC_API_KEY=… PIFLOW_E2E=1 \
+//              npx vitest run packages/core/test/sandbox-daytona-e2e.test.ts
+//   mmgw:      DAYTONA_API_KEY=… DAYTONA_SNAPSHOT=piflow-node-runtime-0-80-2 PIFLOW_E2E=1 \
+//              PIFLOW_E2E_PROVIDER=mmgw PIFLOW_E2E_MODEL=MiniMax-M3 npx vitest run …
 
 import { describe, it, expect } from 'vitest';
-import { promises as fs, existsSync } from 'node:fs';
+import { promises as fs, existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -20,22 +26,41 @@ import { compile, runWorkflow, defaultSecretResolver } from '../src/index.js';
 import { createDaytonaProvider } from '../src/sandbox/daytona-sdk.js';
 import type { WorkflowSpec } from '../src/index.js';
 
-// ── The credential gate. DAYTONA_API_KEY authorizes the VM; the provider key (ANTHROPIC_API_KEY by default)
-// is the credential M1 forwards INTO the VM — both must be present for a real model call. ─────────────────
 const DAYTONA_KEY = process.env.DAYTONA_API_KEY;
-// A built-in pi provider (anthropic) reads its key straight from <PROVIDER>_API_KEY with NO models.json entry
-// — so M1's env forwarding alone suffices. A CUSTOM gateway (cp/nebius/tokenrouter) is defined in
-// ~/.pi/agent/models.json, which M1 does NOT stage into the VM — see the NEXT-MILESTONE note below.
 const E2E_PROVIDER = process.env.PIFLOW_E2E_PROVIDER ?? 'anthropic';
-const E2E_CRED_VAR = process.env.PIFLOW_E2E_CRED_VAR ?? 'ANTHROPIC_API_KEY';
 const E2E_MODEL = process.env.PIFLOW_E2E_MODEL ?? 'claude-3-5-haiku-latest';
-// The VM image ref MUST already contain pi + node (see deploy/daytona/Dockerfile). M0 built it via Daytona's
-// DECLARATIVE Image builder (no registry push), so a usable image STRING ref is supplied out-of-band.
+// Optional: a built-in provider's key env var to forward. A custom gateway with a $VAR key sets this from its
+// models.json entry; a literal-key gateway (mmgw) needs NONE (the key rides in the staged config).
+const E2E_CRED_VAR = process.env.PIFLOW_E2E_CRED_VAR;
+// Boot from a pre-built snapshot (preferred) or a raw image ref — at least one must be set.
+const E2E_SNAPSHOT = process.env.DAYTONA_SNAPSHOT;
 const E2E_IMAGE = process.env.DAYTONA_IMAGE;
 
-// A minimal ONE-node workflow: the model writes a deterministic line to out/result.txt via fs:write +
-// submit_result. No OpenClaw/MCP bridge — isolates the PROVIDER-CREDENTIAL path (does pi reach its model in
-// the VM?) from tool-wiring. The artifact's presence on the host AFTER collection is the proof.
+/**
+ * Stage a CUSTOM gateway's `~/.pi/agent/models.json` entry into the VM (mirrors the CLI's parsePiProvider):
+ * scope to the selected provider + extract its `$VAR` cred refs. A built-in provider has no entry → no stage.
+ */
+function piProviderStage(provider: string): { stageHome?: Record<string, string>; credVars: string[] } {
+  try {
+    const m = JSON.parse(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'models.json'), 'utf8')) as {
+      providers?: Record<string, unknown>;
+    };
+    const entry = m?.providers?.[provider];
+    if (!entry || typeof entry !== 'object') return { credVars: [] };
+    const refs = new Set<string>();
+    const re = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g;
+    const scan = (v: unknown): void => {
+      if (typeof v === 'string') for (const x of v.matchAll(re)) refs.add(x[1] ?? x[2]);
+      else if (Array.isArray(v)) v.forEach(scan);
+      else if (v && typeof v === 'object') Object.values(v).forEach(scan);
+    };
+    scan(entry);
+    return { stageHome: { '.pi/agent/models.json': JSON.stringify({ providers: { [provider]: entry } }) }, credVars: [...refs] };
+  } catch {
+    return { credVars: [] };
+  }
+}
+
 const SENTINEL = 'piflow-daytona-m1-ok';
 function oneNodeSpec(): WorkflowSpec {
   return {
@@ -45,51 +70,44 @@ function oneNodeSpec(): WorkflowSpec {
         label: 'write-result',
         prompt: `Write exactly the text "${SENTINEL}" (no quotes, no other text) to the file out/result.txt, then submit your result.`,
         tools: { allow: ['fs:write', 'contract:submit_result'], deny: ['bash'] },
-        io: {
-          reads: [],
-          produces: ['out/result.txt'],
-          artifacts: [{ path: 'out/result.txt' }],
-        },
+        io: { reads: [], produces: ['out/result.txt'], artifacts: [{ path: 'out/result.txt' }] },
       },
     ],
   };
 }
 
-// Why this is SKIPPED even WITH DAYTONA_API_KEY until the operator opts in fully:
-//   1) it bills a real VM + real model tokens, and
-//   2) a usable image STRING ref (DAYTONA_IMAGE) + the provider key (E2E_CRED_VAR) must BOTH be present.
-// Opt in by exporting DAYTONA_API_KEY + DAYTONA_IMAGE + the provider key, then `PIFLOW_E2E=1 vitest run`.
-const optedIn =
-  !!DAYTONA_KEY && !!E2E_IMAGE && !!process.env[E2E_CRED_VAR] && !!process.env.PIFLOW_E2E;
+const stage = piProviderStage(E2E_PROVIDER);
+// The cred var to forward: explicit override, else the gateway entry's first $VAR (built-ins use ANTHROPIC_…).
+const credVar = E2E_CRED_VAR ?? (stage.stageHome ? stage.credVars[0] : 'ANTHROPIC_API_KEY');
+const bootRef = E2E_SNAPSHOT ?? E2E_IMAGE;
+// Opt-in: a Daytona key, a boot ref, PIFLOW_E2E, AND the model key is reachable (a literal-key gateway needs
+// no env var — the key is in the staged config; otherwise the env var must be present).
+const keyReachable = stage.stageHome ? (!credVar || !!process.env[credVar]) : !!process.env[credVar ?? ''];
+const optedIn = !!DAYTONA_KEY && !!bootRef && !!process.env.PIFLOW_E2E && keyReachable;
 
 describe('daytona cloud e2e — ONE node makes a REAL model call in a REAL VM (gated)', () => {
   if (!optedIn) {
-    // A CUSTOM gateway (--provider cp/nebius/tokenrouter) ALSO needs its ~/.pi/agent/models.json provider entry
-    // staged INSIDE the VM (the M0 image bakes NO models.json; credential-architecture §1). M1 forwards only the
-    // KEY — sufficient for a BUILT-IN provider (anthropic/deepseek/…) that reads <PROVIDER>_API_KEY directly.
-    // M1b NOW BUILDS that staging (DaytonaSandboxProvider.stageHome + the CLI's parsePiProvider/loadPiProviderConfig
-    // writing {providers:{[name]:entry}} → <home>/.pi/agent/models.json; see cloud-provider-stage.test.ts +
-    // parse-pi-provider.test.ts), so a custom gateway resolves in the VM too. This e2e exercises the BUILT-IN
-    // path for simplicity and stays SKIPPED until the operator supplies DAYTONA_API_KEY + DAYTONA_IMAGE + a
-    // built-in provider key + PIFLOW_E2E=1.
     const missing = [
       !DAYTONA_KEY && 'DAYTONA_API_KEY',
-      !E2E_IMAGE && 'DAYTONA_IMAGE',
-      !process.env[E2E_CRED_VAR] && E2E_CRED_VAR,
+      !bootRef && 'DAYTONA_SNAPSHOT|DAYTONA_IMAGE',
       !process.env.PIFLOW_E2E && 'PIFLOW_E2E=1',
+      !keyReachable && `the ${E2E_PROVIDER} model key (${credVar ?? 'env var'} or a literal in models.json)`,
     ].filter(Boolean).join(', ');
-    it.skip(`SKIPPED — needs ${missing} (real VM + real model tokens; built-in provider here, custom gateways supported via M1b stageHome)`, () => {});
+    it.skip(`SKIPPED — needs ${missing}`, () => {});
   }
 
   it.skipIf(!optedIn)(
-    `boots one node in a real VM (${E2E_PROVIDER}/${E2E_MODEL}); the forwarded ${E2E_CRED_VAR} lets pi write out/result.txt back to the host`,
+    `boots one node in a real VM (${E2E_PROVIDER}/${E2E_MODEL}, boot=${E2E_SNAPSHOT ? 'snapshot' : 'image'}); writes out/result.txt back to the host`,
     async () => {
       const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-daytona-e2e-'));
-      // The cloud provider — exactly what the CLI's `--sandbox daytona` branch constructs.
+      // EXACTLY what the CLI's `--sandbox daytona` branch constructs: snapshot|image, the staged custom-gateway
+      // config (M1b), the bill-guard autoStop, and the cloud key allowlist (M1).
       const provider = createDaytonaProvider({
-        image: E2E_IMAGE,
+        ...(E2E_SNAPSHOT ? { snapshot: E2E_SNAPSHOT } : {}),
+        ...(E2E_IMAGE ? { image: E2E_IMAGE } : {}),
         apiKey: DAYTONA_KEY,
-        autoStopInterval: 5, // bill guard: auto-stop the VM after 5 idle minutes
+        autoStopInterval: 5,
+        ...(stage.stageHome ? { stageHome: stage.stageHome } : {}),
       });
 
       const result = await runWorkflow(compile(oneNodeSpec()), {
@@ -99,22 +117,15 @@ describe('daytona cloud e2e — ONE node makes a REAL model call in a REAL VM (g
         providerName: E2E_PROVIDER,
         model: E2E_MODEL,
         recordEvents: true,
-        // THE M1 SURFACE UNDER TEST: forward the provider gateway key into the VM exec env via the cloud
-        // allowlist + the default host-side resolver (reads process.env[E2E_CRED_VAR]). Without this, pi in
-        // the VM boots with no model credential and the node never writes the artifact.
-        cloudSecrets: [E2E_CRED_VAR],
-        secretResolver: defaultSecretResolver,
+        // Forward the provider key into the VM (when there IS an env-var key). A literal-key gateway omits this
+        // — the key is already in the staged models.json.
+        ...(credVar && process.env[credVar] ? { cloudSecrets: [credVar], secretResolver: defaultSecretResolver } : {}),
         nodeTimeoutMs: 180_000,
       });
 
-      // PROOF 1 — the artifact was produced by a real model call AND collected back to the host. A node that
-      // never reached its model (missing credential) produces nothing → this file is absent.
       const artifact = path.join(outDir, 'out', 'result.txt');
       expect(existsSync(artifact), `expected collected artifact at ${artifact}`).toBe(true);
-      const body = await fs.readFile(artifact, 'utf8');
-      expect(body).toContain(SENTINEL);
-
-      // PROOF 2 — the run verdict is ok (the node bound its tools, executed, and satisfied its contract).
+      expect(await fs.readFile(artifact, 'utf8')).toContain(SENTINEL);
       expect(result.status.ok).toBe(true);
       expect(result.status.nodes['write-result'].status).toBe('ok');
 
