@@ -11,7 +11,12 @@ dist/
 
 # SVGs untracked for now (illustration library paused). Already-tracked motifs stay tracked.
 *.svg
-.tasks/HANDOFF-*.md
+
+# Session work docs (handoffs/plans) — machine-local, regenerable.
+.tasks/
+
+# Scraped design references (e.g. competitor site harvests) — kept local, never committed.
+harvest/
 
 # GUI run fixtures: the raw .pi/ telemetry tree is large + regenerable from the source run
 # (gui/scripts/transcode-run.mjs). Only the distilled run-view.json is committed.
