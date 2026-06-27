@@ -133,6 +133,10 @@ export { OPENCLAW_COMMUNITY_CATALOG, OPENCLAW_PIN } from './tools/openclaw-commu
 // canonical run path feeds to `assembleRunTools`/`mcpConfig` (the live-path gap closer; data stays in ~/.piflow).
 export { loadMcpCatalog, catalogForSpec } from './catalog/client.js';
 export type { McpCatalog, CatalogSlice } from './catalog/client.js';
+// Catalog sync: FEDERATE the MCP Official Registry's server directory into ~/.piflow/catalog/ (incremental
+// updated_since pull + tombstones); the write-side of the catalog (entries stay an introspection step).
+export { syncMcpCatalog } from './catalog/sync.js';
+export type { SyncMcpCatalogOpts, SyncResult } from './catalog/sync.js';
 
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
