@@ -17,7 +17,7 @@ import { defaultSchemaValidator, type SchemaValidator } from '../../runner/schem
 import { nodeSchema, metaSchema } from './schema/index.js';
 import type { LoadedNode, TemplateNode, TemplateMeta } from './types.js';
 import { renderRealizedPrompt, collectChecks, toPolicy } from './render.js';
-import { lowerToOps, lowerActions } from './lower.js';
+import { lowerToOps, lowerActions, opsToNodeOps } from './lower.js';
 import {
   checkSchemas,
   checkDeps,
@@ -172,6 +172,15 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   // (M5 · G13) Carry the lowered op[] envelope onto the intent → the dense NodeSpec (the one new field).
   // Additive: a node declaring none of the lowerable surfaces stays op-free.
   if (op) intent.op = op;
+  // (G13 — M5) DERIVE `node.ops` from the op[] transforms for a node authored DIRECTLY in `op[]` (no
+  // `hooks` alias). `lowerToOps` returns a directly-authored `op[]` verbatim and never re-derives `hooks`,
+  // so without this the runner's POST-derive executors (which read `node.ops?.{seed/project/merge/promote/
+  // registryProject}`) never fire and the derive SILENTLY never runs. GUARD: only when no `hooks` block
+  // already single-sourced `node.ops` — never double-source. Additive: a gate/action/run-only op[] stays op-free.
+  if (!ops && op) {
+    const derived = opsToNodeOps(op);
+    if (derived) intent.ops = derived;
+  }
   // (G6) Carry the agent-PRESET label verbatim (the preset was already expanded into tools/prompt at init);
   // it rides to observe so the GUI renders the icon. Additive — a node with none stays label-free.
   if (n.def.agentType) intent.agentType = n.def.agentType;

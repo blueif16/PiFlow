@@ -18,7 +18,7 @@
 // The order is STABLE: pre reads → pre seeds → pre gates → post transforms → post gates — so the codec /
 // edge-inference see a deterministic envelope and the two authorings compare equal as a SET.
 
-import type { OpSpec, OnFailure, Reducer, TransformBody, RerouteSpec, RetrySpec, EscalateSpec, ActionBody } from '../../types.js';
+import type { OpSpec, OnFailure, Reducer, TransformBody, NodeOps, RerouteSpec, RetrySpec, EscalateSpec, ActionBody } from '../../types.js';
 import type { TemplateNode, TemplateCheck } from './types.js';
 
 /** The consequence a lowered gate carries: a `warn`-severity check warns; a `fail` check takes policy.fail. */
@@ -79,6 +79,41 @@ export function lowerToOps(def: TemplateNode): OpSpec[] | undefined {
   for (const c of def.checks?.post ?? []) ops.push(lowerCheck(c, 'post', def.policy));
 
   return ops.length ? ops : undefined;
+}
+
+/**
+ * (G13 — M5) opsToNodeOps — the SYMMETRIC INVERSE of `lowerToOps`'s DERIVE section: read a node's
+ * canonical `op[]` envelope back into the runtime `NodeOps` (seed/project/merge/promote/registryProject)
+ * the runner's POST-derive executors consume (`runner.ts` reads `node.ops?.{…}` at the derive sites). It
+ * exists for the node authored DIRECTLY in `op[]` (no `hooks` alias): `lowerToOps` returns that `op[]`
+ * verbatim and NEVER re-derives `hooks`, so without this back-fill an op[]-authored derive sets `node.op`
+ * but leaves `node.ops` undefined and the derive SILENTLY never runs. The loader calls this ONLY when no
+ * `hooks` block already single-sourced `node.ops` (the guard — never double-source). Returns undefined
+ * when the envelope carries NO derive transform (a gate/action/run-only node stays op-free — additive).
+ *
+ * Field mappings mirror `lowerToOps` (lines ~53-76) inverted — incl. the NAME FLIP `transform.reducer` →
+ * `NodeOps.promote.merge`. `seed`/`project` recover their `to` from the op's `writes[0]`.
+ */
+export function opsToNodeOps(op: OpSpec[]): NodeOps | undefined {
+  const out: NodeOps = {};
+  for (const o of op) {
+    const t = o.transform;
+    if (!t) continue;
+    if (t.kind === 'seed') {
+      (out.seed ??= []).push({ to: (o.writes ?? [])[0], from: t.from });
+    } else if (t.kind === 'project') {
+      (out.project ??= []).push({ to: (o.writes ?? [])[0], from: t.from as string | string[] });
+    } else if (t.kind === 'merge') {
+      out.merge = { ops: t.ops };
+    } else if (t.kind === 'promote') {
+      const p: { from: string; to: string; merge?: Reducer } = { from: t.from, to: t.to };
+      if (t.reducer !== undefined) p.merge = t.reducer;
+      (out.promote ??= []).push(p);
+    } else if (t.kind === 'projectRegistry') {
+      out.registryProject = { source: t.source, mapRef: t.mapRef, key: t.key };
+    }
+  }
+  return out.seed || out.project || out.merge || out.promote || out.registryProject ? out : undefined;
 }
 
 /**
