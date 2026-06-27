@@ -8,5 +8,14 @@ export { renderStatus, runStatusCli } from './status.js';
 export { watchRun, runWatchCli } from './watch.js';
 export type { WatchResult, WatchOpts, WatchReason } from './watch.js';
 export { extractTemplate, renderDag, runExtractCli } from './extract.js';
+export {
+  buildMeta,
+  buildNode,
+  scaffoldNew,
+  scaffoldAddNode,
+  runNewCli,
+  runAddNodeCli,
+} from './scaffold.js';
+export type { NewOpts, NodeOpts, CheckOpt, McpServers } from './scaffold.js';
 export { runTemplate, dryRunPlan, parseRunArgs, runRunCli } from './run.js';
 export type { RunDeps, ParsedRunArgs } from './run.js';

@@ -1,0 +1,27 @@
+{
+  "id": "example-academy",
+  "meta": {
+    "name": "example-academy",
+    "description": "PiFlow Academy — a 2-node demo of per-node capability isolation (separation of concerns). A RESEARCH node reaches the outside world through the deepwiki MCP tool but has NO shell; a BUILD node has a shell and implements + tests the result but has NO internet. The data-only handoff (findings.md) keeps the lethal trifecta split across nodes, so an injection in fetched content lands on a node that cannot escalate. Security thesis + sources: docs/research/2026-06-27-per-node-capability-isolation.md. Also exercises external-MCP-in-sandbox (research) + coding-in-sandbox (build) on E2B."
+  },
+  "stages": [
+    [
+      "research"
+    ],
+    [
+      "build"
+    ]
+  ],
+  "nodes": {
+    "build": {
+      "phase": "build",
+      "deps": [
+        "research"
+      ]
+    },
+    "research": {
+      "phase": "research",
+      "deps": []
+    }
+  }
+}

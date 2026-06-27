@@ -379,6 +379,38 @@ describe('runWorkflow — node-timeout watchdog', () => {
 
     await fs.rm(outDir, { recursive: true, force: true });
   });
+
+  it('threads the resolved node cap into CreateOpts.timeoutMs (cloud per-command cap, NOT undefined)', async () => {
+    // REGRESSION (E2B 60s cap): a node with NO explicit sandbox.timeoutMs used to reach scope.create with
+    // `timeoutMs: undefined`. On a cloud backend that becomes the per-command exec timeout, and E2B's SDK
+    // defaults CommandStartOpts.timeoutMs to 60_000ms when unset — silently SIGKILLing any node that
+    // generates for >60s (every long research/build node). The fix threads the SAME hard wall-clock cap the
+    // watchdog uses (node.sandbox.timeoutMs ?? run nodeTimeoutMs) into create, so the two caps never diverge.
+    const g = compile(wf([n('Solo', [], ['out.txt'])]));
+    const outDir = await tmpOut();
+
+    const base = new InMemorySandboxProvider();
+    let capturedTimeoutMs: number | undefined = -1; // sentinel: distinct from both `undefined` and a real cap
+    const provider: SandboxProvider = {
+      kind: 'inmemory',
+      async create(opts: CreateOpts): Promise<Sandbox> {
+        capturedTimeoutMs = opts.timeoutMs;
+        return base.create(opts);
+      },
+    };
+
+    // A distinctive cap — neither E2B's 60_000 default nor the runner's 1_800_000 prod default — so the
+    // assertion can only pass if the run's resolved nodeTimeoutMs actually reached create.
+    const RUN_CAP = 900_000;
+    const { status } = await runWorkflow(g, {
+      run: 'cloud-timeout', outDir, provider, buildCommand: stubBuilder(), nodeTimeoutMs: RUN_CAP,
+    });
+
+    expect(status.nodes.solo.status).toBe('ok');
+    expect(capturedTimeoutMs).toBe(RUN_CAP); // pre-fix this was `undefined` (→ E2B's 60s default)
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
 });
 
 // ── G1 per-node model routing (the runner threads the effective model into the command ctx) ──────────

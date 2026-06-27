@@ -1,0 +1,20 @@
+{
+  "id": "research",
+  "phase": "research",
+  "deps": [],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result", "mcp.deepwiki:ask_question"], "deny": ["bash", "edit"] },
+  "mcp": {
+    "servers": {
+      "deepwiki": { "transport": "http", "url": "https://mcp.deepwiki.com/mcp" }
+    }
+  },
+  "contract": {
+    "artifacts": ["findings/findings.md"],
+    "owns": ["out/**"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "checks": { "post": [{ "kind": "non-empty", "path": "findings/findings.md" }] },
+  "policy": { "fail": "block" }
+}

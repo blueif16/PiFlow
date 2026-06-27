@@ -1,0 +1,21 @@
+{
+  "id": "build",
+  "phase": "build",
+  "deps": ["research"],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "edit", "bash", "grep", "submit_result"], "deny": [] },
+  "inject": ["{{RUN}}/findings/findings.md"],
+  "contract": {
+    "artifacts": ["src/binary-search.mjs", "test/binary-search.test.mjs"],
+    "owns": ["out/**"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "checks": {
+    "post": [
+      { "kind": "non-empty", "path": "src/binary-search.mjs" },
+      { "kind": "non-empty", "path": "test/binary-search.test.mjs" }
+    ]
+  },
+  "policy": { "fail": "block" }
+}

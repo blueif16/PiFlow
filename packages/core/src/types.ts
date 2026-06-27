@@ -23,8 +23,11 @@ export interface NodeSpec {
   phase?: string;
 
   // WORK — intelligence about the task (authored).
-  /** The realized wave prompt — recorded by `extract` (human front-end) or emitted by COMPOSE. */
-  prompt: string;
+  /**
+   * The realized wave prompt — recorded by `extract` (human front-end) or emitted by COMPOSE.
+   * OPTIONAL on a `programmatic` node (it spawns no `pi`, so it has no prompt); REQUIRED otherwise.
+   */
+  prompt?: string;
   /** Skill to load and follow, if any. */
   skill?: string;
   /** Optional agent-type hint (for a custom sub-agent system prompt). */
@@ -82,6 +85,16 @@ export interface NodeSpec {
    * exactly as before (the loader still carries the byte-identical `ops`/`io.checks`/`io.policy`).
    */
   op?: OpSpec[];
+  /**
+   * 9. (PROGRAMMATIC NODE) When `true`, this node runs its DECLARATIVE ops deterministically and spawns
+   * NO `pi` — no `buildCommand`, no exec. The runner runs its PRE seeds/gates → POST `run`/`merge`/
+   * `project` derive ops → POST checks → promote → finishNode by REUSING the existing op executors, then
+   * verifies its artifact contract by host-stat exactly like a normal node. A programmatic node needs no
+   * `prompt` and no `tools`. Everything else (deps/join, contract artifacts+owns+readScope, checks, policy,
+   * node-level retry/rerouteTo) is unchanged. Optional/additive — a node without it behaves exactly as
+   * before (it spawns `pi`). Mirrors the `checkpoint?`/`rerouteGate?` no-pi presence flags.
+   */
+  programmatic?: true;
 }
 
 // 8 ── THE UNIFIED OP ENVELOPE (G13 — M5) ───────────────────────────────────────
@@ -829,6 +842,8 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
   checkpoint?: NodeSpec['checkpoint'];
   /** (G12 — M3) A generated reroute existence-gate marker — carried verbatim onto the dense NodeSpec. */
   rerouteGate?: NodeSpec['rerouteGate'];
+  /** (PROGRAMMATIC NODE) Marks this node no-pi: it runs its declarative ops deterministically, spawning no `pi`. */
+  programmatic?: NodeSpec['programmatic'];
   /** (Phase 2) Fusion activation — consumed by `expandFusion` BEFORE compile; never reaches the dense NodeSpec. */
   fusion?: FusionSpec;
   /**

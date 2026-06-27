@@ -305,6 +305,22 @@ them, and where an edit must be reconciled against the rest. For every node:
   engine stays uniform + genre-agnostic. *Why:* it removes the non-Claude-model explore-forever / mis-project
   thrash surface, makes mechanical output un-hallucinatable, and cuts tokens. The hook envelope + the
   DRIVER-marker → `Hook` assembly: `reference/sdk-consumer.md`; the marker spec: `reference/artifact-contract.md`.
+- **A WHOLLY-mechanical step is a PROGRAMMATIC node — never an agent node — and DEFAULTS to a neighbour's
+  PRE-hook, not its own node.** The bullet above splits a *mixed* node's mechanical parts into hooks around its
+  model; when a step has NO intelligent part at all (a render, a deterministic merge/derive of two parents, a
+  final pack-and-ship) it must spawn **no `pi`**. Author it as `programmatic: true` — no `prompt`, no `tools`,
+  no `return`; its `hooks`/`op` (`run`/`merge`/`project`) + `checks` ARE the node, run + gated by the engine
+  (`@piflow/core` dispatches it to `runProgrammatic`, the no-pi twin of `checkpoint`/`rerouteGate`). **Whether
+  it becomes its own node is MECHANICAL, not a complexity judgment:** default = fold the mechanical work into
+  the *consuming* agent node's PRE-hook (`DRIVER-SEED`) — reuse, zero new node. Promote it to its OWN
+  programmatic node ONLY when one holds: (1) **no consuming agent node is guaranteed to run on every run** — its
+  would-be host is elided by a shipped profile (companion drops the verify phase) or a bounded `--until`, so some
+  runs END on this producing step and nothing is left to carry the pre-hook; or (2) the step needs its **own
+  node-scoped `rerouteTo`** an ancestor (reroute is node-granular — a pre-hook op cannot carry it). A programmatic
+  node is almost always a TERMINAL producer for the short runs. The lesson render is the canonical (1): it must
+  run whether or not the verify wave does, so it is its own `programmatic` render node joining composer ∥ sketch —
+  never the verifier's pre-hook. **Invariant:** the step's full control logic (blocking gate · retry · reroute)
+  must read identically wherever it lives — a pre-hook is not a licence to carry weaker logic than a node would.
 - **Design for parallelism from the I/O up — the map is where independent lanes become visible.** As you set
   each node's I/O, look for nodes whose inputs are ALL already-frozen upstream artifacts and whose `owns` set is
   DISJOINT from a sibling's — those are independent **lanes** that need not wait on each other, so run them as a

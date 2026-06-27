@@ -16,7 +16,17 @@ export interface TemplateNode {
   id: string;
   phase: string;
   deps: string[];
-  prompt: { file: string; skill?: string };
+  /**
+   * The prompt body + optional skill. REQUIRED for a normal node; OMITTED on a `programmatic` node (it
+   * spawns no `pi`, so it has no prompt). The schema enforces this conditionally (the `allOf` in node.schema.ts).
+   */
+  prompt?: { file: string; skill?: string };
+  /**
+   * (PROGRAMMATIC NODE) When `true`, this node runs its declarative `hooks`/`op` deterministically and
+   * spawns NO `pi` → runtime `NodeSpec.programmatic`. It needs no `prompt` and no `tools`. Omitted ⇒ the
+   * node spawns a `pi` agent exactly as before. Twin of the `checkpoint` no-pi marker.
+   */
+  programmatic?: true;
   /**
    * (G6) The agent-PRESET label this node adopted (e.g. "market-research"). `piflow-init` expands the
    * preset INTO the node's concrete `tools`/`prompt` at author time and keeps this as a branding LABEL —
