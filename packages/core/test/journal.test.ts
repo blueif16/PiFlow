@@ -13,6 +13,7 @@ import path from 'node:path';
 import { compile } from '../src/index.js';
 import type { NodeIntent, WorkflowSpec, NodeSpec, Workflow } from '../src/index.js';
 import { runWorkflow, defaultExecRunner, type ExecRunner } from '../src/runner/index.js';
+import { piDir, stateFile } from '../src/runner/layout.js';
 import {
   envelopeHash,
   inputFilesOf,
@@ -381,6 +382,56 @@ describe('runWorkflow journal resume — --from override', () => {
     expect(status.nodes.a.status).toBe('reused');
     expect(ran.has('a')).toBe(false);
     expect(status.nodes.b.status).toBe('ok');
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  // REGRESSION — the resume preflight stats each SKIPPED upstream artifact at its TOKENIZED path. A
+  // `--from` resume of a tokenized workflow (every real lesson) must resolve `{{arg.*}}`/`{{state.*}}`
+  // against the run's args + the persisted `.pi/state.json` BEFORE statting, or every present-on-disk
+  // upstream artifact false-reports "missing" and the run hard-HALTs at `__resume__`. (Reproduced live:
+  // `--from w4a-composer` blocked on `lesson-data/{{arg.lessonId}}/brief.md` while the resolved file
+  // `lesson-data/kptest-count-to-two/brief.md` existed.)
+  it('resolves {{arg.*}}/{{state.*}} in skipped-upstream artifact paths before the preflight stat (does NOT false-block)', async () => {
+    // setup → voice → composer (3 stages). The first two are SKIPPED on `--from composer`; their declared
+    // artifact paths carry tokens. The resolved files exist on disk, so the preflight must NOT block.
+    const setup = n('setup', [], ['lesson-data/{{arg.lessonId}}/brief.txt']);
+    const voice = n('voice', ['lesson-data/{{arg.lessonId}}/brief.txt'], ['gen/{{state.camel}}Clips.txt']);
+    const composer = n('composer', ['gen/{{state.camel}}Clips.txt'], ['out/scene.txt']);
+    const spec = wf([setup, voice, composer]);
+    const args = { lessonId: 'kp' };
+
+    const outDir = await tmpOut();
+    // Persist `.pi/state.json` exactly as a prior run's barrier would have (mirrors runner.test.ts S3),
+    // so the resume's `loadState(outDir)` makes `{{state.camel}}` resolvable from t=0.
+    await fs.mkdir(piDir(outDir), { recursive: true });
+    await fs.writeFile(stateFile(outDir), JSON.stringify({ camel: 'kpCamel' }));
+
+    // Run 1 — full run with the args + persisted state: the stub writes each artifact at its RESOLVED
+    // path under outDir (lesson-data/kp/brief.txt, gen/kpCamelClips.txt, out/scene.txt).
+    await runWorkflow(compile(spec), { run: 'r', outDir, args, buildCommand: stubBuilder() });
+    // Sanity: the resolved upstream files really are on disk (so a "missing" verdict can ONLY be the bug).
+    expect((await fs.stat(path.join(outDir, 'lesson-data/kp/brief.txt'))).isFile()).toBe(true);
+    expect((await fs.stat(path.join(outDir, 'gen/kpCamelClips.txt'))).isFile()).toBe(true);
+
+    // Run 2 — `--from composer`: setup + voice are SKIPPED. The preflight stats their tokenized artifact
+    // paths; with the fix it resolves them against args + state first → present → no block. `noResume`
+    // ignores the journal so `composer` (in the selected window) actually RUNs — proving the preflight let
+    // execution proceed past the skipped prefix rather than HALTing on it.
+    const ran = new Set<string>();
+    const { status } = await runWorkflow(compile(spec), {
+      run: 'r', outDir, from: 'composer', noResume: true, args, buildCommand: stubBuilder(ran),
+    });
+
+    // THE load-bearing assertions: no `__resume__` HALT, the skipped prefix stays force-reused, and the
+    // resumed tail ran (the preflight did NOT false-block on the tokenized upstream artifacts).
+    expect(status.nodes.__resume__).toBeUndefined();
+    expect(status.nodes.setup.status).toBe('reused');
+    expect(status.nodes.voice.status).toBe('reused');
+    expect(ran.has('setup')).toBe(false);
+    expect(ran.has('voice')).toBe(false);
+    expect(status.nodes.composer.status).toBe('ok');
+    expect(ran.has('composer')).toBe(true);
 
     await fs.rm(outDir, { recursive: true, force: true });
   });

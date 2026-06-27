@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { promises as fs, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { compile, InMemorySandboxProvider, DefaultToolRegistry, mcpToolsToEntries, openClawPluginToEntries } from '../src/index.js';
+import { compile, InMemorySandboxProvider, LocalSandboxProvider, DefaultToolRegistry, mcpToolsToEntries, openClawPluginToEntries } from '../src/index.js';
 import type { NodeIntent, WorkflowSpec } from '../src/index.js';
 import {
   runWorkflow,
@@ -301,6 +301,49 @@ describe('runWorkflow — --from resume', () => {
     expect(status.ok).toBe(false);
     expect(status.done).toBe(true);
     expect(JSON.stringify(status.nodes)).toMatch(/missing upstream artifact/i);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('PRESERVES reused nodes\' prior records and ACCUMULATES the run clock across a rerun (does not reset to the rerun window)', async () => {
+    const g = compile(wf([n('Stage1', [], ['s1.txt']), n('Stage2', ['s1.txt'], ['s2.txt'])]));
+    const outDir = await tmpOut();
+
+    // RUN 1 — full run; Stage1 takes a measurable ~200ms so it carries a real prior durationMs the
+    // rerun must preserve (and carry into the run-level clock baseline).
+    const slowStage1 = (node: { id: string; io: { artifacts: { path: string }[] }; sandbox: { output: string } }): string => {
+      const base = stubBuilder()(node);
+      return node.id === 'stage1' ? `sleep 0.2 && ${base}` : base;
+    };
+    const r1 = await runWorkflow(g, { run: 'rerun-clock', outDir, buildCommand: slowStage1 });
+    expect(r1.status.nodes.stage1.status).toBe('ok');
+    const priorS1Dur = r1.status.nodes.stage1.durationMs!;
+    const priorS1Start = r1.status.nodes.stage1.startedAt!;
+    expect(priorS1Dur).toBeGreaterThanOrEqual(120); // the sleep is really recorded on the prior run
+
+    // RUN 2 — rerun FROM Stage2 (Stage1 pinned-reused; noResume forces Stage2 to actually re-execute).
+    let stage2Reran = false;
+    const r2Builder = (node: { id: string; io: { artifacts: { path: string }[] }; sandbox: { output: string } }): string => {
+      if (node.id === 'stage2') stage2Reran = true;
+      return stubBuilder()(node);
+    };
+    const r2 = await runWorkflow(g, { run: 'rerun-clock', outDir, from: 'stage2', noResume: true, buildCommand: r2Builder });
+
+    // Stage2 actually re-ran; Stage1 was reused (the rerun started at the earliest redone node).
+    expect(stage2Reran).toBe(true);
+    expect(r2.status.nodes.stage2.status).toBe('ok');
+    expect(r2.status.nodes.stage1.status).toBe('reused');
+
+    // PRESERVED: the reused node keeps its PRIOR record (duration + start) verbatim — not blanked.
+    expect(r2.status.nodes.stage1.durationMs).toBe(priorS1Dur);
+    expect(r2.status.nodes.stage1.startedAt).toBe(priorS1Start);
+
+    // ACCUMULATED: the run clock carries the reused prefix's time (baseline ≥ Stage1's prior duration)
+    // instead of resetting to only the (fast) Stage2 rerun window — both in-memory and on disk (what
+    // every viewer reads via run.json).
+    expect(r2.status.durationMs!).toBeGreaterThanOrEqual(priorS1Dur);
+    const onDisk = JSON.parse(await fs.readFile(runJsonFile(outDir), 'utf8'));
+    expect(onDisk.durationMs).toBeGreaterThanOrEqual(priorS1Dur);
 
     await fs.rm(outDir, { recursive: true, force: true });
   });
@@ -2072,5 +2115,94 @@ describe('runWorkflow — io/sandbox/checks token resolution at node launch (U7-
     expect(staged.data).toContain('DRIVER-ARTIFACTS: p.txt');
     expect(createOpts[0].readScope).toEqual([]); // no read-scope declared ⇒ empty, unchanged
     await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
+// ── 17. IN-PLACE collection is an identity NO-OP (the LocalSandbox / `--sandbox local` contract) ─────
+//   The live regression (lesson-build ctt-2): an in-place node's `sandbox.output` is the compile default
+//   `out/<id>` (a WORKSPACE-root subdir), but `ctx.outDir` is the run dir — DIFFERENT real paths. The
+//   runner blindly called `sandbox.downloadDir('out/<id>', outDir)`; `LocalSandbox.downloadDir` is a
+//   GUARDED IDENTITY (no-op iff realpath(remote)===realpath(local), else THROW), so it THREW
+//   "in-place collection is identity-only …" on EVERY in-place node. The throw was caught at the success
+//   collect site (→ a spurious "output collection failed" issue on the node) — w4b-sketch surfaced exactly
+//   that issue yet ended `ok` (its absolute-path artifacts existed), and w4a-composer ALSO carried it
+//   (then blocked on its merge.run). FIX: for an in-place provider the deliverable already lives in the
+//   real workspace, so the runner must NOT attempt a download — collection is a clean no-op. The local.ts
+//   identity THROW stays as the guard; the CALLER (the runner) stops violating it.
+//
+//   Faithful reproduction: a REAL LocalSandboxProvider, `outDir` UNDER the workspace (the live layout),
+//   nodes whose `sandbox.output` is the compile default `out/<id>` (≠ outDir), one PLAIN (w4b shape) and
+//   one with a CLEAN post `run`/merge op (the w4a code path). Both must end `ok` with NO collection-failure
+//   issue. On UNPATCHED source the empty `out/<id>` exists at the workspace root → downloadDir THROWS →
+//   caught → "output collection failed" issue present → these assertions FAIL (RED).
+
+describe('runWorkflow — in-place LocalSandbox collection is an identity no-op (no spurious downloadDir throw)', () => {
+  /**
+   * The in-place stub: the LocalSandbox roots at the WORKSPACE, so the node writes its declared artifacts
+   * DIRECTLY to their host location (an absolute path under `outDir`) — exactly as the live composer did
+   * (absolute / run-relative writes), NOT into `out/<id>`. A clean ok-return on stdout. `outDir` is closed
+   * over so the command targets the real run dir the artifact gate stats.
+   */
+  function inPlaceBuilder(outDir: string) {
+    return (node: { id: string; io: { artifacts: { path: string }[] }; sandbox: { output: string } }): string => {
+      const writes = node.io.artifacts
+        .map((a) => {
+          const dest = path.join(outDir, a.path); // absolute host path = where the in-place deliverable lives
+          const dir = path.dirname(dest);
+          return `mkdir -p ${JSON.stringify(dir)} && printf '%s' ${node.id} > ${JSON.stringify(dest)}`;
+        })
+        .join(' && ');
+      const ret = `printf '%s' '\`\`\`json\\n{"status":"ok","summary":"${node.id} done"}\\n\`\`\`'`;
+      return writes ? `${writes} && ${ret}` : ret;
+    };
+  }
+
+  it('a plain in-place node AND one with a post-run op both collect as a no-op (ok, no "output collection failed")', async () => {
+    // Workspace = a throwaway tree; outDir = a run dir UNDER it (the live `.piflow/<wf>/runs/<id>` layout,
+    // which is a workspace subdir). enforceReadScope:false so the kernel jail never interferes with the
+    // test's own absolute writes/reads — the collection bug is orthogonal to the jail.
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-inplace-ws-'));
+    const outDir = path.join(workspace, '.piflow', 'runs', 'r');
+    await fs.mkdir(outDir, { recursive: true });
+    try {
+      const plain = n('Plain', [], ['plain.txt']);
+      // The w4a shape: a node with a CLEAN post `run` op (the merge.run code path) — it must reach collection
+      // and that collection must be a no-op too (the run op exits 0, so it never blocks on its own).
+      const withRun: NodeIntent = {
+        ...n('WithRun', [], ['composed.txt']),
+        op: [{ when: 'post', run: { cmd: 'node', args: ['-e', 'process.exit(0)'] } }],
+      };
+      const provider = new LocalSandboxProvider({ enforceReadScope: false });
+      const { status } = await runWorkflow(compile(wf([plain, withRun])), {
+        run: 'r',
+        outDir,
+        repoRoot: workspace,
+        workspace,
+        provider,
+        buildCommand: inPlaceBuilder(outDir),
+      });
+
+      // The compile default really does set output to a workspace-root subdir ≠ outDir (the bug's premise).
+      expect(status.nodes.plain.status, status.nodes.plain.issues.join(' | ')).toBe('ok');
+      expect(status.nodes.withrun.status, status.nodes.withrun.issues.join(' | ')).toBe('ok');
+
+      // The load-bearing assertion: collection was a clean no-op — NO "output collection failed" issue on
+      // EITHER node. RED on unpatched source: the runner's downloadDir('out/<id>' → outDir) throws the
+      // identity-only error, which is caught and recorded as exactly this issue.
+      for (const id of ['plain', 'withrun'] as const) {
+        expect(
+          status.nodes[id].issues.join(' | '),
+          `in-place node "${id}" must NOT carry a spurious collection-failure issue`,
+        ).not.toMatch(/output collection failed|identity-only/i);
+      }
+
+      // The in-place deliverables are present on the host (the artifact gate passed against the real run dir).
+      expect(await fs.readFile(path.join(outDir, 'plain.txt'), 'utf8')).toBe('plain');
+      expect(await fs.readFile(path.join(outDir, 'composed.txt'), 'utf8')).toBe('withrun');
+      expect(status.ok).toBe(true);
+    } finally {
+      // dispose is a no-op for LocalSandbox; the TEST owns teardown of the tree it created.
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
   });
 });

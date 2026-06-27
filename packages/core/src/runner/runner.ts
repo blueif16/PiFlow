@@ -69,6 +69,7 @@ import {
   writeStatus,
   artifactState,
 } from './status.js';
+import { runJsonFile } from './layout.js';
 import {
   type Journal,
   type NodeDecision,
@@ -429,6 +430,19 @@ function selectWindow(wf: Workflow, from?: string, until?: string): { fromIdx: n
 
 /** Provider kinds with no host trust boundary — the host env must NOT be spread into the VM (allowlist only). */
 const CLOUD_KINDS = new Set<SandboxProvider['kind']>(['daytona', 'e2b']);
+
+/**
+ * IN-PLACE provider kinds — the node runs DIRECTLY in the real workspace (no throwaway copy), so its
+ * deliverable already lives at its host location and there is NOTHING to collect: `downloadDir` would be a
+ * GUARDED-IDENTITY no-op when `sandbox.output` resolves to `outDir`, but the compile default `out/<id>` is
+ * a WORKSPACE-root subdir ≠ the run dir, so the SAME guard THROWS "identity-only" (local.ts:208). The throw
+ * is the CORRECT guard; the runner is the violating caller — so for an in-place provider we SKIP the
+ * download entirely. Every OTHER kind (inmemory/seatbelt/worktree mkdtemp throwaways, daytona/e2b VMs)
+ * writes to a separate `out/<id>` and MUST copy back, byte-unchanged. (`local`'s `kind` lives on the
+ * instance; reading it off the recording-wrapped sandbox is unreliable — `ctx.providerKind` is the
+ * already-threaded backend-policy seam, the same one CLOUD_KINDS uses.)
+ */
+const IN_PLACE_KINDS = new Set<SandboxProvider['kind']>(['local']);
 
 /**
  * Did this node select at least one BRIDGE tool (mcp./oc.)? True iff an `mcp.<server>:<tool>` OR an
@@ -1171,8 +1185,13 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
     // gate below marks it blocked on its own. ANY OTHER error (EEXIST race, ENOSPC, EACCES, …) is a REAL
     // collection failure captured into `collectError` and surfaced on the node's `issues` in the verdict
     // block below — so a blocked node EXPLAINS that its file was lost in collection, not merely "missing".
+    // IN-PLACE SKIP: a `local` node ran in the real workspace, so its deliverable is ALREADY at its host
+    // location — there is no `out/<id>` throwaway to copy back and `downloadDir(out/<id> → outDir)` would
+    // hit the guarded-identity THROW (the compile-default output ≠ the run dir). Skip the download; the
+    // artifact gate below stat()s the real run dir directly. (Isolated providers are untouched.)
+    const inPlace = IN_PLACE_KINDS.has(ctx.providerKind);
     let collectError: string | null = null;
-    if (killed === null && result.code === 0) {
+    if (killed === null && result.code === 0 && !inPlace) {
       try {
         await ctx.collectMutex(() => sandbox.downloadDir(node.sandbox.output, ctx.outDir));
       } catch (e) {
@@ -1360,11 +1379,13 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
         ].join('\n');
         const repairFile = path.posix.join(nodeStage, `repair-${repairs}.md`);
         await sandbox.writeFile(repairFile, repairPrompt);
-        const repairCmd = ctx.buildCommand(node, resolved, { promptFile: repairFile, model: effModel, provider: effProvider, extensionFile }, ctx.commandOpts);
+        const repairCmd = ctx.buildCommand(node, resolved, { promptFile: repairFile, model: effModel, provider: effProvider, extensionFile, skillPath }, ctx.commandOpts);
         const repairExec = await ctx.execRunner(execSandbox, repairCmd, { ...ctx.watchdog, nodeTimeoutMs });
         result = repairExec.result;
         // Re-collect (a fresh artifact may have been rewritten) under the same serialized collect mutex.
-        if (repairExec.killed === null && result.code === 0) {
+        // In-place skips for the same reason as the first collect: the repaired artifact is already on the
+        // real run dir, and a download would hit the guarded-identity throw.
+        if (repairExec.killed === null && result.code === 0 && !inPlace) {
           try {
             await ctx.collectMutex(() => sandbox.downloadDir(node.sandbox.output, ctx.outDir));
           } catch { /* a collect miss is caught by the re-stat below */ }
@@ -1694,6 +1715,21 @@ async function seedFromJournal(
   return { decisions, reused };
 }
 
+/**
+ * Load the PRIOR `.pi/run.json` — the record THIS run is about to overwrite — so a resume can carry the
+ * reused nodes' completed records (timings/summary/model/checks) AND the accumulated run clock forward
+ * instead of blanking them. Returns null when absent/unparseable OR from a DIFFERENT template (a `source`
+ * mismatch ⇒ a wholesale swap → no carry; mirrors the journal's same-`source` guard). A fresh run sees null.
+ */
+async function loadPriorStatus(outDir: string, source: string): Promise<RunStatus | null> {
+  try {
+    const prior = JSON.parse(await fs.readFile(runJsonFile(outDir), 'utf8')) as RunStatus;
+    return prior && prior.source === source ? prior : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── the run loop ─────────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -1790,26 +1826,50 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   // `noResume` ignores the journal (full re-run). A fresh run (no journal) ⇒ every node RUNs.
   const journal = await loadJournal(outDir);
   const { reused: reusedSet } = await seedFromJournal(ctx, journal, fromIdx, opts.noResume ?? false);
+  // The prior run.json THIS run overwrites — the source of the reused nodes' preserved records and the
+  // accumulated-clock baseline below. Null on a fresh run (or a template swap), so neither carry fires.
+  const prior = await loadPriorStatus(outDir, wf.meta.name);
 
   // Seed the digest. A node in a `--from`-skipped stage is `reused`. WITHIN the selected window, the
   // journal decides each node: `reused` (skip exec) vs `pending` (run). The run loop below skips any
   // `reused` lane, so a later-stage node the journal proved unchanged is reused even if an earlier stage
   // re-ran — the topological taint already forced every TRUE descendant to `pending`.
-  const seed = (stage: Stage, status: NodeStatusRecord['status']): void => {
-    for (const id of stage.nodeIds) {
-      const n = wf.nodes[id];
-      ctx.status.nodes[id] = { id, label: n.label, ...(n.agentType ? { agentType: n.agentType } : {}), status, artifacts: [], issues: [] };
+  //
+  // RESUME CARRY-FORWARD: a node we are marking `reused` is provably UNCHANGED, so its prior run's record
+  // (startedAt/endedAt/durationMs/summary/model/checks) is still TRUE — carry it VERBATIM (re-stamping only
+  // the identity from the current wf + forcing `reused`) instead of blanking it. The resume preflight below
+  // re-stats its artifacts. Without a usable prior record (fresh run / pending-or-running prior) we seed the
+  // empty record as before. This is what stops a rerun from "falsifying" the untouched prefix's data.
+  const seedNode = (id: string, status: NodeStatusRecord['status']): void => {
+    const n = wf.nodes[id];
+    const base = { id, label: n.label, ...(n.agentType ? { agentType: n.agentType } : {}) };
+    const priorRec = status === 'reused' ? prior?.nodes[id] : undefined;
+    if (priorRec && priorRec.status !== 'pending' && priorRec.status !== 'running') {
+      ctx.status.nodes[id] = { ...priorRec, ...base, status: 'reused' };
+    } else {
+      ctx.status.nodes[id] = { ...base, status, artifacts: [], issues: [] };
     }
   };
-  for (const s of skipped) seed(s, 'reused');
-  for (const s of selected) {
-    for (const id of s.nodeIds) {
-      const n = wf.nodes[id];
-      const status: NodeStatusRecord['status'] = reusedSet.has(id) ? 'reused' : 'pending';
-      ctx.status.nodes[id] = { id, label: n.label, ...(n.agentType ? { agentType: n.agentType } : {}), status, artifacts: [], issues: [] };
-    }
-  }
+  for (const s of skipped) for (const id of s.nodeIds) seedNode(id, 'reused');
+  for (const s of selected) for (const id of s.nodeIds) seedNode(id, reusedSet.has(id) ? 'reused' : 'pending');
   await writeStatus(outDir, ctx.status);
+
+  // ACCUMULATE THE RUN CLOCK across a resume (the §"don't reset to the rerun window" fix). The reused
+  // prefix's recorded compute time is the BASELINE the rerun adds onto; back-date `startedAt` by it so BOTH
+  // the live `now − startedAt` fallback AND the final `durationMs` read as baseline + this-run-elapsed —
+  // the clock effectively STARTS at the earliest REDONE node and never resets, while the idle gap between
+  // runs is excluded (we back-date from t0, not the prior wall-clock start). Recomputed after the safety
+  // flips below (a reused→pending flip drops that node's time from the baseline). Fresh run ⇒ prior is null
+  // ⇒ baseline 0, startedAt untouched ⇒ byte-identical to before.
+  const sumReusedMs = (): number =>
+    Object.values(ctx.status.nodes)
+      .filter((r) => r.status === 'reused' && typeof r.durationMs === 'number')
+      .reduce((a, r) => a + (r.durationMs ?? 0), 0);
+  let baselineMs = 0;
+  if (prior) {
+    baselineMs = sumReusedMs();
+    ctx.status.startedAt = new Date(t0 - baselineMs).toISOString();
+  }
 
   // Persist the RESOLVED DAG (the profile already applied — elided nodes dropped, deps rewired) into the
   // self-describing run dir. `.pi/run.json` records WHAT ran; this records the SHAPE it ran as — the deck
@@ -1826,12 +1886,22 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   // documented `--from` contract — the human pinned the prefix, so a missing pinned artifact is a hard
   // error). Also record the reused nodes' verified artifacts.
   if (fromIdx > 0) {
+    // Resolve each skipped node's DECLARED artifact path the SAME way the runner does when a node runs
+    // (runner.ts: `resolveTokens(a.path, resolveCtx)`): `{{WORKSPACE}}`/`{{arg.*}}`/`{{state.*}}` become
+    // physical against the run's workspace, args, and the resume-loaded `.pi/state.json` BEFORE we stat —
+    // else any tokenized upstream artifact (every real lesson) false-reports "missing" though it exists at
+    // the resolved path. Token-free paths resolve to themselves (zero behavior change). We surface the
+    // RESOLVED path in the "missing" message (more actionable than the raw token path).
+    const resolveCtx: ResolveCtx = { run: outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
     const missing: string[] = [];
     for (const s of skipped) {
       for (const id of s.nodeIds) {
         const n = wf.nodes[id];
         const states = await Promise.all(
-          n.io.artifacts.map((a) => artifactState(path.resolve(outDir, a.path), a.path)),
+          n.io.artifacts.map((a) => {
+            const resolved = resolveTokens(a.path, resolveCtx);
+            return artifactState(path.resolve(outDir, resolved), resolved);
+          }),
         );
         ctx.status.nodes[id].artifacts = states;
         for (const st of states) if (!st.exists) missing.push(`${st.path} (${id})`);
@@ -1840,7 +1910,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     if (missing.length) {
       ctx.status.done = true;
       ctx.status.ok = false;
-      ctx.status.durationMs = Date.now() - t0;
+      ctx.status.durationMs = baselineMs + (Date.now() - t0);
       ctx.status.nodes['__resume__'] = {
         id: '__resume__', label: 'resume preflight', status: 'blocked', artifacts: [],
         issues: [`cannot --from "${opts.from}": missing upstream artifact(s): ${missing.join(', ')}`],
@@ -1875,6 +1945,11 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
         if (rec && rec.status === 'reused') rec.status = 'pending';
       }
     }
+    // A reused→pending flip removed that node's time from the accumulated baseline — recompute + re-back-date.
+    if (prior) {
+      baselineMs = sumReusedMs();
+      ctx.status.startedAt = new Date(t0 - baselineMs).toISOString();
+    }
   }
   await writeStatus(outDir, ctx.status);
 
@@ -1888,7 +1963,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   } catch (e) {
     ctx.status.done = true;
     ctx.status.ok = false;
-    ctx.status.durationMs = Date.now() - t0;
+    ctx.status.durationMs = baselineMs + (Date.now() - t0);
     ctx.status.nodes['__runscope__'] = {
       id: '__runscope__', label: 'run scope setup', status: 'error', artifacts: [],
       issues: [`run scope setup failed: ${(e as Error).message}`],
@@ -1968,7 +2043,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
 
     ctx.status.stage = null;
     ctx.status.done = true;
-    ctx.status.durationMs = Date.now() - t0;
+    ctx.status.durationMs = baselineMs + (Date.now() - t0);
     const vals = Object.values(ctx.status.nodes).filter((n) => n.id !== '__resume__');
     const failed = vals.filter((n) => n.status === 'error' || n.status === 'blocked').length;
     const okCount = vals.filter((n) => n.status === 'ok' || n.status === 'reused').length;
