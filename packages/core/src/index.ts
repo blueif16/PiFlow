@@ -129,6 +129,10 @@ export type { BindReport } from './tools/verify.js';
 export { OPENCLAW_SEED_CATALOG, loadCatalog, seededRegistry } from './tools/catalog.js';
 // Community catalog: a curated, pinned crawl of REAL OpenClaw tool plugins (discoverable, gateway-coupled)
 export { OPENCLAW_COMMUNITY_CATALOG, OPENCLAW_PIN } from './tools/openclaw-community.js';
+// Catalog client: read the cached `~/.piflow/catalog/` MCP slice → the per-spec rows + server configs the
+// canonical run path feeds to `assembleRunTools`/`mcpConfig` (the live-path gap closer; data stays in ~/.piflow).
+export { loadMcpCatalog, catalogForSpec } from './catalog/client.js';
+export type { McpCatalog, CatalogSlice } from './catalog/client.js';
 
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
