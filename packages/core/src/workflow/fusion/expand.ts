@@ -204,3 +204,24 @@ export function expandFusion(spec: WorkflowSpec, opts: FusionExpandOpts = {}): W
   }
   return { ...spec, nodes };
 }
+
+/**
+ * Set (or, with `null`, strip) a node's `fusion` activation by id — the AUTHOR-LEVEL toggle a surface
+ * (e.g. the GUI's fusion mode) drives, so the siblings+judge expansion stays the SDK's `expandFusion`
+ * (never a view-local DAG rewrite). Matches the activated node by its `label` (= the template node id).
+ * PURE + immutable: returns a new spec; an unknown id is a no-op. The caller then runs `expandFusion` ⇒
+ * `compile` exactly as the run-path does, so a preview is byte-for-byte what a live run would execute.
+ */
+export function withNodeFusion(spec: WorkflowSpec, nodeId: string, fusion: FusionSpec | null): WorkflowSpec {
+  return {
+    ...spec,
+    nodes: spec.nodes.map((n) => {
+      if (n.label !== nodeId) return n; // every other node is referenced untouched
+      if (fusion === null) {
+        const { fusion: _drop, ...rest } = n; // "off" — strip the activation
+        return rest;
+      }
+      return { ...n, fusion };
+    }),
+  };
+}

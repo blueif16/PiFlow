@@ -1,0 +1,17 @@
+{
+  "id": "publish",
+  "phase": "publish",
+  "deps": ["harden"],
+  "agentType": "general-purpose",
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "inject": ["{{RUN}}/harden/hardened.md"],
+  "contract": {
+    "artifacts": ["out/explainer.md"],
+    "owns": ["out/**"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "checks": { "post": [{ "kind": "non-empty", "path": "out/explainer.md" }] },
+  "policy": { "fail": "block" }
+}

@@ -82,11 +82,14 @@ export interface ContractRenderable {
 export function renderContractTool(t: ContractRenderable): string {
   const params = t.parameters ?? { type: 'object', properties: {} };
   const snippet =
-    'End the node by calling submit_result with the structured outcome (do not also print a JSON block).';
+    'End the node by calling submit_result with the structured outcome (do not also print a JSON block). ' +
+    'The moment your outputs exist and your checks pass, submit_result is your ONLY remaining action.';
   const guidelines = [
     'Call submit_result exactly once, as the final action, after all output files exist on disk.',
     "status='ok' ONLY if every required artifact was written; otherwise 'gap' or 'blocked' with the reason in summary.",
     'outputArtifacts = the repo-relative paths you actually wrote.',
+    'TERMINAL CONDITION: the moment every required output file exists on disk AND your declared checks pass, calling submit_result is your ONLY remaining action — do nothing else first.',
+    'Re-reading a file you already wrote, or re-running a check or command that already passed, is NOT diligence: it wastes turns and risks the node being killed by the timeout. Verify once, then submit.',
   ];
   return [
     '  pi.registerTool({',

@@ -10,7 +10,7 @@ Pi Flow lets you prove a workflow once on Claude Code, then run the **identical 
 efficient, non-Claude models — no rewrite, no codegen, no drift.
 
 A workflow is **data, not a UI**. A Claude Code agent owns the whole loop through the `@piflow/core`
-SDK and the `piflow` CLI: it designs the DAG, spawns the fleet, monitors every node, and improves
+SDK and the `piflowctl` CLI: it designs the DAG, spawns the fleet, monitors every node, and improves
 the flow between runs. You steer by talking to the agents in the terminal — never by wiring nodes on
 a canvas.
 

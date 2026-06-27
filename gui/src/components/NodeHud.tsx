@@ -20,21 +20,16 @@ import * as motion from "motion/react-client";
 import { Button } from "./Button";
 import { ProgressBar } from "./ProgressBar";
 import { StatusPill, HudCorners } from "./HudBits";
-import { MarkdownReader } from "./MarkdownReader";
-import { JsonReader } from "./JsonReader";
+import { FileView, type FileTarget } from "./FileContent";
 import { CacheDonut } from "./CacheDonut";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
-import { formatMs, formatBytes, fileUrl, isImagePath, type RunViewNode, type ScopeKind } from "../data/runView";
+import { formatMs, formatBytes, type RunViewNode, type ScopeKind } from "../data/runView";
 import "../styles/hud.css";
 import "../styles/reader.css";
 
 type RegionKey = "model" | "tools" | "output" | "progress";
 const REGION_KEYS: readonly RegionKey[] = ["model", "tools", "output", "progress"];
-
-// A file the CENTER can render — ANY path the node touched (input read, output artifact, or write).
-// `preview` (when present, from a read's telemetry snapshot) paints instantly while the real bytes load.
-type FileTarget = { path: string; displayPath: string; preview?: string };
 
 // what the CENTER shows beyond the at-rest Overview: a hovered region's detail (sticky)
 // or a clicked file's content. `null` = the Overview.
@@ -109,10 +104,25 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Live elapsed clock: a RUNNING node has no final durationMs yet, so tick once a second and render
+  // elapsed-so-far (now − startedAt). A finished node carries durationMs and needs no clock.
+  const running = status === "running";
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!running) return;
+    setNowMs(Date.now());
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+
   // progress: a completed node is 100%; the ETA is the mean of prior runs (rv.expectedMs)
   const done = status === "success" || status === "error";
   const pct = data.progress != null ? data.progress : done ? 1 : undefined;
   const expected = rv?.expectedMs ?? rv?.durationMs ?? null;
+  // elapsed = the node's final durationMs, or — while it's still running — the live now−startedAt, so the
+  // HUD always shows how long the node has been going even before it finishes and with no prior-run average.
+  const startedMs = rv?.startedAt ? Date.parse(rv.startedAt) : NaN;
+  const elapsedMs = rv?.durationMs ?? (Number.isFinite(startedMs) ? Math.max(0, nowMs - startedMs) : null);
 
   if (!rv) {
     // graceful fallback if a node has no run-view payload (shouldn't happen with real data)
@@ -202,10 +212,10 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
         style={{ gridArea: "mid" }}
         onClick={(e) => { if (e.target === e.currentTarget) reset(); }}
       >
-        {view === null && <Overview rv={rv} status={status} expected={expected} />}
+        {view === null && <Overview rv={rv} status={status} expected={expected} elapsedMs={elapsedMs} />}
         {pinnedRegion && (
           <CenterPanel key={`r-${pinnedRegion}`} title={DETAIL_TITLE[pinnedRegion]} onBack={reset} reduce={reduce}>
-            <Detail region={pinnedRegion} rv={rv} expected={expected} pct={pct} onOpenFile={openFile} />
+            <Detail region={pinnedRegion} rv={rv} expected={expected} elapsedMs={elapsedMs} pct={pct} onOpenFile={openFile} />
           </CenterPanel>
         )}
         {view?.kind === "file" && (
@@ -253,7 +263,7 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
           </div>
           <ProgressBar size="block" value={pct} status={status} aria-label={`${data.title} progress · ${pct != null ? `${Math.round(pct * 100)}%` : "running"}`} />
           <div className="ds-prog__meta">
-            <b>{formatMs(rv.durationMs)}</b> elapsed{expected != null ? ` · avg ${formatMs(expected)} / ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}` : ""}
+            <b>{formatMs(elapsedMs)}</b> elapsed{expected != null ? ` · avg ${formatMs(expected)} / ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}` : ""}
           </div>
         </div>
       </Region>
@@ -291,8 +301,9 @@ function Identity({ id, data, reduce, onClose, status }: { id: string; data: Flo
 /* ── CENTER overview (at rest): the summary + the REAL extra telemetry not shown
    elsewhere — phase, issues/warnings, context peak, timing. Replaced in-place by the
    region/file panel on hover/click. (Token cost is intentionally NOT shown — broken upstream.) ── */
-function Overview({ rv, status, expected }: { rv: RunViewNode; status: NonNullable<FlowNodeData["status"]>; expected: number | null }) {
+function Overview({ rv, status, expected, elapsedMs }: { rv: RunViewNode; status: NonNullable<FlowNodeData["status"]>; expected: number | null; elapsedMs: number | null }) {
   const ctxPeak = rv.tokens?.contextPeak ?? 0;
+  const running = status === "running";
   return (
     <div className="ds-hud__overview">
       {rv.summary
@@ -313,7 +324,7 @@ function Overview({ rv, status, expected }: { rv: RunViewNode; status: NonNullab
       <div className="ds-hud__facts">
         {rv.phase && <Fact k="Phase" v={rv.phase} />}
         <Fact k="Status" v={STATUS_LABEL[status]} />
-        <Fact k="Duration" v={formatMs(rv.durationMs)} />
+        <Fact k={running ? "Elapsed" : "Duration"} v={formatMs(elapsedMs)} />
         {expected != null && <Fact k="Avg / prior" v={`${formatMs(expected)} · ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}`} />}
         {ctxPeak > 0 && <Fact k="Context peak" v={`${ctxPeak.toLocaleString()} tok`} />}
       </div>
@@ -420,7 +431,7 @@ const DETAIL_TITLE: Record<RegionKey, string> = {
 };
 
 /* ── the full-detail panels shown in the CENTER on hover ───────────────── */
-function Detail({ region, rv, expected, pct, onOpenFile }: { region: RegionKey; rv: RunViewNode; expected: number | null; pct?: number; onOpenFile: (f: FileTarget) => void }) {
+function Detail({ region, rv, expected, elapsedMs, pct, onOpenFile }: { region: RegionKey; rv: RunViewNode; expected: number | null; elapsedMs: number | null; pct?: number; onOpenFile: (f: FileTarget) => void }) {
   if (region === "model") {
     const t = rv.tokens;
     return (
@@ -506,7 +517,9 @@ function Detail({ region, rv, expected, pct, onOpenFile }: { region: RegionKey; 
             <span className="ds-out__meta">{formatBytes(a.bytes)}{a.exists ? " ✓ verified" : " ✗ missing"}</span>
           </button>
         ))}
-        {rv.writes.map((w) => (
+        {/* de-dupe against artifacts (same as the collapsed RIGHT panel): a produced file is usually BOTH
+            a declared artifact AND a captured write — show it once (as the verified artifact), not twice. */}
+        {rv.writes.filter((w) => !rv.artifacts.some((a) => a.displayPath === w.displayPath)).map((w) => (
           <button key={`w-${w.path}`} type="button" className="ds-out__row ds-out__row--lg ds-out__row--btn" data-ok={w.verified} onClick={() => onOpenFile(w)} title={w.displayPath}>
             <span className="ds-out__spark" aria-hidden="true" />
             <span className="ds-out__name">{w.displayPath}</span>
@@ -523,7 +536,7 @@ function Detail({ region, rv, expected, pct, onOpenFile }: { region: RegionKey; 
   return (
     <div className="ds-timeline">
       <div className="ds-timeline__summary">
-        <span><b>{Math.round((pct ?? 1) * 100)}%</b> · {formatMs(rv.durationMs)} elapsed</span>
+        <span>{pct != null && <><b>{Math.round(pct * 100)}%</b> · </>}{formatMs(elapsedMs)} elapsed</span>
         {expected != null && <span className="ds-timeline__exp">avg {formatMs(expected)} / {rv.priorSamples || 1} run{(rv.priorSamples || 1) === 1 ? "" : "s"}</span>}
       </div>
       <div className="ds-timeline__track" aria-hidden="true">
@@ -548,42 +561,6 @@ function Detail({ region, rv, expected, pct, onOpenFile }: { region: RegionKey; 
       </div>
     </div>
   );
-}
-
-/* ── a clicked file's REAL content, fetched from disk via the read-back endpoint and rendered BARE
-   (no card/background): images as <img>, markdown parsed to themed nodes, everything else as mono text.
-   Works for ANY path — input read, output, or artifact. A read's telemetry `preview` paints instantly
-   while the full bytes load, and is the fallback if the fetch fails (e.g. the file was since removed). ── */
-function FileView({ run, file }: { run: string; file: FileTarget }) {
-  const src = fileUrl(run, file.path);
-  const isImage = isImagePath(file.displayPath);
-  const [state, setState] = useState<{ status: "loading" | "ok" | "error"; text?: string; error?: string }>({ status: "loading" });
-
-  useEffect(() => {
-    if (isImage) return; // images load through <img>, no text fetch
-    let alive = true;
-    setState({ status: "loading" });
-    fetch(src)
-      .then(async (r) => { if (!r.ok) throw new Error(`${r.status} ${r.statusText}`); return r.text(); })
-      .then((text) => { if (alive) setState({ status: "ok", text }); })
-      .catch((e) => { if (alive) setState({ status: "error", error: String(e?.message ?? e) }); });
-    return () => { alive = false; };
-  }, [src, isImage]);
-
-  if (isImage) return <div className="ds-fileimg"><img src={src} alt={file.displayPath} loading="lazy" /></div>;
-  if (state.status === "loading")
-    return file.preview ? renderFileText(file.displayPath, file.preview) : <div className="ds-hud-empty">loading {file.displayPath}…</div>;
-  if (state.status === "error")
-    return file.preview ? renderFileText(file.displayPath, file.preview) : <div className="ds-hud-empty">couldn’t read {file.displayPath} — {state.error}</div>;
-  return renderFileText(file.displayPath, state.text ?? "");
-}
-
-// markdown → themed reader; anything else → plain mono. Shared by the live fetch + the preview fallback.
-function renderFileText(displayPath: string, text: string) {
-  const ext = (displayPath.split(".").pop() || "").toLowerCase();
-  if (ext === "md" || ext === "markdown") return <MarkdownReader source={text} />;
-  if (ext === "json") return <JsonReader source={text} />;
-  return <pre className="ds-codeblock">{text}</pre>;
 }
 
 function KV({ k, v, mono }: { k: string; v: ReactNode; mono?: boolean }) {

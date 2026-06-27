@@ -21,7 +21,7 @@ three skills (each invokable on its own):
 |---|---|---|
 | **piflow-init** | CREATE a workflow: triage the source (PORT a `.js` / IMPORT n8n / COMPOSE) → build the `template/` → stand up the per-repo runner. **The bulk — start here.** | full |
 | **piflow-enhance** | IMPROVE a running workflow: the `hermes-skill-system` capture→route→edit→verify→approve loop, the criteria fixture, Companion Mode. | stub (scope declared) |
-| **piflow-start** | RUN & monitor a workflow on the pi fleet: dry-run → live → `piflow logs`. | stub (scope declared) |
+| **piflow-start** | RUN & monitor a workflow on the pi fleet: dry-run → live → `piflowctl logs`. | stub (scope declared) |
 
 → The skills live at `.claude/skills/{piflow-init,piflow-enhance,piflow-start}/` and are symlinked into
 `~/.claude/skills/` for global availability. **For anything substantive, load `piflow-init`** — it carries the

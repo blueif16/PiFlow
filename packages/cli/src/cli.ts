@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// The `piflow` CLI — the docker-style front door to a pi-flow run, over the engine-owned `.pi/` run
+// The `piflowctl` CLI — the docker-style front door to a pi-flow run, over the engine-owned `.pi/` run
 // layout. ONE front door: `status` + `watch` are this package; `logs` is re-exported from @piflow/core
-// (runLogsCli) so a consumer has a single `piflow` bin rather than two.
+// (runLogsCli) so a consumer has a single `piflowctl` bin rather than two.
 //
-//   piflow status <rundir> [--every <s>]   per-node table (id · label · status · verified/total · dur)
+//   piflowctl status <rundir> [--every <s>]   per-node table (id · label · status · verified/total · dur)
 //                                          + stage/rollup, read from .pi/run.json (+ .pi/nodes/<id>/io.json)
-//   piflow watch  <rundir> [--notify]      a silent sentinel — one line when the run finishes / a node
+//   piflowctl watch  <rundir> [--notify]      a silent sentinel — one line when the run finishes / a node
 //                                          errors|blocks / a node dead-stalls
-//   piflow logs   [dir|run] [...]          stream/replay/diagnose a run's per-node event archives (core)
+//   piflowctl logs   [dir|run] [...]          stream/replay/diagnose a run's per-node event archives (core)
 //
 // `status`/`watch` are THIN renderers over the shared observability source (@piflow/core/observe):
 // `status` lays out a `readRunModel` snapshot, `watch` consumes the `watchRun` live stream. They build
@@ -19,18 +19,22 @@ import { runWatchCli } from './watch.js';
 import { runExtractCli } from './extract.js';
 import { runRunCli } from './run.js';
 import { runInspectCli } from './inspect.js';
+import { runTelemetryCli } from './telemetry.js';
 import { runGuiCli } from './gui.js';
 
-const HELP = `piflow — drive + observe a pi-flow run over the .pi/ run layout
+const HELP = `piflowctl — drive + observe a pi-flow run over the .pi/ run layout
 
 USAGE
-  piflow run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
-  piflow inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
-  piflow extract <templateDir>           free DAG preview (node count + parallel lanes; no model)
-  piflow status  <rundir> [--every <s>]  per-node table + stage/rollup (verified on disk)
-  piflow watch   <rundir> [--notify]     silent sentinel — one line on done / fail / dead-stall
-  piflow logs    [dir|run] [options]     stream / replay / diagnose per-node event archives
-  piflow gui     [--port <n>] [--no-open]  launch the run viewer; indexes the product at cwd (or global)
+  piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
+  piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
+  piflowctl extract <templateDir>           free DAG preview (node count + parallel lanes; no model)
+  piflowctl status  <rundir> [--every <s>]  per-node table + stage/rollup (verified on disk)
+  piflowctl watch   <rundir> [--notify]     silent sentinel — one line on done / fail / dead-stall
+  piflowctl telemetry <rundir> [nodeId] [--watch] [--verbose] [--json]  agent-facing digest:
+                                            verdicts · cost spine · loop signals · anomaly worklist ·
+                                            failure-onset root cause. --watch = live stream then record.
+  piflowctl logs    [dir|run] [options]     stream / replay / diagnose per-node event archives
+  piflowctl gui     [--port <n>] [--no-open]  launch the run viewer; indexes the product at cwd (or global)
 
 RUN
   <templateDir> an authored template/ dir (meta.json + nodes/*/). Required.
@@ -38,7 +42,9 @@ RUN
   --run <id>    the instance id (keys out/<id>); aliases --id. Required for a live run.
   --arg k=v     a workflow arg → {{arg.k}} (repeatable).
   --workspace <p>  the read-only {{WORKSPACE}} root (skills/templates/registry); default cwd.
-  --sandbox <local|inmemory>  exec backend; local = real in-place pi, inmemory (default) = no model.
+  --sandbox <inmemory|local|danger-full-access>  exec backend. inmemory (default) = no model;
+                   local = real in-place pi, read-scope-jailed per node (seatbelt on macOS);
+                   danger-full-access = local with the jail OFF (agent reads the whole filesystem).
   --provider <gw>  the pi --provider gateway (e.g. mmgw).
   --thinking <v>   reasoning-depth cap → pi --thinking.
   --model <m>      model pin → pi --model.
@@ -67,8 +73,19 @@ WATCH
   --poll <s>    file-source poll interval (default 20).
   --dead-stall <s>  declare a DEAD stall after the run-status stops advancing this long (default 600).
 
+TELEMETRY
+  <rundir>      a run dir holding .pi/run.json. Default '.'.
+  [nodeId]      scope to one node's full digest; omit for the run rollup + per-node table.
+  --watch / -w  live stream (run-start · node-open · anomaly · node-close · run-end), then the record.
+  --verbose / -v  also stream per chat/tool call lines (full span tree); default = anomalies + verdicts.
+  --json        emit the raw RunDigest (or one node's NodeDigest) for an agent to consume.
+
 LOGS (from @piflow/core)
-  -f --follow · --node <id> · --summary · --raw · --poll <ms>   (see 'piflow logs --help' semantics)
+  -f --follow · --node <id> · --summary · --raw · --poll <ms>   (see 'piflowctl logs --help' semantics)
+
+TIP
+  the command is 'piflowctl' (the bare 'piflow' is taken by the unrelated @arche-sh/piflow). if
+  'piflow' is free on your system, alias it:  alias piflow=piflowctl
 `;
 
 async function main(): Promise<void> {
@@ -89,6 +106,9 @@ async function main(): Promise<void> {
     case 'watch':
       await runWatchCli(rest);
       break;
+    case 'telemetry':
+      await runTelemetryCli(rest);
+      break;
     case 'logs':
       await runLogsCli(rest);
       break;
@@ -102,7 +122,7 @@ async function main(): Promise<void> {
       process.stdout.write(HELP);
       break;
     default:
-      process.stderr.write(`piflow: unknown command '${sub}'\n\n${HELP}`);
+      process.stderr.write(`piflowctl: unknown command '${sub}'\n\n${HELP}`);
       process.exitCode = 1;
   }
 }

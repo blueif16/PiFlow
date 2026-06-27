@@ -244,7 +244,7 @@ create(readScope, outputDir, workdir, env, timeoutMs)   // pick impl by sandbox.
 **Code Mode** (collapse a large tool catalog to `exec`/`wait` for a 94–99% tool-token cut — deferred; NOT importable
 from OpenClaw, see the `tools/compile.ts` note) · the COMPOSE planner (structured-output
 + validate→repair; weak-model schema-fill rules: *rationale-before-committed fields*, *keep optionals optional*) ·
-runner **escalation ladder** + stuck-delta/tool-thrash kills · the `@piflow/viz` renderer · the `piflow` CLI ·
+runner **escalation ladder** + stuck-delta/tool-thrash kills · the `@piflow/viz` renderer · the `piflowctl` CLI ·
 **a live `pi` smoke-test** (below) — the one thing the offline test harness deliberately cannot cover.
 
 > **One open question for the bridge step (needs a live `pi` smoke-test, deliberately not run here):** the

@@ -1,10 +1,28 @@
 {
   "name": "@piflow/langgraph",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Pi Flow ↔ LangGraph.js connector — ACTIVATE a pi workflow run and GROUND @piflow/core's shared run-status stream (watchRun/RunUpdate — the same one the CLI + TUI render) into a LangGraph graph (streamMode:'custom' via config.writer). Generic: ZERO product/domain vocabulary; the connector only transports run status.",
   "license": "MIT",
+  "keywords": [
+    "langgraph",
+    "langchain",
+    "workflow",
+    "orchestration",
+    "pi",
+    "agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blueif16/PiFlow.git",
+    "directory": "packages/langgraph"
+  },
+  "homepage": "https://github.com/blueif16/PiFlow/tree/main/packages/langgraph#readme",
+  "bugs": "https://github.com/blueif16/PiFlow/issues",
+  "author": "blueif16",
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -18,10 +36,11 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@piflow/core": "*"
+    "@piflow/core": "^0.1.0"
   },
   "peerDependencies": {
     "@langchain/langgraph": ">=0.4 <1",

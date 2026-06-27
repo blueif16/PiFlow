@@ -1,5 +1,5 @@
 // ── @piflow/core/observe — the SHARED observability CONTRACT ────────────────────────────────────────
-// ONE reader, ONE model, ONE live stream that the CLI (`piflow status`), the TUI (`piflow-tui`), and a
+// ONE reader, ONE model, ONE live stream that the CLI (`piflowctl status`), the TUI (`piflow-tui`), and a
 // future GUI all render. `RunModel` is the snapshot every view derives from; `RunUpdate` is the live
 // delta the stream yields. Both are a SUPERSET of what packages/cli/src/status.ts (`RunView`/`NodeView`)
 // and tui/model.mjs (`buildModel`) each build today over the `.pi/` run layout (D7) — so a
@@ -92,6 +92,10 @@ export interface RunModel {
   run: string;
   done: boolean;
   ok: boolean | null;
+  /** Run wall-clock start / last-write (ISO). Carried so a LIVE view can show elapsed-so-far
+   *  (now − startedAt) while `durationMs` is still null (it is only stamped at completion). */
+  startedAt?: string;
+  updatedAt?: string;
   durationMs: number | null;
   provider?: string;
   model?: string | null;

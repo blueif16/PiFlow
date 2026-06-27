@@ -1,6 +1,6 @@
 ---
 title: "Run on Pi"
-summary: "Kick off a workflow on the pi fleet with piflow run, and scope it with --from / --until."
+summary: "Kick off a workflow on the pi fleet with piflowctl run, and scope it with --from / --until."
 read_when:
   - You have a built template and want a live run
 order: 2
@@ -10,7 +10,7 @@ Running a workflow is the `piflow-start` skill. The canonical invocation is the 
 `piflow` bin pointed at a template directory:
 
 ```bash
-piflow run .piflow/<workflow>/template \
+piflowctl run .piflow/<workflow>/template \
   --provider <gateway> \
   --thinking low \
   --sandbox local
@@ -21,7 +21,7 @@ piflow run .piflow/<workflow>/template \
 The canonical run is: pull the next prompt → **dry-run (free)** → live background run → poll.
 
 ```bash
-piflow run .piflow/<workflow>/template --provider <gateway> --thinking low --sandbox local --dry-run
+piflowctl run .piflow/<workflow>/template --provider <gateway> --thinking low --sandbox local --dry-run
 ```
 
 ## Scope a run
@@ -29,7 +29,7 @@ piflow run .piflow/<workflow>/template --provider <gateway> --thinking low --san
 Run only part of the DAG:
 
 ```bash
-piflow run … --from <node> --until <node>
+piflowctl run … --from <node> --until <node>
 ```
 
 See the full flag list in the [CLI reference](/docs/reference/cli), and follow the run in

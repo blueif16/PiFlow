@@ -1,10 +1,27 @@
 {
   "name": "@piflow/tool-bridge",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Pi Flow tool-bridge — the MCP transport runtime the generated pi `-e` extension imports. `callTool(address, params, opts)` connects to the configured MCP server, performs the JSON-RPC tools/call, and maps the result back to pi's tool-execute shape.",
   "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "tools",
+    "pi",
+    "workflow"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blueif16/PiFlow.git",
+    "directory": "packages/tool-bridge"
+  },
+  "homepage": "https://github.com/blueif16/PiFlow/tree/main/packages/tool-bridge#readme",
+  "bugs": "https://github.com/blueif16/PiFlow/issues",
+  "author": "blueif16",
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -18,7 +35,8 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"

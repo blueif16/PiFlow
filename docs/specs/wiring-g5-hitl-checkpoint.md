@@ -274,7 +274,7 @@ A NEW Vite middleware in `gui/vite.config.ts` (a sixth plugin alongside the five
 The console (Claude Code in the terminal) resolves the SAME checkpoint by writing the SAME reply file —
 `${runDir}/.pi/checkpoints/<nodeId>.reply.json` — directly (a one-line `Write`), or by hitting the same
 POST endpoint. Because the runner only watches the file and validates it, GUI and console are
-interchangeable couriers; neither is privileged. (A tiny `piflow reply <run> <nodeId> <value>` CLI verb
+interchangeable couriers; neither is privileged. (A tiny `piflowctl reply <run> <nodeId> <value>` CLI verb
 is the ergonomic console path; v1 can ship without it since a direct file write suffices.)
 
 ---
@@ -428,7 +428,7 @@ Driven through the runner's injectable seams (`buildCommand`/`execRunner` are al
    Open: vs a single `${run}/.pi/checkpoints.json` map (simpler observe read, but loses per-node
    isolation that parallels `.pi/nodes/<id>/`).
 4. **Console path in v1?** — proposed: YES for the raw file-write/POST courier (free, since the runner
-   only watches the file); the ergonomic `piflow reply` CLI verb is OPTIONAL/post-v1.
+   only watches the file); the ergonomic `piflowctl reply` CLI verb is OPTIONAL/post-v1.
 5. **Snapshot vs run-view for the panel payload** — proposed: put `checkpoint` on BOTH `NodeView`
    (so the live SSE snapshot carries it) and `RunViewNode` (so the on-demand run-view agrees). Open: or
    keep it only on the run-view and have the GUI fetch on the `awaiting-input` status delta (one extra

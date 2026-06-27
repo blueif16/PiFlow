@@ -2,7 +2,7 @@
 
 > *Repo + plugin name: `piflow` (at `~/Desktop/piflow`). Surfaces as three Claude Code skills —
 > `piflow-init` (create), `piflow-enhance` (improve), `piflow-start` (run) — plus the `@piflow/core`
-> SDK and the `piflow` CLI.*
+> SDK and the `piflowctl` CLI.*
 
 ## Your next ultracode can be on a Pi fleet.
 
@@ -15,7 +15,7 @@ codegen, no drift.
 ## The core philosophy
 
 **A workflow is data, not a UI.** A Claude Code agent owns the entire loop through the **`@piflow/core`
-SDK + the `piflow` CLI**: it designs the DAG, spawns the fleet, monitors every node, and improves the
+SDK + the `piflowctl` CLI**: it designs the DAG, spawns the fleet, monitors every node, and improves the
 flow between runs. The human never wires nodes on a canvas, clicks *Run*, disconnects a node, or
 configures a run on a screen — at most they drop in an API key. You steer by **talking to the agents in
 the terminal**, never on the frontend.
@@ -103,8 +103,8 @@ single monitor layer; **`pi`** is the agent runtime each node spawns — install
 | Piece | Package / bin | Role |
 |---|---|---|
 | **Engine (SDK)** | `@piflow/core` | the L1 node-envelope schema, the DAG compiler, the runner, the tool/sandbox plane, and the `observe` stream |
-| **CLI** | `@piflow/cli` → `piflow` | the front door: `run` · `inspect` · `extract` · `status` · `watch` · `logs` · `gui` |
-| **Monitor** (the viewer) | `@piflow/tui` → `piflow-tui`  +  the GUI canvas (`piflow gui`) | monitor-only twins on the **one** `observe` stream |
+| **CLI** | `@piflow/cli` → `piflowctl` | the front door: `run` · `inspect` · `extract` · `status` · `watch` · `logs` · `gui` |
+| **Monitor** (the viewer) | `@piflow/tui` → `piflow-tui`  +  the GUI canvas (`piflowctl gui`) | monitor-only twins on the **one** `observe` stream |
 | **Runtime** (underneath) | `pi` — external prerequisite | the headless agent each node spawns. Installed and credentialed **once** via `~/.pi/` (parallels `~/.piflow/`); kept external so `@piflow/core` stays product-agnostic logic only |
 
 ## Install (skills · CLI · pi)
@@ -118,9 +118,12 @@ bins:
 for s in piflow-init piflow-enhance piflow-start; do
   ln -sfn "$(pwd)/.claude/skills/$s" ~/.claude/skills/$s
 done
-npm --prefix packages/cli link        # the global `piflow` bin
+npm --prefix packages/cli link        # the global `piflowctl` bin
 npm --prefix tui link                 # the global `piflow-tui` monitor (optional)
 ```
+
+> **Tip — shorthand.** The CLI links as **`piflowctl`** (the bare `piflow` is taken by the unrelated
+> `@arche-sh/piflow`). If `piflow` is free on your machine, alias it: `alias piflow=piflowctl`.
 
 Claude Code surfaces `piflow-init` to create/port a workflow, `piflow-start` to run/monitor one, and
 `piflow-enhance` to improve one.
@@ -130,17 +133,17 @@ Claude Code surfaces `piflow-init` to create/port a workflow, `piflow-start` to 
 > The canonical per-project layout + adopt steps live in [`reference/sdk-consumer.md`](reference/sdk-consumer.md).
 
 1. **Source of truth = the workflow template** (`.piflow/<wf>/template/`). The SDK `loadTemplate`s it into
-   a `WorkflowSpec`. *Porting a proven Claude `.js`?* `piflow extract` previews its DAG and the realized
+   a `WorkflowSpec`. *Porting a proven Claude `.js`?* `piflowctl extract` previews its DAG and the realized
    prompts replay on the fleet — no rewrite, no codegen.
 2. **Set the credential ONCE in pi's own global config** — `cp templates/models.json.example
    ~/.pi/agent/models.json`, edit `apiKey`/`baseUrl`/model ids, `chmod 600`, verify `pi --list-models cp`.
 3. **Dry-run (free), then live (background)**:
    ```bash
-   piflow run <templateDir> --provider cp --thinking low --sandbox local --until <phase> --dry-run  # stages + per-node tools/hooks + pi cmd
-   piflow run <templateDir> --provider cp --thinking low --sandbox local --until <phase>             # live; run in background
+   piflowctl run <templateDir> --provider cp --thinking low --sandbox local --until <phase> --dry-run  # stages + per-node tools/hooks + pi cmd
+   piflowctl run <templateDir> --provider cp --thinking low --sandbox local --until <phase>             # live; run in background
    ```
-4. **Monitor as the console** — `piflow gui` (the canvas) · `piflow-tui <rundir>` (the terminal) ·
-   `piflow watch <rundir>` (silent sentinel: one line on done/fail) · `piflow logs <run> -f`. Every view
+4. **Monitor as the console** — `piflowctl gui` (the canvas) · `piflow-tui <rundir>` (the terminal) ·
+   `piflowctl watch <rundir>` (silent sentinel: one line on done/fail) · `piflowctl logs <run> -f`. Every view
    reads the **one** stream. State + behavior live on disk (`.pi/run.json` + per-node event archives).
 
 ## The laws
@@ -155,7 +158,7 @@ Claude Code surfaces `piflow-init` to create/port a workflow, `piflow-start` to 
   `outputArtifact`. `ok` ⇒ files exist on disk.
 - **Headless invariants are non-negotiable.** Close stdin, `--offline`, `--no-extensions` (the provider
   comes from pi's global `models.json`); capture each node's event stream so a silent hang is visible via
-  `piflow logs`.
+  `piflowctl logs`.
 
 ## Security
 

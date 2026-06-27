@@ -1,10 +1,27 @@
 {
   "name": "@piflow/cli",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
-  "description": "Pi Flow CLI — the docker-style front door to a run. `piflow status` (per-node table + stage/rollup) and `piflow watch` (a silent-until-it-matters sentinel) read the engine-owned `.pi/` run layout via @piflow/core's path helpers; `logs` is re-exported from core (one front door).",
+  "description": "Pi Flow CLI — the docker-style front door to a run. `piflowctl status` (per-node table + stage/rollup) and `piflowctl watch` (a silent-until-it-matters sentinel) read the engine-owned `.pi/` run layout via @piflow/core's path helpers; `logs` is re-exported from core (one front door).",
   "license": "MIT",
+  "keywords": [
+    "cli",
+    "workflow",
+    "orchestration",
+    "pi",
+    "agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blueif16/PiFlow.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/blueif16/PiFlow/tree/main/packages/cli#readme",
+  "bugs": "https://github.com/blueif16/PiFlow/issues",
+  "author": "blueif16",
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -14,16 +31,17 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "piflow": "./dist/cli.js"
+    "piflowctl": "./dist/cli.js"
   },
   "files": [
     "dist",
     "src"
   ],
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@piflow/core": "*"
+    "@piflow/core": "^0.1.0"
   }
 }

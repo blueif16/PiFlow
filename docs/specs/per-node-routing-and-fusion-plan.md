@@ -119,14 +119,14 @@ The uncommitted WIP (`timeoutMs`/`retries` template wiring, 5 files) sits on `fe
 - **Failure path:** if the build call site moved from line 880, locate `ctx.buildCommand(node,` — HALT if absent.
 
 ### T1.6 — CLI dry-run: show per-node model ‖
-- **Objective:** `piflow run --dry-run` prints each node's effective model/provider.
+- **Objective:** `piflowctl run --dry-run` prints each node's effective model/provider.
 - **Files:** `packages/cli/src/run.ts` (`dryRunPlan`).
 - **Change:** in `dryRunPlan`, compute each node's effective model/provider via `resolveNodeModel` (load the
   global configs once) and include it in the printed per-node line; the realized command already calls
   `defaultPiCommand` — pass the resolved model/provider.
 - **Acceptance:** a template with a per-node `model`/`tier` shows it in the dry-run plan; nodes without show the
   run default. No model is invoked (dry-run stays free).
-- **Verify:** `npm run typecheck`; manual `piflow run <tpl> --dry-run` on a fixture if available.
+- **Verify:** `npm run typecheck`; manual `piflowctl run <tpl> --dry-run` on a fixture if available.
 - **Scope fence:** dry-run output only; no live-run changes. **Depends on T1.4.**
 - **Failure path:** HALT if `dryRunPlan` signature differs.
 
@@ -217,7 +217,7 @@ The uncommitted WIP (`timeoutMs`/`retries` template wiring, 5 files) sits on `fe
 - **Files:** a `templates/` example with one fusion node (both modes documented); a short `docs/` how-to linking
   the spec.
 - **Acceptance:** the example loads, dry-runs, and shows the expanded DAG.
-- **Verify:** `piflow run <example> --dry-run`.
+- **Verify:** `piflowctl run <example> --dry-run`.
 - **Scope fence:** docs/example only. **Depends on T2.4.**
 
 ---

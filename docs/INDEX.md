@@ -26,7 +26,7 @@ This folder is the **design canon + the buildable spec**. Read in this order.
 7. **[`pi-agent-notes.md`](pi-agent-notes.md)** — the durable knowledge record about `pi` as a headless executor
    (capabilities, invocation mechanics, sharp edges, the codex-vs-pi comparison, backlog). Reference, not narrative.
 8. **[`../reference/observability.md`](../reference/observability.md)** — **`docker logs` for a run**: the
-   run-status + event-archive contract, the `piflow logs` CLI (`-f` follow · `--summary` diagnosis · `--node` ·
+   run-status + event-archive contract, the `piflowctl logs` CLI (`-f` follow · `--summary` diagnosis · `--node` ·
    `--raw`), the pre-run tool audit, the `RunOptions` observability knobs, and the failure signatures. Lives in
    `reference/` (the harness layer, in the skill's discovery path); read when a run misbehaves.
 

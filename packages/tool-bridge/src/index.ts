@@ -13,7 +13,7 @@ import { parseAddress } from './address.js';
 import { getClient, disposeClients } from './clients.js';
 import { resetConfig, resolveConfig } from './config.js';
 import { BridgeError } from './errors.js';
-import type { PiContentBlock, PiToolResult } from './types.js';
+import type { McpServerConfig, McpToolListing, PiContentBlock, PiToolResult } from './types.js';
 
 export { BridgeError } from './errors.js';
 export type { BridgeErrorCode } from './errors.js';
@@ -22,7 +22,7 @@ export { CONFIG_ENV } from './config.js';
 // The reserved server name every `oc.<plugin>:<tool>` address routes to — re-exported so hosts/the runner
 // can reference the key under which they must configure the OpenClaw gateway in their mcpConfig.servers.
 export { OPENCLAW_SERVER } from './address.js';
-export type { BridgeConfig, McpServerConfig, PiContentBlock, PiToolResult } from './types.js';
+export type { BridgeConfig, McpServerConfig, McpToolListing, PiContentBlock, PiToolResult } from './types.js';
 
 /** Per-call options. Matches the generated `execute(toolCallId, params, signal)` call site. */
 export interface CallToolOpts {
@@ -85,6 +85,32 @@ export async function callTool(address: string, params: unknown, opts: CallToolO
   )) as McpCallResult;
 
   return mapResult(raw);
+}
+
+/** The shape of an MCP `tools/list` result we read (ListToolsResultSchema — a `tools[]` of name/desc/schema). */
+interface McpListResult {
+  tools?: Array<{ name: string; description?: string; inputSchema?: unknown }>;
+}
+
+/**
+ * INTROSPECT a server's tool listing: connect (lazily, pooled — same `getClient` path as `callTool`),
+ * perform the JSON-RPC `tools/list`, and map each `tools[]` row to a plain `{name, description?,
+ * inputSchema?}`. The catalog introspection step (packages/core) calls this to capture a server's real
+ * per-tool schemas. `serverConfig` is passed directly (this is the LIST analogue of `callTool`'s
+ * resolve-by-address; the catalog supplies the config it derived from the registry).
+ *
+ * @param server       The server name — used only as the pool key + in any connect error message.
+ * @param serverConfig The connection config (stdio/http/inMemory) — built into the SDK transport.
+ */
+export async function listServerTools(server: string, serverConfig: McpServerConfig): Promise<McpToolListing[]> {
+  const client = await getClient(server, serverConfig);
+  const raw = (await client.listTools()) as McpListResult;
+  return (raw.tools ?? []).map((t) => {
+    const listing: McpToolListing = { name: t.name };
+    if (t.description !== undefined) listing.description = t.description;
+    if (t.inputSchema !== undefined) listing.inputSchema = t.inputSchema;
+    return listing;
+  });
 }
 
 /** Close every cached MCP client and reset config. Call on host teardown / between tests. */

@@ -170,3 +170,301 @@ describe('LocalSandbox — exec contract (nonzero exit, process-group kill on si
     }
   }, 15000);
 });
+
+// ── 6. READ-SCOPE JAIL: secure by default (darwin), with a danger bypass that actually turns it off ───
+
+// On darwin the in-place LocalSandbox now wraps every exec in the shared sandbox-exec read-scope jail by
+// default, so a read outside the declared scope EPERMs. Off darwin there is no kernel boundary (the bwrap
+// backend is unwired), so the EPERM assertions are darwin-only — the policy-field test below is universal.
+const darwinIt = process.platform === 'darwin' ? it : it.skip;
+
+// Stage scope fixtures under $HOME: the seatbelt template grants only specific ~/. subpaths (~/.pi,
+// ~/.piflow, ~/.npm, …), NOT $HOME itself, so a `.pf-localscope-*` sibling is genuinely outside every
+// grant and is denied unless it is the declared scope. (Staging under $TMPDIR would be readable via the
+// broad /private/var toolchain grant and could never observe a denial — the same discipline the seatbelt
+// suite uses.)
+async function homeScratch(prefix: string): Promise<string> {
+  return fs.mkdtemp(path.join(os.homedir(), `.pf-localscope-${prefix}-`));
+}
+
+describe('LocalSandbox — read-scope jail is SECURE BY DEFAULT (darwin)', () => {
+  darwinIt(
+    'default enforceReadScope: reads an in-scope file but EPERMs an out-of-scope sibling',
+    async () => {
+      // In-place at `granted` with scope=[granted]; `denied` is a SIBLING outside the workdir + scope.
+      // The default (no runtime opts) must jail reads: granted reads, denied EPERMs at the kernel.
+      const scratch = await homeScratch('jail');
+      const granted = path.join(scratch, 'granted');
+      const denied = path.join(scratch, 'denied');
+      await fs.mkdir(granted, { recursive: true });
+      await fs.mkdir(denied, { recursive: true });
+      await fs.writeFile(path.join(granted, 'in.txt'), 'IN_SCOPE_CONTENT');
+      await fs.writeFile(path.join(denied, 'secret.txt'), 'OUT_OF_SCOPE_SECRET');
+      try {
+        const sb = await LocalSandbox.create({ readScope: [granted], outputDir: 'out', workdir: granted });
+
+        const ok = await sb.exec(`cat ${JSON.stringify(path.join(granted, 'in.txt'))}`);
+        expect(ok.code).toBe(0);
+        expect(ok.stdout).toContain('IN_SCOPE_CONTENT');
+
+        // Out-of-scope read fails with a KERNEL denial — not a missing file, not a profile parse error
+        // (`sandbox-exec:` prefix), and the secret never reaches stdout.
+        const blocked = await sb.exec(`cat ${JSON.stringify(path.join(denied, 'secret.txt'))}`);
+        expect(blocked.code).not.toBe(0);
+        expect(blocked.stdout).not.toContain('OUT_OF_SCOPE_SECRET');
+        expect(blocked.stderr).not.toMatch(/^sandbox-exec:/m);
+        expect(blocked.stderr).toMatch(/Operation not permitted|Permission denied/i);
+
+        // CONTROL: the same path reads fine UNSANDBOXED, so the denial is the jail, not a missing file.
+        expect(await fs.readFile(path.join(denied, 'secret.txt'), 'utf8')).toBe('OUT_OF_SCOPE_SECRET');
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'danger bypass (enforceReadScope:false): the SAME out-of-scope read SUCCEEDS (the hatch really disables the jail)',
+    async () => {
+      // The negative control that makes the test above meaningful: flip the flag off (the
+      // danger-full-access posture) and the identical out-of-scope read must LEAK — proving the jail is
+      // gated by the flag, not hard-wired. If enforcement were always-on this fails; if the first test's
+      // EPERM is real, this success proves the two postures are genuinely different.
+      const scratch = await homeScratch('danger');
+      const work = path.join(scratch, 'work');
+      const denied = path.join(scratch, 'denied');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(denied, { recursive: true });
+      await fs.writeFile(path.join(denied, 'secret.txt'), 'BYPASS_LEAK');
+      try {
+        const sb = await LocalSandbox.create(
+          { readScope: [work], outputDir: 'out', workdir: work },
+          { enforceReadScope: false },
+        );
+        const leak = await sb.exec(`cat ${JSON.stringify(path.join(denied, 'secret.txt'))}`);
+        expect(leak.code).toBe(0);
+        expect(leak.stdout).toContain('BYPASS_LEAK');
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+});
+
+// ── 7. WRITE-SCOPE JAIL: symmetric to reads — writes confined to workdir + owns (darwin) ─────────────
+//
+// The same `enforceReadScope` posture that bounds READS now bounds WRITES: a node's fs:write / bash can
+// only land bytes inside its declared lane (workdir + writeScope/owns + toolchain scratch). A write to a
+// sibling node's dir, $HOME-sensitive paths, or the wider repo EPERMs at the kernel. Staged under $HOME
+// (same discipline as the read tests) because the seatbelt template grants WRITE only to specific ~/.
+// subpaths (~/.npm, ~/.cache, ~/.pi, …), NOT $HOME itself, so a `.pf-localwrite-*` sibling is genuinely
+// out of scope. `enforceReadScope:false` (danger-full-access) disables BOTH read and write jails.
+
+describe('LocalSandbox — write-scope jail is SECURE BY DEFAULT (darwin)', () => {
+  darwinIt(
+    'default jail: writes inside the workdir succeed but an out-of-scope sibling write EPERMs',
+    async () => {
+      // In-place at `work` with writeScope=[work]; `sibling` is OUTSIDE the workdir + writeScope. The
+      // default posture must jail writes: a write under the workdir lands, a write to the sibling EPERMs
+      // at the kernel (proving file-write* is the new boundary). This is the RED test: it FAILS today
+      // because writes are wide open ((allow default) with only file-read* denied), so the sibling write
+      // currently SUCCEEDS.
+      const scratch = await homeScratch('write-jail');
+      const work = path.join(scratch, 'work');
+      const sibling = path.join(scratch, 'sibling');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(sibling, { recursive: true });
+      try {
+        const sb = await LocalSandbox.create({
+          readScope: [work],
+          writeScope: [work],
+          outputDir: 'out',
+          workdir: work,
+        });
+
+        // In-scope write SUCCEEDS and the bytes land on disk under the workdir.
+        const okWrite = await sb.exec(`printf '%s' IN_SCOPE_WRITE > ${JSON.stringify(path.join(work, 'made.txt'))}`);
+        expect(okWrite.code).toBe(0);
+        expect(await fs.readFile(path.join(work, 'made.txt'), 'utf8')).toBe('IN_SCOPE_WRITE');
+
+        // Out-of-scope write FAILS with a KERNEL denial — not a profile parse error (`sandbox-exec:`),
+        // and the file never appears on the host.
+        const target = path.join(sibling, 'pwned.txt');
+        const blocked = await sb.exec(`printf '%s' OUT_OF_SCOPE_WRITE > ${JSON.stringify(target)}`);
+        expect(blocked.code).not.toBe(0);
+        expect(blocked.stderr).not.toMatch(/^sandbox-exec:/m);
+        expect(blocked.stderr).toMatch(/Operation not permitted|Permission denied/i);
+        await expect(fs.access(target)).rejects.toThrow(); // the write never landed on the host
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'writes into a declared writeScope (owns) root OUTSIDE the workdir succeed',
+    async () => {
+      // owns can name a root that is NOT the workdir (a node writes a sibling output dir it declared in
+      // its contract). writeScope=[ownsDir] (separate from workdir) must let writes land there, proving
+      // the boundary is {workdir UNION writeScope}, not workdir-only.
+      const scratch = await homeScratch('owns');
+      const work = path.join(scratch, 'work');
+      const ownsDir = path.join(scratch, 'owns');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(ownsDir, { recursive: true });
+      try {
+        const sb = await LocalSandbox.create({
+          readScope: [work],
+          writeScope: [ownsDir], // a declared write root that is NOT the workdir
+          outputDir: 'out',
+          workdir: work,
+        });
+        const r = await sb.exec(`printf '%s' OWNS_WRITE > ${JSON.stringify(path.join(ownsDir, 'art.txt'))}`);
+        expect(r.code).toBe(0);
+        expect(await fs.readFile(path.join(ownsDir, 'art.txt'), 'utf8')).toBe('OWNS_WRITE');
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'NO read regression: with the write jail on, an out-of-scope READ still EPERMs',
+    async () => {
+      // Adding the write jail must NOT loosen the read jail. Same setup as the read test, but with a
+      // writeScope present: the out-of-scope read of a sibling secret must STILL be denied (the deny
+      // file-read* block is untouched). Guards against a refactor that accidentally regressed reads.
+      const scratch = await homeScratch('noregress');
+      const work = path.join(scratch, 'work');
+      const denied = path.join(scratch, 'denied');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(denied, { recursive: true });
+      await fs.writeFile(path.join(denied, 'secret.txt'), 'STILL_SECRET');
+      try {
+        const sb = await LocalSandbox.create({
+          readScope: [work],
+          writeScope: [work],
+          outputDir: 'out',
+          workdir: work,
+        });
+        const blocked = await sb.exec(`cat ${JSON.stringify(path.join(denied, 'secret.txt'))}`);
+        expect(blocked.code).not.toBe(0);
+        expect(blocked.stdout).not.toContain('STILL_SECRET');
+        expect(blocked.stderr).not.toMatch(/^sandbox-exec:/m);
+        expect(blocked.stderr).toMatch(/Operation not permitted|Permission denied/i);
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'danger bypass (enforceReadScope:false): the SAME out-of-scope write SUCCEEDS (the hatch disables BOTH jails)',
+    async () => {
+      // The negative control for the write jail: flip the flag off and the identical out-of-scope write
+      // must LAND — proving the write boundary is gated by the same posture, not hard-wired. If the
+      // write jail were always-on this fails; its success proves the danger hatch disables reads AND writes.
+      const scratch = await homeScratch('write-danger');
+      const work = path.join(scratch, 'work');
+      const sibling = path.join(scratch, 'sibling');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(sibling, { recursive: true });
+      try {
+        const sb = await LocalSandbox.create(
+          { readScope: [work], writeScope: [work], outputDir: 'out', workdir: work },
+          { enforceReadScope: false },
+        );
+        const target = path.join(sibling, 'leaked.txt');
+        const leak = await sb.exec(`printf '%s' BYPASS_WRITE_LEAK > ${JSON.stringify(target)}`);
+        expect(leak.code).toBe(0);
+        expect(await fs.readFile(target, 'utf8')).toBe('BYPASS_WRITE_LEAK');
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'TOOLCHAIN SANITY: node -e can still write to $TMPDIR under the jail (the jail did not break the toolchain)',
+    async () => {
+      // The whole bar: a too-tight write jail that EPERMs the toolchain's own scratch is WORSE than no
+      // jail. `pi` is a node CLI; node + npm write transient state to $TMPDIR. Drive the real `node`
+      // binary to write a temp file under os.tmpdir() (granted by the Codex-derived scratch set) — it
+      // must SUCCEED with the SAME default-jail posture that EPERMs the sibling write above. If this
+      // EPERMs, the writable scratch set is too tight and real `pi`/node runs would break.
+      const scratch = await homeScratch('toolchain');
+      const work = path.join(scratch, 'work');
+      await fs.mkdir(work, { recursive: true });
+      const tmpTarget = path.join(os.tmpdir(), `piflow-toolchain-sanity-${Date.now()}.txt`);
+      try {
+        const sb = await LocalSandbox.create({
+          readScope: [work],
+          writeScope: [work],
+          outputDir: 'out',
+          workdir: work,
+        });
+        // node writes to $TMPDIR via fs — the canonical toolchain scratch path that must NOT be jailed.
+        const script = `require('fs').writeFileSync(process.argv[1], 'TOOLCHAIN_OK')`;
+        const r = await sb.exec(
+          `node -e ${JSON.stringify(script)} ${JSON.stringify(tmpTarget)}`,
+        );
+        expect(r.stderr).not.toMatch(/Operation not permitted|EPERM/i);
+        expect(r.code).toBe(0);
+        expect(await fs.readFile(tmpTarget, 'utf8')).toBe('TOOLCHAIN_OK');
+      } finally {
+        await fs.rm(tmpTarget, { force: true }).catch(() => {});
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'INHERITANCE: a bash child writing out-of-scope EPERMs (the write jail inherits to exec)',
+    async () => {
+      // The point of a kernel jail: it inherits to EVERY descendant. The exec already runs under `sh`,
+      // but spawn a NESTED `bash -c 'echo > <out-of-scope>'` so the denied write happens in a GRANDCHILD,
+      // not the top shell — proving a tool the agent shells out to is bounded too, not just the agent's
+      // own redirects. The grandchild's write must EPERM and the file must never appear on the host.
+      const scratch = await homeScratch('inherit');
+      const work = path.join(scratch, 'work');
+      const sibling = path.join(scratch, 'sibling');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(sibling, { recursive: true });
+      const target = path.join(sibling, 'child-pwned.txt');
+      try {
+        const sb = await LocalSandbox.create({
+          readScope: [work],
+          writeScope: [work],
+          outputDir: 'out',
+          workdir: work,
+        });
+        // A nested bash grandchild attempts the out-of-scope write.
+        const inner = `echo CHILD_WRITE > ${JSON.stringify(target)}`;
+        const r = await sb.exec(`bash -c ${JSON.stringify(inner)}`);
+        expect(r.code).not.toBe(0);
+        expect(r.stderr).not.toMatch(/^sandbox-exec:/m);
+        expect(r.stderr).toMatch(/Operation not permitted|Permission denied/i);
+        await expect(fs.access(target)).rejects.toThrow(); // grandchild write never landed
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+});
+
+describe('LocalSandboxProvider — enforceReadScope posture (what the CLI flag selects)', () => {
+  it('defaults to secure (enforceReadScope === true); the danger option turns it off', () => {
+    // Platform-independent: the provider POLICY a CLI flag picks. `--sandbox local` → default (secure);
+    // `--sandbox danger-full-access` → { enforceReadScope: false }.
+    expect(new LocalSandboxProvider().enforceReadScope).toBe(true);
+    expect(new LocalSandboxProvider({ enforceReadScope: false }).enforceReadScope).toBe(false);
+  });
+});

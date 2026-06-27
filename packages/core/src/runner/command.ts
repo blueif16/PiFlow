@@ -35,6 +35,13 @@ export interface CommandContext {
    * when the node uses only builtins.
    */
   extensionFile?: string;
+  /**
+   * In-sandbox path to the node's staged skill directory (its `SKILL.md` + assets), when the node
+   * declared `node.skill`. The runner stages the skill folder into the sandbox and passes its in-sandbox
+   * path here; emitted as `pi --skill <dir>` (additive even under `--no-skills`, so the load never depends
+   * on `.pi/skills/` auto-discovery surviving the headless flag set). Absent when the node declares no skill.
+   */
+  skillPath?: string;
 }
 
 /** Shell-quote a single token (the prompt path / extension path may contain spaces). */
@@ -72,6 +79,8 @@ export const defaultPiCommand: CommandBuilder = (node, resolved, ctx, opts = {})
   // -e ORDER is load-bearing: the extra extensions FIRST, then the staged tool-binding extension.
   for (const ext of opts.extraExtensions ?? []) parts.push('-e', q(ext));
   if (ctx.extensionFile) parts.push('-e', q(ctx.extensionFile));
+  // The staged skill dir, loaded explicitly (additive even under `--no-skills`).
+  if (ctx.skillPath) parts.push('--skill', q(ctx.skillPath));
   parts.push(`@${q(ctx.promptFile)}`);
   return parts.join(' ');
 };

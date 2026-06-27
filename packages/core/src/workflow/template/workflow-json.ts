@@ -1,7 +1,7 @@
 // The GENERATED workflow.json lock (template-format.md §5/§8 step 4). DERIVED from meta.json + every
 // node.json: the resolved topology (stages from topological levels; per-node deps mirror). The compile
 // step (re)writes it on every build so it is ALWAYS in sync with the node set — never hand-edited (a
-// `piflow check` staleness gate would fail on drift). Mirrors package.json ⟷ package-lock.json.
+// `piflowctl check` staleness gate would fail on drift). Mirrors package.json ⟷ package-lock.json.
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';

@@ -23,13 +23,13 @@ the model actually did to get there*. The readers below correlate the two.
 > their raw stdout buffer (`tailAppend`, last 8 MB) so that snapshot bloat can't crash a node with
 > `RangeError: Invalid string length`.
 
-## CLI — `piflow logs`
+## CLI — `piflowctl logs`
 
 The portable front door (the `piflow` bin ships with `@piflow/core`; `piflow --help` prints this). Any
 consumer can also expose it with a 2-line wrapper (see *Per-project wrapper*).
 
 ```
-piflow logs [dir|run] [options]
+piflowctl logs [dir|run] [options]
 
   dir|run        a run dir (holds run-status.json) or a bare id (→ out/<id>). Default '.'.
   -f, --follow   attach live: stream every started node, roll forward until the run is done
@@ -41,7 +41,7 @@ piflow logs [dir|run] [options]
 
 ### The three things you actually use
 
-1. **Watch it live** — `piflow logs out/<run> -f`
+1. **Watch it live** — `piflowctl logs out/<run> -f`
    Distilled, one line per meaningful action, prefixed by node:
    ```
    [w0-classify] ▸ read templates/genres.json
@@ -51,7 +51,7 @@ piflow logs [dir|run] [options]
    ```
    `▸ <tool> <target>` = a tool call; `… thinking` / `␃ says` = a model turn summary; `✕` = stderr.
 
-2. **Diagnose after** — `piflow logs out/<run> --summary`
+2. **Diagnose after** — `piflowctl logs out/<run> --summary`
    One line per node — the verdict correlated with what happened:
    ```
    run myrun — DONE ✓  (1 node(s))
@@ -64,7 +64,7 @@ piflow logs [dir|run] [options]
        last said: All validation passes. The archetype `platformer` is byte-identical…
    ```
 
-3. **Read one node** — `piflow logs out/<run> --node w0-classify` (replay if done, live if running). Add
+3. **Read one node** — `piflowctl logs out/<run> --node w0-classify` (replay if done, live if running). Add
    `--raw` for the full event stream when the distilled view isn't enough.
 
 ### Reading signatures (what a failure looks like)
@@ -118,8 +118,8 @@ runLogsCli(process.argv.slice(2)).catch((e) => { console.error(e); process.exit(
 ```
 
 > **Note on run-dir location.** A consumer that sets `outDir` to the repo root (e.g. an in-place runner)
-> writes `run-status.json` + `_pi/` at the repo root — so `piflow logs . -f` (cwd) follows it. The standard
-> case (`outDir = out/<run>`) is `piflow logs out/<run> -f`.
+> writes `run-status.json` + `_pi/` at the repo root — so `piflowctl logs . -f` (cwd) follows it. The standard
+> case (`outDir = out/<run>`) is `piflowctl logs out/<run> -f`.
 
 ## Case study — the gate-3 W0 "never-write" (why this layer exists)
 

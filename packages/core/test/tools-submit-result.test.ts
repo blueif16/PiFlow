@@ -3,7 +3,7 @@
 // a tool that ACTUALLY EXISTS + is CALLABLE in the pi process — not a static catalog line. Ported from
 // game-omni pi-runner/extensions/node-contract.ts (the typed, terminating return tool).
 import { describe, it, expect } from 'vitest';
-import { DefaultToolRegistry, verifyToolBinding, compileToolExtension, SUBMIT_RESULT_TOOL } from '../src/index.js';
+import { DefaultToolRegistry, verifyToolBinding, compileToolExtension, renderContractTool, SUBMIT_RESULT_TOOL } from '../src/index.js';
 import type { ToolEntry } from '../src/index.js';
 
 /**
@@ -88,6 +88,29 @@ describe('submit_result — emitted into the generated -e extension (the genuine
   it('a builtins-only selection emits NO extension (submit_result not selected ⇒ nothing generated)', () => {
     const r = new DefaultToolRegistry().resolve({ allow: ['read', 'write'] });
     expect(r.extension).toBeUndefined();
+  });
+});
+
+// The guidance prose must give EVERY node an explicit terminal condition — the observable trigger that
+// once outputs exist + checks pass, submitting is the only remaining action — and must forbid post-success
+// re-verification. Without it a model that finished the work loops on "let me check once more" until the
+// watchdog kills it (a real MiniMax-M3 run: all artifacts written, gate clean, 0 submit_result calls in
+// 159 ops). These assertions FAIL if the terminal-condition guidance is dropped from the rendered tool.
+describe('submit_result — the terminal-condition guidance (every node must know WHEN to stop)', () => {
+  it('the rendered promptGuidelines carry an explicit terminal condition AND forbid re-verifying passed work', () => {
+    const tools = instantiate(compileToolExtension([SUBMIT_RESULT_TOOL]).source);
+    const submit = tools.find((t) => t.name === 'submit_result')!;
+    const guidelines: string[] = submit.promptGuidelines;
+    // (1) an observable trigger: once outputs exist + checks pass, submitting is the ONLY remaining action.
+    expect(guidelines.some((g) => /TERMINAL CONDITION/.test(g) && /ONLY remaining action/.test(g))).toBe(true);
+    // (2) post-success re-verification is forbidden — re-reading/re-running passed work is named NOT diligence.
+    expect(guidelines.some((g) => /Re-reading|re-running/.test(g) && /Verify once, then submit/.test(g))).toBe(true);
+  });
+
+  it('renderContractTool emits the terminal-condition guidance into the extension source', () => {
+    const src = renderContractTool(SUBMIT_RESULT_TOOL);
+    expect(src).toContain('TERMINAL CONDITION');
+    expect(src).toContain('Verify once, then submit.');
   });
 });
 

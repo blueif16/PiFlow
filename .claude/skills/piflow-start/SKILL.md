@@ -3,7 +3,7 @@ name: piflow-start
 description: >-
   Pi Flow · START — run & monitor an already-created pi-flow workflow on the pi fleet via the SDK CLI, with
   Claude Code as the single console. LOAD THIS SKILL BEFORE running ANY piflow/pi command — it pins the
-  canonical invocation: the npm-linked global `piflow run <templateDir>` bin (NOT `node …/dist/cli.js` nor
+  canonical invocation: the npm-linked global `piflowctl run <templateDir>` bin (NOT `node …/dist/cli.js` nor
   `pi-runner/run.mjs`, both non-canonical) with `--provider <gw> --thinking low --sandbox local` +
   `--from`/`--until`. Do NOT reconstruct the command from memory. Triggers — load on ANY of: "run / kick off /
   start / resume my piflow workflow", "do a live run on pi", "run game-omni on pi", "companion-mode run",
@@ -17,11 +17,11 @@ description: >-
 
 **You are the operator — you run every command; the user runs nothing.** A workflow is a structured TEMPLATE
 (`.piflow/<wf>/template/`); the `@piflow/core` SDK loads it (`loadTemplate → instantiateRun → compile →
-runWorkflow`) and runs one `pi` per node. **The entrypoint is the `piflow` bin (from `@piflow/cli`,
-npm-linked onto PATH — confirm with `which piflow`). The canonical command is `piflow run <templateDir> …` —
+runWorkflow`) and runs one `pi` per node. **The entrypoint is the `piflowctl` bin (from `@piflow/cli`,
+npm-linked onto PATH — confirm with `which piflowctl`). The canonical command is `piflowctl run <templateDir> …` —
 NOT `node <piflow>/packages/cli/dist/cli.js run …` (the same code, but the bare-node form is the fallback only
 when the link is missing) and NEVER `node pi-runner/run.mjs` (the deleted legacy monolith).** Every command
-below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `piflow` subcommand.
+below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `piflowctl` subcommand.
 
 ## The run contract (read before every run)
 - **INPUT IS THE PROMPT BANK, NEVER TYPED.** A run's `prompt` is the next `pending` entry of the consumer's
@@ -50,12 +50,12 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
 1. **Dry-run (free, no model) — always first.** Confirms the template loads, the DAG compiles, args resolve,
    and prints each realized `pi` command:
    ```bash
-   piflow run <templateDir> \
+   piflowctl run <templateDir> \
      --workspace <consumerRepo> --run <id> \
      --provider <gw> --arg prompt="<the bank entry's prompt>" --dry-run
    ```
-   (`piflow` is the global linked bin — the consumer repo needs no install; `--workspace` points it at the
-   consumer's content. If `which piflow` is empty, fall back to `node <piflow>/packages/cli/dist/cli.js run …`.)
+   (`piflowctl` is the global linked bin — the consumer repo needs no install; `--workspace` points it at the
+   consumer's content. If `which piflowctl` is empty, fall back to `node <piflow>/packages/cli/dist/cli.js run …`.)
    **CAVEAT: the dry-run prints the FULL DAG; it does NOT show the `--from`/`--until` window.** The window
    applies only at runtime — verify it by reading the matcher, not the dry-run output.
 2. **Live (background) — never block on it.** Drop `--dry-run`, add `--sandbox local` (real in-place pi exec;
@@ -63,7 +63,7 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
    and pi defaults to `medium` → over-deliberation / stall risk on the headless loop). Redirect to a log and
    run in the background:
    ```bash
-   piflow run <templateDir> \
+   piflowctl run <templateDir> \
      --workspace <consumerRepo> --run <id> \
      --provider <gw> --thinking low --sandbox local \
      --arg prompt="…" [--from <node>] [--until <node>] \
@@ -76,7 +76,7 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
 3. **Monitor — poll, don't block.** The run writes `<runDir>/.pi/{run.json,state.json}` + per-node
    `<runDir>/.pi/nodes/<node>/{events.jsonl,io.json,node.json}` (where `<runDir>` = the canonical
    `.piflow/<wf>/runs/<id>/`); produced artifacts land under `<runDir>/` (e.g. `spec/*.json`). Watch with
-   `piflow status <runDir>` / `piflow watch <runDir>` / `piflow logs`, or
+   `piflowctl status <runDir>` / `piflowctl watch <runDir>` / `piflowctl logs`, or
    tail a node's `events.jsonl`. Confirm liveness by the **artifact on disk + the VCS/file evidence**, never a
    self-report.
 

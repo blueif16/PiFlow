@@ -245,7 +245,7 @@ A node that started but did not finish must NEVER be journaled as done. Concrete
    (`runner.ts:643,677`), so a half-produced artifact (node errored before writing) is never recorded
    as a good output.
 4. **Single-writer-per-run lock (optional, recommended).** Adopt PDW's lease (`wx` open + PID liveness,
-   `run-persistence.ts:253-285`) as `${RUN}/.pi/run.lock` so two concurrent `piflow run --resume <same
+   `run-persistence.ts:253-285`) as `${RUN}/.pi/run.lock` so two concurrent `piflowctl run --resume <same
    dir>` processes can't interleave journal writes. Lower priority than 1-3 (a single console drives a
    run today) but cheap and copied wholesale.
 

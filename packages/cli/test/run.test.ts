@@ -107,7 +107,7 @@ describe('parseRunArgs — the run subcommand flag surface', () => {
 // (B) DRY-RUN — builds + prints the per-node pi command WITHOUT invoking a model, and materializes
 // the ${RUN}/.pi structure via instantiateRun.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('piflow run --dry-run — realized commands, no model', () => {
+describe('piflowctl run --dry-run — realized commands, no model', () => {
   let dryWorkspace: string;
   let dryOut: string;
   beforeAll(async () => {
@@ -250,7 +250,7 @@ describe('piflow run --dry-run — realized commands, no model', () => {
 // template-min is not runnable headless (seed/inject the fixture has no product seed for), so the spy
 // stands in for the real run; a live E2E awaits a real template (T6).
 // ─────────────────────────────────────────────────────────────────────────────
-describe('piflow run — LIVE branch routes through core runFromTemplate, threading every option', () => {
+describe('piflowctl run — LIVE branch routes through core runFromTemplate, threading every option', () => {
   let out: string;
   beforeAll(async () => {
     out = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-run-wire-out-'));
@@ -325,6 +325,49 @@ describe('piflow run — LIVE branch routes through core runFromTemplate, thread
     );
     expect(optsSeen?.provider).toBeUndefined();
   });
+
+  it('--sandbox local is SECURE BY DEFAULT — the LocalSandboxProvider has the read-scope jail ON', async () => {
+    // The default real-run path must enforce read scope. Drop the secure default in run.ts ⇒ this goes red.
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => { optsSeen = opts; return { status: { ok: true } as never, outDir: opts.runDir }; },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gsecure', args: {}, outDir: out, sandbox: 'local' },
+      deps,
+    );
+    expect(optsSeen?.provider).toBeInstanceOf(LocalSandboxProvider);
+    expect((optsSeen?.provider as LocalSandboxProvider).enforceReadScope).toBe(true);
+  });
+
+  it('--sandbox danger-full-access ⇒ a LocalSandboxProvider with the jail OFF (the named escape hatch)', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => { optsSeen = opts; return { status: { ok: true } as never, outDir: opts.runDir }; },
+      print: () => {},
+    };
+    await runTemplate(
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gdanger', args: {}, outDir: out, sandbox: 'danger-full-access' },
+      deps,
+    );
+    // Still the real in-place provider — but the read-scope jail is explicitly disabled.
+    expect(optsSeen?.provider).toBeInstanceOf(LocalSandboxProvider);
+    expect((optsSeen?.provider as LocalSandboxProvider).enforceReadScope).toBe(false);
+  });
+
+  it('an unknown --sandbox value THROWS loudly (never silently degrades to inmemory/no-model)', async () => {
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => ({ status: { ok: true } as never, outDir: opts.runDir }),
+      print: () => {},
+    };
+    await expect(
+      runTemplate(
+        { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gbad', args: {}, outDir: out, sandbox: 'seatbelt' as never },
+        deps,
+      ),
+    ).rejects.toThrow(/unknown --sandbox/i);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -332,7 +375,7 @@ describe('piflow run — LIVE branch routes through core runFromTemplate, thread
 // (G5) `checkpointReply: 'default'` so a backgrounded run takes each checkpoint's declared default
 // instead of parking forever. The CLI never threaded this before — the load-bearing G7 gap.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('piflow run — --detach (unattended) threads checkpointReply', () => {
+describe('piflowctl run — --detach (unattended) threads checkpointReply', () => {
   it('parseRunArgs recognizes --detach', () => {
     expect(parseRunArgs([TEMPLATE_MIN, '--detach']).detach).toBe(true);
     expect(parseRunArgs([TEMPLATE_MIN]).detach).toBeFalsy();
@@ -376,7 +419,7 @@ describe('piflow run — --detach (unattended) threads checkpointReply', () => {
 // `.piflow/<wf>/runs/<id>/` home, and `--out` can NEVER relocate it (observation reads the fixed home).
 // These FAIL if the precedence regresses to `parsed.outDir ?? canonicalHome` (the old --out-wins order).
 // ─────────────────────────────────────────────────────────────────────────────
-describe('piflow run — a canonical run home is never relocated by --out', () => {
+describe('piflowctl run — a canonical run home is never relocated by --out', () => {
   let wfRoot: string;   // the `.piflow/<wf>/` dir; its `template/` child gives runsHome = <wfRoot>/runs
   let canonTemplate: string;
   let elsewhere: string;
@@ -439,7 +482,7 @@ describe('piflow run — a canonical run home is never relocated by --out', () =
 // run's identity from the prompt id. These FAIL if the old `?? 'run'` constant fallback returns, if an
 // explicit id stops winning, or if the prompt metadata is dropped.
 // ─────────────────────────────────────────────────────────────────────────────
-describe('piflow run — Docker-style auto-naming when --run is omitted', () => {
+describe('piflowctl run — Docker-style auto-naming when --run is omitted', () => {
   let out: string;
   beforeAll(async () => {
     out = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-run-name-out-'));
@@ -531,7 +574,7 @@ describe('runFailureReport — the loud verdict for a finished failed run', () =
     expect(report).toContain('__resume__');
     // the LOAD-BEARING line: the actual blocking reason must reach the user, not just a count.
     expect(report).toContain('missing upstream artifact(s): verify/report.M1.json (verify-2-m1)');
-    expect(report).toContain('piflow status out/p06');
+    expect(report).toContain('piflowctl status out/p06');
     // a `reused` (non-failed) node is not listed as a failure.
     expect(report).not.toContain('w2-scaffold');
   });
@@ -548,7 +591,7 @@ describe('runFailureReport — the loud verdict for a finished failed run', () =
 // template-min and inject a `profiles` block that elides the `build` phase (both leaf nodes), leaving
 // only the `classify` root. Drop the applyProfileByName call in run.ts ⇒ these go red (the leaves reappear).
 // ─────────────────────────────────────────────────────────────────────────────
-describe('piflow run --dry-run --profile — the plan reflects the elided DAG', () => {
+describe('piflowctl run --dry-run --profile — the plan reflects the elided DAG', () => {
   let PROFILED: string; // a template-min clone with a profiles block
   let pOut: string;
   let pWs: string;

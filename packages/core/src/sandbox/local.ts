@@ -14,10 +14,18 @@
 //   write    — resolve under the real root (unchanged from InMemory)
 //   download — guarded-identity: no-op iff realpath(remote)===realpath(local), else THROW
 //   dispose  — NO-OP (the workspace is the user's project tree — NEVER fs.rm the root)
-// exec is byte-for-byte the reference impl (detached process group + opts.signal
-// SIGTERM→SIGKILL). There is NO `execCwd` argument: U1 staged each node under
-// `_pi/<id>/`, so one shared workdir is collision-safe (the run.mjs reference still
-// carried execCwd to dodge a fixed-prompt-path clash; that cause is gone — dropped).
+// exec keeps the reference impl's detached process-group kill + closed-stdin, but is
+// SECURE BY DEFAULT: on darwin it wraps the command in the SHARED `seatbeltExecPlan`
+// (sandbox-exec, kernel-enforced read+write scope) so a node reads ONLY its declared
+// readScope + toolchain AND writes ONLY its workdir + declared writeScope (owns) + toolchain
+// scratch — the whole reason a per-node swarm exists. A write to a sibling node dir, ~/.ssh,
+// or the repo at large EPERMs. Network stays open (the `pi` agent MUST reach its model gateway
+// — UNLIKE Codex, which sandboxes shell sub-commands that need no network).
+// Off darwin the wrap is a no-op (warns once) until the Linux bwrap backend lands. The jail
+// is the DEFAULT; `enforceReadScope:false` is the loud `danger-full-access` escape hatch.
+// There is NO `execCwd` argument: U1 staged each node under `_pi/<id>/`, so one shared
+// workdir is collision-safe (the run.mjs reference carried execCwd to dodge a fixed-prompt-
+// path clash; that cause is gone — dropped).
 //
 // Run-level isolation: `openRun` returns a TRIVIAL RunScope rooted at `repoRoot`
 // whose `create` forwards to `provider.create` and whose `dispose` is a no-op — there
@@ -27,7 +35,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { promises as fs } from 'node:fs';
+import fsSync from 'node:fs';
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import type {
   Sandbox,
@@ -40,6 +50,7 @@ import type {
   OpenRunOpts,
 } from '../types.js';
 import { tailAppend } from './capture.js';
+import { localJailPlan } from './jail.js';
 
 export class LocalSandbox implements Sandbox {
   readonly kind = 'local' as const;
@@ -49,17 +60,39 @@ export class LocalSandbox implements Sandbox {
     public readonly root: string,
     public readonly workdir: string,
     private readonly env: Record<string, string>,
+    /** Declared read roots (resolved absolute) granted to the kernel jail beyond the workdir + toolchain. */
+    private readonly readScope: string[],
+    /** Declared WRITE roots (resolved absolute; = owns) the kernel jail allows beyond the workdir + scratch. */
+    private readonly writeScope: string[],
+    /** Wrap exec in the read+write jail (darwin). Default true; false ⇒ the danger-full-access bypass. */
+    private readonly enforceReadScope: boolean,
   ) {}
 
   /**
    * Root the sandbox AT the given workdir (resolved absolute). Unlike InMemory there is NO mkdtemp —
    * we only ensure the real dir (and its output subdir) exist. All files live in the REAL tree.
+   * `runtime.enforceReadScope` (default true) selects the secure-by-default read-scope jail; pass false
+   * for the `danger-full-access` bypass.
    */
-  static async create(opts: CreateOpts): Promise<LocalSandbox> {
+  static async create(
+    opts: CreateOpts,
+    runtime: { enforceReadScope?: boolean } = {},
+  ): Promise<LocalSandbox> {
     const root = path.resolve(opts.workdir || '.');
     await fs.mkdir(root, { recursive: true });
     if (opts.outputDir) await fs.mkdir(path.resolve(root, opts.outputDir), { recursive: true });
-    return new LocalSandbox(root, root, opts.env ?? {});
+    // Resolve declared scope to absolute (entries are absolute by contract; a relative one resolves
+    // vs the in-place root to stay self-consistent), mirroring SeatbeltSandbox.create.
+    const resolveScope = (s: string[] | undefined): string[] =>
+      (s ?? []).map((p) => (path.isAbsolute(p) ? p : path.resolve(root, p)));
+    return new LocalSandbox(
+      root,
+      root,
+      opts.env ?? {},
+      resolveScope(opts.readScope),
+      resolveScope(opts.writeScope),
+      runtime.enforceReadScope ?? true,
+    );
   }
 
   private abs(p: string): string {
@@ -84,10 +117,25 @@ export class LocalSandbox implements Sandbox {
    */
   exec(cmd: string, opts: ExecOpts = {}): Promise<ExecResult> {
     return new Promise((resolve) => {
-      const child = spawn(cmd, {
-        cwd: opts.cwd ? this.abs(opts.cwd) : this.workdir,
+      const cwd = opts.cwd ? this.abs(opts.cwd) : this.workdir;
+      // Secure by default: wrap in the OS-dispatched kernel jail (darwin→seatbelt, linux→bwrap) so reads
+      // AND writes outside the declared scope EPERM. The seatbelt backend's per-exec profile is written to
+      // the OS tmpdir — NEVER littered into the user's in-place tree (bwrap writes no profile). `null` ⇒
+      // an OS with no backend (or linux without bubblewrap), or the danger bypass ⇒ run bare (unsandboxed).
+      const plan =
+        this.enforceReadScope && cmd
+          ? localJailPlan(cmd, {
+              workdir: this.workdir,
+              readScope: [...this.readScope, cwd], // grant the workdir + declared scope + the exec cwd
+              writeScope: this.writeScope, // grant the workdir + declared write scope (owns) + scratch
+              profileDir: os.tmpdir(),
+            })
+          : null;
+      const child = spawn(plan ? plan.file : cmd, plan ? plan.argv : [], {
+        cwd,
         env: { ...process.env, ...this.env, ...opts.env },
-        shell: true,
+        // bare path uses the shell (InMemory parity); the wrapped path runs OUR argv (sandbox-exec) directly.
+        shell: plan ? false : true,
         // detached → the command is its own process group leader, so on cancel we can kill the WHOLE
         // tree (the agent AND any grandchildren it spawned), not just the shell — no orphans.
         detached: true,
@@ -107,7 +155,11 @@ export class LocalSandbox implements Sandbox {
         const esc = setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch { /* reaped */ } }, 2000);
         esc.unref?.();
       };
-      const cleanup = (): void => { signal?.removeEventListener('abort', onAbort); };
+      const cleanup = (): void => {
+        signal?.removeEventListener('abort', onAbort);
+        // Only the seatbelt backend writes a per-exec profile to unlink; bwrap's profilePath is undefined.
+        if (plan?.profilePath) { try { fsSync.unlinkSync(plan.profilePath); } catch { /* already gone */ } }
+      };
       const finish = (r: ExecResult): void => { if (done) return; done = true; cleanup(); resolve(r); };
       if (signal) {
         if (signal.aborted) onAbort();
@@ -179,7 +231,7 @@ class LocalRunScope implements RunScope {
     this.root = repoRoot;
   }
   create(opts: CreateOpts): Promise<Sandbox> {
-    return this.provider.create(opts);
+    return this.provider.create(opts); // inherits the provider's enforceReadScope policy
   }
   async dispose(): Promise<void> {
     /* no shared resource — the filesystem IS the resource; per-node dispose (a no-op) is the teardown. */
@@ -189,8 +241,20 @@ class LocalRunScope implements RunScope {
 export class LocalSandboxProvider implements SandboxProvider {
   readonly kind: SandboxProviderKind = 'local';
 
+  /**
+   * SECURE BY DEFAULT (true): every node's exec is wrapped in the read-scope jail (darwin), so the
+   * in-place run reads ONLY its declared scope + toolchain. Construct with `{ enforceReadScope: false }`
+   * for the `danger-full-access` escape hatch (the agent can read the whole filesystem). Public + readonly
+   * so a caller/test can assert which posture a CLI flag selected.
+   */
+  readonly enforceReadScope: boolean;
+
+  constructor(opts: { enforceReadScope?: boolean } = {}) {
+    this.enforceReadScope = opts.enforceReadScope ?? true;
+  }
+
   create(opts: CreateOpts): Promise<Sandbox> {
-    return LocalSandbox.create(opts);
+    return LocalSandbox.create(opts, { enforceReadScope: this.enforceReadScope });
   }
 
   /**

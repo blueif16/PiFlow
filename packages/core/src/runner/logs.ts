@@ -149,7 +149,7 @@ function activeNodeIds(st: StatusShape | null): string[] {
   return Object.values(st?.nodes ?? {}).filter((n) => n.status !== 'pending').map((n) => n.id);
 }
 
-// ── post-run diagnosis (`piflow logs --summary`) ────────────────────────────────────────────────────
+// ── post-run diagnosis (`piflowctl logs --summary`) ────────────────────────────────────────────────────
 // Correlate run-status (the verdict + declared artifacts) with the event archive (what the model
 // actually did) into a one-glance per-node diagnosis. The headline case it makes obvious: a node that
 // exits clean but writes nothing — the never-write — surfaced as `0 writes · missing <artifact>` with
@@ -305,7 +305,7 @@ function resolveOutDir(arg: string | undefined): string {
   return path.resolve(a);
 }
 
-/** `[dir|run] [--node <id>] [-f|--follow] [--raw] [--summary] [--poll <ms>]` — the body behind `piflow logs`. */
+/** `[dir|run] [--node <id>] [-f|--follow] [--raw] [--summary] [--poll <ms>]` — the body behind `piflowctl logs`. */
 export async function runLogsCli(argv: string[]): Promise<void> {
   let dir: string | undefined;
   let node: string | undefined;
@@ -324,7 +324,7 @@ export async function runLogsCli(argv: string[]): Promise<void> {
   }
   const outDir = resolveOutDir(dir);
   if (!existsSync(statusFilePath(outDir))) {
-    process.stderr.write(`piflow logs: no .pi/run.json under ${outDir}\n`);
+    process.stderr.write(`piflowctl logs: no .pi/run.json under ${outDir}\n`);
     process.exitCode = 1;
     return;
   }

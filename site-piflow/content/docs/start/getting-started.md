@@ -29,7 +29,7 @@ See [Author a workflow](/docs/guides/author-a-workflow).
 ## Run it
 
 ```bash
-piflow run .piflow/<workflow>/template --provider <gateway> --thinking low --sandbox local
+piflowctl run .piflow/<workflow>/template --provider <gateway> --thinking low --sandbox local
 ```
 
 Then follow it live — see [Run on Pi](/docs/guides/run-on-pi) and
@@ -38,4 +38,4 @@ Then follow it live — see [Run on Pi](/docs/guides/run-on-pi) and
 ## Next steps
 
 - [Architecture](/docs/concepts/architecture) — how the substrate fits together
-- [CLI reference](/docs/reference/cli) — every `piflow run` flag
+- [CLI reference](/docs/reference/cli) — every `piflowctl run` flag

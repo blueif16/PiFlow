@@ -1,10 +1,29 @@
 {
   "name": "@piflow/core",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "description": "Pi Flow core — the L1 node-envelope schema spine, the DAG compiler (data-flow edge inference), the contract-marker codec, and reference primitives (in-memory sandbox, builtin tool registry, hook runner).",
   "license": "MIT",
+  "keywords": [
+    "workflow",
+    "orchestration",
+    "dag",
+    "agents",
+    "pi",
+    "ai",
+    "sdk"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blueif16/PiFlow.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/blueif16/PiFlow/tree/main/packages/core#readme",
+  "bugs": "https://github.com/blueif16/PiFlow/issues",
+  "author": "blueif16",
+  "publishConfig": {
+    "access": "public"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -26,10 +45,12 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -b"
+    "build": "tsc -b",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@daytona/sdk": "^0.185.0",
+    "@piflow/tool-bridge": "^0.1.0",
     "esbuild": "^0.28.1"
   }
 }

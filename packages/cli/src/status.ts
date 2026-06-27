@@ -1,4 +1,4 @@
-// `piflow status <rundir>` — the per-node dashboard, a THIN renderer over the shared observability
+// `piflowctl status <rundir>` — the per-node dashboard, a THIN renderer over the shared observability
 // source (`@piflow/core/observe`). It reads the run through `readRunModel(dir)` — the ONE reader the
 // CLI, the TUI, and a future GUI all share — and lays its `RunModel` out as a per-node table (id ·
 // label · status · verified/total artifacts · durationMs) + a stage line + a rollup foot. There is NO
@@ -53,7 +53,7 @@ export function renderStatus(run: RunModel): string {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-/** `piflow status <rundir> [--every <s>]` — one-shot, or a live refresh-in-place loop. */
+/** `piflowctl status <rundir> [--every <s>]` — one-shot, or a live refresh-in-place loop. */
 export async function runStatusCli(argv: string[]): Promise<void> {
   let dir: string | undefined;
   let every: number | undefined;

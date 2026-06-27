@@ -1,6 +1,6 @@
 # The unified run-observability pipeline
 
-> The canonical contract for the ONE shared-data pipeline that `piflow status`, `piflow watch`, the
+> The canonical contract for the ONE shared-data pipeline that `piflowctl status`, `piflowctl watch`, the
 > TUI, and a future GUI all consume. A surface implementer can build against this doc without reading
 > the source.
 >
@@ -342,7 +342,7 @@ for await (const u of watchRun(rundir, { signal })) {
 }
 ```
 
-> Implementation note: today the shipped `piflow logs` command is `runLogsCli` → `followRun`
+> Implementation note: today the shipped `piflowctl logs` command is `runLogsCli` → `followRun`
 > (`packages/core/src/runner/logs.ts`), which tails `.pi/nodes/<id>/events.jsonl` directly through the
 > SAME `nodeEventsFile` layout helper and the same byte-offset + carry-partial-line tail technique
 > `watchRun` reuses (the `followRun` cadence is where `watchRun`'s 700 ms default comes from). It is the

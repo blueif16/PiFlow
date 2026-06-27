@@ -1,8 +1,8 @@
 ---
 title: "CLI reference"
-summary: "The piflow run command and its flags: provider, thinking, sandbox, and DAG scoping."
+summary: "The piflowctl run command and its flags: provider, thinking, sandbox, and DAG scoping."
 read_when:
-  - You need the exact piflow run flags
+  - You need the exact piflowctl run flags
 order: 1
 draft: true
 ---
@@ -10,12 +10,12 @@ draft: true
 > Draft — this page is the canonical public home for CLI flags. Keep it generated from / verified
 > against the CLI source in `packages/cli`; do not let it drift from the implementation.
 
-## `piflow run <templateDir>`
+## `piflowctl run <templateDir>`
 
 Run a workflow template on the pi fleet.
 
 ```bash
-piflow run .piflow/<workflow>/template --provider <gateway> --thinking low --sandbox local
+piflowctl run .piflow/<workflow>/template --provider <gateway> --thinking low --sandbox local
 ```
 
 | Flag | Meaning |

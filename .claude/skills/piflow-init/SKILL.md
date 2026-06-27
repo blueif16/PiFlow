@@ -24,7 +24,7 @@ codegen, no hand-sync, no drift, no second source.**
 init ──(PORT a .js ONCE │ IMPORT n8n/YAML │ COMPOSE fresh)──► .piflow/<wf>/template/   ← the SOURCE OF TRUTH
                                                                     │ @piflow/core: loadTemplate → WorkflowSpec → compile → runWorkflow
                                                                     ▼ one `pi` per node (non-Claude coding-plan model)
-   .piflow/<wf>/runs/<id>/{ product · .pi/state.json · .pi/nodes/<id>/io.json } ──► `piflow logs`   ← piflow-start owns this
+   .piflow/<wf>/runs/<id>/{ product · .pi/state.json · .pi/nodes/<id>/io.json } ──► `piflowctl logs`   ← piflow-start owns this
 ```
 
 ## The three Pi Flow skills (this is the lifecycle)
@@ -32,7 +32,7 @@ init ──(PORT a .js ONCE │ IMPORT n8n/YAML │ COMPOSE fresh)──► .pif
 |---|---|---|
 | **piflow-init** *(you are here)* | CREATE a workflow: triage the source → build the `template/` → stand up the per-repo runner | full |
 | **piflow-enhance** | IMPROVE a running workflow: the capture→route→edit→verify loop, the criteria fixture, Companion Mode judging | stub (scope declared) |
-| **piflow-start** | RUN & monitor a workflow on the pi fleet: dry-run → live → `piflow logs` | stub (scope declared) |
+| **piflow-start** | RUN & monitor a workflow on the pi fleet: dry-run → live → `piflowctl logs` | stub (scope declared) |
 
 > **Paths below are relative to the piflow repo root** (`~/Desktop/piflow`). This skill lives at
 > `.claude/skills/piflow-init/`; references like `reference/sdk-consumer.md`, `docs/design/template-format.md`,
@@ -231,7 +231,7 @@ are in `reference/sdk-consumer.md` — read it first.** The flow:
   (`PI_RUNNER_CONTRACT_EXT`), both keep the driver fallback so they never break a run.
 - **Every run records its behavior — state + behavior, two files, one join.** A run writes
   `run-status.json` (per-node status/exit/timing/artifacts — the *verdict*) and `_pi/<id>.events.jsonl`
-  (the slimmed `pi --mode json` stream — *what the model did*), joined on node id. `piflow logs` reads both
+  (the slimmed `pi --mode json` stream — *what the model did*), joined on node id. `piflowctl logs` reads both
   (`-f` live · `--summary` diagnosis · `--node`). It is pure reconstruction over data already on disk — no new
   per-run field. This is the SDK successor to the legacy `pi-tui` registry survey. See `reference/observability.md`.
 - **A verify node verifies; it never CREATES a key artifact.** Separate the roles: a PRODUCING node authors
@@ -336,7 +336,7 @@ every one; after, verify no consumer reads the stale shape.
 ## Files in the piflow repo (paths relative to the repo root, `~/Desktop/piflow`)
 - `reference/sdk-consumer.md` — **READ FIRST to stand up a project.** The canonical per-project layout (the
   three tiers + the file→mission map), the adopt steps, and the pre/post hook-assembly contract.
-- `reference/observability.md` — **`piflow logs` (docker-logs for a run):** the run-status + event-archive
+- `reference/observability.md` — **`piflowctl logs` (docker-logs for a run):** the run-status + event-archive
   contract, the CLI (`-f`/`--summary`/`--node`/`--raw`), the pre-run tool audit, the `RunOptions` knobs, and
   the failure-signature table. **Read (with piflow-start) when a run misbehaves.**
 - `reference/cli.md` — the run flags + the `--from`/`--until`/`--only` node-range model + the `.env` knobs.
@@ -370,7 +370,7 @@ every one; after, verify no consumer reads the stale shape.
 - `templates/examples/auto-discover-registry.example.mjs` — adapt-me generator for auto-discovered
   registration (the worktree merge-back enabler — stop hand-editing a shared registration list).
 - `packages/core` (**`@piflow/core`**) — **the engine, installed not copied:** `runWorkflow`/`compile`, the
-  contract codec, `runHooks`, the sandbox providers, the tool registry, and the `piflow` bin + observability.
+  contract codec, `runHooks`, the sandbox providers, the tool registry, and the `piflowctl` bin + observability.
   An engine fix is a package bump. (This repo IS the `@piflow/core` product repo; `docs/` holds its
   design canon — see `docs/INDEX.md`.)
 

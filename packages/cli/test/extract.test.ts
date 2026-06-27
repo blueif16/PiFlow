@@ -24,7 +24,7 @@ afterAll(async () => {
   await fs.rm(TEMPLATE_MIN, { recursive: true, force: true });
 });
 
-describe('piflow extract — the free DAG preview over loadTemplate→compile', () => {
+describe('piflowctl extract — the free DAG preview over loadTemplate→compile', () => {
   it('names every node in the template', async () => {
     const out = await extractTemplate(TEMPLATE_MIN);
     expect(out).toContain('w0-classify');

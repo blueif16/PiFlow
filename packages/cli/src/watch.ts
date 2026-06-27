@@ -1,4 +1,4 @@
-// `piflow watch <rundir> [--notify]` — the wake-on-event SENTINEL, a THIN consumer of the shared live
+// `piflowctl watch <rundir> [--notify]` — the wake-on-event SENTINEL, a THIN consumer of the shared live
 // stream (`@piflow/core/observe` watchRun). It subscribes to the ONE stream every live view drives and
 // stays SILENT until exactly one thing worth a decision happens, then prints ONE line and resolves:
 //   • the run finished        ({kind:'done'})                     → DONE ✓ / FAILED ✗
@@ -64,7 +64,7 @@ export async function watchRun(opts: WatchOpts = {}): Promise<WatchResult> {
 
   const fire = (reason: WatchReason, ok: boolean | null, line: string, node?: string): WatchResult => {
     print(line);
-    if (opts.notify) notifyDesktop('piflow watch', line);
+    if (opts.notify) notifyDesktop('piflowctl watch', line);
     return { reason, ok, node, line };
   };
 
@@ -94,7 +94,7 @@ export async function watchRun(opts: WatchOpts = {}): Promise<WatchResult> {
   return fire('aborted', null, `[watch] stream ended before a terminal event (run=${runName})`);
 }
 
-/** `piflow watch <rundir> [--notify] [--poll <s>] [--dead-stall <s>]` — the bin body. */
+/** `piflowctl watch <rundir> [--notify] [--poll <s>] [--dead-stall <s>]` — the bin body. */
 export async function runWatchCli(argv: string[]): Promise<void> {
   let dir: string | undefined;
   let notify = false;

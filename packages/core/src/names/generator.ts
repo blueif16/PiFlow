@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // generateRunName — Docker-style memorable run names: `<bake-adjective>-<pie>` (e.g. "flaky-pecan",
-// "golden-banoffee"). When `piflow run` is invoked WITHOUT `--run/--id`, the CLI calls this to mint a
+// "golden-banoffee"). When `piflowctl run` is invoked WITHOUT `--run/--id`, the CLI calls this to mint a
 // stable, collision-free identity for the run, decoupling a run's identity from any prompt id.
 //
 // The two word lists are DATA: adjectives.json (hand-authored, ~45 baking flavors) and pies.json (DERIVED

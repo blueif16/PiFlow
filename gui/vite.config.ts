@@ -1,6 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
-import { readFile, readdir, stat, realpath } from "node:fs/promises";
+import { readFile, writeFile, readdir, stat, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname, isAbsolute, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -106,7 +106,7 @@ function piflowRunStream(): Plugin {
               if (t.run === run && t.runDir) runDir = t.runDir;
       } catch { /* fall through to 404 */ }
     }
-    if (!runDir) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered? (piflow gui / npm run data:index)` });
+    if (!runDir) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered? (piflowctl gui / npm run data:index)` });
 
     const obs = findUp("packages/core/dist/observe/index.js");
     if (!obs) return sendJson(res, 500, { error: "@piflow/core observe dist not found — run: npm run build (at repo root)" });
@@ -187,7 +187,7 @@ function piflowRunView(): Plugin {
           }
       } catch { /* fall through to 404 */ }
     }
-    if (!runDir) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered? (piflow gui / npm run data:index)` });
+    if (!runDir) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered? (piflowctl gui / npm run data:index)` });
 
     const obs = findUp("packages/core/dist/observe/index.js");
     if (!obs) return sendJson(res, 500, { error: "@piflow/core observe dist not found — run: npm run build (at repo root)" });
@@ -201,6 +201,152 @@ function piflowRunView(): Plugin {
   };
   return {
     name: "piflow-run-view",
+    configureServer(server) { server.middlewares.use(handler); },
+    configurePreviewServer(server) { server.middlewares.use(handler); },
+  };
+}
+
+/**
+ * On-demand FUSION/STRUCTURE PREVIEW — `GET /__piflow/preview/<run>?overrides=<json>` re-compiles the
+ * run's TEMPLATE with per-node fusion activations TOGGLED ON and returns the resulting DAG in the SAME
+ * run-view contract the canvas renders. This is what powers the GUI's "fusion mode": the siblings+judge
+ * expansion is the SDK's OWN transform (`loadTemplate → withNodeFusion → expandFusion → compile →
+ * previewView` — the exact chain the CLI `run --dry-run` uses), NEVER a view-local DAG rewrite. `overrides`
+ * is `{ "<nodeId>": "moa" | "best-of-n" }`; the chosen mode is merged over any authored fusion params, and
+ * everything else resolves through the SDK's fusion defaults (`~/.piflow/fusion.json`) + a demo-panel
+ * fallback so a moa toggle never errors with no config. The template is the run's canonical sibling
+ * `<wf>/template/` (runDir = `<wf>/runs/<id>`). NOTE: it re-compiles the raw template (no profile applied),
+ * so for an unprofiled run the no-override structure matches the run-view exactly.
+ */
+function piflowPreview(): Plugin {
+  // A moa panel is REQUIRED; when neither the node nor ~/.piflow/fusion.json supplies one, the preview
+  // falls back to these tiers (resolved like any tier alias) so the toggle is demoable with zero config.
+  const DEMO_PANEL = ["fast", "balanced", "deep"];
+  const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    const m = req.url?.match(/^\/__piflow\/preview\/([^/?]+)/);
+    if (!m) return next();
+    const run = decodeURIComponent(m[1]);
+
+    const resolved = await resolveRunDir(run);
+    if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+    // The template is the run's canonical sibling: runDir = <wf>/runs/<id> ⇒ template = <wf>/template.
+    const templateDir = join(resolved.runDir, "..", "..", "template");
+    if (!existsSync(templateDir)) return sendJson(res, 404, { error: `no template for "${run}" at ${templateDir} (preview needs the canonical <wf>/template layout)` });
+
+    let overrides: Record<string, string> = {};
+    const raw = new URL(req.url!, "http://localhost").searchParams.get("overrides");
+    if (raw) { try { overrides = JSON.parse(raw); } catch { return sendJson(res, 400, { error: "overrides must be JSON" }); } }
+
+    const core = findUp("packages/core/dist/index.js");
+    const obs = findUp("packages/core/dist/observe/index.js");
+    if (!core || !obs) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
+    try {
+      const { loadTemplate, withNodeFusion, expandFusion, compile, loadFusionConfig, loadModelTiers, FusionConfigError } = await import(pathToFileURL(core).href);
+      const { previewView } = await import(pathToFileURL(obs).href);
+
+      let spec = await loadTemplate(templateDir);
+      // Toggle each requested node ON, merging the chosen mode over any authored fusion params.
+      for (const [nodeId, mode] of Object.entries(overrides)) {
+        if (mode !== "moa" && mode !== "best-of-n") continue;
+        const current = spec.nodes.find((n: { label: string; fusion?: object }) => n.label === nodeId)?.fusion ?? {};
+        spec = withNodeFusion(spec, nodeId, { ...current, mode });
+      }
+      const fcfg = loadFusionConfig();
+      const defaults = { ...fcfg.defaults, panel: fcfg.defaults.panel ?? DEMO_PANEL };
+      try {
+        spec = expandFusion(spec, { defaults, tiers: loadModelTiers() });
+      } catch (e) {
+        if (e instanceof FusionConfigError) return sendJson(res, 422, { error: String((e as Error).message) });
+        throw e;
+      }
+      sendJson(res, 200, previewView(compile(spec), { run }));
+    } catch (e) {
+      sendJson(res, 500, { error: `preview build failed for "${run}" (${String(e)})` });
+    }
+  };
+  return {
+    name: "piflow-preview",
+    configureServer(server) { server.middlewares.use(handler); },
+    configurePreviewServer(server) { server.middlewares.use(handler); },
+  };
+}
+
+/**
+ * SAVE A FUSION EDIT INTO THE RUN — `POST /__piflow/save-run/<run>?overrides=<json>` BAKES the previewed
+ * fusion structure into THIS run (NOT the template): it re-compiles the same SDK chain `/preview` uses, then
+ * persists `.pi/workflow.json` (the new resolved stages+edges) + `.pi/run.json` so the run's PERMANENT shape
+ * becomes the edited one. The mental model is "everything you see is a run, so an edit restructures this run."
+ * It is non-destructive to results: a node id that already existed keeps its prior status/artifacts; only the
+ * NEW siblings+judge are `dry` (planned, not run). Returns the new view so the canvas updates immediately.
+ */
+function piflowSaveRun(): Plugin {
+  const DEMO_PANEL = ["fast", "balanced", "deep"];
+  const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    const m = req.url?.match(/^\/__piflow\/save-run\/([^/?]+)/);
+    if (!m) return next();
+    if ((req.method || "GET").toUpperCase() !== "POST") return sendJson(res, 405, { error: "use POST" });
+    const run = decodeURIComponent(m[1]);
+
+    const resolved = await resolveRunDir(run);
+    if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+    const templateDir = join(resolved.runDir, "..", "..", "template");
+    if (!existsSync(templateDir)) return sendJson(res, 404, { error: `no template for "${run}" at ${templateDir}` });
+
+    let overrides: Record<string, string> = {};
+    const raw = new URL(req.url!, "http://localhost").searchParams.get("overrides");
+    if (raw) { try { overrides = JSON.parse(raw); } catch { return sendJson(res, 400, { error: "overrides must be JSON" }); } }
+    if (!Object.keys(overrides).length) return sendJson(res, 400, { error: "no edits to save" });
+
+    const core = findUp("packages/core/dist/index.js");
+    const obs = findUp("packages/core/dist/observe/index.js");
+    if (!core || !obs) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
+    try {
+      const { loadTemplate, withNodeFusion, expandFusion, compile, loadFusionConfig, loadModelTiers, FusionConfigError } = await import(pathToFileURL(core).href);
+      const { previewView } = await import(pathToFileURL(obs).href);
+
+      let spec = await loadTemplate(templateDir);
+      for (const [nodeId, mode] of Object.entries(overrides)) {
+        if (mode !== "moa" && mode !== "best-of-n") continue;
+        const current = spec.nodes.find((n: { label: string; fusion?: object }) => n.label === nodeId)?.fusion ?? {};
+        spec = withNodeFusion(spec, nodeId, { ...current, mode });
+      }
+      const fcfg = loadFusionConfig();
+      const defaults = { ...fcfg.defaults, panel: fcfg.defaults.panel ?? DEMO_PANEL };
+      let wf;
+      try {
+        wf = compile(expandFusion(spec, { defaults, tiers: loadModelTiers() }));
+      } catch (e) {
+        if (e instanceof FusionConfigError) return sendJson(res, 422, { error: String((e as Error).message) });
+        throw e;
+      }
+
+      // Merge into the run's existing status: unchanged ids keep their record (real results survive); the
+      // brand-new siblings/judge are `dry`. workflow.json is rewritten to the new resolved DAG.
+      const piDir = join(resolved.runDir, ".pi");
+      let old: { nodes?: Record<string, { status?: string }>; [k: string]: unknown } = {};
+      try { old = JSON.parse(await readFile(join(piDir, "run.json"), "utf8")); } catch { /* fresh */ }
+      const oldNodes = (old.nodes ?? {}) as Record<string, Record<string, unknown>>;
+      const ts = new Date().toISOString();
+      const runJson = {
+        run: old.run ?? run, name: old.name ?? run, source: wf.meta.name,
+        profile: old.profile ?? null, provider: old.provider, model: old.model ?? null,
+        startedAt: old.startedAt ?? ts, updatedAt: ts,
+        done: true, ok: old.ok ?? null, durationMs: old.durationMs ?? null, stage: null, totals: old.totals ?? null,
+        nodes: Object.fromEntries(Object.values(wf.nodes as Record<string, { id: string; label: string; agentType?: string }>).map((n) => {
+          const prev = oldNodes[n.id];
+          const brand = { id: n.id, label: n.label, ...(n.agentType ? { agentType: n.agentType } : {}) };
+          return [n.id, prev ? { ...prev, ...brand } : { ...brand, status: "dry", artifacts: [], issues: [] }];
+        })),
+      };
+      await writeFile(join(piDir, "workflow.json"), JSON.stringify({ meta: wf.meta, profile: runJson.profile, stages: wf.stages, edges: wf.edges }, null, 2) + "\n");
+      await writeFile(join(piDir, "run.json"), JSON.stringify(runJson, null, 2) + "\n");
+      sendJson(res, 200, previewView(wf, { run }));
+    } catch (e) {
+      sendJson(res, 500, { error: `save-run failed for "${run}" (${String(e)})` });
+    }
+  };
+  return {
+    name: "piflow-save-run",
     configureServer(server) { server.middlewares.use(handler); },
     configurePreviewServer(server) { server.middlewares.use(handler); },
   };
@@ -424,6 +570,6 @@ function piflowAgents(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), piflowGlobalIndex(), piflowRunStream(), piflowRunView(), piflowFile(), piflowTree(), piflowCheckpointReply(), piflowAgents()],
+  plugins: [react(), piflowGlobalIndex(), piflowRunStream(), piflowRunView(), piflowPreview(), piflowSaveRun(), piflowFile(), piflowTree(), piflowCheckpointReply(), piflowAgents()],
   server: { port: 5173, host: true },
 });

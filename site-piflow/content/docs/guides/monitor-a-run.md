@@ -8,7 +8,7 @@ order: 3
 draft: true
 ---
 
-> Draft — expand with the `piflow logs` CLI (`-f` follow · `--summary` · `--node` · `--raw`) and the
+> Draft — expand with the `piflowctl logs` CLI (`-f` follow · `--summary` · `--node` · `--raw`) and the
 > failure signatures from `reference/observability.md`.
 
 All three surfaces read the same [observe stream](/docs/concepts/observe): the GUI, the TUI, and the

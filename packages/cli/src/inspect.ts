@@ -1,4 +1,4 @@
-// `piflow inspect <templateDir> [nodeId] [--full]` — the per-node RESOLVED view.
+// `piflowctl inspect <templateDir> [nodeId] [--full]` — the per-node RESOLVED view.
 //
 // Compiles the authored template (`loadTemplate` → `compile`, the same path the runner takes) and prints,
 // for one node (or every node if the id is omitted), exactly what that node WILL run with: its compiled
@@ -128,7 +128,7 @@ export function renderNodeInspect(node: NodeSpec, registry: DefaultToolRegistry,
 export async function inspectTemplate(parsed: ParsedInspectArgs, deps: InspectDeps = {}): Promise<string> {
   const loadTemplate = deps.loadTemplate ?? coreLoadTemplate;
   const { templateDir } = parsed;
-  if (!templateDir) throw new Error('piflow inspect: a template directory is required (piflow inspect <templateDir> [nodeId]).');
+  if (!templateDir) throw new Error('piflowctl inspect: a template directory is required (piflowctl inspect <templateDir> [nodeId]).');
 
   const spec = await loadTemplate(templateDir);
   const wf = compile(spec);
@@ -144,7 +144,7 @@ export async function inspectTemplate(parsed: ParsedInspectArgs, deps: InspectDe
   if (parsed.nodeId) {
     if (!wf.nodes[parsed.nodeId]) {
       throw new Error(
-        `piflow inspect: no node "${parsed.nodeId}" in this template. Valid ids: ${validIds.join(', ')}`,
+        `piflowctl inspect: no node "${parsed.nodeId}" in this template. Valid ids: ${validIds.join(', ')}`,
       );
     }
     ids = [parsed.nodeId];
@@ -159,11 +159,11 @@ export async function inspectTemplate(parsed: ParsedInspectArgs, deps: InspectDe
   return blocks.join('\n\n');
 }
 
-/** `piflow inspect <templateDir> [nodeId] [--full]` — the bin body. */
+/** `piflowctl inspect <templateDir> [nodeId] [--full]` — the bin body. */
 export async function runInspectCli(argv: string[]): Promise<void> {
   const parsed = parseInspectArgs(argv);
   if (!parsed.templateDir) {
-    process.stderr.write('piflow inspect: a template directory is required (piflow inspect <templateDir> [nodeId])\n');
+    process.stderr.write('piflowctl inspect: a template directory is required (piflowctl inspect <templateDir> [nodeId])\n');
     process.exitCode = 1;
     return;
   }

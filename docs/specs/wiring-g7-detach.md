@@ -21,12 +21,12 @@ detached run from a *running* one. Everything else (durable completion fact + a 
 - **Completion is already a durable, pollable fact.** `runWorkflow` writes `.pi/run.json` atomically
   (temp+rename, `runner/status.ts:134-153`) with terminal `{done:true, ok:boolean}` set once at the end
   (`runner.ts:1593-1600`). `watchRun` (`observe/watch.ts:62`) is an async iterable polling that file at
-  700ms and emits a `{kind:'done'}` delta (`:121-124`). Surfaced three ways: CLI `piflow watch`
-  (`cli/watch.ts:60`; `--notify` is a **no-op stub** `:46-52`), CLI `piflow status`, and the GUI SSE
+  700ms and emits a `{kind:'done'}` delta (`:121-124`). Surfaced three ways: CLI `piflowctl watch`
+  (`cli/watch.ts:60`; `--notify` is a **no-op stub** `:46-52`), CLI `piflowctl status`, and the GUI SSE
   bridge `GET /__piflow/stream/<run>` (`gui/vite.config.ts:90-156`, breaks on `done` at `:141`).
 - **No liveness/heartbeat, no PID file.** "Is it finished?" = `run.json.done`. "Is it still alive?" has
   **no positive signal** — a crashed controller leaves `done:false` forever. (`run.json.updatedAt`
-  advances on every `writeStatus`, `status.ts:135` — the cheap heartbeat candidate.) `piflow watch`
+  advances on every `writeStatus`, `status.ts:135` — the cheap heartbeat candidate.) `piflowctl watch`
   already *parses* a `--dead-stall` flag but leaves it inert (`watch.ts:106`).
 - **Stable run handle — YES** (the `fix/canonical-run-location` work). Every run has a canonical home
   `.piflow/<wf>/runs/<id>/` with an auto-minted name (`run.ts:231-253`); `--out` is ignored for a
@@ -52,7 +52,7 @@ lifecycle piflow deliberately replaced (doc §4).
 ## Options
 
 - **A — Status quo, formalized: lean on Claude Code `Bash run_in_background` + poll.** The console *is*
-  Claude Code; it already backgrounds `piflow run` and the harness re-invokes on completion;
+  Claude Code; it already backgrounds `piflowctl run` and the harness re-invokes on completion;
   `run.json.done` is the durable truth either way. *Pro:* zero core change. *Con:* a bare-terminal human
   still blocks; no first-class "this run is unattended" marker, so a checkpoint node parks forever unless
   the caller remembers `checkpointReply:'default'` — which the CLI can't pass today.
@@ -78,8 +78,8 @@ without it and add it only if a bare-terminal human workflow demands it.
    line is the most important part.*
 2. Detach mechanics (when `--detach`): `spawn` a re-exec of the argv minus `--detach`, `detached:true`,
    `stdio:['ignore', fd, fd]` → `<canonicalHome>/.pi/console.log` (run dir resolved at `run.ts:253`
-   *before* launch), `.unref()`, print `{runId, runDir, "poll: piflow watch <runDir>"}`, return.
-3. Wire the inert `piflow watch --notify` (`watch.ts:46-52`) to a real `osascript`/`notify-send`.
+   *before* launch), `.unref()`, print `{runId, runDir, "poll: piflowctl watch <runDir>"}`, return.
+3. Wire the inert `piflowctl watch --notify` (`watch.ts:46-52`) to a real `osascript`/`notify-send`.
 4. **(prerequisite for trustworthy monitoring)** expose `run.json.updatedAt` on the `RunModel`/`RunUpdate`
    so the existing-but-inert `--dead-stall` flag can declare a dead-stall when `updatedAt` stops advancing.
 

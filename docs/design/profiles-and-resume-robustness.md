@@ -21,7 +21,7 @@ game-omni's DAG wires verify nodes INTO the dependency chain as gates:
 after windowing verify nodes out by hand (`--until w4-execute-m1`), a `--from w4-execute-m2` resume blocked:
 the preflight (`runner.ts` ~877–917) stats EVERY earlier stage's artifacts, found `verify-2-m1`'s report
 missing, and **returned `ok:false` while printing nothing** (empty log, exit 0). The only signal was a
-separate `piflow status` showing `__resume__ blocked`.
+separate `piflowctl status` showing `__resume__ blocked`.
 
 ## The three changes
 
@@ -64,8 +64,8 @@ own modes the same way; the SDK reads the named profile's generic filter.
   select them. (This supersedes the existing "Companion Mode" `.js` `if(!COMPANION)` section — same concept,
   now template DATA + a generic SDK primitive.)
 - **piflow-start**: run with `--profile <name>` (values resolve from the template, never a memorized flag) +
-  the standing discipline rule: **use `piflow status`/`logs`/`watch`/`inspect` for monitoring/debugging; never
-  hand-parse `run.json` with `node -e`** (a custom one-off that HID this very block — `piflow status` surfaced
+  the standing discipline rule: **use `piflowctl status`/`logs`/`watch`/`inspect` for monitoring/debugging; never
+  hand-parse `run.json` with `node -e`** (a custom one-off that HID this very block — `piflowctl status` surfaced
   it instantly).
 
 ## Proof (Phase 5, TODO)

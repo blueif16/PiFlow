@@ -1,7 +1,7 @@
 // JSON Schema (draft 2020-12) for the GENERATED `workflow.json` lock (template-format.md §5).
 // This file is NEVER hand-authored — the compile step (re)writes it from meta.json + every node.json
 // (the package.json ⟷ package-lock.json analogy). The schema pins the generated lock SHAPE so the
-// compile step's output (and a `piflow check` staleness gate) has an oracle:
+// compile step's output (and a `piflowctl check` staleness gate) has an oracle:
 //   { id, meta:{name,description}, stages: string[][], nodes: { <id>: { phase, deps } } }
 
 /** The draft-2020-12 JSON Schema object for the generated `workflow.json`. Frozen; import to validate. */

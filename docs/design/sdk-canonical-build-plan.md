@@ -44,7 +44,7 @@
   vocabulary is game-domain — it does NOT go into core); seed-staging consolidates into ONE core executor.
 - **D5 — `runFromConfig` is env-agnostic; the CLI owns the convention.** Core ships
   `runFromConfig(resolvedConfig)` (a plain object — no env parsing) so a library consumer passes an object;
-  `loadConfig` + the `PI_RUNNER_*` names live in core's CLI layer behind a `piflow run [--dry-run]`
+  `loadConfig` + the `PI_RUNNER_*` names live in core's CLI layer behind a `piflowctl run [--dry-run]`
   subcommand. `returnProtocol` generalizes (any pi node needs the write-then-fence handshake) → a default
   `RunOptions.returnProtocol`. **The bridge stays consumer-injected** (it is workflow-dialect-specific):
   `runFromConfig` takes a `workflowSpec`/`buildWorkflowSpec`, it does NOT own the bridge.
@@ -113,7 +113,7 @@
 | **U5** | `extractWorkflow` → core (D4-A) | `src/workflow/extract.ts`, `index.ts` | new, vs a fixture workflow | S |
 | **U6** | RunState spine: `HookContext.{workspace,projectBase}` logical roots + RunState load/merge/persist + `makeHookCodec`/`DRIVER_FAMILIES` (+`promote`) + `extractSpec` (D4-B, **D6**) | `types.ts`, `src/hooks/index.ts`, `src/workflow/{codec,bridge}.ts` | `test/contract.test.ts`, `test/dag.test.ts`, `test/hooks.test.ts` | M |
 | **U7** | Op executors + the `${state.*}`/`${WORKSPACE}`/`${RUN}` resolver + `promote` POST-op + `assetConventions` (retires the `BASE_ROOT→wtRoot` regex + RUN_CWD-relative `{file:field}`) (D4-C, **D6**) | `src/workflow/ops/*` | port game-omni `hooks/test/*` | L |
-| **U8** | `runFromConfig` + `loadConfig` + `piflow run [--dry-run]` + `RunOptions.returnProtocol` (D5) | `src/runner/{entry,config}.ts`, `src/cli.ts`, `runner.ts` | `test/runner.test.ts` | M |
+| **U8** | `runFromConfig` + `loadConfig` + `piflowctl run [--dry-run]` + `RunOptions.returnProtocol` (D5) | `src/runner/{entry,config}.ts`, `src/cli.ts`, `runner.ts` | `test/runner.test.ts` | M |
 
 Sequence: U1 first (unblocks the clean U2/U4 by killing the hacks); U2/U3/U5 are independent; U4 depends on
 U3; U6 depends on U5; U7 depends on U6; U8 composes the rest. U7 is the only L — split further if needed.

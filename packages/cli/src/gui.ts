@@ -1,4 +1,4 @@
-// `piflow gui` — launch the run viewer (the monorepo `gui/` Vite app) from ANYWHERE on PATH.
+// `piflowctl gui` — launch the run viewer (the monorepo `gui/` Vite app) from ANYWHERE on PATH.
 //
 // Flow: (1) locate `gui/` relative to this CLI (so a globally-linked `piflow` still finds it), (2) refresh
 // the global index in ~/.piflow, REGISTERING the product the command was launched from — so a run in THIS
@@ -56,7 +56,7 @@ function run(cmd: string, args: string[], cwd: string): Promise<number> {
   return new Promise((resolve) => {
     const child = spawn(cmd, args, { cwd, stdio: 'inherit' });
     child.on('close', (code) => resolve(code ?? 0));
-    child.on('error', (e) => { process.stderr.write(`piflow gui: failed to spawn ${cmd} (${String(e)})\n`); resolve(1); });
+    child.on('error', (e) => { process.stderr.write(`piflowctl gui: failed to spawn ${cmd} (${String(e)})\n`); resolve(1); });
   });
 }
 
@@ -72,12 +72,12 @@ export async function runGuiCli(argv: string[]): Promise<void> {
 
   const guiDir = findGuiDir();
   if (!guiDir) {
-    process.stderr.write('piflow gui: could not locate the gui/ app (expected inside the piflow monorepo).\n');
+    process.stderr.write('piflowctl gui: could not locate the gui/ app (expected inside the piflow monorepo).\n');
     process.exitCode = 1;
     return;
   }
   if (!existsSync(path.join(guiDir, 'node_modules', 'vite'))) {
-    process.stderr.write(`piflow gui: gui deps not installed — run:  ( cd ${guiDir} && npm install )\n`);
+    process.stderr.write(`piflowctl gui: gui deps not installed — run:  ( cd ${guiDir} && npm install )\n`);
     process.exitCode = 1;
     return;
   }
@@ -87,19 +87,19 @@ export async function runGuiCli(argv: string[]): Promise<void> {
   const indexArgs = [path.join(guiDir, 'scripts', 'build-index.mjs')];
   if (productRoot) {
     indexArgs.push('--root', productRoot);
-    process.stdout.write(`piflow gui: indexing product → ${productRoot}\n`);
+    process.stdout.write(`piflowctl gui: indexing product → ${productRoot}\n`);
   } else {
-    process.stdout.write('piflow gui: no product at cwd — serving the global index (all registered products).\n');
+    process.stdout.write('piflowctl gui: no product at cwd — serving the global index (all registered products).\n');
   }
   const idxCode = await run('node', indexArgs, guiDir);
   if (idxCode !== 0) {
-    process.stderr.write('piflow gui: the index build reported a problem — continuing (the GUI shows whatever indexed).\n');
+    process.stderr.write('piflowctl gui: the index build reported a problem — continuing (the GUI shows whatever indexed).\n');
   }
 
   // 2) start the viewer (Vite dev server: serves /__piflow/index|products.json + /__piflow/stream/<run>).
   const devArgs = ['run', 'dev', '--'];
   if (port) devArgs.push('--port', port);
   if (open) devArgs.push('--open');
-  process.stdout.write('piflow gui: starting the viewer…  (Ctrl-C to stop)\n');
+  process.stdout.write('piflowctl gui: starting the viewer…  (Ctrl-C to stop)\n');
   await run('npm', devArgs, guiDir);
 }

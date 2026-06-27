@@ -113,7 +113,7 @@ it**. Severity = impact on our "fleet of efficient models" thesis.
 > **Done (2026-06-25):** `runner/model-routing.ts` is the single home of model/provider precedence
 > (`node.model > node.tier > run --model > provider default`). The template carries per-node
 > `model`/`provider`/`tier` (`template/types.ts` + `node.schema.ts` + `loader.ts`); the runner resolves each
-> node's effective model and populates `CommandContext.model` **per node** (not run-wide); `piflow run
+> node's effective model and populates `CommandContext.model` **per node** (not run-wide); `piflowctl run
 > --dry-run` prints each node's effective model/provider. Folds into G4's envelope hash. Commits
 > `5243633`/`9c64f0c`/`1abcd34`/`6acf030`.
 
@@ -268,16 +268,16 @@ overridable, and branded.
 > **Done (2026-06-25):** `cli/run.ts` `--detach` (alias `--unattended`) threads the shipped (G5)
 > `RunOptions.checkpointReply:'default'` so a backgrounded run takes each checkpoint's declared default
 > instead of parking forever — the load-bearing gap (the CLI never threaded the field). Prints the run dir
-> + a `piflow watch` monitor hint. +3 tests (mutation-checked). Design: `wiring-g7-detach.md`.
+> + a `piflowctl watch` monitor hint. +3 tests (mutation-checked). Design: `wiring-g7-detach.md`.
 >
 > **Deferred (v2):** the self-fork/disown (redundant with the harness/`&` per the research — `--detach`
-> currently runs unattended in the foreground; background it with `&`), wiring the inert `piflow watch
+> currently runs unattended in the foreground; background it with `&`), wiring the inert `piflowctl watch
 > --notify`, and exposing `run.json.updatedAt` for `--dead-stall` (crashed-run liveness).
 
 **PDW.** Background by default: the turn ends immediately, a live panel tracks runs, and each result is
 delivered back so the conversation auto-continues.
 
-**piflow.** `piflow run` is **foreground-only** (`packages/cli/src/run.ts:278-296`); backgrounding is
+**piflow.** `piflowctl run` is **foreground-only** (`packages/cli/src/run.ts:278-296`); backgrounding is
 left to the shell; the GUI Companion's talk-back is a commented-out stub
 (`gui/src/components/Companion.tsx:55`). The `watchRun` SSE/poll stream exists (read-only).
 

@@ -500,6 +500,13 @@ export interface Hook {
 /** Options to stand up a sandbox for one node run. */
 export interface CreateOpts {
   readScope: string[];
+  /**
+   * Declared WRITE roots (= the node's `owns`/`contract.owns`). On darwin the same `enforceReadScope`
+   * posture that bounds reads bounds writes to {workdir, writeScope, toolchain scratch}; a write outside
+   * EPERMs (kernel-enforced, inherited by every child). Omitted/empty ⇒ writes confined to the workdir +
+   * toolchain scratch only. `enforceReadScope:false` (danger-full-access) disables BOTH read and write jails.
+   */
+  writeScope?: string[];
   outputDir: string;
   workdir: string;
   image?: string;

@@ -1,0 +1,16 @@
+{
+  "id": "plan",
+  "phase": "plan",
+  "deps": [],
+  "agentType": "general-purpose",
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "contract": {
+    "artifacts": ["plan/outline.md"],
+    "owns": ["plan/**"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "checks": { "post": [{ "kind": "non-empty", "path": "plan/outline.md" }] },
+  "policy": { "fail": "block" }
+}

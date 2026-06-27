@@ -17,6 +17,7 @@ import path from 'node:path';
 import { createNodeAccumulator } from './distill.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
+import type { Workflow } from '../types.js';
 
 export type ScopeKind = 'run' | 'skill' | 'template' | 'package' | 'repo';
 export interface ScopeBucket { kind: ScopeKind; label: string; count: number; paths: string[] }
@@ -61,6 +62,12 @@ export interface RunViewNode {
   truncated: boolean;
   /** total `thinking_delta` characters for this node. */
   thinkingChars: number;
+  /** assistant completions in this node — how many times the model was invoked (loop signal). */
+  modelCalls: number;
+  /** most times one tool ran with identical args (≥3 ⇒ probable tool loop); 0 = no tool calls. */
+  maxToolRepeat: number;
+  /** the tool behind `maxToolRepeat` (null when none). */
+  repeatedTool: string | null;
   summary?: string;
   issues?: string[];
   stageIndex?: number;
@@ -282,6 +289,7 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       toolCalls: rich.toolCalls, toolBreakdown: rich.toolBreakdown, timeline: rich.timeline,
       reads, scopes, writes, artifacts, bash: rich.bash, tokens: { ...rich.tokens },
       retries: rich.retries, stopReason: rich.stopReason, truncated: rich.truncated, thinkingChars: rich.thinkingChars,
+      modelCalls: rich.modelCalls, maxToolRepeat: rich.maxToolRepeat, repeatedTool: rich.repeatedTool,
       summary: rec.summary, issues: rec.issues || [],
       ...(checkpoint ? { checkpoint } : {}),
     });
@@ -406,4 +414,85 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
     stages, edges, nodes,
   };
   return { view, audit };
+}
+
+/** Synthetic-view options: the run id/provider/model to STAMP on the preview (defaults to the wf name). */
+export interface PreviewViewOpts { run?: string; provider?: string; model?: string | null }
+
+/**
+ * Project a COMPILED `Workflow` into the run-view contract WITHOUT a run on disk — the static twin of
+ * `buildRunView` (which distills a real `.pi/` tree). Pure + telemetry-free: every node is `pending`, no
+ * tokens/timeline/artifacts. Its reason to exist is the fusion/structure PREVIEW: a surface compiles the
+ * SAME spec the run-path would (`expandFusion(spec) → compile`) and renders the EXACT resulting DAG through
+ * the ONE `{stages, edges, nodes}` contract + the SAME `toFlowGraph` placement (stageIndex = column, lane =
+ * row) — so no view re-derives the siblings+judge structure on its own. Node `model` falls back to the tier
+ * alias so a tier-routed sibling still labels (the runner resolves tier→model later).
+ */
+export function previewView(wf: Workflow, opts: PreviewViewOpts = {}): RunView {
+  // Placement: stage column (1-based, gap-free) + the node's lane within its parallel stage — the SAME
+  // coordinates `toFlowGraph` lays out by, so the preview positions exactly as a real run-view.
+  const place = new Map<string, { stageIndex: number; lane: number }>();
+  const stages: RunViewStage[] = wf.stages
+    .filter((st) => st.nodeIds.length > 0)
+    .map((st, i) => {
+      const index = i + 1;
+      st.nodeIds.forEach((id, lane) => place.set(id, { stageIndex: index, lane }));
+      return { index, phase: st.phase ?? '—', parallel: !!st.parallel, nodeIds: [...st.nodeIds] };
+    });
+
+  // One RunViewEdge per produced file (the GUI collapses same-pair edges); self-edges dropped, like buildRunView.
+  const edges: RunViewEdge[] = [];
+  const seen = new Set<string>();
+  for (const e of wf.edges) {
+    if (e.from === e.to) continue;
+    const files = e.files && e.files.length ? e.files : [''];
+    for (const f of files) {
+      const key = `${e.from}|${e.to}|${f}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({ from: e.from, to: e.to, path: f });
+    }
+  }
+
+  const nodes: RunViewNode[] = Object.values(wf.nodes).map((n) => {
+    const p = place.get(n.id);
+    return {
+      id: n.id,
+      label: n.label ?? n.id,
+      phase: n.phase ?? null,
+      ...(n.agentType ? { agentType: n.agentType } : {}),
+      status: 'pending', // a preview never ran ⇒ no live status, no telemetry
+      model: n.model ?? n.tier ?? null, // tier alias labels until the runner resolves tier→model
+      provider: n.provider ?? null,
+      toolCalls: 0,
+      toolBreakdown: {},
+      timeline: [],
+      reads: [],
+      scopes: [],
+      writes: [],
+      artifacts: [],
+      bash: [],
+      retries: 0,
+      stopReason: null,
+      truncated: false,
+      thinkingChars: 0,
+      modelCalls: 0,
+      maxToolRepeat: 0,
+      repeatedTool: null,
+      ...(p ? { stageIndex: p.stageIndex, lane: p.lane } : {}),
+    };
+  });
+
+  return {
+    run: opts.run ?? wf.meta.name,
+    source: wf.meta.name,
+    ...(opts.provider ? { provider: opts.provider } : {}),
+    model: opts.model ?? null,
+    done: false,
+    ok: null,
+    totals: { nodes: nodes.length, ok: 0, failed: 0 },
+    stages,
+    edges,
+    nodes,
+  };
 }

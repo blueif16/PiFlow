@@ -87,6 +87,6 @@ Precedence (spec §2): `node.fusion.<param>` › `~/.piflow/fusion.json` › bui
 
 Implemented end-to-end: the `fusion` template block (schema + loader), `expandFusion` (both modes,
 obligations, tier-classification), the preset agents, the `~/.piflow/fusion.json` reader, and the **run-path
-wiring** — a live run (`runFromConfig`/`runFromTemplate`) and `piflow run … --dry-run` both honor fusion
+wiring** — a live run (`runFromConfig`/`runFromTemplate`) and `piflowctl run … --dry-run` both honor fusion
 (expand AFTER profile, BEFORE compile). Exercised by `fusion-expand` / `fusion-config` / `entry` tests.
 Optional, deferred: per-participant objective-failure fallback (`T2.5`).

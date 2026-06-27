@@ -49,3 +49,15 @@ export type McpServerConfig =
 export interface BridgeConfig {
   servers: Record<string, McpServerConfig>;
 }
+
+/**
+ * One row of an MCP server's `tools/list` result, as `listServerTools` maps it. Mirrors core's
+ * `McpToolListing` (tools/ingest.ts) field-for-field — DUPLICATED on purpose so the bridge stays
+ * product-agnostic and NEVER imports core (core depends on the bridge, not the reverse).
+ */
+export interface McpToolListing {
+  name: string;
+  description?: string;
+  /** JSON Schema (MCP standard `inputSchema`) — passed through verbatim. */
+  inputSchema?: unknown;
+}

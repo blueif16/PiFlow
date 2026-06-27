@@ -14,9 +14,15 @@
 // `readRunModel` snapshot, whose missing telemetry the view null-guards. The live running-node tail
 // (text · tools · thinking) is still folded from the streamed `node-event` PiEvents, never by re-reading
 // `.pi/` files.
-import { readRunModel, watchRun } from '@piflow/core';
+import { readRunModel, watchRun, loadRegistry, buildSnapshot } from '@piflow/core';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import nodePath from 'node:path';
+
+// `summarizeRun` is RE-HOMED in `@piflow/core/observe` (the ONE shared thread-row builder the CLI, the TUI,
+// and the GUI all render) — the TUI no longer keeps a divergent copy that drifted from it. Re-exported so
+// the single-run `discoverNamespaces` below (and any importer) keeps the same name.
+export { summarizeRun } from '@piflow/core';
+import { summarizeRun } from '@piflow/core';
 
 // ── rich run-view loader — the SAME builder the GUI dynamic-imports ───────────────────────────────────
 // `buildRunView` lives in `@piflow/core/observe` but that subpath is NOT in the package's `exports` map,
@@ -312,36 +318,8 @@ export function subscribeRun({ runDir, run, onModel, onTail, pollMs } = {}) {
 // ── single-run "discovery": a run dir is one namespace with one thread ───────────────────────────────
 // A `piflow-tui <rundir>` monitors ONE run. We keep the namespace→thread→detail SHAPE the view layer
 // expects (so components.mjs is unchanged) by projecting the single run dir into a one-namespace /
-// one-thread list — summarized from the SHARED reader (readRunModel), no bespoke `.pi/` read.
-const TERMINAL_OK = new Set(['ok', 'reused', 'gap', 'dry']);
-
-/** Summarize a run dir into the thread row the view layer iterates. Async (reads via the shared model). */
-export async function summarizeRun(runDir) {
-  let m;
-  try { m = await readRunModel(runDir); }
-  catch { return null; }
-  const nodes = m.nodes;
-  const nodesDone = nodes.filter((n) => TERMINAL_OK.has(n.status)).length;
-  const running = nodes.find((n) => n.status === 'running');
-  const errored = nodes.find((n) => n.status === 'error' || n.status === 'blocked');
-  // Real run-level token/cost rollup from the rich view (same source the node rows use); 0 if unavailable.
-  const view = await tryRichView(runDir);
-  const tt = view?.tokenTotal || {};
-  return {
-    run: m.run, runDir, statusPath: runDir,
-    state: m.done ? (m.ok === false ? 'failed' : 'done') : 'running',
-    done: !!m.done, ok: m.ok ?? null,
-    stageIndex: m.stage?.index ?? null, stageTotal: m.stage?.total ?? null, phase: null,
-    runningNode: running?.id || null, runningTool: null, runningStalled: false,
-    nodesDone, nodesTotal: nodes.length,
-    frac: m.done ? 1 : (nodes.length ? nodesDone / nodes.length : 0),
-    elapsedMs: m.durationMs ?? null,
-    tokensBillable: tt.billable || 0, cost: tt.cost || 0,
-    provider: m.provider || null, model: m.model || null,
-    updatedAt: null, staleMs: null,
-    errorNode: errored?.id || null,
-  };
-}
+// one-thread list — summarized via the SHARED `summarizeRun` (re-homed in @piflow/core/observe), no
+// bespoke `.pi/` read and no divergent row builder.
 
 /** Project the single run dir → the one-namespace list the view layer iterates. Async (shared reader). */
 export async function discoverNamespaces({ runDir } = {}) {
@@ -354,6 +332,34 @@ export async function discoverNamespaces({ runDir } = {}) {
     runDir: resolveDir(runDir),
     threads: [sum],
   }];
+}
+
+// ── fleet discovery: the SAME registered repos the GUI shows, mapped to the App's namespace list ──────
+// With NO `<rundir>`, the TUI monitors the whole FLEET. `buildSnapshot(loadRegistry())` (the ONE fleet
+// builder the GUI also consumes) returns products → namespaces(workflows) → threads(ThreadRow). We FLATTEN
+// every product's namespaces into one flat list in the EXACT shape `components.mjs`'s App iterates —
+// `{ name, dir, runDir, threads:[ThreadRow] }` — keeping every namespace and every thread. Each thread is a
+// shared ThreadRow that already carries its OWN absolute `runDir`, so drilling in opens THAT run via the
+// existing buildModel/subscribeRun path (which read `thread.runDir`, not the namespace's). The namespace
+// `dir`/`runDir` (used by the App only for the export path + the file-overlay base) is the product `root`.
+export async function discoverFleet() {
+  let snapshot;
+  try { snapshot = await buildSnapshot(loadRegistry()); }
+  catch { return []; }
+  const out = [];
+  for (const product of snapshot.products || []) {
+    for (const ns of product.namespaces || []) {
+      // Disambiguate same-named namespaces across products in the picker (e.g. two repos with `unfiled`).
+      const multi = (snapshot.products || []).length > 1;
+      out.push({
+        name: multi ? `${product.name}/${ns.name}` : ns.name,
+        dir: product.root,
+        runDir: product.root,
+        threads: ns.threads || [],
+      });
+    }
+  }
+  return out;
 }
 
 // path helpers kept local (no node:path import gymnastics; the run dir is already absolute from pi-tui).

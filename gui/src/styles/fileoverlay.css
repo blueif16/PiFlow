@@ -1,0 +1,172 @@
+/* ============================================================================
+   File overlay — the standalone "clicked-a-file" view, laid out over the global
+   scrim (same backdrop as the node pane). A left rail (explorer on top, provenance
+   directly beneath it) and the file content filling the entire right area, rendered
+   BARE on the frost (no card) via the shared FileView. Depends on tokens.css +
+   reuses hud.css's bare file-reader classes (.ds-codeblock / .ds-fileimg).
+
+   The rail is TOP-PACKED and reserves its lower-left corner: the bottom-left of the
+   page is owned by the React Flow zoom Controls and the ModeBar "game-key" hotkey
+   cluster (.ds-modebar-layer, z 1200 — ABOVE this overlay), so the rail must never
+   place content down there or it slides behind the hotkeys.
+   ========================================================================== */
+
+/* full-screen layer ABOVE the scrim. pointer-events:none so empty space falls
+   through to the scrim (click = close); the rail + doc re-enable their own. */
+.ds-fileov {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-overlay);
+  display: grid;
+  grid-template-columns: minmax(280px, 30vw) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: clamp(12px, 1.8vw, 26px);
+  padding: clamp(12px, 1.8vh, 22px);
+  pointer-events: none;
+}
+
+/* LEFT RAIL — TOP-PACKED (explorer, then provenance directly beneath it). The lower-left is
+   RESERVED via padding-bottom so nothing renders behind the bottom-left ModeBar hotkeys / zoom
+   Controls (both sit above this overlay). */
+.ds-fileov__rail {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  min-height: 0;
+  min-width: 0;
+  gap: var(--ds-space-4);
+  padding-bottom: clamp(56px, 8vh, 84px);   /* clear the bottom-left ModeBar + zoom Controls */
+}
+
+/* the embedded navigator: fill the rail width, let its own columns scroll inside
+   (the floating canvas one is width:max-content; here it's bounded to the rail). */
+.ds-fileov__explorer {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 58%;
+  pointer-events: auto;
+  display: flex;
+}
+.ds-fileov__explorer .ds-dir {
+  width: 100%;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* PROVENANCE — directly UNDER the explorer, FLOATING: two columns (produced · used) of node-shaped
+   cards. No full-width rule welding it to an edge; the cards float as their own objects. Top-packed
+   with the explorer so it stays clear of the reserved bottom-left hotkey zone. */
+.ds-prov {
+  flex: 0 1 auto;
+  min-height: 0;
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ds-space-2) var(--ds-space-4);
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.ds-prov::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.ds-prov__col { display: flex; flex-direction: column; gap: var(--ds-space-2); min-width: 0; align-items: flex-start; }
+.ds-prov__label {
+  display: inline-flex; align-items: center; gap: var(--ds-space-2);
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs);
+  text-transform: uppercase; letter-spacing: var(--ds-tracking-label); color: var(--ds-text-tertiary);
+}
+.ds-prov__count {
+  padding: 0 5px; font-variant-numeric: tabular-nums; color: var(--ds-text-secondary);
+  border: 1px solid var(--ds-border-hairline);   /* small angular count tag (no pill) */
+}
+.ds-prov__none { font-family: var(--ds-font-mono); font-size: 11px; color: var(--ds-text-tertiary); font-style: italic; }
+
+/* a node-shaped reference card — echoes .ds-node: right angles, beveled top-end, status border,
+   hover corner-brackets. Sized to its content (no long full-width rows). Click → opens that node's HUD. */
+.ds-provnode {
+  position: relative;
+  max-width: 100%;
+  display: inline-flex; align-items: center; gap: var(--ds-space-2);
+  padding: 6px var(--ds-space-2);
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: 0;                                /* right angles, like the canvas node */
+  background: var(--ds-bg-surface);
+  box-shadow: var(--ds-shadow-xs);
+  cursor: pointer;
+  font-family: var(--ds-font-sans); font-size: var(--ds-text-sm); color: var(--ds-text-primary);
+  transition: border-color 0.16s var(--ds-ease-standard), box-shadow 0.16s var(--ds-ease-standard), transform 0.16s var(--ds-ease-standard);
+}
+@supports (corner-shape: bevel) {
+  .ds-provnode { border-start-end-radius: var(--ds-bevel); corner-shape: bevel; }
+}
+/* corner brackets — the node's targeting cue, revealed on hover / focus */
+.ds-provnode::before, .ds-provnode::after {
+  content: ""; position: absolute; width: 7px; height: 7px;
+  border: 1.5px solid var(--ds-accent); opacity: 0; pointer-events: none;
+  transition: opacity 0.16s var(--ds-ease-standard);
+}
+.ds-provnode::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.ds-provnode::after  { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+.ds-provnode:hover::before, .ds-provnode:hover::after,
+.ds-provnode:focus-visible::before, .ds-provnode:focus-visible::after { opacity: 1; }
+.ds-provnode:hover { transform: translateY(-1px); border-color: var(--ds-accent); box-shadow: var(--ds-shadow-sm); }
+.ds-provnode:focus-visible { outline: none; border-color: var(--ds-border-focus); box-shadow: var(--ds-shadow-sm); }
+/* status = border tint (the same mapping as the canvas node) */
+.ds-provnode[data-status="running"], .ds-provnode[data-status="selected"] { border-color: var(--ds-accent); }
+.ds-provnode[data-status="success"] { border-color: var(--ds-success); }
+.ds-provnode[data-status="error"]   { border-color: var(--ds-error); }
+.ds-provnode[data-status="success"]::before, .ds-provnode[data-status="success"]::after { border-color: var(--ds-success); }
+.ds-provnode[data-status="error"]::before,   .ds-provnode[data-status="error"]::after   { border-color: var(--ds-error); }
+.ds-provnode__icon { display: inline-flex; flex: 0 0 auto; }
+.ds-provnode__title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* FILE — the entire right area. Bare on the frost; only a hairline header + the content. */
+.ds-fileov__doc {
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.ds-fileov__head {
+  display: flex; align-items: center; gap: var(--ds-space-3);
+  padding: 0 var(--ds-space-2) var(--ds-space-2);
+  margin-bottom: var(--ds-space-3);
+  border-bottom: 1px solid var(--ds-border-hairline);
+}
+.ds-fileov__path {
+  min-width: 0; flex: 1 1 auto;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left;
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-sm); color: var(--ds-text-accent);
+}
+.ds-fileov__close {
+  flex: 0 0 auto; display: inline-flex; padding: 4px;
+  border: none; border-radius: var(--ds-radius-sm); background: transparent; cursor: pointer;
+  color: var(--ds-text-tertiary);
+  transition: color 0.16s var(--ds-ease-standard), background 0.16s var(--ds-ease-standard);
+}
+.ds-fileov__close:hover { color: var(--ds-text-primary); background: var(--ds-bg-sunken); }
+.ds-fileov__close:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ds-accent-ring); }
+
+/* the content scroll region — fills the rest, no visible scrollbar */
+.ds-fileov__scroll {
+  flex: 1 1 auto; min-height: 0;
+  overflow: auto;
+  padding: 0 var(--ds-space-2) var(--ds-space-4);
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.ds-fileov__scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.ds-fileov__doc .ds-fileimg img { max-height: 82vh; }
+
+/* narrow viewports: stack the rail above the file (explorer · provenance · file) */
+@media (max-width: 720px) {
+  .ds-fileov {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  .ds-fileov__rail { grid-column: 1; grid-row: 1 / 3; flex-direction: column; }
+  .ds-fileov__explorer { max-height: 40vh; }
+  .ds-fileov__doc { grid-column: 1; grid-row: 3; }
+}

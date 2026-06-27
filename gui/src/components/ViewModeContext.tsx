@@ -11,7 +11,7 @@
  */
 import { createContext, useContext } from "react";
 
-export type ViewMode = "status" | "model" | "artifacts" | "basis";
+export type ViewMode = "status" | "model" | "artifacts" | "basis" | "fusion";
 
 export interface ViewModeApi {
   mode: ViewMode | null;
@@ -36,4 +36,7 @@ export const VIEW_MODES: ReadonlyArray<{ mode: ViewMode; key: string; label: str
   { mode: "model", key: "m", label: "Model" },
   { mode: "artifacts", key: "a", label: "Artifacts" },
   { mode: "basis", key: "b", label: "Basis" },
+  // Fusion is the one INTERACTIVE mode: each node gets a moa / best-of-n toggle that re-expands the DAG
+  // live (via the SDK's expandFusion through /__piflow/preview), rather than painting a passive info strip.
+  { mode: "fusion", key: "f", label: "Fusion" },
 ];

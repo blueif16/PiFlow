@@ -44,13 +44,16 @@ import "../styles/panels.css";
 import { OrbField } from "./OrbField";
 import { WorkflowNode, type FlowNode } from "./WorkflowNode";
 import { NodeExpandOverlay } from "./NodeExpandOverlay";
+import { FileExpandOverlay, openFileFor, type OpenFile } from "./FileExpandOverlay";
 import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
 import { MenuBar } from "./MenuBar";
 import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
 import { ExpandContext } from "./ExpandContext";
 import { ViewModeContext, type ViewMode } from "./ViewModeContext";
-import { loadRunView, loadRunTree, toFlowGraph, buildDirectory, loadAgentCatalog } from "../data/runView";
+import { FusionContext, type FusionMode } from "./FusionContext";
+import { FusionSaveBar } from "./FusionSaveBar";
+import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, loadAgentCatalog } from "../data/runView";
 import { loadIndex, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
 import { useRunStream, RunStreamContext } from "../data/runStream";
 
@@ -61,7 +64,12 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [expandedId, setExpandedId] = useState<string | null>(initialExpandedId ?? null);
+  // the file opened from the navigator — shown in the standalone file overlay (null = closed).
+  const [openFile, setOpenFile] = useState<OpenFile | null>(null);
   const [mode, setMode] = useState<ViewMode | null>(null);
+  // (Fusion mode) per-node fusion overrides — `{ nodeId: "moa" | "best-of-n" }`. When non-empty the canvas
+  // renders the SDK-expanded PREVIEW (via /__piflow/preview) instead of the live run-view; empty ⇒ run-view.
+  const [fusionOverrides, setFusionOverrides] = useState<Record<string, FusionMode>>({});
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
 
   const [ix, setIx] = useState<GlobalIndex | null>(null);
@@ -108,9 +116,15 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     if (!activeRun) { setNodes([]); setEdges([]); setDir({ tree: [], fileToNode: {} }); return; }
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    // (Fusion mode) any override ⇒ render the SDK-expanded PREVIEW of the run's template; else the run-view.
+    // The preview is STATIC (no live run), so it never polls.
+    const preview = Object.keys(fusionOverrides).length > 0;
     const load = async () => {
       try {
-        const [view, agents] = await Promise.all([loadRunView(activeRun), loadAgentCatalog()]);
+        const [view, agents] = await Promise.all([
+          preview ? loadPreview(activeRun, fusionOverrides) : loadRunView(activeRun),
+          loadAgentCatalog(),
+        ]);
         if (!alive) return;
         setLoadError(null);
         const { nodes: n, edges: e } = toFlowGraph(view, agents); // (G6) resolve preset icons by agentType
@@ -118,27 +132,28 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
         setEdges(e);
         // The navigator shows the run's FULL on-disk tree (rooted at {{RUN}}); `fileToNode` still comes
         // from the run-view so clicking a produced file opens its node. Fall back to the produced-files
-        // tree if the fs endpoint is unavailable.
+        // tree if the fs endpoint is unavailable. (A preview produces no files ⇒ its tree is empty.)
         const { tree: producedTree, fileToNode } = buildDirectory(view);
         let tree = producedTree;
         try { const fsTree = await loadRunTree(activeRun); if (alive && fsTree.length) tree = fsTree; } catch { /* keep producedTree */ }
         if (!alive) return;
         setDir({ tree, fileToNode });
-        if (!view.done) timer = setTimeout(load, 3000); // poll a live run for fresh status + telemetry
+        if (!preview && !view.done) timer = setTimeout(load, 3000); // poll a live run; a preview is static
       } catch (err) {
         if (!alive) return;
         setLoadError(String((err as Error)?.message ?? err));
-        timer = setTimeout(load, 3000); // a just-started run may not be distillable yet — retry
+        if (!preview) timer = setTimeout(load, 3000); // a just-started run may not be distillable yet — retry
       }
     };
     load();
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [activeRun, setNodes, setEdges]);
+  }, [activeRun, fusionOverrides, setNodes, setEdges]);
 
-  // switch the viewed run (from the menu-bar switcher): load it + close any open node
+  // switch the viewed run (from the menu-bar switcher): load it + close any open node / file
   const selectRun = useCallback((run: string) => {
     setActiveRun(run);
     setExpandedId(null);
+    setOpenFile(null);
   }, []);
 
   // refit the viewport once the real nodes land
@@ -159,11 +174,37 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     [mode],
   );
 
+  // (Fusion mode) toggle a node's override: set node→mode, or clear it if it's already that mode.
+  const toggleFusion = useCallback((nodeId: string, m: FusionMode) => {
+    setFusionOverrides((prev) => {
+      const next = { ...prev };
+      if (next[nodeId] === m) delete next[nodeId];
+      else next[nodeId] = m;
+      return next;
+    });
+  }, []);
+  // (Fusion mode) BAKE the current overrides into THIS run's structure (NOT the template). On success the
+  // edits are persisted into the run dir, so we clear them ⇒ the saved structure becomes the run-view base.
+  const saveFusion = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    if (!activeRun || !Object.keys(fusionOverrides).length) return { ok: false, error: "nothing to save" };
+    const r = await saveRunFusion(activeRun, fusionOverrides);
+    if (r.ok) setFusionOverrides({});
+    return r;
+  }, [activeRun, fusionOverrides]);
+  const fusionApi = useMemo(
+    () => ({ overrides: fusionOverrides, toggle: toggleFusion, save: saveFusion }),
+    [fusionOverrides, toggleFusion, saveFusion],
+  );
+
+  // Leaving Fusion mode drops every override ⇒ the canvas falls back to the live run-view.
+  useEffect(() => { if (mode !== "fusion") setFusionOverrides((o) => (Object.keys(o).length ? {} : o)); }, [mode]);
+
   const expandedData = nodes.find((n) => n.id === expandedId)?.data ?? null;
 
   return (
     <ExpandContext.Provider value={expandApi}>
       <ViewModeContext.Provider value={viewModeApi}>
+      <FusionContext.Provider value={fusionApi}>
       <RunStreamContext.Provider value={live}>
       <LayoutGroup>
         <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--ds-bg-canvas)" }}>
@@ -214,22 +255,31 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
               <DirectoryPanel
                 tree={dir.tree}
                 title="Run files"
-                onOpenFile={(entry) => {
-                  // entry.id is `f:<displayPath>` — open the node that produced this file
-                  const producer = dir.fileToNode[entry.id.slice(2)];
-                  if (producer) setExpandedId(producer);
-                }}
+                // Open the file itself in the standalone overlay (its content on the right, its
+                // producer/consumer nodes in the provenance rail) — reachable from there.
+                onOpenFile={(entry, path) => setOpenFile(openFileFor(entry, path))}
               />
             </Panel>
           </ReactFlow>
 
           <NodeExpandOverlay id={expandedId} data={expandedData} run={activeRun} onClose={() => setExpandedId(null)} />
+          <FileExpandOverlay
+            open={openFile}
+            run={activeRun}
+            tree={dir.tree}
+            nodes={nodes}
+            onSelectFile={setOpenFile}
+            onOpenNode={(nodeId) => { setOpenFile(null); setExpandedId(nodeId); }}
+            onClose={() => setOpenFile(null)}
+          />
           <MenuBar activeRun={activeRun} onSelectRun={selectRun} ix={ix} />
           <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} />
+          <FusionSaveBar active={mode === "fusion"} />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
         </div>
       </LayoutGroup>
       </RunStreamContext.Provider>
+      </FusionContext.Provider>
       </ViewModeContext.Provider>
     </ExpandContext.Provider>
   );

@@ -1,7 +1,7 @@
 // build-index.mjs — the GLOBAL INDEX SNAPSHOT generator (CLI). A THIN wrapper over the shared builder
 // (scripts/lib/index-snapshot.mjs) so the live middleware and this script can never diverge.
 //
-// It registers THIS repo (always) + any `--root <path>` (repeatable — how `piflow gui` registers the repo
+// It registers THIS repo (always) + any `--root <path>` (repeatable — how `piflowctl gui` registers the repo
 // it was launched from), writes products.json, builds the snapshot, and writes index.json. Both outputs
 // live ONLY under ~/.piflow (the architectural law — never inside packages/, the repo's .piflow/, or
 // gui/public). The live GUI reads a freshly-COMPUTED snapshot from the Vite middleware; this file is the

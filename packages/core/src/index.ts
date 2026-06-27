@@ -46,7 +46,7 @@ export type { AgentPreset, PresetMergeable } from './workflow/agent-preset.js';
 // (Phase 2) Fusion nodes: the pre-compile siblings+judge expansion + its built-in fusion PRESET AGENTS
 // (the judge/obligations roles). `expandFusion` runs before `compile`; the presets brand the generated
 // nodes via `agentType`. The verbatim Appendix-A prompt bodies + token fillers live in `fusion/prompts`.
-export { expandFusion, FusionConfigError } from './workflow/fusion/expand.js';
+export { expandFusion, withNodeFusion, FusionConfigError } from './workflow/fusion/expand.js';
 export type { FusionDefaults, FusionExpandOpts } from './workflow/fusion/expand.js';
 // (G12 — M3) Bounded conditional reroute / self-fix: the pre-compile UNROLL of a QA loop into forward-only
 // acyclic clones (the `expandFusion` move), with a zero-pi existence-gate short-circuit (#17). Runs before
@@ -129,6 +129,18 @@ export type { BindReport } from './tools/verify.js';
 export { OPENCLAW_SEED_CATALOG, loadCatalog, seededRegistry } from './tools/catalog.js';
 // Community catalog: a curated, pinned crawl of REAL OpenClaw tool plugins (discoverable, gateway-coupled)
 export { OPENCLAW_COMMUNITY_CATALOG, OPENCLAW_PIN } from './tools/openclaw-community.js';
+// Catalog client: read the cached `~/.piflow/catalog/` MCP slice → the per-spec rows + server configs the
+// canonical run path feeds to `assembleRunTools`/`mcpConfig` (the live-path gap closer; data stays in ~/.piflow).
+export { loadMcpCatalog, catalogForSpec } from './catalog/client.js';
+export type { McpCatalog, CatalogSlice } from './catalog/client.js';
+// Catalog sync: FEDERATE the MCP Official Registry's server directory into ~/.piflow/catalog/ (incremental
+// updated_since pull + tombstones); the write-side of the catalog (entries stay an introspection step).
+export { syncMcpCatalog } from './catalog/sync.js';
+export type { SyncMcpCatalogOpts, SyncResult } from './catalog/sync.js';
+// Catalog introspection: fetch one MCP server's tools/list ONCE (the per-tool schemas the registry lacks)
+// and upsert the rows into the slice's `entries` so a node selecting `mcp.<server>:<tool>` BINDS.
+export { introspectMcpServer } from './catalog/introspect.js';
+export type { IntrospectMcpServerOpts, IntrospectResult } from './catalog/introspect.js';
 
 // Sandbox providers (lifecycle; in-memory reference impl + not-implemented stubs)
 export { InMemorySandbox, InMemorySandboxProvider, NotImplementedProvider } from './sandbox/index.js';
@@ -139,6 +151,14 @@ export { LocalSandbox, LocalSandboxProvider } from './sandbox/local.js';
 export { tailAppend, DEFAULT_CAPTURE_MAX } from './sandbox/capture.js';
 // Seatbelt read-scope provider (macOS)
 export { SeatbeltSandbox, SeatbeltSandboxProvider, buildSeatbeltProfile } from './sandbox/seatbelt.js';
+// Shared scope policy (read-roots/write-roots) both OS jail backends render; bwrap argv builder + plan (linux).
+export { computeScopeRoots } from './sandbox/scope.js';
+export type { ScopeRoots } from './sandbox/scope.js';
+export { bwrapExecPlan, buildBwrapArgs } from './sandbox/bwrap.js';
+export type { BwrapExecPlan } from './sandbox/bwrap.js';
+// OS dispatcher for `--sandbox local`'s kernel jail (darwin→seatbelt, linux→bwrap).
+export { localJailPlan } from './sandbox/jail.js';
+export type { JailPlan } from './sandbox/jail.js';
 // Worktree per-run git WRITE-isolation provider (run-scoped: branch pi/<run> + sibling .pi-worktrees/<run>)
 export { WorktreeSandbox, WorktreeSandboxProvider } from './sandbox/worktree.js';
 // Daytona cloud provider (run-scoped VM lifecycle) + its dependency-inversion SDK seam.
@@ -207,7 +227,7 @@ export type {
   RunTotals,
 } from './runner/index.js';
 // Observability — `docker logs` for a run: per-node event capture (NodeRecorder) + the distill/tail/
-// follow reader the `piflow logs` CLI is built on. Any consumer streams a run via these or `npx piflow logs`.
+// follow reader the `piflowctl logs` CLI is built on. Any consumer streams a run via these or `npx piflowctl logs`.
 export {
   NodeRecorder,
   recordingSandbox,
@@ -271,3 +291,36 @@ export type {
 // GUI build the SAME view from here (no view-local copy). Used by consumers that show cost/token panels.
 export { buildRunView } from './observe/index.js';
 export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens } from './observe/index.js';
+
+// The TELEMETRY tier — the agent-facing PROJECTION over the run-view (a lens, not a second collector).
+// `projectRunDigest` = the one-shot record; `telemetryStream` = edge-triggered live deltas over `watchRun`;
+// `toGenAiAttributes` = the OTel gen_ai.* bridge. Drives `piflowctl telemetry` and node self-debug.
+export { projectRunDigest, telemetryStream, toGenAiAttributes, DEFAULT_THRESHOLDS } from './observe/index.js';
+export type { RunDigest, NodeDigest, Anomaly, AnomalyKind, RootCause, TelemetryEvent, Verbosity, StreamOpts, TelemetryThresholds } from './observe/index.js';
+
+// The FLEET tier of the observe surface — ONE registry + ONE discovery + ONE snapshot the CLI, the TUI, and
+// the GUI all share, so every view is exposed to the SAME registered repos. `registerProductRoot` is the
+// write side a run calls at start (runFromTemplate) so discovery needs no manual `--root`. See observe/discover.ts.
+export {
+  globalDir,
+  productsFile,
+  indexFile,
+  loadRegistry,
+  upsertRoot,
+  saveRegistry,
+  registerProductRoot,
+  discoverNamespaces,
+  discoverRunDirs,
+  summarizeRun,
+  buildSnapshot,
+} from './observe/index.js';
+export type {
+  ProductEntry,
+  Registry,
+  NamespaceDesc,
+  NamespaceMeta,
+  ThreadRow,
+  SnapshotNamespace,
+  SnapshotProduct,
+  Snapshot,
+} from './observe/index.js';

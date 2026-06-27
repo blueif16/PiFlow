@@ -1,4 +1,4 @@
-// `piflow run <templateDir> [--dry-run] [--run <id>] [--arg k=v ...]` — DRIVE a template run.
+// `piflowctl run <templateDir> [--dry-run] [--run <id>] [--arg k=v ...]` — DRIVE a template run.
 //
 // The orchestrator over the T5 seam: it RESOLVES the env+args (`loadConfig`), LOADS + compiles the
 // authored template into a `WorkflowSpec` (`loadTemplate` — runs the §8 static gate), MATERIALIZES a
@@ -31,8 +31,11 @@ import {
   loadFusionConfig,
   nodePromptFile,
   generateRunName,
+  writeStatus,
+  nowISO,
   type Workflow,
   type WorkflowSpec,
+  type RunStatus,
   type LoadConfigInput,
   type ResolvedRunOpts,
   type InstantiateRunOpts,
@@ -44,6 +47,7 @@ import {
 } from '@piflow/core';
 import path from 'node:path';
 import { readdirSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 
 /**
  * List the run-NAME basenames already present under a runs home (the canonical `.piflow/<wf>/runs/`), so
@@ -73,8 +77,11 @@ export interface RunDeps {
   runFromConfig?: (config: ResolvedRunConfig) => Promise<RunResult>;
   /** The LIVE template-run join — loadTemplate → instantiateRun → compile → runWorkflow, INSIDE core. */
   runFromTemplate?: (templateDir: string, opts: RunFromTemplateOpts) => Promise<RunResult>;
-  /** Factory for the `--sandbox local` real-exec provider (injectable so a test asserts the instance). */
-  makeLocalProvider?: () => SandboxProvider;
+  /**
+   * Factory for the `--sandbox local` real-exec provider (injectable so a test asserts the instance).
+   * `dangerous:true` ⇒ the `danger-full-access` bypass (read-scope jail OFF); default ⇒ secure-by-default.
+   */
+  makeLocalProvider?: (opts?: { dangerous?: boolean }) => SandboxProvider;
   /** Mint a memorable run name not in `existing` (default: core `generateRunName`; a test injects a stub). */
   generateName?: (existing: string[]) => string;
   /** List the run-name basenames already present under a runs home (default: read the dir; '' if absent). */
@@ -82,8 +89,19 @@ export interface RunDeps {
   print?: (line: string) => void;
 }
 
-/** Which sandbox backend the LIVE run uses. `inmemory` = core default (no `pi`); `local` = real in-place exec. */
-export type SandboxChoice = 'inmemory' | 'local';
+/**
+ * Which sandbox backend the LIVE run uses:
+ *   - `inmemory` (default) = core in-memory provider, NO `pi` (structural/dry).
+ *   - `local` = real in-place `pi` exec, SECURE BY DEFAULT — each node's reads are jailed to its declared
+ *     `readScope` + toolchain (kernel-enforced via seatbelt on darwin; unsandboxed-with-a-warning until the
+ *     Linux bwrap backend lands).
+ *   - `danger-full-access` = real in-place `pi` exec with the read-scope jail OFF (the agent can read the
+ *     whole filesystem) — the loud, explicit escape hatch.
+ */
+export type SandboxChoice = 'inmemory' | 'local' | 'danger-full-access';
+
+/** The accepted `--sandbox` values — a typo (e.g. `seatbelt`) must error loudly, not silently degrade to inmemory. */
+export const SANDBOX_CHOICES: readonly SandboxChoice[] = ['inmemory', 'local', 'danger-full-access'];
 
 /** The parsed `run` argv. `args` carries the repeated `--arg k=v` pairs (and the run id, mirrored in). */
 export interface ParsedRunArgs {
@@ -104,7 +122,7 @@ export interface ParsedRunArgs {
   /** Active run PROFILE name → resolved against the template's declared `profiles` (elides nodes before compile). */
   profile?: string;
   args: Record<string, string>;
-  /** Sandbox backend: `inmemory` (default, core in-memory provider) or `local` (real in-place `pi` exec). */
+  /** Sandbox backend: `inmemory` (default) · `local` (real in-place, read-scope-jailed) · `danger-full-access`. */
   sandbox: SandboxChoice;
   /** The pi `--provider` gateway → threaded to the runner as `providerName`. */
   provider?: string;
@@ -223,27 +241,29 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
  * print the realized commands, then STOP (no model). LIVE: route through core `runFromTemplate` (the
  * template-run join — loadTemplate → instantiateRun → compile → runWorkflow, INSIDE core), THREADING the
  * resolved options the CLI collected: `args` (`{{arg.*}}` delivery), `workspace` (`{{WORKSPACE}}` root),
- * the sandbox provider (`--sandbox local` ⇒ a real `LocalSandboxProvider`; `inmemory` ⇒ omit, core
- * default), `providerName` (pi `--provider`), `thinking`, `model`, and the from/until resume window.
+ * the sandbox provider (`--sandbox local` ⇒ a real `LocalSandboxProvider`, read-scope-jailed by default;
+ * `danger-full-access` ⇒ the jail OFF; `inmemory` ⇒ omit, core default), `providerName` (pi `--provider`),
+ * `thinking`, `model`, and the from/until resume window.
  * `runFromConfig` stays in the seam for library consumers that already hold a spec.
  */
 export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Promise<RunResult | undefined> {
   const loadTemplate = deps.loadTemplate ?? coreLoadTemplate;
   const instantiateRun = deps.instantiateRun ?? coreInstantiateRun;
   const runFromTemplate = deps.runFromTemplate ?? coreRunFromTemplate;
-  const makeLocalProvider = deps.makeLocalProvider ?? (() => new LocalSandboxProvider());
+  const makeLocalProvider =
+    deps.makeLocalProvider ?? ((o?: { dangerous?: boolean }) => new LocalSandboxProvider({ enforceReadScope: !o?.dangerous }));
   const generateName = deps.generateName ?? ((existing: string[]) => generateRunName(existing));
   const listExistingRuns = deps.listExistingRuns ?? listExistingRunNames;
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
 
   const { templateDir } = parsed;
-  if (!templateDir) throw new Error('piflow run: a template directory is required (piflow run <templateDir>).');
+  if (!templateDir) throw new Error('piflowctl run: a template directory is required (piflowctl run <templateDir>).');
 
   const workspace = parsed.workspace ?? process.cwd();
   const tdir = path.resolve(templateDir);
   // The run's CANONICAL HOME is `.piflow/<wf>/runs/<id>` (sdk-canonical-build-plan §D9) — the single place
   // discovery + the global index read runs from. Derive the `runs/` parent from the template's own
-  // `.piflow/<wf>/template/` layout so a bare `piflow run <templateDir>` lands under it; a template outside
+  // `.piflow/<wf>/template/` layout so a bare `piflowctl run <templateDir>` lands under it; a template outside
   // that layout has no canonical home (falls back to `out/<id>`).
   const runsHome = path.basename(tdir) === 'template' ? path.join(path.dirname(tdir), 'runs') : null;
   // The directory a sibling run lands in (and so the collision-check namespace): the canonical `runs/`
@@ -261,7 +281,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   // `.piflow/<wf>/runs/<id>/` home, so moving it would split the source of truth. `--out` therefore
   // applies ONLY when there is no canonical home (a loose template outside `.piflow/<wf>/template/`).
   if (canonicalHome && parsed.outDir) {
-    console.warn(`piflow run: --out is ignored — the run lands in its canonical home ${canonicalHome}; a canonical run is never relocated (export a copy instead).`);
+    console.warn(`piflowctl run: --out is ignored — the run lands in its canonical home ${canonicalHome}; a canonical run is never relocated (export a copy instead).`);
   }
   const outDir = canonicalHome ?? parsed.outDir ?? `out/${runId}`;
   // PROMPT METADATA: carry an `--arg prompt`/`--arg promptId` as run metadata (run.json `promptId`), so the
@@ -283,19 +303,74 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     spec = expandFusion(spec, { defaults: loadFusionConfig().defaults, tiers: loadModelTiers() });
     const wf = compile(spec);
     await instantiateRun(templateDir, outDir, { workspace });
+    // Make the dry-run plan VIEWABLE, not just printable: persist the resolved DAG + a `dry`-status run.json
+    // so discovery + every observe surface (GUI/TUI/`status`) render the SAME expanded graph the plan prints
+    // — WITHOUT invoking a model. `.pi/workflow.json` is the authoritative topology `buildRunView` draws from
+    // (mirrors the live runner's write); each node carries the reserved `dry` status (status.ts) + `done:true`
+    // so a surface labels it "planned, not run" and never polls it. This is what lets a free dry-run seed a
+    // GUI-openable demo (and the per-node fusion toggle then re-expands the DAG live on top of it).
+    await writeFile(
+      path.join(outDir, '.pi', 'workflow.json'),
+      JSON.stringify({ meta: wf.meta, profile: parsed.profile ?? null, stages: wf.stages, edges: wf.edges }, null, 2) + '\n',
+    );
+    const ts = nowISO();
+    const dryStatus: RunStatus = {
+      run: runId,
+      name: runId,
+      ...(promptId ? { promptId } : {}),
+      source: wf.meta.name,
+      profile: parsed.profile ?? null,
+      provider: parsed.provider ?? 'cp',
+      model: parsed.model ?? null,
+      startedAt: ts,
+      updatedAt: ts,
+      done: true,
+      ok: null,
+      durationMs: null,
+      stage: null,
+      totals: null,
+      nodes: Object.fromEntries(
+        Object.values(wf.nodes).map((n) => [
+          n.id,
+          { id: n.id, label: n.label, ...(n.agentType ? { agentType: n.agentType } : {}), status: 'dry' as const, artifacts: [], issues: [] },
+        ]),
+      ),
+    };
+    await writeStatus(outDir, dryStatus);
     // reference the actual realized prompt path the run materialized (engine-owned layout helper).
     const samplePromptDir = nodePromptFile(outDir, '<id>').replace(/\/<id>\/prompt\.md$/, '');
     print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: parsed.provider ?? 'cp', model: parsed.model, thinking: parsed.thinking, profile: parsed.profile }));
+    print(`piflowctl run: dry-run materialized a viewable plan at ${outDir} (open it: piflowctl gui / piflowctl status ${outDir}). Nodes are status "dry" — no model ran.`);
     return undefined;
   }
 
   // ── LIVE: route through the core template-run join, threading every collected option. ──
-  // --sandbox local ⇒ the real in-place exec provider; inmemory ⇒ omit (core's in-memory default).
-  const provider = parsed.sandbox === 'local' ? makeLocalProvider() : undefined;
+  // Reject a typo'd backend loudly rather than silently degrading to `inmemory` (= no model, a confusing
+  // no-op for someone who asked for isolation).
+  if (!SANDBOX_CHOICES.includes(parsed.sandbox)) {
+    throw new Error(
+      `piflowctl run: unknown --sandbox "${parsed.sandbox}" (expected one of ${SANDBOX_CHOICES.join(', ')}).`,
+    );
+  }
+  // Provider selection. `inmemory` ⇒ omit (core's in-memory default, no model). `local` ⇒ the real
+  // in-place exec provider, SECURE BY DEFAULT (read-scope jail on). `danger-full-access` ⇒ the same
+  // provider with the jail OFF — surfaced loudly so the bypass is never silent.
+  let provider: SandboxProvider | undefined;
+  if (parsed.sandbox === 'local') {
+    provider = makeLocalProvider();
+    print(
+      process.platform === 'darwin'
+        ? 'piflowctl run: read-scope isolation ON — each node is jailed to its declared readScope (seatbelt, kernel-enforced).'
+        : `piflowctl run: ⚠ read-scope isolation is NOT enforced on ${process.platform} yet (Linux bwrap backend unwired) — running UNSANDBOXED. Run on macOS for enforcement.`,
+    );
+  } else if (parsed.sandbox === 'danger-full-access') {
+    provider = makeLocalProvider({ dangerous: true });
+    print('piflowctl run: ⚠ DANGER — read-scope isolation BYPASSED (--sandbox danger-full-access): the agent can read your entire filesystem.');
+  }
   // (G7) `--detach` ⇒ UNATTENDED: take each (G5) checkpoint's declared default so a backgrounded run never
   // hangs on a human gate. The run is already durable; the caller backgrounds the process (`&`/harness).
   if (parsed.detach) {
-    print(`piflow run: detached/unattended — checkpoints take their default; run dir: ${outDir} (monitor: piflow watch ${outDir})`);
+    print(`piflowctl run: detached/unattended — checkpoints take their default; run dir: ${outDir} (monitor: piflowctl watch ${outDir})`);
   }
   return runFromTemplate(templateDir, {
     runDir: outDir,
@@ -323,7 +398,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
  * The loud top-level verdict for a FINISHED live run: `null` when it succeeded (or is still running),
  * else the multi-line failure report the CLI prints to stderr before exiting non-zero — the blocking
  * node(s) (`error`/`blocked`, e.g. the synthetic `__resume__` preflight) each followed by their `issues`,
- * and a `piflow status` hint. PURE (no process/stderr side effects) so it is unit-tested directly: a
+ * and a `piflowctl status` hint. PURE (no process/stderr side effects) so it is unit-tested directly: a
  * blocked resume MUST surface its `__resume__` issue; an `ok` run MUST report nothing.
  */
 export function runFailureReport(status: RunResult['status'], runDir: string): string | null {
@@ -331,17 +406,17 @@ export function runFailureReport(status: RunResult['status'], runDir: string): s
   const failed = Object.values(status.nodes ?? {}).filter(
     (n) => n.status === 'error' || n.status === 'blocked',
   );
-  const lines = [`piflow run: ✗ FAILED — ${failed.length || 'a'} node(s) blocked/errored`];
+  const lines = [`piflowctl run: ✗ FAILED — ${failed.length || 'a'} node(s) blocked/errored`];
   for (const n of failed) for (const issue of n.issues ?? []) lines.push(`  ✗ ${n.id}: ${issue}`);
-  lines.push(`  → inspect: piflow status ${runDir}`);
+  lines.push(`  → inspect: piflowctl status ${runDir}`);
   return lines.join('\n');
 }
 
-/** `piflow run <templateDir> [--dry-run] [--run <id>] [--arg k=v ...]` — the bin body. */
+/** `piflowctl run <templateDir> [--dry-run] [--run <id>] [--arg k=v ...]` — the bin body. */
 export async function runRunCli(argv: string[]): Promise<void> {
   const parsed = parseRunArgs(argv);
   if (!parsed.templateDir) {
-    process.stderr.write('piflow run: a template directory is required (piflow run <templateDir>)\n');
+    process.stderr.write('piflowctl run: a template directory is required (piflowctl run <templateDir>)\n');
     process.exitCode = 1;
     return;
   }
@@ -349,7 +424,7 @@ export async function runRunCli(argv: string[]): Promise<void> {
   // SURFACE FAILURE — a LIVE run that ends `done && ok===false` (a blocked resume preflight, or an
   // errored/blocked node) MUST NOT exit 0 in silence: print the blocking node(s) + their issues to stderr
   // and exit non-zero. Without this a blocked `--from` resume wrote an EMPTY log and returned 0 — the only
-  // signal was a separate `piflow status`. The status/event archives stay the deep view; this is the loud
+  // signal was a separate `piflowctl status`. The status/event archives stay the deep view; this is the loud
   // top-level verdict every CLI consumer (and a backgrounded run's exit code) can rely on. (dry-run → no result.)
   // Use the RESULT's resolved `outDir` for the status hint — it is the real run dir, including any
   // auto-generated `<adjective>-<pie>` name (which the caller can't reconstruct from `parsed.run`).

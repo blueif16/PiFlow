@@ -3,7 +3,7 @@
 // snapshots + truncates large tool results), stamps a node-relative clock, and appends one JSON
 // event per line to the canonical `.pi/nodes/<id>/events.jsonl` (the `nodeEventsFile` layout helper).
 // That archive is what makes a run observable post-hoc and tail-able live — the SAME path the shared
-// observe stream (observe/watch.ts) tails and the `piflow logs` reader (./logs.ts) replays.
+// observe stream (observe/watch.ts) tails and the `piflowctl logs` reader (./logs.ts) replays.
 //
 // It is execRunner-AGNOSTIC: the runner wraps the Sandbox with `recordingSandbox` BEFORE handing it
 // to the (injectable) execRunner, so the tap survives any custom exec primitive. The wrap CHAINS the

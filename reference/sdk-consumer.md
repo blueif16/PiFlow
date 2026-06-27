@@ -34,7 +34,7 @@ your-repo/
     │   ├── command.mjs             ·   build the headless `pi` invocation per node (CommandBuilder)
     │   └── local-provider.mjs      ·   in-place SandboxProvider (run pi in the real tree, no temp dir)
     ├── extract.mjs                 ← TIER 2: the recording extractor bridge.mjs depends on
-    ├── logs.mjs                    ← TIER 2: 2-line `piflow logs` wrapper (the run monitor)
+    ├── logs.mjs                    ← TIER 2: 2-line `piflowctl logs` wrapper (the run monitor)
     └── extensions/node-contract.ts ← TIER 2: opt-in `-e` (typed submit_result + owned-paths block)
 ```
 

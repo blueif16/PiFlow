@@ -15,9 +15,9 @@ named successor in the SDK world:
 | Archived file | Was | Successor (SDK world) |
 |---|---|---|
 | `run.mjs` (153 KB) | the whole engine: extract→compile→DAG→spawn→hooks→contract→status | `@piflow/core` `runWorkflow`/`compile` + `templates/pi-runner/sdk/run.mjs` (the ~10 KB consumer) |
-| `status.mjs` | one-shot / live run-status dashboard | `piflow logs <run> --summary` (post-run diagnosis) |
-| `watch.mjs` | wake-on-event sentinel for a backgrounded run | `piflow logs <run> -f` (live follow); a silent-sentinel verb is a `@piflow/core` follow-up |
-| `viz-model.mjs` + `tui/` | the `pi-tui` cross-project console (data layer + Ink UI) | `piflow logs` today; the box-and-arrow `piflow viz <run>` renderer over `buildModel()` is the planned successor (ROADMAP) |
+| `status.mjs` | one-shot / live run-status dashboard | `piflowctl logs <run> --summary` (post-run diagnosis) |
+| `watch.mjs` | wake-on-event sentinel for a backgrounded run | `piflowctl logs <run> -f` (live follow); a silent-sentinel verb is a `@piflow/core` follow-up |
+| `viz-model.mjs` + `tui/` | the `pi-tui` cross-project console (data layer + Ink UI) | `piflowctl logs` today; the box-and-arrow `piflowctl viz <run>` renderer over `buildModel()` is the planned successor (ROADMAP) |
 | `sandbox/read-scope.sb` | the macOS Seatbelt read-scope profile run.mjs wrapped a node in | `@piflow/core` `SeatbeltSandboxProvider` / `buildSeatbeltProfile` |
 | `providers/coding-plan.ts` | a custom `-e` provider impl (OAuth / non-OpenAI-compatible API) | the native `~/.pi/agent/models.json` path (canonical); a custom provider stays an opt-in `-e` |
 

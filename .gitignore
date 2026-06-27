@@ -23,3 +23,8 @@ gui/public/runs/*/.pi/
 
 # piflow example workflows: the template is committed; per-run threads are regenerable.
 .piflow/*/runs/
+
+# Claude Code harness artifacts: live git worktrees + session-persisted workflow scripts
+# (regenerable, machine-local). Tracked .claude/skills/ stay tracked.
+.claude/worktrees/
+.claude/workflows/

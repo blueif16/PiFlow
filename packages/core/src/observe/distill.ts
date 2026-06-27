@@ -54,6 +54,12 @@ export interface RichNode {
   truncated: boolean;
   /** total `thinking_delta` characters — extended-thinking volume for this node. */
   thinkingChars: number;
+  /** count of assistant `message_end` completions — how many times the model was invoked (loop signal). */
+  modelCalls: number;
+  /** the most times ONE tool ran with the SAME args fingerprint (≥3 ⇒ a probable tool loop). 0 = no tools. */
+  maxToolRepeat: number;
+  /** the tool name behind `maxToolRepeat` (null when no tool was called). */
+  repeatedTool: string | null;
   coverage: { eventsSeen: number; usageEvents: number; byType: Record<string, number> };
   startedAt?: string;
   endedAt?: string;
@@ -90,8 +96,24 @@ function resultText(result: unknown): string | undefined {
   return text.length > PREVIEW_CAP ? text.slice(0, PREVIEW_CAP) : text;
 }
 
+/** The live, NON-DESTRUCTIVE per-node read the telemetry stream polls mid-run (no open-span side effect). */
+export interface LiveMetrics {
+  model: string | null;
+  provider: string | null;
+  modelCalls: number;
+  toolCalls: number;
+  maxToolRepeat: number;
+  repeatedTool: string | null;
+  retries: number;
+  stopReason: string | null;
+  truncated: boolean;
+  tokens: RichTokens;
+}
+
 export interface NodeAccumulator {
   push(e: PiEvent): void;
+  /** Current counters WITHOUT closing open tool spans — safe to call any number of times mid-run. */
+  metrics(): LiveMetrics;
   finalize(statusRec?: NodeStatusRecordLike): { rich: RichNode; io: LeanIo };
 }
 
@@ -104,6 +126,10 @@ export function createNodeAccumulator(): NodeAccumulator {
   const open = new Map<string, { name: string; tStartMs: number | null; path: string | null }>();
   const timeline: TimelineSpan[] = [];
   let toolCalls = 0;
+  let modelCalls = 0;
+  // tool-loop fingerprint: `name|<args-json>` → times seen. maxRepeat/repeatedTool track the running peak.
+  const fpCounts = new Map<string, number>();
+  let maxToolRepeat = 0, repeatedTool: string | null = null;
   let retries = 0, stopReason: string | null = null, thinkingChars = 0;
   let model: string | null = null, provider: string | null = null, api: string | null = null;
   let firstT: number | null = null, lastT: number | null = null;
@@ -160,6 +186,7 @@ export function createNodeAccumulator(): NodeAccumulator {
           seeModel(e.message);
           const msg = e.message as { role?: string; usage?: unknown; stopReason?: unknown } | undefined;
           if (msg && msg.role === 'assistant') {
+            modelCalls += 1; // one assistant completion = one model invocation (the cheapest loop signal)
             addUsage(msg.usage);
             // stopReason='max_tokens'/'length' ⇒ the output was truncated by the token cap.
             if (typeof msg.stopReason === 'string') stopReason = msg.stopReason;
@@ -179,6 +206,13 @@ export function createNodeAccumulator(): NodeAccumulator {
           const name = e.toolName as string;
           toolBreakdown[name] = (toolBreakdown[name] || 0) + 1;
           const args = e.args as { path?: string; command?: string } | undefined;
+          // fingerprint the call (name + exact args) so N identical calls surface as a loop. JSON.stringify
+          // is guarded — a non-serializable args object just folds to the tool name (still counts repeats).
+          let fp = name;
+          try { fp = `${name}|${JSON.stringify(args ?? {})}`; } catch { /* keep bare name */ }
+          const seen = (fpCounts.get(fp) ?? 0) + 1;
+          fpCounts.set(fp, seen);
+          if (seen > maxToolRepeat) { maxToolRepeat = seen; repeatedTool = name; }
           const p = args && args.path;
           open.set(e.toolCallId as string, { name, tStartMs: (e._t as number) ?? null, path: READ_TOOLS.has(name) && p ? p : null });
           if (READ_TOOLS.has(name) && p) { if (!reads.has(p)) reads.set(p, { path: p, via: name, tStartMs: (e._t as number) ?? null }); }
@@ -203,6 +237,15 @@ export function createNodeAccumulator(): NodeAccumulator {
         }
         default: break;
       }
+    },
+
+    metrics(): LiveMetrics {
+      return {
+        model, provider,
+        modelCalls, toolCalls, maxToolRepeat, repeatedTool, retries, stopReason,
+        truncated: stopReason === 'max_tokens' || stopReason === 'length',
+        tokens: { ...tok, billable: tok.input + tok.output },
+      };
     },
 
     finalize(statusRec: NodeStatusRecordLike = {}) {
@@ -232,6 +275,7 @@ export function createNodeAccumulator(): NodeAccumulator {
         retries, stopReason,
         truncated: stopReason === 'max_tokens' || stopReason === 'length',
         thinkingChars,
+        modelCalls, maxToolRepeat, repeatedTool,
         coverage: { eventsSeen, usageEvents, byType },
         startedAt, endedAt, durationMs,
       };

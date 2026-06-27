@@ -113,16 +113,64 @@ describe('SeatbeltSandbox — read-scope EPERM enforcement (darwin)', () => {
 
   it(`gates platform: profile generation is darwin-independent, EPERM assertion is darwin-only ${SKIP_MSG}`, () => {
     // The profile generator runs on ANY platform (it is pure string assembly) — assert it renders the
-    // declared scope + a deny-all-reads base regardless of OS, so the gating is ONLY about whether
-    // sandbox-exec wraps the exec, not about whether the profile can be built.
-    const profile = buildSeatbeltProfile({ workdir: '/tmp/piflow-x', readScope: ['/some/granted/root'] });
+    // declared scope + a deny-all-reads/deny-all-writes base regardless of OS, so the gating is ONLY about
+    // whether sandbox-exec wraps the exec, not about whether the profile can be built.
+    const profile = buildSeatbeltProfile({
+      workdir: '/tmp/piflow-x',
+      readScope: ['/some/granted/root'],
+      writeScope: ['/some/owns/root'],
+    });
     expect(profile).toContain('(deny file-read*)');
     expect(profile).toContain('(allow file-read-metadata)');
-    expect(profile).toContain('/some/granted/root'); // the declared scope made it into the allow block
-    expect(profile).not.toContain('@SCOPE_ALLOWS@'); // the token was substituted
+    expect(profile).toContain('/some/granted/root'); // the declared read scope made it into the allow block
+    // The SYMMETRIC write jail: deny-all-writes, then the declared write scope + the workdir granted.
+    expect(profile).toContain('(deny file-write*)');
+    expect(profile).toContain('/some/owns/root'); // the declared write scope made it into a write allow
+    expect(profile).toContain('/tmp/piflow-x'); // the workdir is granted writable (its deliverable tree)
+    expect(profile).not.toContain('@SCOPE_ALLOWS@'); // the read-scope token was substituted
+    expect(profile).not.toContain('@WRITE_SCOPE_ALLOWS@'); // the write-scope token was substituted
     expect(profile).not.toContain('@HOME@');
     expect(profile).not.toContain('@TMPDIR@');
   });
+
+  darwinIt(
+    'writes an in-scope file but EPERMs an out-of-scope sibling write under the sandbox',
+    async () => {
+      // Symmetric to the read EPERM test: stage TWO sibling trees under $HOME. `granted/` is the workdir
+      // AND the writeScope; `sibling/` is neither. The exec runs under sandbox-exec, so a write into the
+      // granted tree SUCCEEDS and a write to the sibling returns a kernel permission error — proving
+      // writeScope is the kernel-enforced WRITE boundary in the throwaway-temp provider too.
+      const scratch = await homeScratch('write-eperm');
+      const grantedDir = path.join(scratch, 'granted');
+      const siblingDir = path.join(scratch, 'sibling');
+      await fs.mkdir(grantedDir, { recursive: true });
+      await fs.mkdir(siblingDir, { recursive: true });
+
+      const sb = await SeatbeltSandbox.create({
+        readScope: [grantedDir],
+        writeScope: [grantedDir], // grant write ONLY to the granted sibling; siblingDir is omitted
+        outputDir: 'out',
+        workdir: grantedDir,
+      });
+
+      try {
+        const ok = await sb.exec(`printf '%s' IN > ${JSON.stringify(path.join(grantedDir, 'in.txt'))}`);
+        expect(ok.code).toBe(0);
+        expect(await fs.readFile(path.join(grantedDir, 'in.txt'), 'utf8')).toBe('IN');
+
+        const target = path.join(siblingDir, 'pwned.txt');
+        const denied = await sb.exec(`printf '%s' OUT > ${JSON.stringify(target)}`);
+        expect(denied.code).not.toBe(0);
+        expect(denied.stderr).not.toMatch(/^sandbox-exec:/m); // the profile loaded (not a parse error)
+        expect(denied.stderr).toMatch(/Operation not permitted|Permission denied/i);
+        await expect(fs.access(target)).rejects.toThrow();
+      } finally {
+        await sb.dispose();
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
 });
 
 // ── 2. plugs into the runner UNCHANGED ─────────────────────────────────────────────────────────────

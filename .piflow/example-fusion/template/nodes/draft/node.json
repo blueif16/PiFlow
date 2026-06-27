@@ -1,0 +1,17 @@
+{
+  "id": "draft",
+  "phase": "draft",
+  "deps": ["plan"],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "inject": ["{{RUN}}/plan/outline.md"],
+  "fusion": { "mode": "moa", "panel": ["fast", "balanced", "deep"], "judge": "deep" },
+  "contract": {
+    "artifacts": ["draft/draft.md"],
+    "owns": ["draft/**"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "checks": { "post": [{ "kind": "non-empty", "path": "draft/draft.md" }] },
+  "policy": { "fail": "block" }
+}

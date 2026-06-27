@@ -2,17 +2,17 @@
 // The `piflow` CLI — the portable, docker-style front door to a run's observability. Today it hosts
 // one subcommand, `logs` (stream/replay a run's per-node event archives); more dispatch lands here.
 //
-//   piflow logs [dir|run] [--node <id>] [-f] [--raw] [--poll <ms>]
+//   piflowctl logs [dir|run] [--node <id>] [-f] [--raw] [--poll <ms>]
 //
 // `dir` defaults to '.', or a bare run id resolves to `out/<id>`. Any project that depends on
-// @piflow/core gets this for free (`npx piflow logs out/<run> -f`).
+// @piflow/core gets this for free (`npx piflowctl logs out/<run> -f`).
 
 import { runLogsCli } from './runner/logs.js';
 
 const HELP = `piflow — observe a pi-flow run (docker-logs for a workflow)
 
 USAGE
-  piflow logs [dir|run] [options]      stream / replay / diagnose a run
+  piflowctl logs [dir|run] [options]      stream / replay / diagnose a run
 
   dir|run   a run dir (holds .pi/run.json) or a bare id (→ out/<id>). Default '.'.
 
@@ -25,9 +25,9 @@ OPTIONS (logs)
       --poll <ms>  follow poll interval (default 700)
 
 EXAMPLES
-  piflow logs out/myrun -f          # watch a run live
-  piflow logs out/myrun --summary   # one-glance diagnosis after it finishes
-  piflow logs out/myrun --node w0   # replay one node, distilled
+  piflowctl logs out/myrun -f          # watch a run live
+  piflowctl logs out/myrun --summary   # one-glance diagnosis after it finishes
+  piflowctl logs out/myrun --node w0   # replay one node, distilled
 
 Per-node event archives live at <dir>/.pi/nodes/<id>/events.jsonl (written when RunOptions.recordEvents
 is on, the default). See docs/observability.md.\n`;

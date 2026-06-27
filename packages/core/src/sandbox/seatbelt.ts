@@ -26,6 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tailAppend } from './capture.js';
+import { computeScopeRoots, expandRealpath } from './scope.js';
 import type {
   Sandbox,
   SandboxProvider,
@@ -79,6 +80,7 @@ const PROFILE_TEMPLATE = ((): string => {
     '  (subpath "/dev")',
     '  (subpath "@TMPDIR@")',
     '  (subpath "@HOME@/.pi")',
+    '  (subpath "@HOME@/.piflow")',
     '  (subpath "@HOME@/.npm")',
     '  (subpath "@HOME@/.cache")',
     '  (subpath "@HOME@/.config")',
@@ -89,6 +91,27 @@ const PROFILE_TEMPLATE = ((): string => {
     '  (literal "/var"))',
     '(allow file-read*',
     '@SCOPE_ALLOWS@)',
+    // --- write jail (symmetric; toolchain writable set from Codex workspace-write, see read-scope.sb) ---
+    '(deny file-write*)',
+    '(allow file-write*',
+    '  (subpath "@TMPDIR@")',
+    '  (subpath "/private/tmp")',
+    '  (subpath "/private/var/folders")',
+    '  (subpath "@HOME@/.pi")',
+    '  (subpath "@HOME@/.piflow")',
+    '  (subpath "@HOME@/.npm")',
+    '  (subpath "@HOME@/.cache")',
+    '  (subpath "@HOME@/.config")',
+    '  (literal "/dev/null")',
+    '  (literal "/dev/zero")',
+    '  (literal "/dev/stdout")',
+    '  (literal "/dev/stderr")',
+    '  (literal "/dev/tty")',
+    '  (subpath "/dev/fd")',
+    '  (literal "/tmp")',
+    '  (subpath "/private/var/tmp"))',
+    '(allow file-write*',
+    '@WRITE_SCOPE_ALLOWS@)',
     '',
   ].join('\n');
 })();
@@ -114,49 +137,85 @@ function sbplString(p: string): string {
   return JSON.stringify(p);
 }
 
-/** Expand a path to {itself, its realpath} — Seatbelt matches the RESOLVED realpath, not the lexical
- * path. Granting both means a symlinked root (node_modules, $TMPDIR, a worktree dir) reads correctly,
- * AND a model cannot escape via a self-made symlink (the target realpath is what is checked). */
-function expand(p: string): string[] {
-  const a = path.resolve(p);
-  try {
-    const r = fsSync.realpathSync(a);
-    return a === r ? [a] : [a, r];
-  } catch {
-    return [a];
-  }
-}
-
 /**
  * Generate the per-exec Seatbelt profile from the union of:
  *   - the declared `readScope` (resolved absolute),
+ *   - the declared `writeScope` (resolved absolute; = the node's `owns`),
  *   - the working dir + its own output/_pi dirs,
  *   - the toolchain/system grants a node+toolchain need (node_modules of the workdir, $TMPDIR, ~/.pi
- *     — the system roots /usr,/System,… live in the template).
+ *     — the system roots /usr,/System,… and the Codex-derived write-scratch roots live in the template).
  * Every root is `{itself, realpath}`-expanded and granted as a recursive `(subpath …)`; the workdir is
  * ALSO granted as a non-recursive `(literal …)` so getcwd/uv_cwd can read the cwd dir ENTRY even when
  * the dir itself is the boundary (a bare subpath already covers it, but the literal mirrors run.mjs and
- * is harmless). Returns the rendered SBPL text.
+ * is harmless). The WRITE allow block grants the workdir (recursive) + the declared writeScope; the
+ * read-only toolchain scratch (/tmp, $TMPDIR, /dev/null, ~/.npm, …) lives in the template. Returns the
+ * rendered SBPL text.
  */
-export function buildSeatbeltProfile(opts: { workdir: string; readScope: string[] }): string {
+export function buildSeatbeltProfile(opts: {
+  workdir: string;
+  readScope: string[];
+  writeScope?: string[];
+}): string {
   const workdir = path.resolve(opts.workdir);
-  // Auto-grants beyond the declared scope (the toolchain reads more than the lesson scope; a profile
-  // that passes a static demo can still EPERM on the first real toolchain call — see the research brief).
-  const auto = [
-    workdir, // the node's own working tree (workspace + its out/_pi dirs live under here)
-    path.join(workdir, 'node_modules'), // modules must resolve
-    path.join(process.cwd(), 'node_modules'), // the host process cwd's modules (test toolchain, tsc)
-  ];
-  // Union, realpath-expanded + de-duped. (The system roots /usr,/System,… are in the template.)
-  const roots = [...new Set([...auto, ...opts.readScope].flatMap(expand))];
-  const subpaths = roots.map((p) => `  (subpath ${sbplString(p)})`).join('\n');
+  // The SHARED policy: compute the read-roots (workdir + node_modules + node toolchain + readScope) and
+  // write-roots (workdir + writeScope/owns), realpath-expanded + de-duped. This is the SAME helper the
+  // bwrap backend consumes, so the macOS and Linux jails grant an identical set. The system read roots
+  // (/usr,/System,…) and the write-scratch roots (/tmp,$TMPDIR,~/.npm,…) live in the template below.
+  const { readRoots, writeRoots } = computeScopeRoots(opts);
+  const subpaths = readRoots.map((p) => `  (subpath ${sbplString(p)})`).join('\n');
   // getcwd needs file-read DATA on the cwd dir ENTRY, not just metadata; grant the workdir as a
   // (literal) too (expanded to {itself, realpath}) so a symlinked workdir matches.
-  const cwdLits = [...new Set(expand(workdir))].map((p) => `  (literal ${sbplString(p)})`).join('\n');
+  const cwdLits = [...new Set(expandRealpath(workdir))]
+    .map((p) => `  (literal ${sbplString(p)})`)
+    .join('\n');
   const allows = `${subpaths}\n${cwdLits}`;
+  // WRITE allows: the workdir + declared writeScope (== owns), from the shared policy. The toolchain
+  // write-scratch roots (/tmp, $TMPDIR, /dev/*, ~/.npm, …) live in the template, so this block is ONLY
+  // the node's own lane — a write outside {this block, the template scratch} EPERMs.
+  const writeAllows = writeRoots.map((p) => `  (subpath ${sbplString(p)})`).join('\n');
   return PROFILE_TEMPLATE.replaceAll('@HOME@', os.homedir())
     .replaceAll('@TMPDIR@', os.tmpdir().replace(/\/+$/, ''))
-    .replace('@SCOPE_ALLOWS@', allows);
+    .replace('@SCOPE_ALLOWS@', allows)
+    .replace('@WRITE_SCOPE_ALLOWS@', writeAllows);
+}
+
+// ── the shared exec-wrap seam (reused by SeatbeltSandbox AND the in-place LocalSandbox) ─────────────
+
+/** Monotonic suffix so two concurrent execs in the same process+ms get distinct profile filenames. */
+let execSeq = 0;
+
+/** The argv that runs `cmd` under a per-exec read-scope Seatbelt profile, plus the temp profile to clean up. */
+export interface SeatbeltExecPlan {
+  file: 'sandbox-exec';
+  argv: string[];
+  /** The on-disk per-exec `.sb`; the caller MUST unlink it after the child closes. */
+  profilePath: string;
+}
+
+/**
+ * Build the `sandbox-exec` wrapping for ONE command — the single place the read-scope jail is applied,
+ * so EVERY provider that wants kernel-enforced reads (the throwaway-temp `SeatbeltSandbox` AND the
+ * in-place `LocalSandbox`) shares one implementation. Writes the rendered profile under `profileDir`
+ * and returns the argv `sandbox-exec -f <profile> sh -c <cmd>`. Returns `null` on non-darwin (warning
+ * ONCE) — the caller then runs the bare command, unsandboxed. This is the seam a future Linux backend
+ * mirrors: a `bwrapExecPlan` returning `bwrap … sh -c <cmd>` from the SAME `{workdir, readScope}` policy.
+ */
+export function seatbeltExecPlan(
+  cmd: string,
+  opts: { workdir: string; readScope: string[]; writeScope?: string[]; profileDir: string },
+): SeatbeltExecPlan | null {
+  if (!IS_DARWIN) {
+    warnNonDarwinOnce();
+    return null;
+  }
+  const profile = buildSeatbeltProfile({
+    workdir: opts.workdir,
+    readScope: opts.readScope,
+    writeScope: opts.writeScope,
+  });
+  const profilePath = path.join(opts.profileDir, `piflow-sb-${process.pid}-${Date.now()}-${execSeq++}.sb`);
+  fsSync.writeFileSync(profilePath, profile);
+  return { file: 'sandbox-exec', argv: ['-f', profilePath, 'sh', '-c', cmd], profilePath };
 }
 
 // ── the sandbox ──────────────────────────────────────────────────────────────────────────────────
@@ -169,8 +228,7 @@ export class SeatbeltSandbox implements Sandbox {
     public readonly workdir: string,
     private readonly env: Record<string, string>,
     private readonly readScope: string[],
-    /** Whether to actually wrap with sandbox-exec (darwin). False ⇒ unsandboxed, like InMemorySandbox. */
-    private readonly sandboxed: boolean,
+    private readonly writeScope: string[],
   ) {}
 
   static async create(opts: CreateOpts): Promise<SeatbeltSandbox> {
@@ -181,10 +239,15 @@ export class SeatbeltSandbox implements Sandbox {
     if (!IS_DARWIN) warnNonDarwinOnce();
     // Resolve the declared read scope to absolute (CreateOpts.readScope entries are absolute by
     // contract, but a relative entry resolves vs the workdir to stay self-consistent).
-    const readScope = (opts.readScope ?? []).map((p) =>
-      path.isAbsolute(p) ? p : path.resolve(workdir, p),
+    const resolveScope = (s: string[] | undefined): string[] =>
+      (s ?? []).map((p) => (path.isAbsolute(p) ? p : path.resolve(workdir, p)));
+    return new SeatbeltSandbox(
+      root,
+      workdir,
+      opts.env ?? {},
+      resolveScope(opts.readScope),
+      resolveScope(opts.writeScope),
     );
-    return new SeatbeltSandbox(root, workdir, opts.env ?? {}, readScope, IS_DARWIN);
   }
 
   private abs(p: string): string {
@@ -210,33 +273,19 @@ export class SeatbeltSandbox implements Sandbox {
   exec(cmd: string, opts: ExecOpts = {}): Promise<ExecResult> {
     return new Promise((resolve) => {
       const cwd = opts.cwd ? this.abs(opts.cwd) : this.workdir;
-      // Build the spawn argv. Unsandboxed path mirrors InMemorySandbox (shell:true). Sandboxed path
-      // writes a per-exec profile (granting the cwd too, so a node may exec in a subdir of the workdir)
-      // and runs sandbox-exec -f <profile> sh -c <cmd> with shell:false so OUR argv is what runs.
-      let file: string;
-      let argv: string[];
-      let useShell: boolean;
-      let profilePath: string | undefined;
-      if (this.sandboxed) {
-        const profile = buildSeatbeltProfile({
-          workdir: this.workdir,
-          // grant both the workdir AND the exec cwd (a node may run a step in a workdir subdir).
-          readScope: [...this.readScope, cwd],
-        });
-        profilePath = path.join(this.root, `exec-${process.pid}-${Date.now()}.sb`);
-        fsSync.writeFileSync(profilePath, profile);
-        file = 'sandbox-exec';
-        argv = ['-f', profilePath, 'sh', '-c', cmd];
-        useShell = false;
-      } else {
-        file = cmd;
-        argv = [];
-        useShell = true;
-      }
-      const child = spawn(file, argv, {
+      // The shared seam: wrap in `sandbox-exec -f <profile> sh -c <cmd>` on darwin (granting the cwd too,
+      // so a node may exec in a workdir subdir), or `null` off-darwin ⇒ bare `cmd` via shell, byte-
+      // identical to InMemorySandbox. The per-exec profile is written under this.root (a temp dir).
+      const plan = seatbeltExecPlan(cmd, {
+        workdir: this.workdir,
+        readScope: [...this.readScope, cwd],
+        writeScope: this.writeScope,
+        profileDir: this.root,
+      });
+      const child = spawn(plan ? plan.file : cmd, plan ? plan.argv : [], {
         cwd,
         env: { ...process.env, ...this.env, ...opts.env },
-        shell: useShell,
+        shell: plan ? false : true,
         // detached → the command is its own process group leader, so on cancel we can kill the WHOLE
         // tree (sandbox-exec, the wrapped sh, AND any grandchildren), not just the leader — no orphans.
         detached: true,
@@ -258,7 +307,7 @@ export class SeatbeltSandbox implements Sandbox {
       };
       const cleanup = (): void => {
         signal?.removeEventListener('abort', onAbort);
-        if (profilePath) { try { fsSync.unlinkSync(profilePath); } catch { /* already gone */ } }
+        if (plan) { try { fsSync.unlinkSync(plan.profilePath); } catch { /* already gone */ } }
       };
       const finish = (r: ExecResult): void => { if (done) return; done = true; cleanup(); resolve(r); };
       if (signal) {

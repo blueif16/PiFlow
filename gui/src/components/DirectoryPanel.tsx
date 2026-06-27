@@ -15,7 +15,7 @@
  * the perf budget allows blur on. Float it over the canvas with React Flow's
  * <Panel> (see WorkflowCanvas). Honors prefers-reduced-motion (no slide).
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as motion from "motion/react-client";
 import { GlassSurface } from "./GlassSurface";
@@ -37,6 +37,10 @@ export interface DirectoryPanelProps {
   onOpenFile?: (entry: DirEntry, path: DirEntry[]) => void;
   /** grow columns RIGHT→LEFT (root pinned right) — for a right-anchored panel like the menu-bar switcher */
   reverse?: boolean;
+  /** open the navigator to this folder chain on mount (the columns leading to a deep file) */
+  initialPath?: DirEntry[];
+  /** mark this file leaf id (`f:<displayPath>`) selected on mount */
+  initialFileId?: string | null;
 }
 
 function FolderGlyph() {
@@ -62,13 +66,14 @@ function Chevron() {
   );
 }
 
-export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = false }: DirectoryPanelProps) {
+export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = false, initialPath, initialFileId }: DirectoryPanelProps) {
   const reduce = useReducedMotion() ?? false;
   // columns slide in FROM the side they grow toward (left for default, right for reverse)
   const enterX = reverse ? 10 : -10;
-  // the chain of opened folders; columns derive from it
-  const [path, setPath] = useState<DirEntry[]>([]);
-  const [fileId, setFileId] = useState<string | null>(null);
+  // the chain of opened folders; columns derive from it. `initial*` seed the navigator when it's mounted
+  // already pointing at a file (e.g. the file overlay opening to the leaf the user clicked on the canvas).
+  const [path, setPath] = useState<DirEntry[]>(initialPath ?? []);
+  const [fileId, setFileId] = useState<string | null>(initialFileId ?? null);
 
   // columns = root, then the children of each opened folder, in order
   const columns = useMemo(() => {
@@ -78,6 +83,17 @@ export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = fa
     }
     return cols;
   }, [tree, path]);
+
+  // The strip holds ~3 columns before it overflows; without this the deeper columns just render off-screen
+  // and the navigator *looks* capped. Scroll the leading (newest) column into view whenever depth grows, so
+  // folders keep drilling in freely. (reverse grows right→left and never overflows in practice — skip it to
+  // avoid row-reverse scrollLeft quirks.)
+  const colsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (reverse) return;
+    const el = colsRef.current;
+    if (el) el.scrollTo({ left: el.scrollWidth, behavior: reduce ? "auto" : "smooth" });
+  }, [columns.length, reverse, reduce]);
 
   const crumb = path.map((p) => p.name).join(" / ");
 
@@ -101,7 +117,7 @@ export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = fa
         {crumb && <span className="ds-dir__crumb" title={crumb}>{crumb}</span>}
       </div>
 
-      <div className={`ds-dir__cols${reverse ? " ds-dir__cols--reverse" : ""}`}>
+      <div ref={colsRef} className={`ds-dir__cols${reverse ? " ds-dir__cols--reverse" : ""}`}>
         <AnimatePresence initial={false}>
           {columns.map((col, depth) => {
             const selectedId = path[depth]?.id ?? null;

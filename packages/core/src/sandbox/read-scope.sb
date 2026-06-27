@@ -19,13 +19,21 @@
 ;; Seatbelt is kernel-enforced, INHERITS to every child process (so a spawned grep/find/cat is bound
 ;; too) and cannot be lifted from inside the sandbox.
 ;;
-;; POLICY: allow everything EXCEPT file reads; deny ALL file reads; then re-allow exactly (1) the
-;; toolchain/system roots a node + node + npm need to run and (2) the per-exec DECLARED scope the
-;; provider injects below. A read of the wider tree (another unit, or a grep from the filesystem root)
-;; returns Operation-not-permitted, while the workdir, the declared read scope, and node_modules read fine.
+;; POLICY: allow everything EXCEPT file reads AND file writes; deny ALL file reads, deny ALL file writes;
+;; then re-allow exactly (1) the toolchain/system roots a node + node + npm need to run/scratch and (2)
+;; the per-exec DECLARED scope the provider injects below. A read OR write of the wider tree (another
+;; unit, a sibling node dir, ~/.ssh, the repo at large) returns Operation-not-permitted, while the
+;; workdir, the declared scope, and node_modules read+write fine.
 ;;
-;; SCOPE: reads only (the incident was a read-scope failure). exec and network are left open (allow
-;; default) so the toolchain is unaffected; tighten those later if wanted.
+;; SCOPE: reads AND writes (symmetric jail). exec (process-exec*/process-fork) and network are left open
+;; (allow default) so the toolchain runs unaffected -- the `pi` agent MUST run tools (node/git/scripts)
+;; and reach its model gateway. ONLY file-read*/file-write* are the boundary.
+;;
+;; WRITABLE SET: the toolchain write-scratch roots below are adopted from OpenAI's Codex CLI macOS
+;; Seatbelt workspace-write profile (codex-rs/sandboxing/src/seatbelt_base_policy.sbpl + the writable-root
+;; build in protocol.rs get_writable_roots_with_cwd: cwd, /tmp, $TMPDIR, and the /dev/null write literal)
+;; rather than invented -- a battle-tested set, generous enough that node/npm/git scratch is never EPERMd.
+;; We add piflow's home scratch (~/.npm ~/.cache ~/.pi ~/.piflow ~/.config) so pi can write its own state.
 ;; ===========================================================================================
 
 (allow default)
@@ -52,6 +60,7 @@
   (subpath "/dev")
   (subpath "@TMPDIR@")
   (subpath "@HOME@/.pi")
+  (subpath "@HOME@/.piflow")
   (subpath "@HOME@/.npm")
   (subpath "@HOME@/.cache")
   (subpath "@HOME@/.config")
@@ -66,3 +75,40 @@
 ;; units, other out dirs, the wider repo) stays denied.
 (allow file-read*
 @SCOPE_ALLOWS@)
+
+;; ===========================================================================================
+;; WRITE SCOPE -- symmetric to the read jail above. Deny EVERY file write up front, then re-allow only
+;; (1) the toolchain write-scratch roots (Codex-derived: see WRITABLE SET in the header) and (2) the
+;; per-exec DECLARED write scope (workdir + CreateOpts.writeScope == the node's owns). A write to a
+;; sibling node dir, ~/.ssh, ~/Documents, or the repo at large returns Operation-not-permitted -- and
+;; because Seatbelt inherits to every child, a `bash echo > /anywhere` is bounded too.
+(deny file-write*)
+
+;; --- toolchain / system write-scratch roots (Codex workspace-write writable set + piflow home state) ---
+;; Generous on PURPOSE: bounding the blast radius (no writes to $HOME-sensitive paths, sibling dirs, the
+;; repo at large), NOT maximal tightness. An EPERM on the toolchain's OWN scratch breaks node/pi and is a
+;; worse failure than no jail. /dev/null|stdout|stderr|fd are how the shell redirects; /private/var holds
+;; the per-user $TMPDIR (var/folders/...) and caches; /tmp + $TMPDIR are the canonical scratch dirs.
+(allow file-write*
+  (subpath "@TMPDIR@")
+  (subpath "/private/tmp")
+  (subpath "/private/var/folders")
+  (subpath "@HOME@/.pi")
+  (subpath "@HOME@/.piflow")
+  (subpath "@HOME@/.npm")
+  (subpath "@HOME@/.cache")
+  (subpath "@HOME@/.config")
+  (literal "/dev/null")
+  (literal "/dev/zero")
+  (literal "/dev/stdout")
+  (literal "/dev/stderr")
+  (literal "/dev/tty")
+  (subpath "/dev/fd")
+  (literal "/tmp")
+  (subpath "/private/var/tmp"))
+
+;; --- per-exec DECLARED write scope (provider-injected from CreateOpts.writeScope + the workdir) ---
+;; the node's workdir (its deliverable tree) + its declared write roots (owns). Anything not listed here
+;; (sibling units, other out dirs, the wider repo, $HOME) stays denied.
+(allow file-write*
+@WRITE_SCOPE_ALLOWS@)

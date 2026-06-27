@@ -5,7 +5,7 @@
 // the existing `runWorkflow`. There is NO env parsing here — that is `loadConfig`'s job (the CLI/convention
 // layer). The WORKFLOW BRIDGE stays CONSUMER-INJECTED: the consumer supplies either a literal `workflowSpec`
 // or a `buildWorkflowSpec` factory (the workflow-dialect-specific bit core does NOT own). `runFromConfig` is
-// the clean seam the `piflow run` CLI subcommand (the follow-on unit) calls after it resolves the env.
+// the clean seam the `piflowctl run` CLI subcommand (the follow-on unit) calls after it resolves the env.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import path from 'node:path';
@@ -20,24 +20,38 @@ import { expandSubworkflow, SubworkflowConfigError } from '../workflow/subworkfl
 import { loadFusionConfig } from './fusion-config.js';
 import { loadModelTiers } from './model-routing.js';
 import { assembleRunTools } from './tool-config.js';
+import { catalogForSpec } from '../catalog/client.js';
 import { runWorkflow, type RunOptions, type RunResult } from './runner.js';
+// Leaf import (NOT the observe barrel) — registry.js pulls no runner module, so there is no cycle.
+import { registerProductRoot } from '../observe/registry.js';
 
 /**
  * Resolve the run's `registry`/`mcpConfig` with the EXPLICIT-CALLER-WINS guard: if the caller already set
  * either `registry` or `mcpConfig`, pass BOTH through unchanged (a library consumer that built its own
- * registry — every `runner.test.ts` — keeps full control). Otherwise self-assemble the seeded catalog +
- * merged MCP config from the spec via `assembleRunTools`, so the canonical (CLI / template) path binds
- * `oc.*`/`mcp.*` tools instead of falling through to a bare `DefaultToolRegistry` (the G11 blocker fix).
+ * registry — every `runner.test.ts` — keeps full control). Otherwise self-assemble: read the cached
+ * `~/.piflow/catalog/` slice for the `mcp.*` addresses the spec selects (`catalogForSpec`), hand those rows
+ * to `assembleRunTools` as `extraEntries` (so the address BINDS), and merge the slice's server configs into
+ * `mcpConfig` — node-authored `mcp.servers` WINNING on a key conflict. This closes the live-path gap
+ * (tool-calling-architecture §5): a node selecting `mcp.*`/`oc.*` binds + its server is provisioned, instead
+ * of falling through to a bare `DefaultToolRegistry` with no server to reach.
  */
-function resolveRunTools(
+export function resolveRunTools(
   spec: WorkflowSpec,
   runOpts: RunOptions,
 ): { registry: RunOptions['registry']; mcpConfig: RunOptions['mcpConfig'] } {
   if (runOpts.registry || runOpts.mcpConfig) {
     return { registry: runOpts.registry, mcpConfig: runOpts.mcpConfig };
   }
-  const tools = assembleRunTools({ spec });
-  return { registry: tools.registry, mcpConfig: tools.mcpConfig };
+  const cat = catalogForSpec(spec);
+  const tools = assembleRunTools({ spec, extraEntries: cat.extraEntries });
+  // Merge the catalog's server configs UNDER the node-authored ones (node wins on key conflict). Only when
+  // the slice actually contributed a server — else leave `tools.mcpConfig` byte-identical (an all-native
+  // template, or a slice that matched nothing, stages no `_pi/mcp.json`).
+  const mcpConfig =
+    Object.keys(cat.servers).length > 0
+      ? { servers: { ...cat.servers, ...(tools.mcpConfig?.servers ?? {}) } }
+      : tools.mcpConfig;
+  return { registry: tools.registry, mcpConfig };
 }
 
 /**
@@ -136,6 +150,16 @@ export interface RunFromTemplateOpts extends RunOptions {
 export async function runFromTemplate(templateDir: string, opts: RunFromTemplateOpts): Promise<RunResult> {
   const { runDir, ...runOpts } = opts;
   const workspace = opts.workspace ?? opts.repoRoot ?? process.cwd();
+  // (0) SELF-REGISTER this repo into the global registry (`~/.piflow/products.json`) so EVERY observer (CLI
+  // `status` · TUI fleet picker · GUI) is exposed to it with zero manual `--root` — the write-side analogue
+  // of the pi runtime self-registering each run home into `~/.pi`. We register the WORKSPACE root (the
+  // `{{WORKSPACE}}` the template resolves against), so core makes NO `.piflow/<wf>/runs` depth assumption.
+  // Non-fatal: index bookkeeping must NEVER fail a run.
+  try {
+    await registerProductRoot(workspace);
+  } catch {
+    /* registry write is best-effort — a run never depends on it */
+  }
   // (1) compile the template → WorkflowSpec (fail-closed §8 gate).
   const loaded = await loadTemplate(templateDir);
   // (2) materialize the run thread folder (${RUN}/.pi/nodes/<id>/ + the empty state stub). ALL nodes are

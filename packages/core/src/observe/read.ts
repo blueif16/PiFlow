@@ -172,6 +172,8 @@ export async function readRunModel(runDir: string): Promise<RunModel> {
     run: status.run,
     done: status.done,
     ok: status.ok,
+    startedAt: status.startedAt,
+    updatedAt: status.updatedAt,
     durationMs: status.durationMs,
     provider: status.provider,
     model: status.model,

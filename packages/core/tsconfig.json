@@ -5,5 +5,6 @@
     "outDir": "dist",
     "resolveJsonModule": true
   },
+  "references": [{ "path": "../tool-bridge" }],
   "include": ["src/**/*.ts", "src/names/*.json"]
 }

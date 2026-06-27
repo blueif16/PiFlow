@@ -1,22 +1,19 @@
 import { writeFileSync } from "node:fs";
 import * as K from "../kit.mjs";
 
-/* ATOM — ONE agent node, drawn as a SANDBOX that is a literal GLASS BOX
+/* AGENT — ONE agent node, drawn as a SANDBOX that is a literal GLASS BOX
    wrapping its contents. You SEE the agent INSIDE the case:
 
      • sandbox   — a translucent glass BOX (floor + 4 walls + top) wrapping all.
      • agent     — the orange core, centered INSIDE the box (the ONE orange spark).
-     • hook-pre  — a clean upright CARD inside, screen-LEFT of the agent.
-     • hook-post — its mirror CARD inside, screen-RIGHT of the agent.
-     • tool-*     — chips OUTSIDE the box, wired IN through a wall (dashed tethers).
-     • flow       — a whisper: a faint straight tick on the screen-horizontal.
+     • hook-pre  — a thin GUARD-BAND seated ON one front face (the ENTRY boundary).
+     • hook-post — its mirror GUARD-BAND on the other front face (the EXIT boundary).
+     • tool-*     — TWO chips (OpenClaw, MCP) OUTSIDE the box, wired IN across a wall.
 
-   Symmetry trick: two grid points at the same (x+y) render at the SAME screen
-   height; opposite (x−y) puts one screen-left, one screen-right → a mirrored
-   pair. PRE and POST share the same x+y and have opposite x−y.
-
-   NO checkmark / arrow glyphs on the cards (a 2D glyph on a tilted iso face
-   never reads right). NO arrowheads, NO curves, NO backward edge. */
+   The two visible front faces of the square box are screen-mirror-symmetric, so
+   a band on each reads as a symmetric mirrored pair AT the boundary — guarded on
+   the way IN (PRE), verified on the way OUT (POST). NO glyphs on the bands. NO
+   arrows, NO ticks, NO flow/control marks anywhere. */
 
 const { proj, f2, EDGE, MUTE, ORANGE, SW } = K;
 
@@ -51,12 +48,12 @@ function boxFront(b) {
   return wallXW + wallYD + top + hi;
 }
 
-/* a solid little extruded box (a card or the agent), 3 visible faces. */
-function solidBox(s, { accent = false } = {}) {
+/* a solid little extruded box (a band, a chip, or the agent), 3 visible faces. */
+function solidBox(s, { accent = false, top, left, right } = {}) {
   const { x, y, z, w, d, h } = s;
-  const tf = accent ? "#ff5a1f" : "#ffffff";
-  const lf = accent ? "#ef6a2c" : "#e7e7ee";
-  const rf = accent ? "#d9500f" : "#d8d8e0";
+  const tf = top ?? (accent ? "#ff5a1f" : "#ffffff");
+  const lf = left ?? (accent ? "#ef6a2c" : "#e7e7ee");
+  const rf = right ?? (accent ? "#d9500f" : "#d8d8e0");
   const rightWall = poly([[x + w, y, z], [x + w, y + d, z], [x + w, y + d, z + h], [x + w, y, z + h]], rf);
   const leftWall = poly([[x, y + d, z], [x + w, y + d, z], [x + w, y + d, z + h], [x, y + d, z + h]], lf);
   const topFace = poly([[x, y, z + h], [x + w, y, z + h], [x + w, y + d, z + h], [x, y + d, z + h]], tf);
@@ -70,10 +67,17 @@ const g = (id, body, layer) => `<g id="part-${id}" data-part="${id}"${layer ? ` 
 const AG = { x: 26, y: 26, z: 0, w: 28, d: 28, h: 30 };
 // glass box wraps everything: (-6,-6)..(86,86), height a bit above the agent.
 const BOX = { x: -6, y: -6, z: 0, w: 92, d: 92, h: 42 };
-// cards: PRE thin-in-x (screen-left), POST thin-in-y (screen-right). Same x+y.
-const T = 4, L = 26, CH = 28;
-const PRE = { x: 10, y: 64 - L / 2, z: 0, w: T, d: L, h: CH };   // center ~ (12, 64), x+y=76
-const POST = { x: 64 - L / 2, y: 10, z: 0, w: L, d: T, h: CH };  // center ~ (64, 12), x+y=76
+// PRE/POST = thin guard-bands seated ON the two visible FRONT faces of the box,
+// proud of the wall by BPR. Each is a horizontal stripe (z[BZ0,BZ1]) inset from
+// the face edges (BIN). The two faces are screen-mirror-symmetric, so the bands
+// are a mirrored pair AT the boundary. PRE on the y=86 (front-left) face = ENTRY;
+// POST on the x=86 (front-right) face = EXIT.
+const BPR = 1.5, BIN = 8, BZ0 = 13, BZ1 = 29;
+// PRE: on y=86 face → thin in y (proud outward to y=86+BPR), spans x, stripe in z.
+const PRE = { x: BOX.x + BIN, y: BOX.y + BOX.d, z: BZ0, w: BOX.w - 2 * BIN, d: BPR, h: BZ1 - BZ0 };
+// POST: on x=86 face → thin in x (proud outward to x=86+BPR), spans y, stripe in z.
+const POST = { x: BOX.x + BOX.w, y: BOX.y + BIN, z: BZ0, w: BPR, d: BOX.d - 2 * BIN, h: BZ1 - BZ0 };
+const BAND = { top: "#dfe0e6", left: "#d4d5dd", right: "#cccdd6" };  // neutral guard tint
 
 /* =========================== scene =========================== */
 const VIEWBOX = "-215 -116 390 290";
@@ -85,37 +89,33 @@ S.shadow(40, 40, 96, 50, 0.07);
 /* 2+3. sandbox BACK (floor + back walls) — before contents */
 S.raw(`<g id="part-sandbox" data-part="sandbox" data-layer="sandbox-back">${boxBack(BOX)}</g>`);
 
-/* 4. CONTENTS inside the box, back→front: PRE (back-left), agent, POST (front-right) */
-S.raw(g("hook-pre", solidBox(PRE)));
+/* 4. CONTENTS inside the box: the AGENT only (the ONE orange spark) */
 S.raw(g("agent", solidBox(AG, { accent: true })));
-S.raw(g("hook-post", solidBox(POST)));
 
 /* register obstacle AABBs so labels avoid the contents (raw deco isn't tracked) */
 const noFill = { top: "transparent", left: "transparent", right: "transparent", stroke: "transparent", sw: 0 };
 S.box(AG.x, AG.y, AG.z, AG.w, AG.d, AG.h, noFill);
-S.box(PRE.x, PRE.y, PRE.z, PRE.w, PRE.d, PRE.h, noFill);
-S.box(POST.x, POST.y, POST.z, POST.w, POST.d, POST.h, noFill);
 
 /* 5+6. sandbox FRONT (translucent walls + top) — agent shows THROUGH.
    NOTE: the glass box is NOT registered as a label obstacle — it is see-through,
-   so the ATOM / SANDBOX / tool labels may sit over the glass (dark text on light
-   glass reads fine), letting ATOM sit right above the agent rather than escaping
-   the whole box silhouette. */
+   so the AGENT / SANDBOX / tool labels may sit over the glass (dark text on light
+   glass reads fine), letting AGENT sit right above the core. */
 S.raw(`<g data-part="sandbox" data-layer="sandbox-front">${boxFront(BOX)}</g>`);
 
-/* 7. flow — a whisper: a mirrored pair of faint ticks on the screen-HORIZONTAL
-   (grid direction (+1,−1,0) keeps screen-y constant), just outside the box at
-   the agent's band: left = task in, right = verified out. No arrowhead/curve. */
-S.raw(`<g id="part-flow" data-part="flow" data-layer="decor">` +
-  seg(-15, 95, 0, -9, 89, 0, { stroke: EDGE, sw: 1.4, op: 0.34 }) +
-  seg(95, -15, 0, 89, -9, 0, { stroke: EDGE, sw: 1.4, op: 0.34 }) +
-  `</g>`);
+/* 7. PRE / POST = guard-bands seated ON the two front faces (drawn AFTER the
+   glass so they sit proud ON the wall, at the boundary — not inside). Mirrored
+   pair: PRE on the front-left (y=86) face = entry, POST on the front-right
+   (x=86) face = exit. No glyphs. */
+S.raw(g("hook-pre", solidBox(PRE, BAND)));
+S.raw(g("hook-post", solidBox(POST, BAND)));
+S.box(PRE.x, PRE.y, PRE.z, PRE.w, PRE.d, PRE.h, noFill);
+S.box(POST.x, POST.y, POST.z, POST.w, POST.d, POST.h, noFill);
 
-/* tools — chips OUTSIDE the box (front), wired IN through the front (y+d) wall. */
+/* tools — exactly TWO chips (OpenClaw, MCP) OUTSIDE the box (front), wired IN
+   across the front (y+d) wall. fs is baseline plumbing, not shown. */
 const toolRow = [
-  { id: "tool-openclaw", label: "OPENCLAW", x: 4 },
-  { id: "tool-mcp", label: "MCP", x: 28 },
-  { id: "tool-shell", label: "SHELL", x: 52 },
+  { id: "tool-openclaw", label: "OPENCLAW", x: 8 },
+  { id: "tool-mcp", label: "MCP", x: 34 },
 ];
 const CY = 106, CW = 13, CD = 13, CHp = 9;
 for (const t of toolRow) {
@@ -129,13 +129,14 @@ for (const t of toolRow) {
 
 /* 8. labels (Scene appends the placed <text> after all parts; we wrap them in
    a single #part-labels group via a post-pass below). */
-S.label([40, 40, AG.h], "ATOM", { fill: ORANGE, side: "top", gap: 12 });
+S.label([40, 40, AG.h], "AGENT", { fill: ORANGE, side: "top", gap: 12 });
 S.label([BOX.x + BOX.w, BOX.y + BOX.d, BOX.z], "SANDBOX", { fill: EDGE, side: "bottom", gap: 14 });
-S.label([PRE.x, PRE.y + PRE.d, PRE.h / 2], "PRE", { fill: MUTE, side: "left", gap: 10 });
-S.label([POST.x + POST.w, POST.y, POST.h / 2], "POST", { fill: MUTE, side: "right", gap: 10 });
+// PRE band sits on the front-left face → label to the screen-LEFT of its band.
+S.label([PRE.x, PRE.y + PRE.d, BZ1], "PRE", { fill: MUTE, side: "left", gap: 10 });
+// POST band sits on the front-right face → label to the screen-RIGHT of its band.
+S.label([POST.x + POST.w, POST.y, BZ1], "POST", { fill: MUTE, side: "right", gap: 10 });
 S.label([toolRow[0].x + 6, CY + 6, CHp], "OPENCLAW", { fill: MUTE, side: "bottom", gap: 9 });
 S.label([toolRow[1].x + 6, CY + 6, CHp], "MCP", { fill: MUTE, side: "bottom", gap: 9 });
-S.label([toolRow[2].x + 6, CY + 6, CHp], "SHELL", { fill: MUTE, side: "bottom", gap: 9 });
 
 /* wrap the Scene-appended label <text> elements in one named #part-labels group
    (Scene emits them as trailing top-level <text>; they are the only <text> here). */

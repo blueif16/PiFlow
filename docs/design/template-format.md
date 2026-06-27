@@ -104,7 +104,7 @@ The authored ⟷ generated split mirrors `package.json` ⟷ `package-lock.json`:
 - **`workflow.json` — GENERATED + committed (the lock AND the visible whole-DAG):** the compile step regenerates
   it from `meta.json` + every `node.json` on each build — the full resolved topology (nodes · edges · stages ·
   parallel lanes). You READ it (and diff it in a PR) but never hand-edit edges; change a `node.json`'s `deps` +
-  rebuild. A `piflow check` gate fails if it's stale.
+  rebuild. A `piflowctl check` gate fails if it's stale.
 ```jsonc
 // workflow.json — GENERATED, do not hand-edit (run the compile step)
 { "id": "game-omni", "meta": { "name": "game-omni", "description": "…" },

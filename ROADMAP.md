@@ -34,7 +34,7 @@ piece against §10.** Build order below is sequenced so the most efficient, fork
 ### Near-term — efficient, high-value, fork-independent
 - [ ] **Box-and-arrow DAG renderer** over `viz-model.buildModel()` (substrate §8, §14.1). The data layer
       (stages, lanes, phases, Gantt, pathways) already exists; this is *a renderer away, not a data-model away*.
-      The operator surface the funded competitors already ship. Surfaces as `piflow viz <run>`.
+      The operator surface the funded competitors already ship. Surfaces as `piflowctl viz <run>`.
 - [ ] **Instrument orchestrator-overhead vs in-pi time** in `run.mjs` (research brief, Next moves). If overhead
       is <2–3%, the "rewrite in Rust" question is settled empirically and stays off the table (§10 language row).
 
