@@ -1,0 +1,18 @@
+{
+  "id": "e2b-e2e",
+  "meta": {
+    "name": "e2b-e2e",
+    "description": "Minimal 1-node template for the LIVE --sandbox e2b end-to-end smoke: the node calls a CUSTOM provider (mmgw/nebius) via real pi in a remote E2B sandbox, writes one artifact (out/greeting.txt), and the host asserts that artifact is collected back via downloadDir. Proves the full runner→E2B path, not just connectivity."
+  },
+  "stages": [
+    [
+      "greet"
+    ]
+  ],
+  "nodes": {
+    "greet": {
+      "phase": "compute",
+      "deps": []
+    }
+  }
+}
