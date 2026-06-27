@@ -19,7 +19,6 @@ import {
   runFromTemplate as coreRunFromTemplate,
   applyProfileByName,
   LocalSandboxProvider,
-  createDaytonaProvider,
   defaultSecretResolver,
   compile,
   seededRegistry,
@@ -87,20 +86,21 @@ export interface RunDeps {
   makeLocalProvider?: (opts?: { dangerous?: boolean }) => SandboxProvider;
   /**
    * Factory for the `--sandbox daytona` cloud provider (injectable so a test asserts the instance WITHOUT a
-   * real Daytona client/VM). Default builds `createDaytonaProvider({ image: DAYTONA_IMAGE, apiKey: DAYTONA_API_KEY })`.
+   * real Daytona client/VM). The default DYNAMICALLY `import('@piflow/daytona')`s the CHOOSE-TO-INSTALL
+   * extension and calls its `createDaytonaProvider({ snapshot|image, apiKey: DAYTONA_API_KEY, stageHome })`;
+   * on an absent package it throws a clear `npm i @piflow/daytona` message (async because the import is lazy).
    */
   makeDaytonaProvider?: (opts: {
     image?: string;
     snapshot?: string;
     apiKey?: string;
     stageHome?: Record<string, string>;
-  }) => SandboxProvider;
+  }) => Promise<SandboxProvider>;
   /**
    * Factory for the `--sandbox e2b` cloud provider (injectable so a test asserts the instance WITHOUT a real
    * E2B client/sandbox). The default DYNAMICALLY `import('@piflow/e2b')`s the CHOOSE-TO-INSTALL extension and
    * calls its `createE2bProvider({ apiKey: E2B_API_KEY, template: E2B_TEMPLATE, stageHome })`; on an absent
-   * package it throws a clear `npm i @piflow/e2b` message (async because the import is lazy). (Daytona stays a
-   * static core import for now; it can later move to this same external-package shape via this seam.)
+   * package it throws a clear `npm i @piflow/e2b` message (async because the import is lazy).
    */
   makeE2bProvider?: (opts: {
     template?: string;
@@ -357,10 +357,20 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   const runFromTemplate = deps.runFromTemplate ?? coreRunFromTemplate;
   const makeLocalProvider =
     deps.makeLocalProvider ?? ((o?: { dangerous?: boolean }) => new LocalSandboxProvider({ enforceReadScope: !o?.dangerous }));
+  // The Daytona backend is a CHOOSE-TO-INSTALL extension (`@piflow/daytona`), NOT a core dependency — so it
+  // is loaded with a DYNAMIC import only on `--sandbox daytona`, and an absent package becomes a clear,
+  // actionable install message rather than a raw module-not-found at CLI startup.
   const makeDaytonaProvider =
     deps.makeDaytonaProvider ??
-    ((o: { image?: string; snapshot?: string; apiKey?: string; stageHome?: Record<string, string> }) =>
-      createDaytonaProvider(o));
+    (async (o: { image?: string; snapshot?: string; apiKey?: string; stageHome?: Record<string, string> }) => {
+      let mod: typeof import('@piflow/daytona');
+      try {
+        mod = await import('@piflow/daytona');
+      } catch {
+        throw new Error('--sandbox daytona requires the @piflow/daytona extension — run: npm i @piflow/daytona');
+      }
+      return mod.createDaytonaProvider(o);
+    });
   // The E2B backend is a CHOOSE-TO-INSTALL extension (`@piflow/e2b`), NOT a core dependency — so it is
   // loaded with a DYNAMIC import only on `--sandbox e2b`, and an absent package becomes a clear, actionable
   // install message rather than a raw module-not-found at CLI startup.
@@ -506,7 +516,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // (and suppresses the snapshot); `DAYTONA_SNAPSHOT` picks a different snapshot name.
     const rawImage = process.env.DAYTONA_IMAGE;
     const snapshot = process.env.DAYTONA_SNAPSHOT ?? (rawImage ? undefined : DEFAULT_DAYTONA_SNAPSHOT);
-    provider = makeDaytonaProvider({
+    provider = await makeDaytonaProvider({
       ...(rawImage ? { image: rawImage } : {}),
       ...(snapshot ? { snapshot } : {}),
       apiKey: process.env.DAYTONA_API_KEY,

@@ -13,7 +13,7 @@
 //
 // GATE: a real VM costs money + needs a real account, so it never runs in a default `vitest run`. Opt in:
 //   built-in:  DAYTONA_API_KEY=… DAYTONA_SNAPSHOT=piflow-node-runtime-0-80-2 ANTHROPIC_API_KEY=… PIFLOW_E2E=1 \
-//              npx vitest run packages/core/test/sandbox-daytona-e2e.test.ts
+//              npx vitest run packages/daytona/test/sandbox-daytona-e2e.test.ts
 //   mmgw:      DAYTONA_API_KEY=… DAYTONA_SNAPSHOT=piflow-node-runtime-0-80-2 PIFLOW_E2E=1 \
 //              PIFLOW_E2E_PROVIDER=mmgw PIFLOW_E2E_MODEL=MiniMax-M3 npx vitest run …
 
@@ -22,9 +22,9 @@ import { promises as fs, existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { compile, runWorkflow, defaultSecretResolver } from '../src/index.js';
-import { createDaytonaProvider } from '../src/sandbox/daytona-sdk.js';
-import type { WorkflowSpec } from '../src/index.js';
+import { compile, runWorkflow, defaultSecretResolver } from '@piflow/core';
+import { createDaytonaProvider } from '../src/daytona-sdk.js';
+import type { WorkflowSpec } from '@piflow/core';
 
 const DAYTONA_KEY = process.env.DAYTONA_API_KEY;
 const E2E_PROVIDER = process.env.PIFLOW_E2E_PROVIDER ?? 'anthropic';

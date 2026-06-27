@@ -12,7 +12,7 @@
 // output in real time. A regression to the old `await stream` behavior HANGS → the per-test timeout fails.
 
 import { describe, it, expect } from 'vitest';
-import { DaytonaSandboxProvider } from '../src/sandbox/daytona.js';
+import { DaytonaSandboxProvider } from '../src/daytona.js';
 
 // A fake `sandbox.process` mimicking the live `?follow=true` socket: it fires a chunk in real time but
 // its log promise RESOLVES only on deleteSession (teardown) — never on command exit. Completion is

@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // DaytonaSandbox / DaytonaSandboxProvider — the CLOUD backend, LIVE-WIRED VIA AN ADAPTER.
 //
-// This file is dependency-FREE on purpose: it imports only node builtins + `../types.js`,
+// This file is dependency-FREE on purpose: it imports only node builtins + TYPES from `@piflow/core`,
 // and talks to Daytona through a small dependency-inversion seam, `interface DaytonaSdk`
 // (+ DaytonaVm/DaytonaFs/DaytonaProcess and the response types). The REAL `@daytona/sdk`
 // is mapped onto that seam by `realDaytonaSdk()` in `./daytona-sdk.ts` (the ONLY file that
@@ -26,7 +26,7 @@
 
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { tailAppend } from './capture.js';
+import { tailAppend } from '@piflow/core';
 import type {
   Sandbox,
   SandboxProvider,
@@ -36,7 +36,7 @@ import type {
   ExecResult,
   RunScope,
   OpenRunOpts,
-} from '../types.js';
+} from '@piflow/core';
 
 // ── the SDK seam (the subset of @daytona/sdk this file calls) ──────────────────
 // A dependency-inversion adapter: these interfaces are the SMALLEST shape that
