@@ -9,7 +9,7 @@
 //
 // Pure functions only — no child spawn here (the live smoke test exercises the real `pi`).
 import { describe, it, expect } from "vitest";
-import { parseJsonlChunk, serializeCommand } from "./control-session.mjs";
+import { parseJsonlChunk, serializeCommand, parseSessionHeader } from "./control-session.mjs";
 
 describe("parseJsonlChunk — strict \\n-JSONL with carry-partial-line", () => {
   it("reassembles a JSON object SPLIT across two chunks (the carry-partial contract)", () => {
@@ -100,5 +100,87 @@ describe("serializeCommand — one \\n-terminated line per command", () => {
     const cmd = { id: "x", type: "steer", message: "interrupt" };
     const { frames } = parseJsonlChunk("", serializeCommand(cmd));
     expect(frames).toEqual([cmd]);
+  });
+});
+
+// The history-list parser pins the second load-bearing contract: turning one session `.jsonl`'s LEADING
+// LINES into the {id,name,firstMessage} summary the GUI renders. The shapes here are the REAL pi 0.79.10
+// session-file shapes (runtime-captured during this work: `{type:"session",version:3,id,timestamp,cwd}`
+// header, optional `{type:"session_info",name}`, then `{type:"message",message:{role:"user",content}}`).
+// Each test FAILS if the parse is wrong; the malformed/empty cases prove it never throws on the relay path.
+describe("parseSessionHeader — header → conversation-list summary", () => {
+  const header = (id = "019f0b0f-a344-705c-ad3d-4eb80c36d84c") =>
+    JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-06-27T21:50:02.052Z", cwd: "/run" });
+  const info = (name) => JSON.stringify({ type: "session_info", id: "ab12", parentId: null, name });
+  const userMsg = (text) => JSON.stringify({ type: "message", id: "c3", parentId: "ab12", message: { role: "user", content: [{ type: "text", text }] } });
+
+  it("extracts id, name, and firstMessage from a real header + session_info + first user message", () => {
+    const jsonl = [header(), info("Refactor auth module"), userMsg("Please refactor the auth module")].join("\n") + "\n";
+    const out = parseSessionHeader(jsonl);
+    expect(out).toEqual({
+      id: "019f0b0f-a344-705c-ad3d-4eb80c36d84c",
+      name: "Refactor auth module",
+      firstMessage: "Please refactor the auth module",
+    });
+  });
+
+  it("uses the first user message when there is no session_info name (name → null)", () => {
+    const jsonl = [header("id-no-name"), userMsg("Reply with exactly: ALPHA")].join("\n") + "\n";
+    const out = parseSessionHeader(jsonl);
+    expect(out.id).toBe("id-no-name");
+    expect(out.name).toBeNull();
+    expect(out.firstMessage).toBe("Reply with exactly: ALPHA");
+  });
+
+  it("reads a string-content user message (not just text-block arrays)", () => {
+    const jsonl = [header("id-str"), JSON.stringify({ type: "message", message: { role: "user", content: "hello world" } })].join("\n") + "\n";
+    expect(parseSessionHeader(jsonl).firstMessage).toBe("hello world");
+  });
+
+  it("tolerates intervening model_change / thinking_level_change entries before the first message", () => {
+    const jsonl = [
+      header("id-mid"),
+      info("named one"),
+      JSON.stringify({ type: "model_change", provider: "nebius", modelId: "zai-org/GLM-5.2" }),
+      JSON.stringify({ type: "thinking_level_change", thinkingLevel: "medium" }),
+      userMsg("the real first prompt"),
+    ].join("\n") + "\n";
+    const out = parseSessionHeader(jsonl);
+    expect(out.name).toBe("named one");
+    expect(out.firstMessage).toBe("the real first prompt");
+  });
+
+  it("returns the header even when no user message has been written yet (firstMessage → null)", () => {
+    const out = parseSessionHeader(header("just-a-header") + "\n");
+    expect(out.id).toBe("just-a-header");
+    expect(out.firstMessage).toBeNull();
+  });
+
+  it("returns null for an empty or whitespace-only file (skipped, never thrown)", () => {
+    expect(parseSessionHeader("")).toBeNull();
+    expect(parseSessionHeader("   \n\n")).toBeNull();
+    expect(() => parseSessionHeader("")).not.toThrow();
+  });
+
+  it("returns null when there is no valid session header (a non-session jsonl is skipped)", () => {
+    const jsonl = userMsg("orphan message with no header") + "\n";
+    expect(parseSessionHeader(jsonl)).toBeNull();
+  });
+
+  it("skips a malformed leading line and still finds the header on a later line, without throwing", () => {
+    const jsonl = "this is not json {{{\n" + header("recovered") + "\n" + userMsg("after the garbage") + "\n";
+    let out;
+    expect(() => { out = parseSessionHeader(jsonl); }).not.toThrow();
+    expect(out.id).toBe("recovered");
+    expect(out.firstMessage).toBe("after the garbage");
+  });
+
+  it("condenses whitespace and truncates a very long first message", () => {
+    const long = "a ".repeat(200); // 400 chars, lots of whitespace
+    const jsonl = [header("id-long"), userMsg(long)].join("\n") + "\n";
+    const out = parseSessionHeader(jsonl);
+    expect(out.firstMessage.length).toBeLessThanOrEqual(140);
+    expect(out.firstMessage.endsWith("…")).toBe(true);
+    expect(out.firstMessage).not.toContain("  "); // collapsed runs of whitespace
   });
 });

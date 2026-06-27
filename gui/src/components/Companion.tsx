@@ -19,8 +19,22 @@ import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { useExpand } from "./ExpandContext";
 import { useRunStreamContext, whereAreWe } from "../data/runStream";
-import { useControlSession, type ControlToolExecution } from "../data/controlSession";
+import { useControlSession, type ControlToolExecution, type SessionSummary } from "../data/controlSession";
 import "../styles/companion.css";
+
+/** Relative time for a conversation's mtime ("now", "5m", "2h", "3d"). Compact for the history row. */
+function relTime(ms: number): string {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 45) return "now";
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
+
+/** The label for a history entry: the session name, else the first user message, else a fallback. */
+function sessionLabel(s: SessionSummary): string {
+  return s.name || s.firstMessage || "Untitled conversation";
+}
 
 /** The official pi mark (pi.dev) — geometric P + i dot. Inherits `currentColor`. */
 function PiMark({ size = 18 }: { size?: number }) {
@@ -50,6 +64,7 @@ function ToolCard({ tool }: { tool: ControlToolExecution }) {
 export function Companion({ activeRun, open, onOpenChange }: { activeRun: string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { expandedId } = useExpand();
   const [draft, setDraft] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false); // the conversation-history list overlay
 
   const live = useRunStreamContext(); // shared telemetry subscription (owned by CanvasInner) — one-way
   const where = whereAreWe(live);
@@ -94,10 +109,58 @@ export function Companion({ activeRun, open, onOpenChange }: { activeRun: string
             </span>
             <span className="ds-companion__title">Companion</span>
             <span className="ds-companion__ctx" title={context}>{context}</span>
+            <button
+              type="button"
+              className={`ds-companion__hist-toggle${historyOpen ? " ds-companion__hist-toggle--on" : ""}`}
+              aria-label="Conversation history"
+              aria-pressed={historyOpen}
+              title="Conversation history"
+              onClick={() => setHistoryOpen((v) => !v)}
+            >
+              {/* stacked-lines "history" glyph */}
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
             <button type="button" className="ds-companion__min" aria-label="Collapse companion" onClick={() => onOpenChange(false)}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
             </button>
           </header>
+
+          {historyOpen && (
+            <div className="ds-companion__history" role="listbox" aria-label="Conversations">
+              {/* New chat is the FIRST entry — clicking it starts a fresh conversation (no separate button). */}
+              <button
+                type="button"
+                className="ds-companion__hist-item ds-companion__hist-item--new"
+                onClick={() => { void ctrl.newChat(); setHistoryOpen(false); }}
+              >
+                <span className="ds-companion__hist-plus" aria-hidden="true">＋</span>
+                <span className="ds-companion__hist-label">New chat</span>
+              </button>
+              {ctrl.sessions.length === 0 ? (
+                <div className="ds-companion__hist-empty">No past conversations yet.</div>
+              ) : (
+                ctrl.sessions.map((s) => {
+                  const active = s.id === ctrl.activeSessionId;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={`ds-companion__hist-item${active ? " ds-companion__hist-item--active" : ""}`}
+                      title={sessionLabel(s)}
+                      onClick={() => { if (!active) void ctrl.selectSession(s.id); setHistoryOpen(false); }}
+                    >
+                      <span className="ds-companion__hist-label">{sessionLabel(s)}</span>
+                      <span className="ds-companion__hist-time">{relTime(s.mtime)}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          )}
 
           <div className="ds-companion__log" ref={logRef}>
             {!hasContent ? (

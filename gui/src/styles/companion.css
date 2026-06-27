@@ -65,6 +65,65 @@
 }
 .ds-companion__min:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
 
+/* conversation-history toggle in the header */
+.ds-companion__hist-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; flex: 0 0 auto;
+  border: none; background: transparent; color: var(--ds-text-tertiary);
+  border-radius: var(--ds-radius-sm); cursor: pointer;
+}
+.ds-companion__hist-toggle:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-companion__hist-toggle--on { background: var(--ds-accent-subtle); color: var(--ds-accent); }
+
+/* the history list — a panel below the header; the list IS the navigation (click = continue) */
+.ds-companion__history {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--ds-space-2);
+  border-bottom: 1px solid var(--ds-border-hairline);
+  background: var(--ds-bg-sunken);
+}
+.ds-companion__hist-item {
+  display: flex; align-items: center; gap: var(--ds-space-2);
+  width: 100%;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius-md);
+  background: transparent;
+  color: var(--ds-text-secondary);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.ds-companion__hist-item:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-companion__hist-item--active {
+  background: var(--ds-accent-subtle);
+  border-color: var(--ds-accent-ring);
+  color: var(--ds-text-primary);
+}
+.ds-companion__hist-item--new { color: var(--ds-accent); font-weight: var(--ds-weight-semibold); }
+.ds-companion__hist-plus { font-size: var(--ds-text-md); line-height: 1; flex: 0 0 auto; }
+.ds-companion__hist-label {
+  flex: 1 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ds-companion__hist-time {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+}
+.ds-companion__hist-empty {
+  padding: var(--ds-space-3);
+  text-align: center;
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+}
+
 .ds-companion__log {
   flex: 1 1 auto;
   min-height: 0;

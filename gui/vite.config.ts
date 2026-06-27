@@ -570,14 +570,21 @@ function piflowAgents(): Plugin {
 }
 
 /**
- * CONTROL SESSION — the ONE two-way channel: talk to an interactive `pi` about a run. Three endpoints,
- * mirroring the existing idioms, all SEPARATE from the one-way DAG telemetry (`/__piflow/stream/<run>`,
- * which is unchanged) so that feed stays pure one-way:
+ * CONTROL SESSION — the ONE two-way channel: talk to an interactive `pi` about a run. Endpoints mirror the
+ * existing idioms, all SEPARATE from the one-way DAG telemetry (`/__piflow/stream/<run>`, which is unchanged)
+ * so that feed stays pure one-way:
  *   - `POST /__piflow/control/<run>/start`   → spawn (or reuse) `pi --mode rpc` at cwd=runDir; 202 + handle.
  *   - `GET  /__piflow/control/<run>/stream`  → SSE of the pi's frames (events + id-correlated responses);
  *     subscribing triggers the snapshot (get_state/get_messages/get_session_stats). Like `piflowRunStream`.
  *   - `POST /__piflow/control/<run>/message` → dumb courier forwarding one RPC command to the child's stdin
  *     (prompt/steer/follow_up/abort/set_model/…). Like `piflowCheckpointReply`.
+ *   - `GET  /__piflow/control/<run>/sessions` → the CONVERSATION HISTORY list (header-parse of the run's
+ *     `.pi-control/*.jsonl`); `[{id,name,firstMessage,mtime,active}]`. The list IS the navigation.
+ *   - `POST /__piflow/control/<run>/select`  `{sessionId}` → CONTINUE that conversation (switch_session live /
+ *     respawn `--session <id>` dead).
+ *   - `POST /__piflow/control/<run>/new`     → start a FRESH conversation (new_session live / fresh spawn dead).
+ * Each conversation is one of pi's OWN session files under `--session-dir <runDir>/.pi-control` (no hand-rolled
+ * persistence). The spawn/framing/session-machinery live in the PURE host lib (control-session.mjs).
  * The spawn/framing live in the PURE host lib (gui/scripts/lib/control-session.mjs), loaded by ABSOLUTE path
  * the same way the index/checkpoint libs are (esbuild never bundles it into this config). The control pi runs
  * `--mode rpc`; piflow's DAG nodes run `--mode json` — separate builders, the node path is untouched here.
@@ -603,7 +610,7 @@ function piflowControlSession(): Plugin {
   };
 
   const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
-    const m = req.url?.match(/^\/__piflow\/control\/([^/?]+)\/(start|stream|message)(?:\?.*)?$/);
+    const m = req.url?.match(/^\/__piflow\/control\/([^/?]+)\/(start|stream|message|sessions|select|new)(?:\?.*)?$/);
     if (!m) return next();
     const run = decodeURIComponent(m[1]);
     const action = m[2];
@@ -680,6 +687,47 @@ function piflowControlSession(): Plugin {
       }
       const out = host.sendCommand(run, cmd);
       return sendJson(res, out.status, out.body);
+    }
+
+    // ---- GET /sessions: the conversation HISTORY list (header-parse of <runDir>/.pi-control/*.jsonl) ----
+    if (action === "sessions") {
+      const resolved = await resolveRunDir(run);
+      if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+      try {
+        const list = await host.listSessions(run, resolved.runDir);
+        return sendJson(res, 200, { sessions: list });
+      } catch (e) {
+        return sendJson(res, 500, { error: `failed to list sessions (${String(e)})` });
+      }
+    }
+
+    // ---- POST /select: CONTINUE an existing conversation (switch_session live / respawn --session dead) ----
+    if (action === "select") {
+      if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to select a conversation" });
+      const resolved = await resolveRunDir(run);
+      if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+      let body: { sessionId?: unknown };
+      try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: "body must be JSON { sessionId }" }); }
+      if (typeof body.sessionId !== "string") return sendJson(res, 400, { error: "sessionId (string) required" });
+      try {
+        const out = await host.selectSession(run, resolved.runDir, body.sessionId);
+        return sendJson(res, out.status, out.body);
+      } catch (e) {
+        return sendJson(res, 500, { error: `select failed (${String(e)})` });
+      }
+    }
+
+    // ---- POST /new: start a FRESH conversation (new_session live / fresh spawn dead) ----
+    if (action === "new") {
+      if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to start a new conversation" });
+      const resolved = await resolveRunDir(run);
+      if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+      try {
+        const out = await host.newChat(run, resolved.runDir);
+        return sendJson(res, out.status, out.body);
+      } catch (e) {
+        return sendJson(res, 500, { error: `new chat failed (${String(e)})` });
+      }
     }
 
     return next();

@@ -35,6 +35,16 @@ export interface ControlToolExecution {
 /** The §1c-style snapshot pi answers `get_state`/`get_session_stats` with — the bits the dock surfaces. */
 export interface ControlContextUsage { tokens: number | null; contextWindow: number; percent: number | null }
 
+/** One conversation in the history list (a header-parse of one `.pi-control/*.jsonl` — see host
+ *  `parseSessionHeader`). The list IS the navigation: click an entry to continue it. */
+export interface SessionSummary {
+  id: string;                  // session UUID — the selector POSTed to /select
+  name: string | null;         // display name (from a session_info entry) — else show firstMessage
+  firstMessage: string | null; // the first user message text (the list label when there's no name)
+  mtime: number;               // file mtime (ms) — list is sorted by this, newest first
+  active: boolean;             // true for the live pi's current conversation (server-marked)
+}
+
 export interface ControlSessionState {
   status: "idle" | "connecting" | "live" | "closed" | "error";
   messages: ControlMessage[];
@@ -44,6 +54,10 @@ export interface ControlSessionState {
   model?: string | null;
   thinkingLevel?: string | null;
   contextUsage?: ControlContextUsage | null;
+  /** the conversation HISTORY list (newest first); refreshed on connect + after select/new + on rebase. */
+  sessions: SessionSummary[];
+  /** the active conversation's id (from the `active` flag in the list), or null. */
+  activeSessionId: string | null;
   /** generic passthrough log of unrecognized frame types (forward-compatible). */
   notices: string[];
   error?: string;
@@ -54,6 +68,8 @@ const INITIAL: ControlSessionState = {
   messages: [],
   toolExecutions: new Map(),
   streaming: false,
+  sessions: [],
+  activeSessionId: null,
   notices: [],
 };
 const NOTICE_CAP = 40;
@@ -67,6 +83,12 @@ export interface ControlSessionApi extends ControlSessionState {
   abort: () => Promise<void>;
   /** Explicitly (re)start the control pi (POST /start). The stream also auto-starts on connect. */
   start: () => Promise<void>;
+  /** Refresh the conversation history list (GET /sessions). */
+  listSessions: () => Promise<void>;
+  /** CONTINUE an existing conversation (POST /select). Clears the chat view; the stream re-snapshots it. */
+  selectSession: (sessionId: string) => Promise<void>;
+  /** Start a FRESH conversation (POST /new). Clears the chat view; the stream re-snapshots it. */
+  newChat: () => Promise<void>;
 }
 
 const NOOP_API: ControlSessionApi = {
@@ -74,6 +96,9 @@ const NOOP_API: ControlSessionApi = {
   send: async () => {},
   abort: async () => {},
   start: async () => {},
+  listSessions: async () => {},
+  selectSession: async () => {},
+  newChat: async () => {},
 };
 export const ControlStreamContext = createContext<ControlSessionApi>(NOOP_API);
 export const useControlStreamContext = (): ControlSessionApi => useContext(ControlStreamContext);
@@ -172,6 +197,10 @@ export function reduceControl(prev: ControlSessionState, frame: Record<string, u
       }
       return prev;
     }
+    case "session_rebase":
+      // an in-process switch_session/new_session happened — CLEAR the folded view so the snapshot that
+      // follows REPLACES (not appends) the chat (the_bar #5). The get_messages snapshot re-bases it.
+      return { ...prev, messages: [], toolExecutions: new Map(), streaming: false };
     case "session_closed":
       return { ...prev, status: "closed", streaming: false };
     case "stderr":
@@ -202,6 +231,20 @@ export function useControlSession(run: string | null | undefined): ControlSessio
   const retryRef = useRef<number | null>(null);
   const stoppedRef = useRef(false);
 
+  // GET the conversation history list and fold it into state (active flag → activeSessionId). Defined as a
+  // ref-stable fetch so the EventSource effect can call it on connect/rebase without re-subscribing.
+  const refreshSessions = useCallback(async () => {
+    if (!run) return;
+    try {
+      const r = await fetch(`/__piflow/control/${encodeURIComponent(run)}/sessions`);
+      if (!r.ok) return;
+      const body = (await r.json()) as { sessions?: SessionSummary[] };
+      const sessions = Array.isArray(body.sessions) ? body.sessions : [];
+      const active = sessions.find((s) => s.active)?.id ?? null;
+      setState((prev) => ({ ...prev, sessions, activeSessionId: active }));
+    } catch { /* list is best-effort — a failed fetch leaves the prior list */ }
+  }, [run]);
+
   useEffect(() => {
     if (!run) { setState(INITIAL); return; }
     setState({ ...INITIAL, status: "connecting" });
@@ -212,11 +255,13 @@ export function useControlSession(run: string | null | undefined): ControlSessio
       if (stoppedRef.current) return;
       const es = new EventSource(`/__piflow/control/${encodeURIComponent(run)}/stream`);
       esRef.current = es;
-      es.onopen = () => { backoffRef.current = 500; };
+      es.onopen = () => { backoffRef.current = 500; void refreshSessions(); };
       es.onmessage = (e: MessageEvent) => {
         let frame: Record<string, unknown>;
         try { frame = JSON.parse(e.data) as Record<string, unknown>; } catch { return; }
         setState((prev) => reduceControl(prev, frame));
+        // a switch/new (rebase) or a finished turn (new first-message / new file) changes the list — refresh.
+        if (frame.type === "session_rebase" || frame.type === "agent_end") void refreshSessions();
         if (frame.type === "session_closed") { stoppedRef.current = true; es.close(); }
       };
       es.onerror = () => {
@@ -237,7 +282,7 @@ export function useControlSession(run: string | null | undefined): ControlSessio
       esRef.current?.close();
       esRef.current = null;
     };
-  }, [run]);
+  }, [run, refreshSessions]);
 
   const post = useCallback(async (body: Record<string, unknown>) => {
     if (!run) return;
@@ -260,5 +305,25 @@ export function useControlSession(run: string | null | undefined): ControlSessio
     await fetch(`/__piflow/control/${encodeURIComponent(run)}/start`, { method: "POST" });
   }, [run]);
 
-  return { ...state, send, abort, start };
+  // CONTINUE a conversation: clear the chat view OPTIMISTICALLY (so the switch REPLACES, not appends — the
+  // server also pushes session_rebase, but clearing here makes the swap feel instant), POST /select, then
+  // refresh the list (active flag moves). When the pi was dead, /select respawns it and the stream re-snapshots.
+  const selectSession = useCallback(async (sessionId: string) => {
+    if (!run) return;
+    setState((prev) => ({ ...prev, messages: [], toolExecutions: new Map(), streaming: false, activeSessionId: sessionId }));
+    await fetch(`/__piflow/control/${encodeURIComponent(run)}/select`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionId }),
+    });
+    await refreshSessions();
+  }, [run, refreshSessions]);
+
+  // NEW chat: clear the view, POST /new, refresh the list (the new conversation appears + becomes active).
+  const newChat = useCallback(async () => {
+    if (!run) return;
+    setState((prev) => ({ ...prev, messages: [], toolExecutions: new Map(), streaming: false, activeSessionId: null }));
+    await fetch(`/__piflow/control/${encodeURIComponent(run)}/new`, { method: "POST" });
+    await refreshSessions();
+  }, [run, refreshSessions]);
+
+  return { ...state, send, abort, start, listSessions: refreshSessions, selectSession, newChat };
 }
