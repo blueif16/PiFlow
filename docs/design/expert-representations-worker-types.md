@@ -1,8 +1,10 @@
 # Expert Representations — the worker-type system
 
 > 2026-06-27 · DESIGN · branch `feat/expert-representations`
-> Companion to the research grounding in
-> `docs/research/2026-06-27-expert-representations-worker-types.md`.
+> Companion research: `docs/research/2026-06-27-expert-representations-worker-types.md` (why
+> divide work into types) and `docs/research/2026-06-27-agent-marketplace-layering-validation.md`
+> (external validation vs adopted platforms — loadout⟂posture, skill-led, three postures, and
+> task-not-job naming all SUPPORTED; four sharpenings folded in below ⟵).
 > Goal: define what a **worker** *is* in piflow, how it composes, and how it maps onto the
 > node schema + observe badge — before building any node.
 
@@ -85,13 +87,25 @@ export interface Posture {
   id: PostureId | string;
   feedbackGround: 'execution' | 'judgment' | 'none';   // the defining axis
   tier?: string;            // model CLASS only — NEVER a model id (see invariant). Node override wins.
+  judgeTier?: string;       // designer ONLY — the JUDGE's model class, separate from generation tier
   sandbox?: { provider?: SandboxProviderKind; readScope?: string[]; owns?: string[] };  // defaults
+  autonomy?: 'auto' | 'approve' | 'agent-decides';   // approval mode (Salesforce-style); maps to checkpoint/G5
+  // Capability gating is TWO levels (adopted practice — Anthropic allowedTools/disallowedTools):
+  //   availability — what the model SEES in context     (loadout's allow/deny)
+  //   permission   — what may RUN without human approval (posture.autonomy + checkpoint/rerouteGate)
   // The gate is IMPLIED by feedbackGround (not authored verbatim):
   //   execution → a post-Hook running a build/test command (author supplies the command)
-  //   judgment  → a companion judge NODE + reroute loop (a DIFFERENT model than the producer)
+  //   judgment  → a companion judge NODE + reroute loop (a DIFFERENT model = judgeTier; + rubric, retry budget, threshold)
   //   none      → the structural floor only
 }
 ```
+
+> **External validation (see the layering-validation research doc).** The loadout⟂posture split,
+> skill-led composition, the three postures, and task-not-job naming are all the *adopted* shape
+> (Anthropic, Salesforce, LangGraph; CrewAI is the lone fuse-everything holdout). Two sharpenings
+> the survey forced: (a) capability gating is **two levels** (availability vs permission), finer
+> than one `sandbox` field; (b) an **autonomy/approval** axis belongs on the posture — both already
+> have piflow primitives (`checkpoint`/G5, `rerouteGate`/G12).
 
 ### Merge-contract changes (extend `mergePreset`)
 
@@ -168,6 +182,14 @@ One posture per value of the feedback-ground axis. This is the whole fixed vocab
 | gate | exec post-hook + floor | judge node + `reroute` + floor | floor only |
 | typical work | coders | markdown / prompt / **visual** design (prompt→image→Claude judges→retry) | research · analysis · planning |
 
+**The `designer` is the one architecturally novel piece.** The survey found that *no adopted
+platform ships an LLM-judge-plus-retry posture as a named abstraction* — everyone assembles it ad
+hoc from primitives. So `designer` carries the most spec burden: it must pin down the **judge model
+(`judgeTier`, separate from the generation tier), the rubric/criteria source, the retry budget, and
+the pass/fail threshold + escalation.** `executor` (deterministic test grader) and `producer`
+(no gate) are the settled, low-risk ends; `designer` is where we're defining new ground and must be
+explicit. Today most of these knobs would live in the skill's prose — pull them up to posture fields.
+
 ## Where the existing Claude-Code-style agents go
 
 The 6 presets are **loadouts already**; their posture is **`producer`** (`feedbackGround: none`).
@@ -195,9 +217,13 @@ follow** (resolved from the catalog); a **loadout = a set of skills (+ any extra
 **name tag** is the loadout label. Three things, one spine: *pick skills → tools come along →
 label it.*
 
-This is **new work** — `resolveSkillStage` (`ops/skill.ts`) just copies the dir today; it does not
-read a tool manifest. Adding a `tools:`/`allowed-tools:` field to skill frontmatter (and resolving
-it through the catalog) is what makes the market self-wiring.
+This is a **confirmed adopted standard, not an invention**: Anthropic's SKILL.md YAML carries an
+**`allowed-tools`** field (e.g. `Bash(python:*) Bash(npm:*) WebFetch`), and picking a skill
+implicitly determines the MCP servers it coordinates (layering-validation doc, §skill→tool). So:
+**adopt `allowed-tools` as the field, declared ON THE SKILL OBJECT itself** (portable across
+workers, self-documenting), resolved through our catalog. The work is real on our side —
+`resolveSkillStage` (`ops/skill.ts`) just copies the dir today and reads no manifest — but the
+*shape* is settled by the published convention.
 
 ## Market reality (what exists)
 
@@ -247,13 +273,19 @@ doc §"three different nodes."
 3. **Author-time expansion — keep.** Posture (tier/sandbox/gate) expands into
    `tier`/`contract`/`op[]`/`hook` at author time, like tools/skills today; the runner stays
    preset-agnostic.
-4. **Skill→tool manifest — NEW WORK.** Decide the frontmatter field (`allowed-tools:`?) and the
-   catalog resolution. Gates the "self-wiring market."
+4. **Skill→tool manifest — RESOLVED.** Adopt **`allowed-tools`** on the skill frontmatter (the
+   published Anthropic convention), declared on the *skill object* (portable), resolved through the
+   catalog. Remaining: the resolver impl (`resolveSkillStage` reads no manifest today).
 5. **Seed the tier vocabulary.** `init` must write a default `~/.piflow/model-tiers.json` (3 tiers)
    so postures' tiers aren't inert. Name the three tiers (model classes, not worker names).
-6. **Designer expansion ergonomics.** A judgment gate = producer + judge + reroute (2–3 nodes).
-   Decide whether init expands this automatically from `posture: designer` or asks the author to
-   confirm the judge node.
+6. **Designer expansion ergonomics + full spec.** A judgment gate = producer + judge + reroute
+   (2–3 nodes); decide whether `posture: designer` auto-expands or asks the author. AND — since no
+   platform ships this as a named posture — pin its spec: `judgeTier`, rubric source, retry budget,
+   pass/fail threshold, escalation.
+7. **Two-level gating + autonomy axis — NEW (from the survey).** Capability gating splits into
+   *availability* (loadout allow/deny) vs *permission* (`autonomy` + `checkpoint`/`rerouteGate`).
+   Decide how `posture.autonomy` (`auto`/`approve`/`agent-decides`) composes with the existing
+   G5 checkpoint and G12 reroute-gate rather than adding a parallel mechanism.
 
 ## Next step
 
