@@ -149,7 +149,21 @@ export type GateBody = { kind: CheckKind | string; path?: string; param?: unknow
 
 /** The CONTROL body — a model-free control action (G12 owns the runtime; G13 owns the SLOT). */
 export type ActionBody =
-  | { kind: 'retry'; onVerdict?: 'fail' | 'warn'; max?: number }
+  | {
+      kind: 'retry';
+      onVerdict?: 'fail' | 'warn';
+      max?: number;
+      /**
+       * (SA-B · expert-representations) The retry correction scope.
+       * - `'feedback'` (DEFAULT, L1) — warm-resume: append the gate's critique as a new message to the
+       *   SAME pi session and re-run. This is Reflexion / Self-Refine semantics. Bounded by `max`.
+       * - `'fix'` (L2 — STUB): infer the problem, consult per-workflow fix/issue memory, patch THIS
+       *   node's prompt/tool-wiring for this run instance (ephemeral, recorded, never silently promoted
+       *   to the template). See docs/research/2026-06-28-loop-engineering-self-improving-systems.md and
+       *   the build-spec §Self-correction. Owned by SA-D + the memory system. NOT YET IMPLEMENTED.
+       */
+      scope?: 'feedback' | 'fix';
+    }
   | { kind: 'escalate'; via: string; evidence?: string[] }
   | { kind: 'notify'; channel: string; payload?: string[] }
   | { kind: 'rerouteTo'; node: string; max: number; evidence?: string[] };

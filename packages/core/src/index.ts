@@ -43,6 +43,20 @@ export { renderRealizedPrompt } from './workflow/template/render.js';
 export { mergePreset, parseAgentPreset, loadAgentPreset, defaultAgentsDir } from './workflow/agent-preset.js';
 export type { AgentPreset, PresetMergeable } from './workflow/agent-preset.js';
 
+// (SA-B · expert-representations) Gate authoring → op[] surface. Author-time gate descriptors +
+// cost-ladder ordering + compile-time lowering to the canonical `op[]` envelope. Zero new runtime.
+export { lowerGate, lowerGates, costLadderOrder } from './workflow/gate-authoring.js';
+export type {
+  GateAuthorSpec,
+  ExecutionGate,
+  FloorGate,
+  JudgeGate,
+  HumanGate,
+  GatePolicy,
+  LowerGateResult,
+  JudgeMaterializedNode,
+} from './workflow/gate-authoring.js';
+
 // (Phase 2) Fusion nodes: the pre-compile siblings+judge expansion + its built-in fusion PRESET AGENTS
 // (the judge/obligations roles). `expandFusion` runs before `compile`; the presets brand the generated
 // nodes via `agentType`. The verbatim Appendix-A prompt bodies + token fillers live in `fusion/prompts`.
