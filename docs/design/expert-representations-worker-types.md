@@ -3,166 +3,260 @@
 > 2026-06-27 · DESIGN · branch `feat/expert-representations`
 > Companion to the research grounding in
 > `docs/research/2026-06-27-expert-representations-worker-types.md`.
-> Goal: define what a **worker type** *is* in piflow and how it maps onto the node
-> schema + observe badge — before building any node.
+> Goal: define what a **worker** *is* in piflow, how it composes, and how it maps onto the
+> node schema + observe badge — before building any node.
 
 ## Thesis
 
-A worker type is **not a new concept** — it is the existing `AgentPreset`, *promoted from a
-costume into a real binding*. The research conclusion (see the research doc) was: a type label
-earns legibility on the human side, but the **performance lift only appears when the type carries
-real difference** — a different model, a different toolset, a different sandbox, and a different
-**feedback ground**. A type that's only a system-prompt + an icon is the trap.
+A worker is **not a new runtime concept** — it is a thin, author-time composition over machinery
+that already exists (preset merge, skill staging, the MCP/tool catalog, model tiers, sandbox
+scopes, the gate lanes). The research conclusion (see the research doc) was: a type label earns
+*legibility* on the human side, but the *performance lift* only appears when the type carries real
+difference — a different model, toolset, sandbox, and **feedback ground**. A worker that's only a
+system-prompt + an icon is the costume trap.
 
-> **worker type = skill bundle ("the résumé") + model + tools + sandbox + feedback-ground**
+The unit decomposes into two orthogonal parts:
 
-Today's `AgentPreset` binds only the first three loosely and **deliberately drops the rest**.
-Expert Representations = close that gap on the seams that already exist.
+> **worker = loadout (what it can do) + posture (how it's run & verified)**
 
-## What exists today (and the gap)
+- **Loadout** — fat, many, market-fed, **job-agnostic**: a named bundle of skills (+ their tools).
+- **Posture** — thin, few, fixed vocabulary: `feedback-ground + tier + sandbox` (+ the gate the
+  feedback-ground implies).
 
-`mergePreset` (`packages/core/src/workflow/agent-preset.ts:64`) merges a preset into a node:
+Keeping these orthogonal is the whole payoff: you catalog *loadouts* by the dozen, keep *postures*
+to three, and **swap the hat without rewriting the agent** (a research loadout can graduate from an
+ungated `producer` to a judged `designer` by changing only its posture).
 
-| Dimension | Bound by preset today? | Seam |
-| --- | --- | --- |
-| Role prompt | ✅ `preset.prompt + "\n\n" + node.prompt` (role first) | `agent-preset.ts:64` |
-| Tools | ✅ union allow, node `deny` wins | `agent-preset.ts:64` |
-| Skill bundle | ✅ `node.skill ?? preset.skills?.[0]` | `ops/skill.ts`, staged as a PRE-step |
-| Display (icon/label/color) | ✅ retained as `agentType` label | `WorkflowNode.tsx:114`, `/__piflow/agents.json` |
-| **Model / tier** | ❌ **forward-compat stub; `mergePreset` ignores it (decision #3)** | `model-routing.ts:66` (`resolveNodeModel`) |
-| **Sandbox / capability envelope** | ❌ preset never sets `read`/`write` | `loader.ts:163` (`contract.readScope`/`owns` → `sandbox.read`/`write`) |
-| **Feedback ground (verify gate)** | ❌ preset never injects a gate | `types.ts:159` `GateBody` / `op[]` gate lane |
+## The layer — one thin author-time layer, four strata
 
-So a preset today = **prompt + tools + skill + icon**. That is precisely "costume + skill": real
-on the skill axis, cosmetic on everything that the literature says produces the lift. The three ❌
-rows are the whole of this design.
+```
+┌─ WORKER     = a loadout + a posture        (what you "hire" / drop on a node)
+│
+├─ POSTURE    (thin, FEW)  feedback-ground + tier + sandbox        ← how it's run & verified
+│                          {execution | judgment | none}
+│
+├─ LOADOUT    (fat, MANY)  skills (+ their tools) + a name tag     ← what it can do (job-agnostic)
+│                          skill-led: pick skills, tools follow
+│
+└─ MARKET     (bottom)     MCP catalog · OpenClaw · skills          ← where capabilities come from
+                           (~/.piflow/catalog, ~/.piflow/agents)
+```
 
-## The defining axis: feedback ground
+**Zero new runtime.** `mergePreset` already expands a preset INTO the node's `node.json` at author
+time (union tools/skills, node-`deny` wins, role-prompt prepended). The runner never learns the
+word "worker" — it only ever sees a node with concrete tools/skills/model/sandbox/gate. So this
+layer is **author-time sugar + a catalog + a badge**, not a new execution path.
 
-The cleanest discriminator between types (and the one the research singled out — execution-grounded
-debugger beats conversational critics) is **what grounds the node's feedback loop**:
+## What exists today, and the gap
 
-- **`execution`** — the truth signal is *running the artifact* (build, tests, runtime error).
-  Objective, cheap to trust. → the **Executor / Coder**.
-- **`judgment`** — the truth signal is *an LLM reading the artifact* (Claude looks, decides retry).
-  Subjective, gameable, but the only option for non-executable artifacts (markdown, prompt, image).
-  → the **Designer**.
-- **`none`** — no gate; pure producer (rare; e.g. a scratchpad node).
+`mergePreset` (`packages/core/src/workflow/agent-preset.ts:64`) binds **four** dimensions and
+**deliberately drops three** — and the three it drops are exactly the *posture*:
 
-This axis is new metadata, but it does not need new runner machinery: it **selects which `op[]`
-gate the type injects** (the gate lane already exists — `runner.ts:1006`, `lower.ts`, the
-`fenced-tail`/`json-parses`/`count-floor`/… check vocabulary in `checks.ts`).
+| Dimension | Part | Bound today? | Seam |
+| --- | --- | --- | --- |
+| Role prompt | loadout | ✅ `preset.prompt + "\n\n" + node.prompt` | `agent-preset.ts:64` |
+| Tools | loadout | ✅ union allow, node `deny` wins | `agent-preset.ts:64` |
+| Skill bundle | loadout | ✅ `node.skill ?? preset.skills?.[0]`, staged PRE | `ops/skill.ts`, `runner.ts:1429` |
+| Display (icon/label/color) | loadout | ✅ retained as `agentType` label | `WorkflowNode.tsx:114`, `/__piflow/agents.json` |
+| **Model / tier** | **posture** | ❌ forward-compat stub; `mergePreset` ignores it (decision #3) | `model-routing.ts:66` |
+| **Sandbox envelope** | **posture** | ❌ preset never sets `read`/`write` | `loader.ts:163` (`contract.readScope`/`owns`) |
+| **Feedback-ground gate** | **posture** | ❌ preset never injects a gate | `types.ts:159` `GateBody` / `op[]` lane; `types.ts:495` `Hook` |
 
-## Schema — promote `AgentPreset` to `WorkerType`
+So today's preset = **loadout only** (real on capability, cosmetic on everything that produces
+lift). Closing the three ❌ posture rows is the whole of this design. (Note: there are **6** preset
+files on disk — `explore`, `general-purpose`, `interview`, `market-research`, `paper-analyzer`,
+`plan` — not "3 seeds"; earlier memory was stale.)
 
-Extend the existing interface (`agent-preset.ts:23`) with the three missing bindings. Keep it a
-superset so the 6 existing presets stay valid (the new fields are optional).
+## Schema — `AgentPreset` → `WorkerType`
+
+Keep the existing flat `AgentPreset` (`agent-preset.ts:23`) as the on-disk unit (so the 6 presets
+stay valid); recognize its fields as two groups, and add the missing **posture** block. New fields
+are optional and a missing posture defaults to `producer` (see below).
 
 ```typescript
 export interface WorkerType extends AgentPreset {
-  // legibility + capability (unchanged): id, display{label,icon,color}, skills[], tools, prompt
+  // ── LOADOUT group (exists today): id, display{label,icon,color}, skills[], tools, prompt ──
 
-  // NEW — the bindings that make a type REAL:
-  feedbackGround?: 'execution' | 'judgment' | 'none';   // the defining axis
-  tier?: string;            // DEFAULT model class — node's own model/tier still wins
-  sandbox?: {               // DEFAULT capability envelope
-    provider?: SandboxProviderKind;
-    readScope?: string[];   // default contract.readScope
-    owns?: string[];        // default contract.owns (= sandbox.write)
-  };
-  gate?: GateBody | GateBody[];   // the feedback-ground gate, appended to the node's op[] lane
+  // ── POSTURE group (NEW) — referenceable by id so loadouts ⟂ postures compose ──
+  posture?: PostureId | Posture;        // 'executor' | 'designer' | 'producer' | inline
+}
+
+export interface Posture {
+  id: PostureId | string;
+  feedbackGround: 'execution' | 'judgment' | 'none';   // the defining axis
+  tier?: string;            // model CLASS only — NEVER a model id (see invariant). Node override wins.
+  sandbox?: { provider?: SandboxProviderKind; readScope?: string[]; owns?: string[] };  // defaults
+  // The gate is IMPLIED by feedbackGround (not authored verbatim):
+  //   execution → a post-Hook running a build/test command (author supplies the command)
+  //   judgment  → a companion judge NODE + reroute loop (a DIFFERENT model than the producer)
+  //   none      → the structural floor only
 }
 ```
 
-### Merge contract changes (extend `mergePreset`)
+### Merge-contract changes (extend `mergePreset`)
 
-Precedence rule throughout: **the type provides a DEFAULT; an explicit node value always wins.**
-This preserves the *spirit* of decision #3 (author intent is never silently overridden) while
-letting the type carry a real model/sandbox/gate.
+Precedence rule throughout: **the type provides a DEFAULT; an explicit node value always wins** —
+preserving author intent (the spirit of decision #3).
 
-- `tier` — `node.model` set → use it; else `node.tier` set → use it; else `type.tier`. So the
-  type's tier is a fallback, and `resolveNodeModel`'s existing precedence
-  (`node.model > tiers[node.tier] > run.model`) does the rest. **This is the one reconciliation
-  with decision #3** — see Open decisions.
-- `sandbox.read/write` — `node.contract.readScope`/`owns` if authored, else `type.sandbox.readScope`/
-  `owns`; `type.sandbox.provider` as the default provider when the node didn't pick one.
-- `gate` — append `type.gate` into the node's `op[]` gate lane **unless** the node already declares
-  an equivalent gate. Default the injected gate's `onFailure` to `retry` (designer) /
-  policy-driven (executor); node can override.
+- **tier** — `node.model` → use it; else `node.tier` → use it; else `posture.tier`. Then
+  `resolveNodeModel`'s existing precedence resolves tier→model. (See invariant.)
+- **sandbox** — `node.contract.readScope`/`owns` if authored, else `posture.sandbox.*`;
+  `posture.sandbox.provider` as the default provider.
+- **gate** — derive from `feedbackGround` and append into the node's `op[]`/`hook` lane (see Gate
+  taxonomy). The structural floor is always auto-injected; the heavy gate is parameterized by the
+  author at init.
 
-## The two seed types, fully specified
+## Tier, not model — the invariant
 
-These are the only two the user's own intuition converged on ("mostly executors, plus designers").
-Resist a 14-role marketplace; add types only when a *work shape* genuinely differs.
+Decision #3's real intent was never "types can't influence the model" — it was *"a preset must not
+hard-code a concrete model, because model access is per-user/per-provider, so a baked-in model id
+isn't portable."* Binding a **tier** satisfies that intent instead of relaxing it: the type
+declares a semantic *requirement* ("needs a deliberate-tier model"), and each user's
+`~/.piflow/model-tiers.json` fills in whatever model they actually have.
 
-| Dimension | **Executor / Coder** | **Designer** |
-| --- | --- | --- |
-| `feedbackGround` | **`execution`** | **`judgment`** |
-| Truth signal | run code · tests · build | an LLM judges the artifact → retry |
-| `tier` (default) | a cheap-competent **coding** tier (it reads ~200× the planner's tokens — route cheap) | a stronger **judging/reasoning** tier |
-| `sandbox` | `seatbelt`/`local`, **owns the workspace** (write-capable), readScope = workspace + deps | narrower — owns its **output dir**; usually no write into code |
-| `tools` | file-edit · shell/run · test | render/image · web · **no destructive code tools** |
-| `gate` (injected `op[]`) | execution gate: `fenced-tail` + a "code runs / tests pass" check; on fail → policy `retry` | judgment gate: LLM-judge (or the `reroute`/`rerouteGate` generate→judge→retry loop, `types.ts:769`); on fail → `retry` up to `max` |
-| `skills` (résumé) | coding skill bundle | writing / visual-design skill bundle |
-| `display` | label "Executor", icon e.g. `hammer` | label "Designer", icon e.g. `palette` |
+> **A worker-type MAY set `tier`. It MUST NEVER set `model`.**
 
-The user's "visual designer" (designs a prompt → generates an image → Claude looks and decides
-retry) is the **designer** archetype with an image tool + a judgment gate; it maps directly onto
-the existing `reroute` loop. It is **not** a relabeled executor — different feedback ground.
+Precedence (only when `tiers.active`):
 
-## Skills as the job market
+```
+node.model  >  node.tier  >  posture.tier  >  run.model  >  pi default
+```
 
-The "job market" framing is the right mental model and it's already half-built: skills are real,
-executable, catalog-distributed capabilities (`node.skill`, `--skill`, `~/.piflow/skills`,
-the capability catalog). A worker type is a **résumé** = a curated `skills[]` bundle bound to a
-model/tools/sandbox/feedback-ground. The catalog (GitHub specialist skills, `~/.piflow/agents/`)
-is the market you hire from. This is the Sista-AI "review them like a résumé" move — except every
-line on the résumé *does something*, which is exactly what keeps it out of the costume trap.
+Two-level indirection, each owned by the right party: the **type** owns "what class this work
+needs"; the **user** owns "tier → which model I pay for." Caveats to handle: (a) `model-tiers.json`
+is **inert/absent today** → a posture's tier falls back to `run.model`; init must **seed a default
+3-tier mapping**. (b) Postures may reference only the seeded tier vocabulary, or a dangling tier
+→ fallback. Tier (= model class) is a separate axis from pi's `--thinking` level; keep them
+distinct (a later posture field may bind thinking too).
 
-## Observe — the badge must show the binding, not just an icon
+## Gate taxonomy — three weights, each on an existing seam
 
-The passthrough already flows end-to-end: `agentType` → `run.json` node record (`runner.ts:2165`)
-→ `RunViewNode.agentType` (`runView.ts:284`) → `FlowNodeData.agentIcon/Color/Label`
-(`gui/.../runView.ts:218`) → `AgentPresetIcon` (`WorkflowNode.tsx:114`).
+The `Hook` doctrine settles the executor/designer split: *"if a candidate hook needs a model,
+promote it to a pi node instead"* (`types.ts:493`). So:
 
-Extend the badge to surface the **operating contract** (the research's "human-side legibility"):
-not just `Designer 🎨` but `Designer · judgment-gated · pro-tier · owns out/`. The runner already
-computes every field needed — `resolveNodeModel` gives the resolved model/tier, `sandbox.provider`
-is known, the injected `gate`'s `feedbackGround` is known. So this is a passthrough widen, not new
-computation: add `{ tier, sandboxProvider, feedbackGround }` alongside `agentType` on the node
-record and render them as sub-badges. That gives the human the who-does-what + can-it-be-trusted
-snapshot the role-clarity research says drives situational awareness and takeover.
+| Gate | Seam | Truth source | Posture |
+| --- | --- | --- | --- |
+| **Structural floor** | `op[]` / `checks` (`fenced-tail`, `non-empty`, `json-parses`) — `types.ts:326`, `checks.ts` | the artifact's *shape* | every posture (auto-inject) |
+| **Execution** | a post-`Hook` — `run:"<test/build cmd>"`, `when:'on-success'`, `failure:'block'` (`types.ts:495`) | **exit code** | **executor** |
+| **Judgment** | a separate pi **node** (the judge) + `reroute` loop (`types.ts:769`) | a **different** model's verdict | **designer** |
+
+Policy:
+- **Auto-inject the structural floor** on every posture — ~free, always correct ("did it produce a
+  well-formed envelope?").
+- **Executor → execution gate** is the research's "execution-grounded debugger" done right
+  (objective, ungameable). We can't guess the command, so the posture *declares it wants one* and
+  the author supplies `npm test`/`pytest`/… at init.
+- **Designer → judgment gate** must be a **separate node/model**, never the same pi judging itself
+  (TeamBench: self-verifiers false-accept). So a designer with a judgment gate **expands into two
+  nodes at author time** (producer at designer-tier → judge at deliberate-tier → `reroute` retry),
+  the way fusion expands.
+- **Prefer execution wherever the artifact is runnable**; reserve judgment for artifacts that
+  aren't (markdown, prompt, image).
+
+## The three base postures
+
+One posture per value of the feedback-ground axis. This is the whole fixed vocabulary — resist a
+14-role org chart.
+
+| | **Executor** | **Designer** | **Producer** |
+| --- | --- | --- | --- |
+| `feedbackGround` | `execution` | `judgment` | `none` |
+| Truth signal | run code · tests · build | a *different* model judges → retry | none (structural floor only) |
+| `tier` (default) | cheap-competent **coding** (reads ~200× the tokens) | stronger **judging/reasoning** | deliberate |
+| `sandbox` | owns the workspace, write-capable | owns its output dir; narrow | **read-leaning** |
+| tools | file-edit · shell/run · test | render/image · web · *no destructive code tools* | web · search · read |
+| gate | exec post-hook + floor | judge node + `reroute` + floor | floor only |
+| typical work | coders | markdown / prompt / **visual** design (prompt→image→Claude judges→retry) | research · analysis · planning |
+
+## Where the existing Claude-Code-style agents go
+
+The 6 presets are **loadouts already**; their posture is **`producer`** (`feedbackGround: none`).
+They're neither executors (nothing to run) nor designers (no judge-retry by default) — and that's
+*correct*: add a gate only when there's a real feedback ground. Recognizing this **completes the
+posture vocabulary** (the third value was hiding in your existing agents).
+
+| Existing preset | Loadout | Posture | Note |
+| --- | --- | --- | --- |
+| `general-purpose` | minimal | `producer` | the **degenerate default** — what a node is when no type is assigned |
+| `explore` | read-only search tools | `producer` + **read-only sandbox** | defining trait is a *posture* field, not the skill |
+| `market-research`, `paper-analyzer`, `interview` | web / pdf / interview skills | `producer` | produce-a-doc research roles |
+| `plan` | planning skill | `producer` | produces a plan artifact |
+
+**Upgrade path = the payoff of loadout ⟂ posture.** Because they're orthogonal, a research loadout
+can be promoted `producer → designer` (add a judge node) when output quality must be enforced —
+e.g. `market-research` loadout + designer posture = the same bundle, now gated for sourcing &
+completeness. `general-purpose` stays the ungated safety net.
+
+## Skill-led loadouts
+
+"Tools and skills are close" collapses cleanly if **a skill declares the tools it needs**
+(Claude-skill `allowed-tools` style). Then the human-picked unit is a **skill**; its **tools
+follow** (resolved from the catalog); a **loadout = a set of skills (+ any extra raw tools)**; the
+**name tag** is the loadout label. Three things, one spine: *pick skills → tools come along →
+label it.*
+
+This is **new work** — `resolveSkillStage` (`ops/skill.ts`) just copies the dir today; it does not
+read a tool manifest. Adding a `tools:`/`allowed-tools:` field to skill frontmatter (and resolving
+it through the catalog) is what makes the market self-wiring.
+
+## Market reality (what exists)
+
+- **MCP / tool market — real.** `packages/core/src/catalog/{client,introspect,sync}.ts` +
+  `tools/openclaw-{community,host,shim}.ts` feed `~/.piflow/catalog/`. Live introspection
+  (`listServerTools` → entries → `mcp.*` binds) works; OpenClaw (the "claw market") is wired.
+- **Skill market — half-built.** Skills bind & stage (`ops/skill.ts`, `--skill`), but
+  `~/.piflow/skills/` is **not populated yet** — free-import-from-a-canonical-market is the open edge.
+- **Worker catalog — exists, embryonic.** `~/.piflow/agents/` already holds the 6 presets; that
+  *is* the worker catalog. It just lacks the posture depth this design adds.
+
+## Dynamic representation
+
+- **At init — a loadout editor.** Show the candidate worker's default skills/tools chips + its
+  posture; let the user **add/remove** (the `mergePreset` union/`deny` you already have) before
+  locking. This is your "template he can fill in more tools."
+- **At observe — a loadout + posture badge.** The passthrough already flows
+  (`agentType` → `run.json` `runner.ts:2165` → `RunViewNode` `runView.ts:284` → `FlowNodeData`
+  → `AgentPresetIcon` `WorkflowNode.tsx:114`). Widen it to surface the **operating contract**:
+  not just `Designer 🎨` but `Designer · judgment-gated · deliberate-tier · owns out/`. Every field
+  is already computed (`resolveNodeModel`, `sandbox.provider`, the implied gate) — a passthrough
+  widen, not new computation.
+
+## Composition & the sprawl antidote
+
+Composition at init is the existing `mergePreset` (union tools/skills, node-`deny` wins = your
+"add or delete to cast full functionality"). The risk is sprawl (1000 near-identical workers).
+Antidote, same shape as the research's "keep the taxonomy small": **few postures (fixed vocab),
+many loadouts (curated marketplace), free-compose as the power-user escape hatch.** Most users
+*hire a curated worker*; power users *assemble a custom loadout*; both compile through `mergePreset`.
 
 ## Out of scope (but adjacent)
 
-The user's "self-critic node that reads all traces and optimizes the DAG between runs" is a
-**meta-optimizer**, not a worker type — it edits the *system*, not an output. That is Hermes
-OPTIMIZE / `piflow-enhance` territory (capture → route → edit → verify → **human approve** →
-commit, every edit must generalize). It rides on top of the type system but is governed
-separately; keep it out of this schema. See the research doc §"three different nodes."
+The "self-critic node that reads all traces and optimizes the DAG between runs" is a
+**meta-optimizer**, not a worker — it edits the *system*, not an output. That is Hermes OPTIMIZE /
+`piflow-enhance` territory (capture → route → edit → verify → **human approve** → commit; every
+edit must generalize). It rides on top of the worker layer but is governed separately. See research
+doc §"three different nodes."
 
 ## Open decisions
 
-1. **Reconcile with decision #3.** Today `mergePreset` *deliberately* never sources model/tier from
-   a preset. This design relaxes that to "type provides a default tier, node override wins." Confirm
-   that's acceptable, or keep model strictly node-authored and let the type only *recommend* a tier
-   in `display` (documentation-only). Recommendation: relax it — a type that can't bind a model
-   class isn't a real type, and node-override-wins preserves author intent.
-2. **Gate injection vs explicit authoring.** Should the type *auto-inject* its gate, or only supply
-   a default the author opts into? Auto-inject is the stronger product (the type *means* its
-   feedback ground) but is a behavior change for the 6 existing presets (which have no gate today).
-   Recommendation: auto-inject for the two new seed types; leave the 6 legacy presets gate-less
-   (their `feedbackGround` defaults to `none`).
-3. **Author-time vs run-time expansion.** `mergePreset` runs at **author time** (init bakes the
-   preset into `node.json`); the runner never re-reads `~/.piflow/agents/`. The new bindings
-   (sandbox/tier/gate) must therefore also expand at author time into `contract`/`tier`/`op[]`.
-   Confirm we keep the author-time model (yes — it keeps the runner preset-agnostic).
-4. **The 6 existing presets** (`explore`, `general-purpose`, `interview`, `market-research`,
-   `paper-analyzer`, `plan`) are research/analysis roles, not executor/designer. Decide whether they
-   become `feedbackGround: 'judgment'` (most are produce-a-doc roles) or stay `none`.
+1. **Decision #3 — RESOLVED.** Type binds **tier, never model** (invariant above). `model` stays
+   node-authored-only; `tier` becomes posture-sourceable. Node override always wins.
+2. **Gate injection — RESOLVED in shape.** Structural floor auto-injects on every posture; the
+   heavy gate (execution post-hook / judge node) is *declared by the posture, parameterized by the
+   author* at init. The 6 legacy presets default to `producer` (floor only) — no behavior change.
+3. **Author-time expansion — keep.** Posture (tier/sandbox/gate) expands into
+   `tier`/`contract`/`op[]`/`hook` at author time, like tools/skills today; the runner stays
+   preset-agnostic.
+4. **Skill→tool manifest — NEW WORK.** Decide the frontmatter field (`allowed-tools:`?) and the
+   catalog resolution. Gates the "self-wiring market."
+5. **Seed the tier vocabulary.** `init` must write a default `~/.piflow/model-tiers.json` (3 tiers)
+   so postures' tiers aren't inert. Name the three tiers (model classes, not worker names).
+6. **Designer expansion ergonomics.** A judgment gate = producer + judge + reroute (2–3 nodes).
+   Decide whether init expands this automatically from `posture: designer` or asks the author to
+   confirm the judge node.
 
 ## Next step
 
-When we author the actual `executor.md` / `designer.md` preset **role-prompts**, load the
-`agentic-prompt-design` skill first (those are agent-facing prose with an acceptance bar). This
-doc defines the *schema and contract*; the prompts are the next artifact.
+When we author the actual `executor.md` / `designer.md` (and the upgraded research) **role-prompts**,
+load the `agentic-prompt-design` skill first — those are agent-facing prose with an acceptance bar.
+This doc defines the *schema, layering, and contract*; the prompts are the next artifact.
