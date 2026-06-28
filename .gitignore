@@ -26,6 +26,10 @@ gui/public/runs/*/.pi/
 /_pi/
 /.pi/
 
+# Stale throwaway run output. Real runs live under per-product .piflow/<wf>/runs/ (resolved via
+# ~/.piflow/index.json); out/ is scratch and must never be committed.
+out/
+
 # piflow example workflows: the template is committed; per-run threads are regenerable.
 .piflow/*/runs/
 
