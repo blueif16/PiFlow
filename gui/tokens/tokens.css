@@ -113,6 +113,13 @@
   /* the game corner: sharp by default; bevel where corner-shape is supported */
   --ds-bevel: 10px;
 
+  /* --- skin channel (per-node runtime) — the CLOUD block (daytona/e2b). FORM-FIRST: the extrusion is the
+     signal, the blue tint only reinforces it. Reuses the blue accent voice; coexists with the status ring. */
+  --ds-cloud-tint: rgba(0, 112, 243, 0.06);          /* faint blue body wash */
+  --ds-cloud-face: rgba(0, 82, 179, 0.22);           /* the extruded right/bottom face (blue-700-ish) */
+  --ds-cloud-face-edge: rgba(0, 82, 179, 0.32);      /* the lit edge between top face and side face */
+  --ds-cloud-depth: 5px;                              /* how far the block is extruded (px) */
+
   /* --- orbs (dynamic background) — must be present enough that the frosted
      nodes actually have something to frost (glass needs a varied backdrop) --- */
   --ds-orb-a: rgba(0, 112, 243, 0.20);

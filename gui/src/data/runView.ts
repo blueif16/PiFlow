@@ -8,6 +8,23 @@ import type { Edge } from "@xyflow/react";
 
 export type ScopeKind = "run" | "skill" | "template" | "package" | "repo";
 
+/** (SKIN channel) The sandbox BACKEND kind — mirrors core `SandboxProviderKind` (types.ts). */
+export type SandboxProviderKind = "inmemory" | "local" | "seatbelt" | "worktree" | "daytona" | "e2b";
+
+/** (SKIN channel) The curated per-node config slice — mirrors core `NodeConfig` (runner/status.ts). The
+ *  `sandbox` here is per-node SCOPING (workspace/readScope/owns), NOT the backend (that is run-level). */
+export interface NodeConfig {
+  model?: string | null;
+  provider?: string;
+  tier?: string;
+  tools?: { allow?: string[]; deny?: string[]; };
+  timeoutMs?: number;
+  retries?: number;
+  agentType?: string;
+  programmatic?: boolean;
+  sandbox?: { workspace?: string; readScope?: string[]; owns?: string[]; };
+}
+
 export interface ScopeBucket { kind: ScopeKind; label: string; count: number; paths: string[]; }
 export interface TimelineSpan { name: string; tStartMs: number | null; durMs: number; ok: boolean; }
 export interface ReadRef { path: string; displayPath: string; via: string; scope: ScopeKind; preview?: string; }
@@ -22,6 +39,8 @@ export interface RunViewNode {
   phase: string | null;
   /** (G6) the agent-PRESET label (branding) — resolved to {icon,color,label} via the agents catalog. */
   agentType?: string;
+  /** (SKIN channel) the curated per-node config slice (model/tools/scoping/programmatic) — mirrors core. */
+  config?: NodeConfig;
   status: string; // ok | reused | error | blocked | running | pending | gap | dry
   startedAt?: string;
   endedAt?: string;
@@ -65,6 +84,8 @@ export interface RunView {
   source?: string;
   provider?: string;
   model?: string | null;
+  /** (SKIN channel) the run's effective sandbox BACKEND — mirrors core; drives the node skin. */
+  sandbox?: SandboxProviderKind;
   startedAt?: string;
   updatedAt?: string;
   durationMs?: number | null;
@@ -156,6 +177,21 @@ const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "avif", 
 /** True when a path should render as an <img> (served binary) rather than fetched as text. */
 export const isImagePath = (p: string) => IMAGE_EXTS.has((p.split(".").pop() || "").toLowerCase());
 
+/** (SKIN channel) The cloud backends — a node that runs in one of these gets the extruded 3D block skin. */
+const CLOUD = new Set<SandboxProviderKind>(["daytona", "e2b"]);
+
+/** (SKIN channel) The EFFECTIVE backend a node ran in: a programmatic node is ALWAYS host-local (it spawns
+ *  no pi, so it ignores the run's chosen backend — core types.ts:97-99); otherwise the run-level backend. */
+export function effectiveSandbox(view: RunView, node: RunViewNode): SandboxProviderKind | undefined {
+  return node.config?.programmatic ? "local" : view.sandbox;
+}
+
+/** (SKIN channel) Map a backend kind → its node skin. Extensible (a future `danger-full-access` skin maps
+ *  here); only cloud→'cloud' is implemented now, everything else (incl. undefined) is the default 'flat'. */
+export function sandboxSkin(kind: SandboxProviderKind | undefined): "flat" | "cloud" {
+  return kind && CLOUD.has(kind) ? "cloud" : "flat";
+}
+
 /** Map the engine's node status ladder onto the design-system's visual NodeStatus. */
 export function toNodeStatus(s: string): NodeStatus {
   switch (s) {
@@ -234,10 +270,14 @@ export function toFlowGraph(view: RunView, catalog: AgentCatalog = {}): { nodes:
     const stageIndex = rv.stageIndex ?? 1;
     const lane = rv.lane ?? 0;
     const preset = rv.agentType ? catalog[rv.agentType] : undefined;
+    // (SKIN channel) The node's runtime skin from its EFFECTIVE backend (programmatic ⇒ local; else the
+    // run's backend). Set `runtime` only when 'cloud' is meaningful — 'flat' is the default (no DOM attr).
+    const skin = sandboxSkin(effectiveSandbox(view, rv));
     const data: FlowNodeData = {
       title: rv.label,
       kind: "agent",
       typeLabel: rv.phase ?? "node",
+      ...(skin === "cloud" ? { runtime: skin } : {}),
       // (G6) the preset's branding, resolved from the catalog by the node's agentType label. The icon is
       // a KEY the chip maps to a bundled glyph; absent/unknown ⇒ the default agent glyph (never blocks).
       ...(preset ? { agentIcon: preset.icon, agentColor: preset.color, agentLabel: preset.label ?? rv.agentType } : {}),

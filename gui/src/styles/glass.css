@@ -207,6 +207,54 @@
 .ds-node[data-status="success"]::before, .ds-node[data-status="success"]::after { border-color: var(--ds-success); }
 .ds-node[data-status="error"]::before,   .ds-node[data-status="error"]::after   { border-color: var(--ds-error); }
 
+/* ---------------------------------------------------------------------------
+   SKIN CHANNEL — per-node runtime. CLOUD (daytona/e2b) = the FORM-FIRST 3D
+   BLOCK: the node reads as an EXTRUDED solid, the shape carrying the meaning;
+   a faint blue body tint only reinforces it. NO transform on .ds-node (that
+   would drag the React Flow handles) and NO extra DOM — the extruded
+   right/bottom faces are a layered box-shadow stack of offset solid shadows.
+
+   The extrusion lives in --ds-node-extrude so the status rules can COMPOSE it:
+   a cloud node that is running/selected/success/error keeps BOTH the block
+   faces AND its status ring (append, never replace, the box-shadow).
+   --------------------------------------------------------------------------- */
+.ds-node[data-runtime="cloud"] {
+  /* the extruded faces: stepped offset solids (right+down) fake a side wall; the lit edge sits closest. */
+  --ds-node-extrude:
+    1px 1px 0 0 var(--ds-cloud-face-edge),
+    var(--ds-cloud-depth) var(--ds-cloud-depth) 0 calc(var(--ds-cloud-depth) * -1) var(--ds-cloud-face),
+    var(--ds-shadow-sm);
+  background: linear-gradient(var(--ds-cloud-tint), var(--ds-cloud-tint)), var(--ds-node-glass);
+  box-shadow: var(--ds-node-extrude);
+}
+.ds-node[data-runtime="cloud"]:hover {
+  background: linear-gradient(var(--ds-cloud-tint), var(--ds-cloud-tint)), var(--ds-node-glass-hover);
+}
+/* COMPOSE the status ring ON TOP of the block faces (append the ring to --ds-node-extrude). */
+.ds-node[data-runtime="cloud"][data-status="selected"],
+.ds-node[data-runtime="cloud"][data-status="running"] {
+  box-shadow: var(--ds-node-extrude), 0 0 0 3px var(--ds-accent-ring);
+}
+.ds-node[data-runtime="cloud"][data-status="success"] {
+  box-shadow: var(--ds-node-extrude), 0 0 0 3px rgba(21, 161, 74, 0.20);
+}
+.ds-node[data-runtime="cloud"][data-status="error"] {
+  box-shadow: var(--ds-node-extrude), 0 0 0 3px rgba(229, 72, 77, 0.20);
+}
+/* LOD: when zoomed out / dense, collapse the extrusion to a flat fill (matches the .ds-lod-flat escape
+   hatch that drops node blur) — the block reverts to a flat card so fps holds at scale. */
+.ds-lod-flat .ds-node[data-runtime="cloud"] {
+  --ds-node-extrude: var(--ds-shadow-sm);
+  background: linear-gradient(var(--ds-cloud-tint), var(--ds-cloud-tint)), var(--ds-bg-surface);
+  box-shadow: var(--ds-shadow-sm);
+}
+/* the runtime glyph in the header — a recessive blue badge (the SHAPE is the loud signal, not this). */
+.ds-node__runtime {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ds-text-accent);
+}
+
 /* header / body — structure via a hairline divider, not a colored bar */
 .ds-node__header {
   display: flex;

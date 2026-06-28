@@ -65,6 +65,9 @@ export type FlowNodeData = {
   content?: string;
   /** how to render `content`: markdown / json get a themed reader (else inferred from typeLabel) */
   contentType?: "text" | "markdown" | "json";
+  /** (SKIN channel) the node's runtime skin from its EFFECTIVE sandbox backend. 'cloud' ⇒ the extruded 3D
+   *  block + cloud glyph (runs in daytona/e2b); omitted/'flat' ⇒ the default local card (no data-runtime). */
+  runtime?: "flat" | "cloud";
   /** 0..1 determinate progress; omit while running for an indeterminate sweep */
   progress?: number;
   /** Config panel: rectangular config blocks in the HUD */
@@ -164,6 +167,21 @@ export function AgentPresetIcon({ icon }: { icon?: string }) {
   }
 }
 
+/** (SKIN channel) The cloud-runtime glyph — a small inline cloud (no icon dependency, the KindIcon
+ *  pattern). Rendered on a 'cloud' node so the signal is not color-only (a11y / color-blind). */
+function CloudGlyph() {
+  return (
+    <svg className="ds-node__cloud" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d="M4.5 12.5h6.2a2.6 2.6 0 00.3-5.18 3.4 3.4 0 00-6.43-1.06A2.85 2.85 0 004.5 12.5z"
+        stroke="currentColor"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { expand } = useExpand();
   const { mode } = useViewMode();
@@ -175,6 +193,9 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
     : data.kind === "agent" ? "var(--ds-node-agent)" : "var(--ds-node-file)";
   // show the charge bar while running, or whenever a node carries a progress value
   const showProgress = data.progress != null || status === "running";
+  // (SKIN channel) a 'cloud' node renders as the extruded 3D block (data-runtime drives glass.css) + a
+  // cloud glyph + an extended aria-label, so the runtime is signaled by SHAPE + GLYPH + TEXT, not color alone.
+  const isCloud = data.runtime === "cloud";
 
   return (
     <motion.div
@@ -182,9 +203,10 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       className="ds-node"
       data-status={status}
       data-kind={data.kind}
+      {...(isCloud ? { "data-runtime": "cloud" } : {})}
       role="button"
       tabIndex={0}
-      aria-label={`${data.kind} ${data.title}. Press Enter to expand.`}
+      aria-label={`${data.kind} ${data.title}.${isCloud ? " Runs in cloud." : ""} Press Enter to expand.`}
       onClick={() => expand(id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -200,7 +222,12 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
           {data.agentIcon ? <AgentPresetIcon icon={data.agentIcon} /> : <KindIcon kind={data.kind} />}
         </span>
         <span className="ds-node__title">{data.title}</span>
-        <span className="ds-node__type" style={{ marginLeft: "auto" }}>
+        {isCloud && (
+          <span className="ds-node__runtime" style={{ marginLeft: "auto" }} title="Runs in cloud">
+            <CloudGlyph />
+          </span>
+        )}
+        <span className="ds-node__type" style={{ marginLeft: isCloud ? undefined : "auto" }}>
           {data.agentLabel ?? data.typeLabel}
         </span>
       </div>
