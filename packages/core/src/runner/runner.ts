@@ -59,7 +59,7 @@ import { runMerge, applyMergeOp } from '../workflow/ops/merge.js';
 import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, barrierMerge, type NodeUpdate, type ResolvedPromote } from '../workflow/ops/promote.js';
-import { derivesFromOp, gatesFromOp, runOpsFromOp } from './op-dispatch.js';
+import { derivesFromOp, gatesFromOp, runOpsFromOp, actionsFromOp } from './op-dispatch.js';
 import { loadState, persistState } from '../workflow/state.js';
 import { createLimiter, normalizeConcurrent, type Limiter } from './limit.js';
 import {
@@ -854,8 +854,50 @@ async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope: RunSco
   const retryAllows = (cls: FailureClass): boolean => (retry.on ? retry.on.includes(cls) : cls !== 'halt');
   const escAllows = (cls: FailureClass): boolean => (escalate?.on ? escalate.on.includes(cls) : cls !== 'halt');
 
+  // ── (SA-D · expert-representations) L1 / L2 / L3 self-correction wiring ─────────────────────────
+  //
+  // SA-B (gate-authoring.ts:359–365) emits `op.action { kind:'retry', scope:'feedback'|'fix', max }` as
+  // canonical op[] entries on the node. We read them here ONCE and use them to override/supplement the
+  // per-node `io.retry`/`io.retries` budget with the gate's feedback-aware semantics.
+  //
+  // L1 (scope:'feedback', DEFAULT, BUILD): on each failed attempt, inject the gate's critique — the
+  // EMPIRICAL failure evidence (`consultPreamble`) — as a `promptPrefix` into the NEXT cold re-invocation.
+  // This is Reflexion / Self-Refine semantics: the producer receives its failure reason and is asked to
+  // fix it in a FRESH pi process (NOT a warm session resume — that infra is absent on this branch; see the
+  // flag below). The feedback MUST reach the retry attempt; a blind same-input retry is the WRONG default.
+  //
+  // NOTE: TRUE WARM-RESUME is not available here. `pi` is invoked with `--no-session` (command.ts:71);
+  // there is no `--resume-session`/`--session-id`/`--mode rpc` on this branch. The control-session /
+  // companion work (pi rpc-mode, session continuation) likely lives on main. When that infra merges, the
+  // warm-resume path here should: (a) persist the session id from the first invocation's event stream,
+  // (b) invoke pi with `--resume <sessionId>` + the feedback as an appended message, NOT a fresh @prompt.
+  // FLAG: search for TODO[warm-resume] to find the exact point to upgrade.
+  //
+  // L2 (scope:'fix') — STUB. When the gate emits `scope:'fix'`, the intended behavior is:
+  //   1. Infer the problem class from the failure signals (classifyFailure already does this).
+  //   2. Consult the per-workflow fix/issue memory (a run-scoped, recorded structure — NOT yet built).
+  //   3. Patch THIS node's prompt/tool-wiring for this run instance ONLY (ephemeral, recorded).
+  //   4. Resume with the patched node — still a cold re-invocation until warm-resume lands.
+  //   Best-effort, no guarantee. Promotion of the patch to the template = L3 (held-out check + human gate).
+  //   Reference: docs/research/2026-06-28-loop-engineering-self-improving-systems.md (loop engineering,
+  //   §"Memory-augmented loops" / "Reflexion" / "per-run fix memory"); build-spec §Self-correction.
+  //   Owned by SA-D + the memory system. NOT YET IMPLEMENTED — falls through to L1 feedback for now.
+  //
+  // L3 — STUB. Between-run DAG-level optimization (patch promotion to template, held-out check, human
+  //   gate). Owned by Hermes / `piflow-enhance` (between-runs, human-gated). NOT in scope for SA-D.
+  //   Reference: docs/design/expert-representations-build-spec.md §Self-correction (decision 6).
+  const { retryAction } = actionsFromOp(node.op);
+  // Determine the effective retry budget: the op[] action op's `max` wins over `io.retry`/`io.retries`
+  // when a gate-authored retry action is present (the gate author set an explicit budget).
+  const opRetryMax = retryAction?.max;
+  const effectiveRetryMax = opRetryMax !== undefined ? Math.max(0, opRetryMax) : Math.max(0, retry.max);
+  // Only L1 (scope:'feedback') and the default (undefined = 'feedback') are wired. L2 (scope:'fix') stubs
+  // through to L1 feedback: the scope is read, logged implicitly via the seam comment, but NOT executed.
+  const l1Active = retryAction !== undefined && (retryAction.scope === 'feedback' || retryAction.scope === undefined || retryAction.scope === 'fix');
+  // ── end SA-D wiring header ─────────────────────────────────────────────────────────────────────────
+
   let rec = await runNode(ctx, node, scope);
-  let retriesLeft = Math.max(0, retry.max);
+  let retriesLeft = opRetryMax !== undefined ? effectiveRetryMax : Math.max(0, retry.max);
   let escalatedYet = false;
   // `escalate.after` (default: after the retry budget is spent) gates how many same-model attempts run
   // before the consult. With no explicit `after`, escalation waits until `retriesLeft` reaches 0.
@@ -869,10 +911,26 @@ async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope: RunSco
 
     const afterReached = escalate?.after !== undefined ? attemptsRun >= escalate.after : retriesLeft <= 0;
     if (retriesLeft > 0 && retryAllows(cls) && !(escalate && afterReached && escAllows(cls))) {
-      // Same-model retry: a FRESH attempt (re-seed + re-exec), no consult prefix, the node's own model.
       retriesLeft--;
       attemptsRun++;
-      rec = await runNode(ctx, node, scope);
+      if (l1Active) {
+        // L1 — scope:'feedback': inject the gate critique as a promptPrefix on the cold re-invocation.
+        // This is the FEEDBACK-INJECTED cold path (not warm-resume; see TODO[warm-resume] above).
+        // consultPreamble builds a DRIVER-VERIFIED evidence block (missing artifacts, schema errors,
+        // failed checks, stderr tail, watchdog kills) — NEVER a model self-score. The producer sees
+        // EXACTLY what failed and is asked to fix it. This is the Reflexion / Self-Refine pattern.
+        //
+        // L2 NOTE: if retryAction.scope === 'fix', the fix memory lookup would happen HERE before
+        // invoking runNode — patch the node's prompt/tool-wiring, then call runNode with the patched
+        // node. The stub falls through to feedback (same cold re-invocation, same evidence prefix).
+        // TODO[warm-resume]: when pi session-resume infra is available, replace the runNode call below
+        // with: persist sessionId from the first attempt's event stream, then invoke pi with
+        // `--resume <sessionId>` and the feedback appended as a NEW message (not a fresh @prompt file).
+        rec = await runNode(ctx, node, scope, { promptPrefix: consultPreamble(sig) });
+      } else {
+        // Same-model retry: a FRESH attempt (re-seed + re-exec), no consult prefix, the node's own model.
+        rec = await runNode(ctx, node, scope);
+      }
     } else if (escalate && !escalatedYet && escAllows(cls)) {
       // Cross-family CONSULT: resolve the stronger target through model-routing, prepend the verified
       // evidence. ONE escalation only (a second would just re-spend on the same class).

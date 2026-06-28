@@ -6,8 +6,8 @@ export type { RunOptions, RunResult, ExecRunner, ExecWatchdogOpts, CheckpointWai
 // (op⊖ops) derivesFromOp / gatesFromOp / runOpsFromOp — the SINGLE OpSpec→executor-input adapter home (the
 // SOLE derive rep is `op[]`). Surfaced so consumers (the CLI inspector) render derives from `op[]` instead of
 // the retired `node.ops`; gatesFromOp/runOpsFromOp unify the gate/run reads the runner inlined per lane (C2).
-export { derivesFromOp, gatesFromOp, runOpsFromOp } from './op-dispatch.js';
-export type { DerivedExecInputs, ProjectOp, RegistryProject, PromoteInput, RunnableOp, RejectedRunOp } from './op-dispatch.js';
+export { derivesFromOp, gatesFromOp, runOpsFromOp, actionsFromOp } from './op-dispatch.js';
+export type { DerivedExecInputs, ProjectOp, RegistryProject, PromoteInput, RunnableOp, RejectedRunOp, ActionOps } from './op-dispatch.js';
 // G5 — HUMAN CHECKPOINT (HITL): the marker/reply schemas, the question hash, and the reply validator (the
 // runner's authority). The Vite courier + the console write the reply file; observe surfaces the marker.
 export {

@@ -25,7 +25,7 @@
 // (no `ops`) still reconstructs `{to: writes[0], from}` (lower.ts:104-105). Both reach `applyProjectionOp`
 // byte-identically to the legacy `node.ops.project[]` site.
 
-import type { OpSpec, Reducer, Check, OnFailure } from '../types.js';
+import type { OpSpec, Reducer, Check, OnFailure, ActionBody } from '../types.js';
 import type { Seed } from '../workflow/ops/seed.js';
 import type { MergeSpec } from '../workflow/ops/merge.js';
 
@@ -119,6 +119,50 @@ export interface RunnableOp {
 export interface RejectedRunOp {
   detail: string;
   onFailure: OnFailure;
+}
+
+// ── (SA-D · expert-representations) Action op adapters ──────────────────────────────────────────────
+//
+// `actionsFromOp` is the SINGLE home for the `op.action → executor-input` adapter. It extracts the
+// FIRST retry and FIRST rerouteTo action from a node's `op[]` so `runNodeWithRetries` can wire L1
+// (feedback-injected cold re-run) and the reroute budget. An `undefined` op[] yields nulls (additive).
+//
+// WHY here, not in runner.ts: op-dispatch.ts owns ALL op-family adapters; adding it here keeps the
+// runner's import surface consistent (one import from op-dispatch for each op family).
+
+/**
+ * The action ops extracted from a node's `op[]` for the retry/reroute runtime.
+ * - `retryAction` — the FIRST `op.action { kind:'retry' }` entry (carries `max` + `scope`).
+ * - `rerouteAction` — the FIRST `op.action { kind:'rerouteTo' }` entry (carries `node` + `max`).
+ * Both are `undefined` when not present (a node with no action ops is unaffected).
+ */
+export interface ActionOps {
+  retryAction?: Extract<ActionBody, { kind: 'retry' }>;
+  rerouteAction?: Extract<ActionBody, { kind: 'rerouteTo' }>;
+}
+
+/**
+ * (SA-D · expert-representations) Extract the first `retry` and first `rerouteTo` action ops from a
+ * node's canonical `op[]`. These are the CONTROL actions gate-authoring emits (gate-authoring.ts:359–365
+ * `makeRetryAction`; gate-authoring.ts:283–292 judge `rerouteTo`). An undefined op[] yields both as
+ * undefined (additive — no action ops = today's behavior, unchanged). Only the FIRST of each family
+ * is extracted: a node with two retry ops is unusual and the first wins (the cost-ladder order from
+ * `lowerGates` is already deterministic, so the first is cheapest / most specific).
+ */
+export function actionsFromOp(op: OpSpec[] | undefined): ActionOps {
+  let retryAction: ActionOps['retryAction'];
+  let rerouteAction: ActionOps['rerouteAction'];
+  for (const o of op ?? []) {
+    if (!o.action) continue;
+    if (!retryAction && o.action.kind === 'retry') {
+      retryAction = o.action as Extract<ActionBody, { kind: 'retry' }>;
+    }
+    if (!rerouteAction && o.action.kind === 'rerouteTo') {
+      rerouteAction = o.action as Extract<ActionBody, { kind: 'rerouteTo' }>;
+    }
+    if (retryAction && rerouteAction) break; // both found — no need to scan further
+  }
+  return { retryAction, rerouteAction };
 }
 
 /**
