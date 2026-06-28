@@ -569,7 +569,178 @@ function piflowAgents(): Plugin {
   };
 }
 
+/**
+ * CONTROL SESSION — the ONE two-way channel: talk to an interactive `pi` about a run. Endpoints mirror the
+ * existing idioms, all SEPARATE from the one-way DAG telemetry (`/__piflow/stream/<run>`, which is unchanged)
+ * so that feed stays pure one-way:
+ *   - `POST /__piflow/control/<run>/start`   → spawn (or reuse) `pi --mode rpc` at cwd=runDir; 202 + handle.
+ *   - `GET  /__piflow/control/<run>/stream`  → SSE of the pi's frames (events + id-correlated responses);
+ *     subscribing triggers the snapshot (get_state/get_messages/get_session_stats). Like `piflowRunStream`.
+ *   - `POST /__piflow/control/<run>/message` → dumb courier forwarding one RPC command to the child's stdin
+ *     (prompt/steer/follow_up/abort/set_model/…). Like `piflowCheckpointReply`.
+ *   - `GET  /__piflow/control/<run>/sessions` → the CONVERSATION HISTORY list (header-parse of the run's
+ *     `.pi-control/*.jsonl`); `[{id,name,firstMessage,mtime,active}]`. The list IS the navigation.
+ *   - `POST /__piflow/control/<run>/select`  `{sessionId}` → CONTINUE that conversation (switch_session live /
+ *     respawn `--session <id>` dead).
+ *   - `POST /__piflow/control/<run>/new`     → start a FRESH conversation (new_session live / fresh spawn dead).
+ * Each conversation is one of pi's OWN session files under `--session-dir <runDir>/.pi-control` (no hand-rolled
+ * persistence). The spawn/framing/session-machinery live in the PURE host lib (control-session.mjs).
+ * The spawn/framing live in the PURE host lib (gui/scripts/lib/control-session.mjs), loaded by ABSOLUTE path
+ * the same way the index/checkpoint libs are (esbuild never bundles it into this config). The control pi runs
+ * `--mode rpc`; piflow's DAG nodes run `--mode json` — separate builders, the node path is untouched here.
+ */
+function piflowControlSession(): Plugin {
+  const readBody = (req: IncomingMessage): Promise<string> =>
+    new Promise((resolve, reject) => {
+      let data = "";
+      let tooBig = false;
+      req.on("data", (c) => {
+        data += c;
+        if (data.length > 1_000_000) { tooBig = true; req.destroy(); } // 1 MB cap — a chat message is small
+      });
+      req.on("end", () => (tooBig ? reject(new Error("body too large")) : resolve(data)));
+      req.on("error", reject);
+    });
+
+  // The host lib holds the dev-server-scoped session registry; loaded ONCE so all three routes share it.
+  const loadHost = async () => {
+    const lib = findUp("scripts/lib/control-session.mjs");
+    if (!lib) return null;
+    return import(pathToFileURL(lib).href);
+  };
+
+  const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
+    const m = req.url?.match(/^\/__piflow\/control\/([^/?]+)\/(start|stream|message|sessions|select|new)(?:\?.*)?$/);
+    if (!m) return next();
+    const run = decodeURIComponent(m[1]);
+    const action = m[2];
+
+    const host = await loadHost();
+    if (!host) return sendJson(res, 500, { error: "control-session lib not found — is this the piflow gui?" });
+
+    // ---- POST /start: spawn (or reuse) the control pi at cwd=runDir, inheriting pi config ----
+    if (action === "start") {
+      if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to start a control session" });
+      const resolved = await resolveRunDir(run);
+      if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+      try {
+        const handle = host.startSession(run, resolved.runDir);
+        return sendJson(res, 202, handle);
+      } catch (e) {
+        return sendJson(res, 500, { error: `failed to start control session (${String(e)})` });
+      }
+    }
+
+    // ---- GET /stream: SSE relay of the control pi's frames (same machinery as piflowRunStream) ----
+    if (action === "stream") {
+      // Auto-start on connect so opening the stream is enough to spin the pi up (the GUI also POSTs /start,
+      // but startSession is idempotent — one pi per run).
+      const resolved = await resolveRunDir(run);
+      if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+      try { host.startSession(run, resolved.runDir); } catch (e) { return sendJson(res, 500, { error: `failed to start control session (${String(e)})` }); }
+
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      res.flushHeaders?.();
+
+      const ping = setInterval(() => { try { res.write(":ping\n\n"); } catch { /* socket gone */ } }, 15000);
+      const write = (frame: unknown) => { try { res.write(`data: ${JSON.stringify(frame)}\n\n`); } catch { /* socket gone */ } };
+
+      // subscribe re-triggers the snapshot for THIS client (re-base on (re)connect), then live deltas flow.
+      let unsub: (() => void) | null = null;
+      try { unsub = host.subscribe(run, write); } catch (e) { write({ v: 1, type: "stream-error", error: String(e) }); }
+
+      let closed = false;
+      const cleanup = () => { if (closed) return; closed = true; clearInterval(ping); unsub?.(); };
+      req.on("close", cleanup);
+      res.on("close", cleanup);
+      write({ v: 1, type: "meta", run, runDir: resolved.runDir });
+      return; // SSE stays open
+    }
+
+    // ---- POST /message: dumb courier → one RPC command to the child's stdin ----
+    if (action === "message") {
+      if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to send a control message" });
+      let body: { text?: unknown; deliverAs?: unknown; type?: unknown; [k: string]: unknown };
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        return sendJson(res, 400, { error: "body must be JSON { text, deliverAs? } or a raw RPC command { type, … }" });
+      }
+      // Two shapes: a chat message ({text, deliverAs?}) → prompt|steer|follow_up; or a passthrough control
+      // verb ({type:"abort"|"set_model"|"set_thinking_level"|"compact", …}). The runner is NOT involved —
+      // this is the chat/steer/abort surface only (run-lifecycle intents are a separate, out-of-scope door).
+      let cmd: Record<string, unknown>;
+      if (typeof body.text === "string") {
+        const deliver = body.deliverAs === "steer" || body.deliverAs === "followUp" ? body.deliverAs : undefined;
+        const type = deliver === "steer" ? "steer" : deliver === "followUp" ? "follow_up" : "prompt";
+        cmd = { ...body, type, message: body.text };
+        delete cmd.text;
+        delete cmd.deliverAs;
+      } else if (typeof body.type === "string") {
+        cmd = body as Record<string, unknown>;
+      } else {
+        return sendJson(res, 400, { error: "send { text } for a chat message, or { type } for a control verb" });
+      }
+      const out = host.sendCommand(run, cmd);
+      return sendJson(res, out.status, out.body);
+    }
+
+    // ---- GET /sessions: the conversation HISTORY list (header-parse of <runDir>/.pi-control/*.jsonl) ----
+    if (action === "sessions") {
+      const resolved = await resolveRunDir(run);
+      if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+      try {
+        const list = await host.listSessions(run, resolved.runDir);
+        return sendJson(res, 200, { sessions: list });
+      } catch (e) {
+        return sendJson(res, 500, { error: `failed to list sessions (${String(e)})` });
+      }
+    }
+
+    // ---- POST /select: CONTINUE an existing conversation (switch_session live / respawn --session dead) ----
+    if (action === "select") {
+      if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to select a conversation" });
+      const resolved = await resolveRunDir(run);
+      if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+      let body: { sessionId?: unknown };
+      try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: "body must be JSON { sessionId }" }); }
+      if (typeof body.sessionId !== "string") return sendJson(res, 400, { error: "sessionId (string) required" });
+      try {
+        const out = await host.selectSession(run, resolved.runDir, body.sessionId);
+        return sendJson(res, out.status, out.body);
+      } catch (e) {
+        return sendJson(res, 500, { error: `select failed (${String(e)})` });
+      }
+    }
+
+    // ---- POST /new: start a FRESH conversation (new_session live / fresh spawn dead) ----
+    if (action === "new") {
+      if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to start a new conversation" });
+      const resolved = await resolveRunDir(run);
+      if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+      try {
+        const out = await host.newChat(run, resolved.runDir);
+        return sendJson(res, out.status, out.body);
+      } catch (e) {
+        return sendJson(res, 500, { error: `new chat failed (${String(e)})` });
+      }
+    }
+
+    return next();
+  };
+
+  return {
+    name: "piflow-control-session",
+    configureServer(server) { server.middlewares.use(handler); },
+    configurePreviewServer(server) { server.middlewares.use(handler); },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), piflowGlobalIndex(), piflowRunStream(), piflowRunView(), piflowPreview(), piflowSaveRun(), piflowFile(), piflowTree(), piflowCheckpointReply(), piflowAgents()],
+  plugins: [react(), piflowGlobalIndex(), piflowRunStream(), piflowRunView(), piflowPreview(), piflowSaveRun(), piflowFile(), piflowTree(), piflowCheckpointReply(), piflowAgents(), piflowControlSession()],
   server: { port: 5173, host: true },
 });

@@ -498,7 +498,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     provider = makeLocalProvider();
     print(
       process.platform === 'darwin'
-        ? 'piflowctl run: read-scope isolation ON — each node is jailed to its declared readScope (seatbelt, kernel-enforced).'
+        ? 'piflowctl run: read-scope isolation ON — each PI node is jailed to its declared readScope (seatbelt, kernel-enforced). NOTE: programmatic nodes run UNSANDBOXED on the host (host spawnSync) — their readScope is ignored.'
         : `piflowctl run: ⚠ read-scope isolation is NOT enforced on ${process.platform} yet (Linux bwrap backend unwired) — running UNSANDBOXED. Run on macOS for enforcement.`,
     );
   } else if (parsed.sandbox === 'danger-full-access') {

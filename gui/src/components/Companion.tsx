@@ -1,27 +1,44 @@
 /**
- * Companion — the bottom-right AI assistant dock. Shell-level (mounted in
- * CanvasInner, portaled to <body> above the scrim) so it's available in BOTH
- * the full-map and per-node views. Collapsed = a small launcher; expanded = a
- * glass-soft panel that knows the active run / open node as context.
+ * Companion — the pi chat. Collapsed = a small launcher (bottom-right); open = a full-height glass rail
+ * on the RIGHT, layered (no backdrop) over the live flowmap so the left widgets stay lit and clickable.
+ * Sits a tier BELOW the floating MenuBar/ModeBar (z-modal vs z-popover) so they keep floating on top.
  *
- * LIVE: the companion subscribes to the run's telemetry SSE bridge
- * (useRunStream → /__piflow/stream/<run> → observe.watchRun) so its context line
- * shows the REAL current state ("running W2 scaffold · 3/9", "done ✓ 9/9"). The
- * pi CHAT round-trip (talk-back / edits) is the NEXT step — `sendToPi` is the
- * single seam. Per the "no mock data" rule we do NOT fabricate assistant replies:
- * a sent message is echoed (the user typed it) and answered with an honest status
- * line that now carries the real run state.
+ * Render discipline (the firehose is folded, not logged): the transcript shows only the durable spine —
+ * the user's prompts and pi's replies, flat, no bubbles. The live tool / "thinking" is EPHEMERAL (a single
+ * last-wins status by the input), completed tools collapse to one quiet histogram line, and lifecycle
+ * chatter is dropped in the reducer. Model · context% live next to the composer. No header, no dividers,
+ * no containers except the input field.
  */
-import { useState, type FormEvent } from "react";
-// `open` is owned by CanvasInner so the bottom-left ModeBar's "P" key (and the global
-// p-keypress) can launch this bottom-right pi chat; the launcher/collapse just flip it.
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
-import { useExpand } from "./ExpandContext";
-import { useRunStreamContext, whereAreWe } from "../data/runStream";
+import { MarkdownReader } from "./MarkdownReader";
+import { useControlSession, type ControlMessage, type ControlToolExecution, type SessionSummary } from "../data/controlSession";
 import "../styles/companion.css";
 
-interface Msg { role: "you" | "system"; text: string }
+/** Relative time for a conversation's mtime ("now", "5m", "2h", "3d"). */
+function relTime(ms: number): string {
+  const s = Math.max(0, (Date.now() - ms) / 1000);
+  if (s < 45) return "now";
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`;
+  return `${Math.round(s / 86400)}d`;
+}
+
+/** A history entry's label: session name, else its first user message, else a fallback. */
+function sessionLabel(s: SessionSummary): string {
+  return s.name || s.firstMessage || "untitled";
+}
+
+/** Completed tools → one quiet histogram line ("read ×2 · bash"). Empty when nothing has run. */
+function summarizeTools(tools: ControlToolExecution[]): string {
+  if (tools.length === 0) return "";
+  const counts = new Map<string, number>();
+  for (const t of tools) counts.set(t.toolName, (counts.get(t.toolName) ?? 0) + 1);
+  return Array.from(counts.entries())
+    .map(([name, c]) => (c > 1 ? `${name} ×${c}` : name))
+    .join(" · ");
+}
 
 /** The official pi mark (pi.dev) — geometric P + i dot. Inherits `currentColor`. */
 function PiMark({ size = 18 }: { size?: number }) {
@@ -38,70 +55,173 @@ function PiMark({ size = 18 }: { size?: number }) {
 }
 
 export function Companion({ activeRun, open, onOpenChange }: { activeRun: string; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { expandedId } = useExpand();
   const [draft, setDraft] = useState("");
-  const [log, setLog] = useState<Msg[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false); // the conversation-history list
 
-  const live = useRunStreamContext(); // shared subscription (owned by CanvasInner) — no second connection
-  const where = whereAreWe(live);
-  // live token counter folded from the node-event firehose (0 until events stream / for a lean run)
-  const tokens = live.liveBillable > 0 ? ` · ${live.liveBillable.toLocaleString()} tok` : "";
-  const context = expandedId ? `${activeRun} · ${expandedId}` : `${activeRun} · ${where}${tokens}`;
+  // the two-way control session (its OWN EventSource + POST courier) — only while the rail is open.
+  const ctrl = useControlSession(open ? activeRun : null);
+
+  const logRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // keep the newest line in view as the stream grows.
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [ctrl.messages, ctrl.toolExecutions]);
 
   function send(e: FormEvent) {
     e.preventDefault();
     const text = draft.trim();
     if (!text) return;
-    // sendToPi(text, { run: activeRun, node: expandedId })  ← wire the pi chat spawn here (step 2)
-    setLog((l) => [
-      ...l,
-      { role: "you", text },
-      { role: "system", text: `Run ${activeRun} — ${where}. Live pi chat isn't wired yet (next step); this is real run telemetry, not a stub.` },
-    ]);
+    void ctrl.send(text); // POST → pi stdin; reply streams back as folded messages
     setDraft("");
   }
+
+  const tools = Array.from(ctrl.toolExecutions.values());
+  const runningTool = tools.find((t) => t.phase === "running");
+  const toolSummary = summarizeTools(tools.filter((t) => t.phase === "done"));
+
+  // ONE ephemeral, last-wins status — never appended. Empty when idle (concise).
+  const status =
+    ctrl.status === "connecting" ? "connecting…"
+    : ctrl.status === "error" ? (ctrl.error ?? "session error")
+    : ctrl.status === "closed" ? "session ended"
+    : runningTool ? `running ${runningTool.toolName}…`
+    : ctrl.streaming ? "thinking…"
+    : "";
+  const busy = ctrl.streaming || !!runningTool;
+
+  // model · context% — the only metadata, next to the input.
+  const pct = ctrl.contextUsage?.percent;
+  const meta = [ctrl.model, pct != null ? `${Math.round(pct)}% ctx` : null].filter(Boolean).join(" · ");
+
+  // Only the durable CHAT turns reach the transcript: the human's prompts and pi's replies. Tool-result
+  // and other intermediate roles (the firehose carries them as "messages" too) are folded into the tool
+  // histogram instead, not dumped into the chat — that dump was the crowding.
+  const turns = ctrl.messages.filter(
+    (m: ControlMessage) => (m.role === "user" || m.role === "assistant") && (m.text.trim() !== "" || m.streaming),
+  );
+  const showEmpty = turns.length === 0 && !busy;
+  const showMeta = !!status || !!meta || ctrl.streaming;
 
   return createPortal(
     <div className="ds-companion-layer">
       {open ? (
-        <GlassSurface as="aside" variant="soft" className="ds-companion" legibleText aria-label="AI companion">
-          <header className="ds-companion__head">
-            <span className="ds-companion__spark" aria-hidden="true">
-              <PiMark size={13} />
-            </span>
-            <span className="ds-companion__title">Companion</span>
-            <span className="ds-companion__ctx" title={context}>{context}</span>
-            <button type="button" className="ds-companion__min" aria-label="Collapse companion" onClick={() => onOpenChange(false)}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+        <GlassSurface as="aside" variant="soft" className="ds-companion" legibleText aria-label="pi chat">
+          {/* functional controls only — bare ghost icons, top-left (clears the floating top-right MenuBar) */}
+          <div className="ds-companion__controls">
+            <button
+              type="button"
+              className="ds-companion__ctl"
+              aria-label="Close chat"
+              title="Close"
+              onClick={() => onOpenChange(false)}
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M6 4l4 4-4 4M2 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </button>
-          </header>
-
-          <div className="ds-companion__log">
-            {log.length === 0 ? (
-              <div className="ds-companion__empty">
-                Ask about this run or node.
-                <span className="ds-companion__soon">{activeRun} · {where}</span>
-              </div>
-            ) : (
-              log.map((m, i) => <div key={i} className={`ds-companion__msg ds-companion__msg--${m.role}`}>{m.text}</div>)
-            )}
+            <button
+              type="button"
+              className="ds-companion__ctl"
+              aria-label="Conversation history"
+              aria-pressed={historyOpen}
+              title="History"
+              onClick={() => setHistoryOpen((v) => !v)}
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
           </div>
 
+          {historyOpen ? (
+            <div className="ds-companion__history" role="listbox" aria-label="Conversations">
+              {/* New chat is the first entry — the list IS the navigation (click = continue). */}
+              <button
+                type="button"
+                className="ds-companion__hist-item ds-companion__hist-item--new"
+                onClick={() => { void ctrl.newChat(); setHistoryOpen(false); }}
+              >
+                <span className="ds-companion__hist-plus" aria-hidden="true">＋</span>
+                <span className="ds-companion__hist-label">new chat</span>
+              </button>
+              {ctrl.sessions.length === 0 ? (
+                <div className="ds-companion__hist-empty">no past conversations</div>
+              ) : (
+                ctrl.sessions.map((s) => {
+                  const active = s.id === ctrl.activeSessionId;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      className={`ds-companion__hist-item${active ? " ds-companion__hist-item--active" : ""}`}
+                      title={sessionLabel(s)}
+                      onClick={() => { if (!active) void ctrl.selectSession(s.id); setHistoryOpen(false); }}
+                    >
+                      <span className="ds-companion__hist-label">{sessionLabel(s)}</span>
+                      <span className="ds-companion__hist-time">{relTime(s.mtime)}</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          ) : (
+            <div className="ds-companion__log" ref={logRef}>
+              {showEmpty ? (
+                <div className="ds-companion__empty">
+                  {ctrl.status === "connecting"
+                    ? "starting pi…"
+                    : ctrl.status === "closed" || ctrl.status === "error"
+                      ? <>session ended<button type="button" className="ds-companion__restart" onClick={() => void ctrl.start()}>restart</button></>
+                      : "ask anything about this run"}
+                </div>
+              ) : (
+                <>
+                  {turns.map((m) =>
+                    m.role === "user" ? (
+                      <p key={m.id} className="ds-companion__msg ds-companion__msg--you">{m.text}</p>
+                    ) : (
+                      <div key={m.id} className="ds-companion__msg ds-companion__msg--pi">
+                        {/* pi replies are markdown — parsed to themed nodes (XSS-safe, no raw HTML) */}
+                        <MarkdownReader source={m.text} />
+                        {m.streaming && <span className="ds-companion__caret" aria-hidden="true" />}
+                      </div>
+                    ),
+                  )}
+                  {toolSummary && <p className="ds-companion__toolsum">{toolSummary}</p>}
+                </>
+              )}
+            </div>
+          )}
+
           <form className="ds-companion__composer" onSubmit={send}>
-            <input
-              className="ds-companion__input"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Ask the companion…"
-              aria-label="Message the companion"
-            />
-            <button type="submit" className="ds-companion__send" disabled={!draft.trim()} aria-label="Send">
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8h9M8 4.5L11.5 8 8 11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
+            {showMeta && (
+              <div className="ds-companion__meta">
+                {status && <span className="ds-companion__status" data-on={busy}>{status}</span>}
+                {meta && <span className="ds-companion__model" title={meta}>{meta}</span>}
+                {ctrl.streaming && (
+                  <button type="button" className="ds-companion__abort" onClick={() => void ctrl.abort()} aria-label="Stop the current turn">stop</button>
+                )}
+              </div>
+            )}
+            <div className="ds-companion__inputrow">
+              <input
+                className="ds-companion__input"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder={ctrl.streaming ? "steer…" : "ask…"}
+                aria-label="Message pi"
+              />
+              <button type="submit" className="ds-companion__send" disabled={!draft.trim()} aria-label="Send">
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 8h9M8 4.5L11.5 8 8 11.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+            </div>
           </form>
         </GlassSurface>
       ) : (
-        <button type="button" className="ds-companion-launch" aria-label="Open companion" onClick={() => onOpenChange(true)}>
+        <button type="button" className="ds-companion-launch" aria-label="Open pi" onClick={() => onOpenChange(true)}>
           <PiMark size={20} />
         </button>
       )}
