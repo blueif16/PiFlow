@@ -17,7 +17,6 @@ import path from 'node:path';
 import type {
   Workflow,
   NodeSpec,
-  Stage,
   SandboxProvider,
   Sandbox,
   RunScope,
@@ -381,33 +380,11 @@ export const defaultCheckpointWait: CheckpointWaiter = async ({ deadline, read, 
 import { lastJsonBlock } from './return-parse.js';
 export { lastJsonBlock } from './return-parse.js';
 
-// ── stage-window selection (run.mjs selectStages 600–635) ─────────────────────────────────────────
-
-function stageMatches(stage: Stage, wf: Workflow, needle: string): boolean {
-  const q = needle.toLowerCase();
-  if ((stage.phase ?? '').toLowerCase().includes(q)) return true;
-  return stage.nodeIds.some((id) => {
-    const n = wf.nodes[id];
-    return id.toLowerCase().includes(q) || (n?.label ?? '').toLowerCase().includes(q);
-  });
-}
-
-function selectWindow(wf: Workflow, from?: string, until?: string): { fromIdx: number; untilIdx: number } {
-  const stages = wf.stages;
-  let fromIdx = 0;
-  let untilIdx = stages.length - 1;
-  if (from) {
-    const i = stages.findIndex((s) => stageMatches(s, wf, from));
-    if (i >= 0) fromIdx = i;
-  }
-  if (until) {
-    let last = -1;
-    stages.forEach((s, i) => { if (stageMatches(s, wf, until)) last = i; });
-    if (last >= 0) untilIdx = last;
-  }
-  if (fromIdx > untilIdx) fromIdx = 0; // a from-after-until is incoherent → ignore from
-  return { fromIdx, untilIdx };
-}
+// ── stage-window selection (run.mjs selectStages 600–635) — moved to ./window.ts ────────────────────
+// `selectWindow` (+ its private `stageMatches`) now lives in ./window.ts (cluster D split). Imported for
+// the run loop's own use and re-exported here for completeness (an internal seam; no test/barrel import).
+import { selectWindow } from './window.js';
+export { selectWindow } from './window.js';
 
 // ── MCP config staging (env/secret porting — see docs/research/tool-bridge-env-2026-06-21.md) ───────
 // When a node selected bridge tools (mcp./oc.) AND a run-level `mcpConfig` is present, the runner stages
