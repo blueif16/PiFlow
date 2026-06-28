@@ -15,7 +15,7 @@
 
 import os from 'node:os';
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 
 /** The optional, activatable tier→model alias map (`~/.piflow/model-tiers.json`). Names are free product data. */
 export interface ModelTiers {
@@ -106,6 +106,75 @@ export function loadModelTiers(file: string = defaultTiersPath()): ModelTiers {
     return { active: Boolean(raw.active), tiers: raw.tiers ?? {} };
   } catch {
     return { active: false, tiers: {} };
+  }
+}
+
+// ── SA-C · Canonical tier vocabulary (expert-representations, decision 1) ─────────────────────
+//
+// The THREE settled tiers for piflow are 'fast' | 'balanced' | 'deep'. These are the canonical
+// strings referenced everywhere: gate-authoring.ts, fusion-nodes.md, docs/specs/per-node-routing-
+// and-fusion.md §1, and the test corpus. They are FREE DATA (user maps each to a concrete model id
+// in ~/.piflow/model-tiers.json) — the SDK only carries the names as constants so typos fail
+// loudly. A tier is NEVER a model id; it is a semantic CLASS the user's tiers.json resolves.
+//
+// Tier semantics (normative recipe descriptions — NOT enforced by the runtime):
+//   fast      — cheap + fast; good for high-volume, low-complexity tasks (e.g. executors, coders)
+//   balanced  — mid-range; good for most producer / research nodes
+//   deep      — frontier deliberate; good for judges, architects, hard reasoning tasks
+
+/** The three canonical tier keys. Use these constants; never hard-code the strings. */
+export const TIER_FAST = 'fast';
+export const TIER_BALANCED = 'balanced';
+export const TIER_DEEP = 'deep';
+
+/** The canonical tier set as an array (stable order: cheapest → most expensive). */
+export const CANONICAL_TIERS: readonly string[] = [TIER_FAST, TIER_BALANCED, TIER_DEEP] as const;
+
+/**
+ * The default seed for `~/.piflow/model-tiers.json` (SA-C, decision 1).
+ * Seeds placeholders — the user fills in the concrete model ids for their provider.
+ * `active: false` by default so a seed never silently routes the wrong model.
+ *
+ * Three canonical tiers with placeholder model ids — the user edits these to real ids
+ * (e.g. `"fast": "deepseek-v3"`, `"deep": "claude-opus-4-8"`).
+ */
+export const DEFAULT_TIERS_SEED: ModelTiers = {
+  active: false,
+  tiers: {
+    [TIER_FAST]: '',     // fill in: cheap + fast model (e.g. "deepseek-v3", "haiku", "gemini-flash")
+    [TIER_BALANCED]: '', // fill in: mid-range model (e.g. "sonnet", "gemini-pro", "gpt-4o-mini")
+    [TIER_DEEP]: '',     // fill in: frontier deliberate model (e.g. "claude-opus-4-8", "o3", "gemini-ultra")
+  },
+};
+
+/**
+ * Seed `~/.piflow/model-tiers.json` with the three canonical tiers if the file does not exist.
+ * WRITE-ONCE: never overwrites an existing file. Silently no-ops if the dir/file cannot be written.
+ *
+ * Called by `piflowctl new` and `piflowctl init` so a fresh install has a ready-to-edit template.
+ * The seed is INACTIVE (`active: false`) — the user must set `active: true` and fill in model ids.
+ */
+export function seedModelTiers(file: string = defaultTiersPath()): void {
+  try {
+    if (existsSync(file)) return; // never overwrite
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(
+      file,
+      JSON.stringify(
+        {
+          ...DEFAULT_TIERS_SEED,
+          $comment:
+            'piflow model tiers — set active:true and fill in real model ids to enable tier routing. ' +
+            'Canonical tier keys: fast (cheap/quick), balanced (mid), deep (frontier/deliberate). ' +
+            'See docs/specs/per-node-routing-and-fusion.md §1.',
+        },
+        null,
+        2,
+      ) + '\n',
+      'utf8',
+    );
+  } catch {
+    /* best-effort: absent write permissions → silently skip */
   }
 }
 

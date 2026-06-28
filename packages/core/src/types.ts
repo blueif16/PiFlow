@@ -717,6 +717,57 @@ export interface ToolRegistry {
   list(): ToolEntry[];
 }
 
+// ── SA-C · AgentBase (expert-representations, decision 8) ────────────────────
+//
+// ONE schema for both presets and nodes (build-spec.md §"Final surfaces", decision 8).
+//   • A PRESET is a partial fill: loadout (skills/tools) + display + optional default tier.
+//     Sandbox and op[] are NEVER baked into a preset — they are workflow-level.
+//   • A NODE is the full fill: + sandbox + op[] (the gate pipeline).
+//
+// `AgentBase` extends `AgentPreset`'s shape WITHOUT breaking the 6 existing presets — every preset
+// field maps directly; the new fields (sandbox, op) are optional so an AgentPreset is a valid
+// partial AgentBase. The compiler (`workflow/agent-base.ts`) wires SA-A skills + SA-B gates onto it.
+
+/**
+ * The unified agent description (SA-C · expert-representations). All fields optional/defaulted.
+ *
+ * - **Preset** = partial fill: `id`, `display?`, `skills?`, `tools?`, `tier?`, `prompt?`.
+ *   Sandbox and `op` are LEFT EMPTY on a preset — they are workflow-level, not agent-level.
+ * - **Node** = full fill: + `sandbox?` + `op?` (the gate pipeline, lowered by SA-B's `lowerGates`).
+ *
+ * Invariant: `tier` is a semantic CLASS key (resolved through `~/.piflow/model-tiers.json`);
+ * NEVER a concrete model id. The three canonical tiers are 'fast' | 'balanced' | 'deep'.
+ */
+export interface AgentBase {
+  /** Stable id — the preset's catalog key or the node's authored id. */
+  id: string;
+  /** Branding: surfaced by observe → GUI for the icon / label / color chip. */
+  display?: { label?: string; icon?: string; color?: string };
+  /** Skill loadout — the skill ids this agent runs with. */
+  skills?: string[];
+  /** Extra raw tool selection beyond what the skills' `requires` auto-wire. */
+  tools?: ToolSelection;
+  /**
+   * Model CLASS (tier key) — NEVER a concrete model id. Resolved at run time through
+   * `~/.piflow/model-tiers.json` via `resolveNodeModel`. The three canonical keys:
+   * `'fast'` | `'balanced'` | `'deep'`. A preset sets a DEFAULT; a node's own `tier`/`model` wins.
+   */
+  tier?: string;
+  /** The canonical role-prompt body. A node's task is appended after (ROLE first, TASK after). */
+  prompt?: string;
+  // ── workflow-level (PRESET: leave empty; NODE: fill in) ──
+  /**
+   * Where the node runs. Workflow-level — NEVER baked into a preset (portability).
+   * Partial: the loader fills in provider/workspace/output defaults.
+   */
+  sandbox?: Partial<SandboxSpec>;
+  /**
+   * The gate pipeline (lowered by SA-B's `lowerGates`). Workflow-level — NEVER on a preset.
+   * Each entry is a post-node op: floor checks, execution gates, judge reroutes, etc.
+   */
+  op?: OpSpec[];
+}
+
 // ── L1∩L2 BOUNDARY: the flat node bag the design agent fills ──────────────────
 
 /**
