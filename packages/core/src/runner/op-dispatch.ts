@@ -25,7 +25,7 @@
 // (no `ops`) still reconstructs `{to: writes[0], from}` (lower.ts:104-105). Both reach `applyProjectionOp`
 // byte-identically to the legacy `node.ops.project[]` site.
 
-import type { OpSpec, Reducer } from '../types.js';
+import type { OpSpec, Reducer, Check, OnFailure } from '../types.js';
 import type { Seed } from '../workflow/ops/seed.js';
 import type { MergeSpec } from '../workflow/ops/merge.js';
 
@@ -84,4 +84,69 @@ export function derivesFromOp(op: OpSpec[] | undefined): DerivedExecInputs {
     }
   }
   return out;
+}
+
+/** The severity a `gate` op carries (mirrors the runner's pre-gate map, runner.ts:1029 + lower.ts:25-28):
+ *  an `advisory` gate (Dagster blocking=False) or a `warn`-`onFailure` gate is a non-blocking warn; else fail. */
+function gateSeverity(o: OpSpec): 'fail' | 'warn' {
+  return o.gate!.advisory || o.onFailure === 'warn' ? 'warn' : 'fail';
+}
+
+/**
+ * (op⊖ops · C2) Reconstruct the gate ops of a node's `op[]` as `Check[]`, partitioned by firing lane — the
+ * SINGLE home for the `gate → Check` adapter (was inlined+duplicated at runner.ts:1015/1373 and absent for the
+ * POST lane). `pre` = the `when:'pre'` gates the runner fires over staged inputs BEFORE the model; `post` =
+ * every other gate (post/always/on-success/on-failure/undefined) — folded into `io.checks` so the post-check
+ * engine enforces a DIRECTLY-`op[]`-authored gate (closing the dead post-gate rep). A node with no gate ops
+ * yields two empty lists (additive). Ops with no `gate` body (transform/run/action) are skipped.
+ */
+export function gatesFromOp(op: OpSpec[] | undefined): { pre: Check[]; post: Check[] } {
+  const out: { pre: Check[]; post: Check[] } = { pre: [], post: [] };
+  for (const o of op ?? []) {
+    if (!o.gate) continue;
+    const check: Check = { kind: o.gate.kind, path: o.gate.path, param: o.gate.param, severity: gateSeverity(o) };
+    (o.when === 'pre' ? out.pre : out.post).push(check);
+  }
+  return out;
+}
+
+/** A dispatchable top-level `run` op: a `{cmd}` body that fires in a POST-ish lane, plus its failure consequence. */
+export interface RunnableOp {
+  body: { cmd: string; args?: string[]; cwd?: string };
+  onFailure: OnFailure;
+}
+/** A `run` op the runner has NO executor for — surfaced (never silently dropped) via `opFailures` (fail-loud). */
+export interface RejectedRunOp {
+  detail: string;
+  onFailure: OnFailure;
+}
+
+/**
+ * (op⊖ops · C2/B-fix) Partition a node's top-level `run` ops into the ones the runner can dispatch and the
+ * ones it cannot. The SINGLE home for the `run → executor-input` adapter (was inlined+duplicated at
+ * runner.ts:1077/1568, where a non-dispatchable body was SILENTLY `continue`-skipped). `runnable` = a `{cmd}`
+ * body firing post/always/on-success/undefined (the only lanes with an executor — there is no pre/on-failure
+ * run executor). `rejected` = a `{cmd}` with `when:'pre'`/`'on-failure'`, the `{fn}` variant (no fn executor),
+ * or a body with no `cmd` — each carried out so the run loop can FAIL LOUD instead of dropping it. Ops with no
+ * `run` body are skipped (not run ops). The merge transform's sub-`run`s ride `derivesFromOp().merges`, not here.
+ */
+export function runOpsFromOp(op: OpSpec[] | undefined): { runnable: RunnableOp[]; rejected: RejectedRunOp[] } {
+  const runnable: RunnableOp[] = [];
+  const rejected: RejectedRunOp[] = [];
+  for (const o of op ?? []) {
+    if (o.run === undefined) continue; // not a run op
+    const body = o.run as { cmd?: string; args?: string[]; cwd?: string; fn?: string };
+    const onFailure = (o.onFailure ?? 'block') as OnFailure;
+    const dispatchableWhen = !o.when || o.when === 'post' || o.when === 'always' || o.when === 'on-success';
+    if ('fn' in body && body.fn !== undefined) {
+      rejected.push({ detail: `run op {fn:${body.fn}} has no executor (the {fn} variant is unsupported)`, onFailure });
+    } else if (!body.cmd) {
+      rejected.push({ detail: `run op has no cmd`, onFailure });
+    } else if (!dispatchableWhen) {
+      rejected.push({ detail: `run op '${body.cmd}' with when:'${o.when}' has no executor (only post/always/on-success run)`, onFailure });
+    } else {
+      runnable.push({ body: { cmd: body.cmd, args: body.args, cwd: body.cwd }, onFailure });
+    }
+  }
+  return { runnable, rejected };
 }

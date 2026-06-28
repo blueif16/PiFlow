@@ -179,10 +179,11 @@ export type { HookReport, RunHooksOpts } from './hooks/index.js';
 // Runner (M1 execution loop — create→stage→exec→collect→dispose; watchdogs · halt-on-failure ·
 // --from resume · run-status.json). The pi-spawn is injectable (buildCommand/execRunner) so it runs offline.
 export { runWorkflow, defaultExecRunner, defaultPiCommand, lastJsonBlock, writeStatus, artifactState, nowISO } from './runner/index.js';
-// (op⊖ops) derivesFromOp — reconstruct the per-family derive executor inputs from a node's canonical `op[]`
-// (the SOLE derive rep; the legacy `node.ops` was retired in U6). Consumers render derives via this helper.
-export { derivesFromOp } from './runner/index.js';
-export type { DerivedExecInputs, ProjectOp, RegistryProject, PromoteInput } from './runner/index.js';
+// (op⊖ops) derivesFromOp / gatesFromOp / runOpsFromOp — reconstruct the per-family executor inputs from a
+// node's canonical `op[]` (the SOLE derive rep; the legacy `node.ops` was retired in U6). The runner reads
+// derives/gates/run ops through these three adapters (one home), and consumers (inspector) render via them.
+export { derivesFromOp, gatesFromOp, runOpsFromOp } from './runner/index.js';
+export type { DerivedExecInputs, ProjectOp, RegistryProject, PromoteInput, RunnableOp, RejectedRunOp } from './runner/index.js';
 // The env-AGNOSTIC run entry (D5): a plain resolved-config object (workflowSpec | buildWorkflowSpec +
 // run opts) → compile → run. The bridge is consumer-injected; env resolution lives in `loadConfig`.
 export { runFromConfig } from './runner/index.js';

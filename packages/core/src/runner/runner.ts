@@ -59,7 +59,7 @@ import { runMerge, applyMergeOp } from '../workflow/ops/merge.js';
 import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, barrierMerge, type NodeUpdate, type ResolvedPromote } from '../workflow/ops/promote.js';
-import { derivesFromOp } from './op-dispatch.js';
+import { derivesFromOp, gatesFromOp, runOpsFromOp } from './op-dispatch.js';
 import { loadState, persistState } from '../workflow/state.js';
 import { createLimiter, normalizeConcurrent, type Limiter } from './limit.js';
 import {
@@ -1012,8 +1012,8 @@ async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promise<Node
     // PRE-GATE — fire the node's `when:'pre'` gate ops over the staged inputs (mirrors runNode's #11 block).
     // A blocking pre-gate failure fails the node here. Each gate's `onFailure` (default 'block') decides;
     // an `advisory`/`warn` gate records but does not block.
-    const preGates = (node.op ?? []).filter((o) => o.when === 'pre' && o.gate);
-    if (preGates.length) {
+    const preChecks = gatesFromOp(node.op).pre; // (C2) the SINGLE gate→Check reconstruction (was inlined here).
+    if (preChecks.length) {
       const preReadBytes = (rel: string): FileBytes => {
         try {
           const absPath = path.resolve(ctx.outDir, rel);
@@ -1022,12 +1022,6 @@ async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promise<Node
           return { bytes: null, size: 0 };
         }
       };
-      const preChecks = preGates.map((o) => ({
-        kind: o.gate!.kind,
-        path: o.gate!.path,
-        param: o.gate!.param,
-        severity: (o.gate!.advisory || o.onFailure === 'warn' ? 'warn' : 'fail') as 'fail' | 'warn',
-      }));
       const preResults = evaluateChecks(preChecks, preReadBytes);
       rec.preChecks = preResults;
       const blockingPre = preResults.filter((c, i) => c.verdict !== 'pass' && preChecks[i].severity !== 'warn');
@@ -1074,15 +1068,16 @@ async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promise<Node
     }
     // AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic derive/side-
     // effect step. Reuse the merge executor's `run` impl, then route a non-zero exit through `onFailure`.
-    for (const o of node.op ?? []) {
-      const body = o.run as { cmd?: string; args?: string[]; cwd?: string } | undefined;
-      if (!body || !('cmd' in body) || !body.cmd) continue;
-      if (o.when && o.when !== 'post' && o.when !== 'always' && o.when !== 'on-success') continue;
+    const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
+    for (const { body, onFailure } of runOps.runnable) {
       const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
       if (r.failed) {
-        opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: (o.onFailure ?? 'block') as OnFailure });
+        opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure });
       }
     }
+    // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant, or
+    // a cmd-less body) is surfaced as an op failure here — never the old silent `continue` that dropped it.
+    for (const rej of runOps.rejected) opFailures.push(rej);
 
     // VERIFY by host-stat (mirrors runNode): a node is `ok` only if its declared artifacts exist on disk.
     const artifacts: ArtifactState[] = await Promise.all(
@@ -1370,8 +1365,8 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
     // ran before the model. Here a blocking pre-gate failure fails the node WITHOUT ever spawning pi — the
     // real firing site #11 needs. Each gate's `onFailure` (default 'block') gives its consequence; an
     // `advisory`/`warn` gate is recorded but does not block. Reads the host run dir (= the staged inputs).
-    const preGates = (node.op ?? []).filter((o) => o.when === 'pre' && o.gate);
-    if (preGates.length) {
+    const preChecks = gatesFromOp(node.op).pre; // (C2) the SINGLE gate→Check reconstruction (was inlined here).
+    if (preChecks.length) {
       const preReadBytes = (rel: string): FileBytes => {
         try {
           const absPath = path.resolve(ctx.outDir, rel);
@@ -1380,13 +1375,6 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
           return { bytes: null, size: 0 };
         }
       };
-      const preChecks = preGates.map((o) => ({
-        kind: o.gate!.kind,
-        path: o.gate!.path,
-        param: o.gate!.param,
-        // an advisory gate is a warn (never blocks); else the op's onFailure decides (warn ⇒ warn, else fail).
-        severity: (o.gate!.advisory || o.onFailure === 'warn' ? 'warn' : 'fail') as 'fail' | 'warn',
-      }));
       const preResults = evaluateChecks(preChecks, preReadBytes);
       rec.preChecks = preResults;
       const blockingPre = preResults.filter((c, i) => c.verdict !== 'pass' && preChecks[i].severity !== 'warn');
@@ -1565,15 +1553,16 @@ async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: A
       // (M5 · #9/#18) AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic
       // derive/side-effect step (the now-authorable Hook.run). Reuse the merge executor's `run` impl, then
       // route a non-zero exit through the op's `onFailure` (default 'block').
-      for (const o of node.op ?? []) {
-        const body = o.run as { cmd?: string; args?: string[]; cwd?: string } | undefined;
-        if (!body || !('cmd' in body) || !body.cmd) continue;
-        if (o.when && o.when !== 'post' && o.when !== 'always' && o.when !== 'on-success') continue; // pre/on-failure run elsewhere
+      const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
+      for (const { body, onFailure } of runOps.runnable) {
         const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
         if (r.failed) {
-          opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: (o.onFailure ?? 'block') as OnFailure });
+          opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure });
         }
       }
+      // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant,
+      // or a cmd-less body) is surfaced as an op failure here — never the old silent `continue` that dropped it.
+      for (const rej of runOps.rejected) opFailures.push(rej);
     }
 
     // VERIFY by host-stat (run.mjs: a node is `ok` only if its declared artifacts exist on disk).
