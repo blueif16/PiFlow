@@ -20,7 +20,7 @@ import { validateArtifactSchemas } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox } from './events.js';
 import { effectiveModel, type EffectiveModel } from './model-routing.js';
-import { claudeExecutorReadPaths } from './command.js';
+import { claudeExecutorEnvAdditions } from './claude-executor.js';
 import { resolveTokens, resolveAll, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
 import { stageSeed } from '../workflow/ops/seed.js';
 import { resolveSkillStage } from '../workflow/ops/skill.js';
@@ -196,14 +196,25 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // {{RUN}} where the contract verifies it + the next node injects it; isolated kinds keep the throwaway
   // workspace + out/<id>. Shared by scope.create AND the pre/post hookCtx so both agree on the node's cwd.
   const sbLoc = effectiveSandboxLocation(ctx.providerKind, ctx.outDir, node.sandbox);
+  // (claude-code executor — §7.2 credential model, proven live) A claude-code node runs headless `claude -p`
+  // INSIDE the jail, which cannot reach the macOS Keychain and must not write the user's ~/.claude. Resolve
+  // the subscription OAuth token HOST-SIDE and inject CLAUDE_CODE_OAUTH_TOKEN (so the jail never touches the
+  // keychain — portable to Linux/cloud), STRIP ANTHROPIC_API_KEY/AUTH_TOKEN (so `-p` can never silently bill
+  // the API), and point CLAUDE_CONFIG_DIR at a per-node dir under the run dir (the jail-writable workdir lane)
+  // so session/history isolate there. `{}` for a pi node ⇒ byte-identical. The credential rides the ENV, NOT
+  // a jail read-grant — so `readScope` stays exactly the node's declared scope (no ~/.claude widening).
+  const claudeConfigDir = path.join(ctx.outDir, '.claude-config', node.id);
+  const claudeEnv = await claudeExecutorEnvAdditions({
+    executor: node.executor,
+    nodeId: node.id,
+    configDir: claudeConfigDir,
+    resolver: ctx.secretResolver ?? defaultSecretResolver,
+  });
+  if (Object.keys(claudeEnv).length) await fs.mkdir(claudeConfigDir, { recursive: true });
   let sandbox: Sandbox;
   try {
     sandbox = await scope.create({
-      // A claude-code node needs ~/.claude readable inside the jail to authenticate (local subscription).
-      readScope:
-        node.executor === 'claude-code'
-          ? [...node.sandbox.read, ...claudeExecutorReadPaths()]
-          : node.sandbox.read,
+      readScope: node.sandbox.read, // claude-code authenticates via the injected env token, NOT a jail read-grant (§7.2)
       writeScope: node.sandbox.write, // = contract.owns; bounds file-write* to the node's lane (darwin jail)
       outputDir: sbLoc.outputDir,
       workdir: sbLoc.workdir,
@@ -211,8 +222,8 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // Merge the MCP env additions + the cloud provider-cred additions over the node's declared env (so
       // PIFLOW_MCP_CONFIG + the referenced MCP secrets + the pi gateway key land in the child via the
       // provider's exec merge). Both additions are {} when inapplicable, so a local/keyless run is unchanged.
-      env: mcpEnv || Object.keys(credEnv).length
-        ? { ...node.sandbox.env, ...mcpEnv, ...credEnv }
+      env: mcpEnv || Object.keys(credEnv).length || Object.keys(claudeEnv).length
+        ? { ...node.sandbox.env, ...mcpEnv, ...credEnv, ...claudeEnv }
         : node.sandbox.env,
       timeoutMs: nodeTimeoutMs, // cloud per-command cap = the watchdog cap (NOT undefined → E2B's 60s default)
     });
