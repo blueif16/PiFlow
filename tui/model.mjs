@@ -180,16 +180,19 @@ export function overlayRichIo(view, rich) {
     const inputs = (inboundOf[rn.id] || []).filter((e) => { const k = `${e.from}|${e.path}`; if (seenIn.has(k)) return false; seenIn.add(k); return true; })
       .map((e) => ({ rel: e.path ? baseName(e.path) : '', path: e.path || null, fromNode: e.from, fromLabel: labelOf(e.from), functionality: null, exists: null, bytes: null, kind: 'in' }));
 
-    // OUTPUTS — real files this node produced (writes ∪ artifacts), merged by path; artifact carries the
-    // authoritative exists/bytes. displayPath is the run-relative path the file overlay opens.
+    // OUTPUTS — real files this node produced (writes ∪ artifacts), merged by run-relative display path so
+    // a write and its declared artifact collapse to ONE row; the artifact carries the authoritative
+    // exists/bytes. The full outbound-consumer set rides EVERY output row (the node's outputs all feed its
+    // consumers — we can't reliably map file→consumer when an edge declares no file, and labelling one
+    // output "terminal" while the node clearly feeds downstream is wrong). The DAG unions same-pair edges.
     const fileMap = new Map();
-    for (const w of rn.writes || []) { const rel = w.displayPath || w.path; fileMap.set(w.path, { rel, exists: w.verified ?? null, bytes: w.bytes ?? null }); }
-    for (const a of rn.artifacts || []) { const rel = a.displayPath || a.path; fileMap.set(a.path, { ...(fileMap.get(a.path) || {}), rel, exists: a.exists, bytes: a.bytes }); }
+    for (const w of rn.writes || []) { const rel = w.displayPath || w.path; fileMap.set(rel, { ...(fileMap.get(rel) || {}), rel, exists: w.verified ?? null, bytes: w.bytes ?? null }); }
+    for (const a of rn.artifacts || []) { const rel = a.displayPath || a.path; fileMap.set(rel, { ...(fileMap.get(rel) || {}), rel, exists: a.exists, bytes: a.bytes }); }
     const consumers = [...new Set((outboundOf[rn.id] || []).map((e) => e.to))];
     const consumerLabels = consumers.map(labelOf);
-    let outputs = [...fileMap.values()].map((f, i) => ({
+    let outputs = [...fileMap.values()].map((f) => ({
       rel: f.rel, path: f.rel, exists: f.exists ?? null, bytes: f.bytes ?? null, functionality: null, kind: 'out',
-      toNodes: i === 0 ? consumers : [], toLabels: i === 0 ? consumerLabels : [],
+      toNodes: consumers, toLabels: consumerLabels,
     }));
     if (!outputs.length && consumers.length) {
       // Consumers but no known produced file (e.g. a contract edge with no write event) — one synthetic row
