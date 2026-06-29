@@ -21,8 +21,15 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from '
 export interface ModelTiers {
   /** When false, `tier` references do NOT resolve (a node that sets `tier` then fails loudly). */
   active: boolean;
-  /** Alias → model id. Keys are whatever the product chose (small/medium/large AND/OR fast/balanced/deep). */
+  /** Alias → model id for the `pi` executor (fed to `pi --model`). The canonical executor's tier map. */
   tiers: Record<string, string>;
+  /**
+   * OPTIONAL parallel map for the `claude-code` executor (same tier keys, Claude model values: aliases like
+   * `opus`/`sonnet`/`haiku` or full `claude-*` ids). The claude-code executor reads THIS; absence is graceful
+   * (it falls back to a Claude-valid `tiers` value, else the account default). `pi` never reads it, so adding
+   * this block is byte-identical for pi routing. See docs/design/agent-executor-interface.md.
+   */
+  claude?: Record<string, string>;
 }
 
 /** The per-node routing inputs `resolveNodeModel` reads (the subset of `NodeSpec`). */
@@ -89,6 +96,52 @@ export function resolveNodeModel(node: NodeRouting, run: RunRouting): EffectiveM
   return { model, provider };
 }
 
+// ── claude-code executor model resolution (the parallel `claude` tier block) ──────────────────
+//
+// pi routing is resolveNodeModel above; the claude-code executor resolves its model HERE so the two
+// tracks never get confused. Claude Code's `--model` accepts these aliases (docs: model-config) or a
+// full `claude-*` id. `default` is the account's recommended model (we express that as "omit --model").
+
+/** Claude Code `--model` aliases (the values that are NOT `claude-*` ids but still valid). */
+const CLAUDE_MODEL_ALIASES = new Set([
+  'default',
+  'best',
+  'fable',
+  'opus',
+  'sonnet',
+  'haiku',
+  'opusplan',
+  'opus[1m]',
+  'sonnet[1m]',
+]);
+
+/** True if `s` is a value Claude Code's `--model` accepts — a known alias or a `claude-*` full id. */
+export function isClaudeModel(s: string): boolean {
+  return CLAUDE_MODEL_ALIASES.has(s) || s.startsWith('claude-');
+}
+
+/**
+ * Resolve the EFFECTIVE Claude Code model for a node (the `claude-code` executor). `undefined` ⇒ omit
+ * `--model` ⇒ Claude uses the account's recommended/default model. Precedence:
+ *
+ *   node.model  >  run.tiers.claude[tier]  >  run.tiers.tiers[tier] (ONLY if Claude-valid)  >  undefined
+ *
+ * `node.model` is passed through verbatim (an explicit pin — the author owns using a Claude-valid value).
+ * A tier resolves only when the map is `active`; the `tiers` fallback is gated by `isClaudeModel` so a
+ * pi-only id (e.g. `deepseek-v3`) is NEVER handed to `claude --model`. TOTAL (never throws): unlike pi,
+ * Claude always has a sensible account default, so an unresolvable tier degrades to it rather than failing.
+ */
+export function resolveClaudeModel(node: NodeRouting, run: RunRouting): string | undefined {
+  if (node.model) return node.model;
+  if (node.tier && run.tiers?.active) {
+    const fromClaude = run.tiers.claude?.[node.tier];
+    if (fromClaude) return fromClaude;
+    const fromTiers = run.tiers.tiers?.[node.tier];
+    if (fromTiers && isClaudeModel(fromTiers)) return fromTiers;
+  }
+  return undefined;
+}
+
 /** Default location of the tier map (global, never repo-local). */
 export function defaultTiersPath(): string {
   return path.join(os.homedir(), '.piflow', 'model-tiers.json');
@@ -103,7 +156,11 @@ export function defaultModelsPath(): string {
 export function loadModelTiers(file: string = defaultTiersPath()): ModelTiers {
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<ModelTiers>;
-    return { active: Boolean(raw.active), tiers: raw.tiers ?? {} };
+    const out: ModelTiers = { active: Boolean(raw.active), tiers: raw.tiers ?? {} };
+    // Only include `claude` when the file actually carries it — keep the absent-file return exactly
+    // `{active,tiers}` (an empty `claude:{}` would change the shape callers/tests deep-equal against).
+    if (raw.claude && typeof raw.claude === 'object') out.claude = raw.claude;
+    return out;
   } catch {
     return { active: false, tiers: {} };
   }

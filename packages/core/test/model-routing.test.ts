@@ -9,6 +9,8 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import {
   resolveNodeModel,
+  resolveClaudeModel,
+  isClaudeModel,
   ModelRoutingError,
   loadModelTiers,
   loadModelsIndex,
@@ -82,6 +84,66 @@ describe('resolveNodeModel — PROVIDER precedence (node.provider > models.json 
   it('resolves to undefined provider when nothing is set (caller applies its cp default)', () => {
     const r = resolveNodeModel({ model: 'm' }, {});
     expect(r.provider).toBeUndefined();
+  });
+});
+
+describe('resolveClaudeModel — the claude-code executor maps the SAME tiers (parallel `claude` block)', () => {
+  // pi reads tiers; claude-code reads the `claude` block, falling back to a Claude-valid `tiers` value,
+  // else the account default (undefined ⇒ omit --model). Total: never throws (Claude always has a default).
+  const both: ModelTiers = {
+    active: true,
+    tiers: { fast: 'deepseek-v3', balanced: 'glm-4.6', deep: 'claude-opus-4-8' },
+    claude: { fast: 'haiku', balanced: 'sonnet', deep: 'opus' },
+  };
+
+  it('node.model is an explicit pin → returned verbatim (over tier + claude block)', () => {
+    expect(resolveClaudeModel({ model: 'claude-sonnet-4-6', tier: 'deep' }, { tiers: both })).toBe('claude-sonnet-4-6');
+  });
+
+  it('tier resolves via the `claude` block, which WINS over the pi `tiers` value for that tier', () => {
+    expect(resolveClaudeModel({ tier: 'deep' }, { tiers: both })).toBe('opus'); // not 'claude-opus-4-8' from tiers
+  });
+
+  it('no `claude` block but the `tiers` value is Claude-valid → falls back to it', () => {
+    // activeTiers has NO claude block; deep='claude-opus-4-8' is a valid Claude id.
+    expect(resolveClaudeModel({ tier: 'deep' }, { tiers: activeTiers })).toBe('claude-opus-4-8');
+  });
+
+  it('no `claude` block and the `tiers` value is pi-only → undefined (never leak a non-Claude id to --model)', () => {
+    // activeTiers.fast = 'deepseek-v3' — pi-only; must NOT be passed to claude --model.
+    expect(resolveClaudeModel({ tier: 'fast' }, { tiers: activeTiers })).toBeUndefined();
+  });
+
+  it('no model and no tier → undefined (omit --model ⇒ Claude account default)', () => {
+    expect(resolveClaudeModel({}, { tiers: both })).toBeUndefined();
+  });
+
+  it('tier set but tiers INACTIVE → undefined, and does NOT throw (unlike resolveNodeModel for pi)', () => {
+    const inactive: ModelTiers = { active: false, tiers: {}, claude: { deep: 'opus' } };
+    expect(() => resolveClaudeModel({ tier: 'deep' }, { tiers: inactive })).not.toThrow();
+    expect(resolveClaudeModel({ tier: 'deep' }, { tiers: inactive })).toBeUndefined();
+  });
+
+  it('isClaudeModel: accepts Claude aliases + claude-* ids, rejects pi model ids', () => {
+    expect(isClaudeModel('opus')).toBe(true);
+    expect(isClaudeModel('sonnet[1m]')).toBe(true);
+    expect(isClaudeModel('claude-opus-4-8')).toBe(true);
+    expect(isClaudeModel('deepseek-v3')).toBe(false);
+    expect(isClaudeModel('glm-4.6')).toBe(false);
+  });
+});
+
+describe('loadModelTiers — the optional `claude` block', () => {
+  it('reads a `claude` block when present (parallel to `tiers`)', async () => {
+    const f = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-tiers-')), 'model-tiers.json');
+    await fs.writeFile(f, JSON.stringify({ active: true, tiers: { deep: 'x' }, claude: { deep: 'opus' } }));
+    expect(loadModelTiers(f).claude).toEqual({ deep: 'opus' });
+  });
+
+  it('omits `claude` entirely when the file has none (absent stays exactly {active,tiers})', async () => {
+    const f = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-tiers-')), 'model-tiers.json');
+    await fs.writeFile(f, JSON.stringify({ active: true, tiers: { deep: 'x' } }));
+    expect(loadModelTiers(f).claude).toBeUndefined();
   });
 });
 
