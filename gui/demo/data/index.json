@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-29T21:03:41.303Z",
+  "generatedAt": "2026-06-29T21:49:38.450Z",
   "products": [
     {
       "id": "piflow",
@@ -9,6 +9,7 @@
         {
           "id": "example-fusion",
           "name": "example-fusion",
+          "templatePath": "/Users/tk/Desktop/piflow/.piflow/example-fusion/template/meta.json",
           "meta": {
             "id": "example-fusion",
             "name": "example-fusion",
@@ -49,47 +50,25 @@
               "viewable": true
             }
           ]
-        }
-      ]
-    },
-    {
-      "id": "game-omni",
-      "name": "game-omni",
-      "root": "/Users/tk/Desktop/game-omni",
-      "namespaces": [
+        },
         {
-          "id": "game-omni",
-          "name": "game-omni",
+          "id": "example-academy",
+          "name": "example-academy",
+          "templatePath": "/Users/tk/Desktop/piflow/.piflow/example-academy/template/meta.json",
           "meta": {
-            "id": "game-omni",
-            "name": "game-omni",
-            "description": "Game Omni v1.6 (newest/default) — prompt -> verified, playable Phaser 2D web game in one pass. v1.6 dependency-separated producing tier: Gameplay hardens the gameplay-only blueprint + seeds per-node contracts; Shell ∥ Guidance chrome producers run in parallel and fold their sections in; then the build tier. Nodes coordinate through on-disk artifacts; each loads an evidence-grounded skill. Pi-portable.",
+            "id": "example-academy",
+            "name": "example-academy",
+            "description": "PiFlow Academy — a 2-node demo of per-node capability isolation (separation of concerns). A RESEARCH node reaches the outside world through the deepwiki MCP tool but has NO shell; a BUILD node has a shell and implements + tests the result but has NO internet. The data-only handoff (findings.md) keeps the lethal trifecta split across nodes, so an injection in fetched content lands on a node that cannot escalate. Security thesis + sources: docs/research/2026-06-27-per-node-capability-isolation.md. Also exercises external-MCP-in-sandbox (research) + coding-in-sandbox (build) on E2B.",
             "phases": [
-              "classify",
-              "design",
-              "gameplay",
-              "producers",
-              "verify-1",
-              "scaffold",
-              "execute",
-              "verify-2"
-            ],
-            "profiles": {
-              "production": {},
-              "companion": {
-                "elidePhases": [
-                  "verify-1",
-                  "verify-2"
-                ]
-              }
-            },
-            "defaultProfile": "production"
+              "research",
+              "build"
+            ]
           },
           "threads": [
             {
-              "run": "gs01",
-              "runDir": "/Users/tk/Desktop/game-omni/.piflow/game-omni/runs/gs01",
-              "statusPath": "/Users/tk/Desktop/game-omni/.piflow/game-omni/runs/gs01",
+              "run": "academy-e2b-final",
+              "runDir": "/Users/tk/Desktop/piflow/.piflow/example-academy/runs/academy-e2b-final",
+              "statusPath": "/Users/tk/Desktop/piflow/.piflow/example-academy/runs/academy-e2b-final",
               "state": "done",
               "done": true,
               "ok": true,
@@ -99,11 +78,11 @@
               "runningNode": null,
               "runningTool": null,
               "runningStalled": false,
-              "nodesDone": 12,
-              "nodesTotal": 12,
+              "nodesDone": 2,
+              "nodesTotal": 2,
               "frac": 1,
-              "elapsedMs": 3151342,
-              "tokensBillable": 1237206,
+              "elapsedMs": 100488,
+              "tokensBillable": 11413,
               "cost": 0,
               "provider": "mmgw",
               "model": null,

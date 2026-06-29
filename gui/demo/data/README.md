@@ -6,26 +6,26 @@ answers the GUI's `/__piflow/*` calls from these files (inlined into the build v
 `import.meta.glob({ eager: true })`), so the demo makes zero network calls to `/__piflow/*`.
 
 ## Contents
-- `index.json` — the trimmed global index (2 `done` runs). The LAST thread is the default
-  run `pickCurrentRun` opens (`gs01`), since none are `running` and `updatedAt` is null.
-- `run-view/<id>.json` — the distilled run-view the canvas/HUD render (one per bundled run).
-- `tree/<id>.json` — the run's on-disk file tree for the "Run files" navigator (optional;
-  absent ⇒ the canvas falls back to the run-view's produced-files tree).
-- `agents.json` — the agent-preset catalog (node icons).
+- `index.json` — the trimmed global index (the featured runs). The LAST thread is the default
+  run `pickCurrentRun` opens, since none are `running` and `updatedAt` is null.
+- `run-view/<id>.json` — the distilled run-view the canvas/HUD render (one per featured run).
+- `tree/<id>.json` — the run's on-disk file tree for the "Run files" navigator.
+- `agents.json` — the agent-preset catalog (node icons). Managed separately (not regenerated
+  by `data:demo`).
 
-Bundled runs: `gs01` (game-omni, 12 nodes — the default) and `demo-fusion` (example-fusion,
-10 nodes — selectable from the switcher).
+Featured runs are deliberately LIGHT, on-brand example runs (not the heavy game-omni run): the
+demo is a "what a real run looks like" showcase, not a stress test. Current set:
+`academy-e2b-final` (example-academy, 2 nodes research→build — the default) and `demo-fusion`
+(example-fusion, 10-node MoA + best-of-n DAG — selectable from the switcher).
 
-## Refresh (re-capture from the live dev server, then rebuild)
-The run-view shape is whatever the dev MIDDLEWARE returns (not the raw on-disk file), so
-capture from the live endpoint, never by hand:
+## Refresh / re-curate (one command)
+The featured runs are a HAND-PICKED list at the top of `gui/scripts/build-demo-data.mjs`
+(`FEATURED`). Each must be a real, distillable run under `<repo>/.piflow/<namespace>/runs/<run>`
+(more example runs land there over time; pick the ones to show). The script distills each the
+EXACT way the live dev middleware does (`buildSnapshot` for the index rows + `buildRunView` for
+the view + the same fs walk for the tree), so the demo never drifts from the real product.
 
-1. `cd gui && npm run dev` (needs `~/.piflow` + the product repos + a built `@piflow/core`).
-2. `curl localhost:5173/__piflow/index.json` → trim to the chosen product/namespaces/runs,
-   ordering the DEFAULT run LAST. Save as `index.json`.
-3. For each kept run: `curl localhost:5173/__piflow/run-view/<id>` → `run-view/<id>.json`;
-   optionally `/__piflow/tree/<id>` → `tree/<id>.json`. `curl /__piflow/agents.json` →
-   `agents.json`. Mark each kept thread `"viewable": true` in the index.
-4. Stop the dev server. `npm run build:demo` (writes `site-piflow/public/gui-demo/`).
-
-Editing any file here requires re-running `build:demo` for the iframe to pick it up.
+1. Edit `FEATURED` in `gui/scripts/build-demo-data.mjs` (order matters — the LAST entry is the
+   run the GUI opens on first load).
+2. `cd gui && npm run data:demo` — rewrites `index.json` + `run-view/**` + `tree/**` here.
+3. `npm run build:demo` — writes `site-piflow/public/gui-demo/` (the iframe picks it up).

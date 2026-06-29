@@ -9,6 +9,7 @@
     "build:demo": "vite build --config vite.config.demo.ts",
     "preview": "vite preview",
     "data:index": "node scripts/build-index.mjs",
+    "data:demo": "node scripts/build-demo-data.mjs",
     "data": "npm run data:index"
   },
   "dependencies": {
