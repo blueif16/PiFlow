@@ -26,6 +26,7 @@ import type { WorkflowSpec, NodeIntent } from '../../types.js';
 import { lowerGates } from '../gate-authoring.js';
 import type { GateAuthorSpec } from '../gate-authoring.js';
 import { slugify } from '../../dag.js';
+import { insertNodeAfter, rewireDownstream, attachRerouteLoop } from '../graph-rewrite.js';
 
 /** Thrown when a judge gate is unbuildable (the judge tier equals the producer tier). Loud, never silent. */
 export class JudgeConfigError extends Error {
@@ -44,9 +45,10 @@ function verdictPath(producerLabel: string): string {
  * Build the materialized judge `NodeIntent` for one producer carrying a `judgeGate`.
  * REUSES `lowerGates` for the prompt + threshold (never reinvents the math). The caller wires consumers.
  *
- * @returns `{ judge, rerouteOp }` — the judge node to insert + the producer-side reroute op to append.
+ * @returns `{ judge, retryMax }` — the judge node to insert + the producer-side reroute retry budget the
+ *   caller attaches via `attachRerouteLoop` (the shared graph-rewrite primitive).
  */
-function buildJudge(producer: NodeIntent): { judge: NodeIntent; rerouteOp: NonNullable<NodeIntent['op']>[number] } {
+function buildJudge(producer: NodeIntent): { judge: NodeIntent; retryMax: number } {
   const gate = producer.judgeGate!;
   // GUARD the design invariant up front (a same-tier judge is forbidden — self-judging false-accepts).
   if (producer.tier !== undefined && producer.tier === gate.judgeTier) {
@@ -66,7 +68,10 @@ function buildJudge(producer: NodeIntent): { judge: NodeIntent; rerouteOp: NonNu
   };
   const lowered = lowerGates([authored], producer.label);
   const jn = lowered.judgeNode!; // a judge gate always materializes a judgeNode (gate-authoring.ts)
+  // The lowered judge gate carries a `rerouteTo(producer, retryMax)` op; lift its budget — the caller
+  // re-builds the identical op via the shared `attachRerouteLoop` primitive (the producer-side judge-fail loop).
   const rerouteOp = lowered.ops.find((o) => (o.action as { kind?: string } | undefined)?.kind === 'rerouteTo')!;
+  const retryMax = (rerouteOp.action as { kind: 'rerouteTo'; node: string; max: number }).max;
 
   const producedByProducer = producer.io.produces ?? [];
   const verdict = verdictPath(producer.label);
@@ -97,7 +102,7 @@ function buildJudge(producer: NodeIntent): { judge: NodeIntent; rerouteOp: NonNu
       write: [verdict],
     },
   };
-  return { judge, rerouteOp };
+  return { judge, retryMax };
 }
 
 /**
@@ -111,63 +116,42 @@ function buildJudge(producer: NodeIntent): { judge: NodeIntent; rerouteOp: NonNu
 export function materializeJudgeNodes(spec: WorkflowSpec): WorkflowSpec {
   if (!spec.nodes.some((n) => n.judgeGate)) return spec;
 
-  const generated: NodeIntent[] = [];
-  // producer label → the judge label its downstream consumers must now depend on.
-  const judgeForProducer = new Map<string, string>();
-  // producer label → the reroute op to append onto that producer's op[].
-  const rerouteForProducer = new Map<string, NonNullable<NodeIntent['op']>[number]>();
-  // the set of artifacts each judged producer produces — used to find its downstream consumers.
-  const producedByJudged = new Map<string, Set<string>>();
+  // The set of producer labels carrying a judge gate — `rewireDownstream` excludes each (a producer never
+  // gates on its own judge) AND each generated judge is excluded from the next iteration's consumer scan.
+  const judgedProducers = spec.nodes.filter((n) => n.judgeGate).map((n) => n.label);
+  const judgeLabels = judgedProducers.map((p) => `${p}__judge`);
+  const judgeLabelSet = new Set(judgeLabels);
 
-  for (const node of spec.nodes) {
-    if (!node.judgeGate) continue;
-    const { judge, rerouteOp } = buildJudge(node);
-    generated.push(judge);
-    judgeForProducer.set(node.label, judge.label);
-    rerouteForProducer.set(node.label, rerouteOp);
-    producedByJudged.set(node.label, new Set(node.io.produces ?? []));
+  let out = spec;
+  for (const producerLabel of judgedProducers) {
+    const producer = out.nodes.find((n) => n.label === producerLabel)!;
+    const { judge, retryMax } = buildJudge(producer);
+
+    // (1) INSERT the materialized judge after the producer (its io.reads ⋈ produces orders it after).
+    out = insertNodeAfter(out, producerLabel, judge);
+
+    // (2) The producer itself: strip the consumed `judgeGate` + ATTACH the producer-side reroute judge-fail
+    //     loop via the shared primitive (the identical op `lowerGates` emitted, rebuilt here).
+    out = {
+      ...out,
+      nodes: out.nodes.map((n) => {
+        if (n.label !== producerLabel) return n;
+        const { judgeGate: _drop, ...rest } = n;
+        return attachRerouteLoop(rest as NodeIntent, producerLabel, retryMax);
+      }),
+    };
+
+    // (3) RE-POINT the producer's downstream consumers (reads its produces OR dependsOn it) onto the judge,
+    //     so the judge GATES the hand-off. Skip the OTHER judges (they read the producer's artifact too but
+    //     must not be pushed after a sibling judge) — the chain stays producer → judge → consumer.
+    out = rewireDownstream(out, producerLabel, judge.label, {
+      skip: judgeLabels.filter((l) => l !== judge.label),
+    });
   }
 
-  // A consumer of a judged producer = a node (other than the producer / the judge) that READS one of the
-  // producer's produced artifacts. Such a consumer must now order AFTER the judge → add an explicit dep.
-  const judgeLabels = new Set(generated.map((g) => g.label));
-
-  const nodes: NodeIntent[] = spec.nodes.map((n) => {
-    let next = n;
-
-    // (a) The producer itself: strip the consumed `judgeGate` + append the producer-side reroute op.
-    if (rerouteForProducer.has(n.label)) {
-      const rerouteOp = rerouteForProducer.get(n.label)!;
-      const { judgeGate: _drop, ...rest } = next;
-      next = { ...(rest as NodeIntent), op: [...(next.op ?? []), rerouteOp] };
-    }
-
-    // (b) A downstream consumer of a judged producer: re-point it to depend on that producer's judge so the
-    //     judge GATES the hand-off. A consumer connects to the producer EITHER by reading one of its
-    //     produced files OR by an explicit `io.dependsOn` on the producer label — rewire BOTH. (Never the
-    //     producer itself, never a judge node.) The judge already `dependsOn` the producer, so the chain
-    //     stays producer → judge → consumer (no edge is dropped — only the consumer is pushed after the judge).
-    if (!judgeLabels.has(next.label)) {
-      const extraDeps: string[] = [];
-      for (const [producerLabel, produced] of producedByJudged) {
-        if (next.label === producerLabel) continue;
-        const judgeLabel = judgeForProducer.get(producerLabel)!;
-        const readsProduced = (next.io.reads ?? []).some((r) => produced.has(r));
-        const dependsOnProducer = (next.io.dependsOn ?? []).includes(producerLabel);
-        // `compile`/`inferEdges` resolve `dependsOn` against SLUG ids (dag.ts:slugify), so reference the
-        // judge by its slug id (the `w0-classify__judge` label slugs to `w0-classify-judge`) — the reroute
-        // expansion precedent (reroute/expand.ts:171 uses `slugify(...)` for in-slice label deps).
-        if (readsProduced || dependsOnProducer) extraDeps.push(slugify(judgeLabel, 0));
-      }
-      if (extraDeps.length) {
-        const existing = next.io.dependsOn ?? [];
-        const merged = [...new Set([...existing, ...extraDeps])];
-        next = { ...next, io: { ...next.io, dependsOn: merged } };
-      }
-    }
-
-    return next;
-  });
-
-  return { ...spec, nodes: [...nodes, ...generated] };
+  // Keep the canonical node ORDER (authored nodes first, generated judges as the tail) the original
+  // emitted: collect every materialized judge and re-append it after the authored set.
+  const authored = out.nodes.filter((n) => !judgeLabelSet.has(n.label));
+  const judges = out.nodes.filter((n) => judgeLabelSet.has(n.label));
+  return { ...out, nodes: [...authored, ...judges] };
 }

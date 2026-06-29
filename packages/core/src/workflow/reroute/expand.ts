@@ -24,6 +24,7 @@
 
 import type { WorkflowSpec, NodeIntent, RerouteSpec, RerouteGate, NodeIO } from '../../types.js';
 import { slugify } from '../../dag.js';
+import { remapDeps } from '../graph-rewrite.js';
 
 /** Thrown when a reroute activation is unbuildable (non-ancestor target / max<1). Loud, never a silent skip. */
 export class RerouteConfigError extends Error {
@@ -100,7 +101,7 @@ function remapIo(io: NodeIO, remap: (f: string) => string, extraReads: string[],
     reads,
     produces: (io.produces ?? []).map(remap),
     ...(io.externalInputs ? { externalInputs: [...io.externalInputs] } : {}),
-    ...(io.dependsOn ? { dependsOn: io.dependsOn.map(depRemap) } : {}),
+    ...(io.dependsOn ? { dependsOn: remapDeps(io.dependsOn, depRemap) } : {}),
     artifacts: (io.artifacts ?? []).map((a) => ({ ...a, path: remap(a.path) })),
     ...(io.checks ? { checks: io.checks } : {}),
     ...(io.policy ? { policy: io.policy } : {}),
@@ -249,7 +250,7 @@ export function expandReroute(spec: WorkflowSpec): WorkflowSpec {
     }
     // Deps-coordinated convergence: re-point a downstream `dependsOn` on a rerouted V onto its last clone.
     if ((next.io.dependsOn ?? []).some((d) => downstreamDepRemap.has(d))) {
-      next = { ...next, io: { ...next.io, dependsOn: (next.io.dependsOn ?? []).map(remapDep) } };
+      next = { ...next, io: { ...next.io, dependsOn: remapDeps(next.io.dependsOn, remapDep) } };
     }
     if (skipLabels.has(n.label)) {
       const { reroute: _drop, ...rest } = next;

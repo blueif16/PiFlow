@@ -23,6 +23,7 @@
 
 import type { WorkflowSpec, NodeIntent } from '../../types.js';
 import { slugify } from '../../dag.js';
+import { remapDeps } from '../graph-rewrite.js';
 
 /** Thrown when a subworkflow activation is unbuildable (cycle, depth-cap, unresolvable ref). Loud. */
 export class SubworkflowConfigError extends Error {
@@ -116,10 +117,11 @@ async function expandNode(
     const childId = slugify(n.label, 0);
     const isEntry = !(n.io.dependsOn && n.io.dependsOn.length);
     const isTerminal = !dependedOn.has(childId);
-    // Entry nodes inherit X's upstream deps; others keep their in-child deps, remapped to namespaced ids.
+    // Entry nodes inherit X's upstream deps; others keep their in-child deps, remapped to namespaced ids
+    // via the shared `remapDeps` primitive (a positional, slug-aware dependsOn rewrite — same semantics).
     const deps = isEntry
       ? [...xDeps]
-      : (n.io.dependsOn ?? []).map((d) => idMap.get(d) ?? slugify(`${x.label}__${d}`, 0));
+      : remapDeps(n.io.dependsOn, (d) => idMap.get(d) ?? slugify(`${x.label}__${d}`, 0));
     const { subworkflow: _consumed, ...rest } = n;
     children.push({ ...rest, label: `${x.label}__${n.label}`, io: { ...n.io, dependsOn: deps } });
     if (isTerminal) {
