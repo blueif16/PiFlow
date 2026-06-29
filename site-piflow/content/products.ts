@@ -124,7 +124,8 @@ const AGENTS: ProductCard[] = [
       ],
     },
   },
-  // Sixth slot intentionally left out — Agents shows five.
+  // Sixth slot fills the 3×2 grid with a "coming soon" placeholder.
+  soon("agents-soon"),
 ];
 
 const WORKFLOW: ProductCard[] = [

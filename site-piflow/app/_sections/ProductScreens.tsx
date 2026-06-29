@@ -37,8 +37,9 @@ const LAYOUT: Record<string, string> = {
   agents: "lg:grid-cols-3 lg:[grid-template-rows:1fr_1fr] lg:gap-4 lg:p-5",
   // Workflow — one row, 3 columns
   workflow: "lg:grid-cols-3 lg:[grid-template-rows:1fr] lg:gap-4 lg:p-5",
-  // Memory — one row, 2 columns, roomier (each card occupies more space)
-  memory: "lg:grid-cols-2 lg:[grid-template-rows:1fr] lg:gap-6 lg:p-8",
+  // Memory — one row, 2 columns. Same normal padding/gap as the others so all
+  // three pages share equal, symmetric left/right padding around the grid.
+  memory: "lg:grid-cols-2 lg:[grid-template-rows:1fr] lg:gap-4 lg:p-5",
 };
 
 // HUD silhouettes, rotated by position so neighbours never restamp one mold.
@@ -218,9 +219,9 @@ export default function ProductScreens() {
         className="relative flex h-auto w-full flex-col bg-canvas lg:h-svh"
       >
         {/* ── TOP RAIL — static; only the breadcrumb + progress change. ── */}
-        <div className="z-40 flex items-center justify-between gap-4 border-b border-[var(--hairline)] bg-[rgba(255,255,255,0.72)] px-4 py-2.5 backdrop-blur-xl sm:px-6 lg:px-10">
+        <div className="z-40 flex items-stretch justify-between border-b border-[var(--hairline)] bg-[rgba(255,255,255,0.72)] backdrop-blur-xl">
           {/* the pinned widget == breadcrumb: [π] Product / {panel} */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 px-4 py-2.5 sm:px-6 lg:px-10">
             <LogoMark />
             <ProductMenu />
             <span className="px-0.5 text-sm text-fg-faint" aria-hidden>
@@ -229,29 +230,28 @@ export default function ProductScreens() {
             <span className="px-1.5 text-sm font-medium text-fg">{current.name}</span>
           </div>
 
-          {/* progress — the active tick is the ONE orange spark in this viewport */}
-          <div className="flex items-center gap-4">
-            <div className="hidden items-center gap-1.5 sm:flex" aria-hidden>
-              {PRODUCTS.map((p, i) => (
-                <span
-                  key={p.key}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    i === active ? "w-5 bg-accent" : "w-1.5 bg-[var(--surface-4)]"
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-fg-faint">
-              Layer {current.layer}
-            </span>
+          {/* progress — boxed in a grid cell at the top-right: a left vertical
+              hairline + the bottom divider form the grid corner. The three
+              ticks are rectangular boxes; the active one is the ONE orange spark. */}
+          <div className="hidden items-center gap-1.5 border-l border-[var(--hairline)] px-5 sm:flex" aria-hidden>
+            {PRODUCTS.map((p, i) => (
+              <span
+                key={p.key}
+                className={`h-2 transition-all duration-300 ${
+                  i === active ? "w-6 bg-accent" : "w-2 bg-[var(--surface-4)]"
+                }`}
+              />
+            ))}
           </div>
         </div>
 
         {/* ── BAND — clips the horizontal track (stepped by GSAP on desktop) ── */}
         <div ref={bandRef} className="relative flex-1 lg:overflow-hidden">
-          <div ref={trackRef} className="flex flex-col lg:h-full lg:w-max lg:flex-row">
+          <div ref={trackRef} className="flex flex-col lg:h-full lg:flex-row">
             {PRODUCTS.map((p) => (
-              <div key={p.key} className="w-full shrink-0 lg:h-full lg:w-screen">
+              // Panel width == band width (NOT 100vw, which includes the page
+              // scrollbar and clips the right padding). Keeps left/right equal.
+              <div key={p.key} className="w-full shrink-0 lg:h-full">
                 <div
                   className={`grid h-full grid-cols-1 gap-3 p-3 sm:grid-cols-2 sm:gap-4 sm:p-4 ${LAYOUT[p.key]}`}
                 >
@@ -264,12 +264,13 @@ export default function ProductScreens() {
           </div>
         </div>
 
-        {/* ── BOTTOM RAIL — a single down-arrow that jumps past the product
-              section to the page after Memory (#layers). ── */}
-        <div className="flex items-center justify-center border-t border-[var(--hairline)] px-4 py-2">
+        {/* ── BOTTOM RAIL — the down-arrow boxed in a grid cell at the
+              bottom-right: the top divider + a left vertical hairline form the
+              grid corner. Jumps past the product section to #layers. ── */}
+        <div className="flex justify-end border-t border-[var(--hairline)]">
           <LearnMoreButton
             target="#layers"
-            className="inline-flex size-9 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-[var(--surface-2)] hover:text-fg"
+            className="flex size-12 items-center justify-center border-l border-[var(--hairline)] text-fg-muted transition-colors hover:bg-[var(--surface-2)] hover:text-fg"
           >
             <span className="sr-only">Continue past the product section</span>
             <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
