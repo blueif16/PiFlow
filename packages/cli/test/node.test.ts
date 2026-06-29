@@ -178,6 +178,47 @@ describe('runNodeCli --resume — resolve + guard', () => {
     expect(spawned[0]).toContain('w0');
     expect(errs).toHaveLength(0);
   });
+
+  // REGRESSION (stop→resume must compose): a node KILLED by `--stop` errors mid-run, so `finishNode`
+  // never records its `sessionId` in the journal — yet its `.pi-sessions/<ts>_<id>.jsonl` persists (that's
+  // what `--stop`'s message promises). Resume must find the session in the ON-DISK store, not the journal.
+  it('a STOPPED node (no journal sessionId) WITH an on-disk session is resumable — stop→resume composes', async () => {
+    const journal: Journal = {
+      version: 3,
+      runId: 'r',
+      source: 'wf',
+      nodes: {
+        // killed mid-run: status error, NO sessionId recorded (the exact post-`--stop` journal shape)
+        execute: { hash: 'sha256:z', inputHashes: {}, outputHashes: {}, status: 'error', producedAt: 't' },
+      },
+    };
+    const d = deps(journal, TMP);
+    // the persisted session pi left on disk under piSessionsDir(runDir): `<ISO-timestamp>_<sessionId>.jsonl`
+    d.readSessionDir = () => ['2026-06-29T03-37-36-188Z_execute.jsonl'];
+    const code = await runNodeCli(['r', 'execute', '--resume', '-m', 'continue'], d);
+
+    expect(code).toBe(0); // resumes (does NOT error on the missing journal sessionId)
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0]).toContain('--session');
+    expect(spawned[0]).toContain('execute');
+    expect(errs).toHaveLength(0);
+  });
+
+  // The on-disk store is the GROUND TRUTH: a node with a journal sessionId but whose session FILE is gone
+  // (cleaned/missing) is NOT resumable — and the error lists the ids that ARE present on disk.
+  it('no on-disk session AND no journal sessionId ⇒ fails, naming the on-disk-resumable ids', async () => {
+    const journal: Journal = { version: 3, runId: 'r', source: 'wf', nodes: {} };
+    const d = deps(journal, TMP);
+    d.readSessionDir = () => ['2026-06-29T03-10-00-000Z_explore.jsonl', '2026-06-29T03-20-00-000Z_plan.jsonl'];
+    const code = await runNodeCli(['r', 'execute', '--resume'], d);
+
+    expect(code).not.toBe(0);
+    expect(spawned).toHaveLength(0);
+    const msg = errs.join('\n');
+    expect(msg).toContain('execute'); // the requested (absent) node
+    expect(msg).toContain('explore'); // the on-disk resumable ids
+    expect(msg).toContain('plan');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

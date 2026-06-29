@@ -220,10 +220,43 @@ function safeReaddir(dir: string): string[] {
   }
 }
 
+/** `readdirSync` of FILE names (returns [] on a missing/unreadable dir) — the pi session store readers. */
+function safeReaddirFiles(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => d.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The node ids that have a pi session ON DISK under `piSessionsDir(runDir)`. pi names each session file
+ * `<ISO-timestamp>_<sessionId>.jsonl`, and piflow mints `sessionId === node.id`; the ISO timestamp carries
+ * NO underscore, so the FIRST `_` cleanly splits it from the (possibly underscored) node id. This store —
+ * NOT the journal — is the ground truth for `--resume`: a `--stop`-killed node has its session file but no
+ * journal `sessionId` (finishNode never ran).
+ */
+function storedSessionNodeIds(runDir: string, readSessionDir: (dir: string) => string[]): string[] {
+  const ids = new Set<string>();
+  for (const f of readSessionDir(piSessionsDir(runDir))) {
+    if (!f.endsWith('.jsonl')) continue;
+    const us = f.indexOf('_');
+    if (us < 0) continue;
+    ids.add(f.slice(us + 1, -'.jsonl'.length));
+  }
+  return [...ids];
+}
+
 /** The injectable seam — defaults are the real fs/core/spawn; a test passes fakes (NO real pi). */
 export interface NodeDeps {
   /** Load the run's `.pi/journal.json` (to confirm `nodes.<id>.sessionId`). Default core `loadJournal`. */
   loadJournal?: (runDir: string) => Promise<Journal | null>;
+  /**
+   * Read the run's pi session store — the FILE names under `piSessionsDir(runDir)` (`<ts>_<id>.jsonl`). The
+   * GROUND TRUTH for `--resume`: a `--stop`-killed node has a session file here but NO journal `sessionId`.
+   * Default reads the real dir (returns [] when absent). Injectable for tests.
+   */
+  readSessionDir?: (sessionDir: string) => string[];
   /** Resolve `<run>` → a run dir. Default `resolveNodeRunDir`. */
   resolveRunDir?: (run: string, cwd?: string) => string;
   /** Spawn the built resume command; returns the child's exit code. Default a real `spawnSync` under a shell. */
@@ -293,6 +326,7 @@ function resumableNodes(journal: Journal | null): string[] {
  */
 export async function runNodeCli(argv: string[], deps: NodeDeps = {}): Promise<number> {
   const loadJournal = deps.loadJournal ?? coreLoadJournal;
+  const readSessionDir = deps.readSessionDir ?? safeReaddirFiles;
   const resolveRunDir = deps.resolveRunDir ?? ((run: string, cwd?: string) => resolveNodeRunDir({ run, cwd }));
   const spawnResume =
     deps.spawnResume ??
@@ -411,15 +445,21 @@ export async function runNodeCli(argv: string[], deps: NodeDeps = {}): Promise<n
     return 1;
   }
 
+  // The GATE is the ON-DISK session store (what `pi --session <id>` actually reads) — NOT the journal: a
+  // `--stop`-killed node has its `.pi-sessions/<ts>_<id>.jsonl` but no journal `sessionId` (finishNode never
+  // ran), so gating on the journal made stop→resume non-composable. The journal `sessionId` is a secondary
+  // signal (a cleanly-finished node has both), so the predicate is the UNION; the file presence wins.
   const journal = await loadJournal(runDir);
-  const node = journal?.nodes?.[parsed.nodeId];
-  if (!node || typeof node.sessionId !== 'string' || !node.sessionId) {
-    const resumable = resumableNodes(journal);
+  const onDiskIds = storedSessionNodeIds(runDir, readSessionDir);
+  const journalSessionId = journal?.nodes?.[parsed.nodeId]?.sessionId;
+  const hasSession = onDiskIds.includes(parsed.nodeId) || (typeof journalSessionId === 'string' && journalSessionId.length > 0);
+  if (!hasSession) {
+    const resumable = [...new Set([...onDiskIds, ...resumableNodes(journal)])].sort();
     const which = resumable.length
       ? `Resumable nodes (have a stored session): ${resumable.join(', ')}.`
       : `No node in this run has a stored pi session (a cold inmemory/cloud run, or it never ran with --sandbox local).`;
     error(
-      `piflowctl node: node "${parsed.nodeId}" has no recorded pi session in ${journalFileHint(runDir)} — cannot warm-resume it. ${which}`,
+      `piflowctl node: node "${parsed.nodeId}" has no stored pi session under ${piSessionsDir(runDir)} (nor a recorded sessionId in ${journalFileHint(runDir)}) — cannot warm-resume it. ${which}`,
     );
     return 1;
   }
