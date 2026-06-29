@@ -67,7 +67,7 @@ cycle check slots in.
 
 ## PDW reference — what transfers, what does NOT
 
-- **Nested** — `vendors/.../src/workflow.ts:605-632`: `workflow('name', args)` is a **runtime function
+- **Nested** — `vendor/.../src/workflow.ts:605-632`: `workflow('name', args)` is a **runtime function
   call** that runs a saved script inline sharing the parent's limiter, capped one-level-deep
   (`shared.depth >= 1` throws, `:609`). Not durable.
 - **Saved** — `src/workflow-saved.ts` (a `SavedWorkflow` persisted as JSON) + `src/saved-commands.ts`

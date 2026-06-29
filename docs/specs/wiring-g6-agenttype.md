@@ -58,7 +58,7 @@ carry the same kind of tools any node can, just pre-sorted and wearing a nice ic
   `@piflow/tool-bridge` by address (`tool-bridge/index.ts:62`), incl. the reserved `openclaw` gateway
   (`tool-bridge/address.ts:41`). **This is additive + per-node + tested** — the thing PDW's in-process
   agentType structurally can't match (its `mcp`/`skills` frontmatter is parsed-but-ignored —
-  `vendors/.../agent-registry.ts:14-17`).
+  `vendor/.../agent-registry.ts:14-17`).
 - **Per-node model routing exists (G1).** `resolveNodeModel` owns the precedence
   (`runner/model-routing.ts:66`), consumed at `runner.ts:896-905`. A node already routes its own
   model/tier — so a preset has NO reason to also set one (decision #3).
@@ -76,7 +76,7 @@ carry the same kind of tools any node can, just pre-sorted and wearing a nice ic
 ## 3. Reference (competitor) — PDW agentType, with file:line
 
 PDW resolves `agentType` to a `.pi/agents/<name>.md` definition binding **tools (name allow/deny) + model
-+ role prompt**, applied per `agent()` call (`vendors/pi-dynamic-workflows/src/agent-registry.ts`; applied
++ role prompt**, applied per `agent()` call (`vendor/pi-dynamic-workflows/src/agent-registry.ts`; applied
 `src/workflow.ts:371-375`). Its frontmatter `mcp`/`skills`/`background`/`isolation` are
 **parsed-but-ignored** (`agent-registry.ts:14-17`), and `opts.tools` injection is whole-workflow, never
 per node (§1a of the gap doc).
@@ -408,7 +408,7 @@ Split by artifact type (per `test-discipline`: pure logic → unit; agent prose 
    runner/journal.ts:90-104, workflow/extract.ts:32-152, template/types.ts:19, node.schema.ts:42,
    loader.ts:116, tools/{registry.ts:69,compile.ts:241}, runner.ts:{765,872-875,896-905,1213-1227},
    model-routing.ts:{66,93-103}, tool-bridge/{index.ts:62,address.ts:41}, observe/{runView.ts:30,274,
-   types.ts:39}, vendors/.../agent-registry.ts:14-17 — all read this session; mismatches in ⚠️.
+   types.ts:39}, vendor/.../agent-registry.ts:14-17 — all read this session; mismatches in ⚠️.
 2. **Honors the locked decisions (author-time · thin · no model/tier · additive · icon-headline)** —
    **PASS**. §4.3 merge rule (additive tools, role-then-task prompt, model/tier never from preset), §4.1
    format (empty model/tier slots), §4.6 icon via observe, §4.4 expansion-at-init.

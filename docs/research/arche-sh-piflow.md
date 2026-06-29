@@ -409,7 +409,7 @@ in §7.2 and put us in an implicit naming dispute with an established 65-version
 ### (b) Does their existence change our positioning or the competitive-gaps backlog?
 
 **No to positioning, mostly.** They are **not** the competitor our backlog targets (per project memory
-that's `vendors/pi-dynamic-workflows`, the in-process code-mode engine). `@arche-sh/piflow` is a
+that's `vendor/pi-dynamic-workflows`, the in-process code-mode engine). `@arche-sh/piflow` is a
 different category — a pi *extension*, not a workflow *engine* — so it does **not** invalidate the
 "one-real-pi-per-node enables per-node heterogeneous tools/sandbox/model" thesis; if anything their
 per-role-model `delegate` is independent evidence that per-unit model heterogeneity is the right

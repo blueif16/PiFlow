@@ -38,7 +38,7 @@ Two ajv-2020 schema gates exist, both in `runNode`:
 
 ## PDW reference — what transfers, what does NOT
 
-`vendors/pi-dynamic-workflows/src/agent.ts:113-155` (`resolveStructuredOutput`): on a miss,
+`vendor/pi-dynamic-workflows/src/agent.ts:113-155` (`resolveStructuredOutput`): on a miss,
 `setActiveToolsByName(["structured_output"])` and re-prompt the **same in-memory session** up to
 `maxSchemaRetries` (default 2) with "call structured_output now as your only action"; then strict
 schema-validated prose extraction; else throw `SCHEMA_NONCOMPLIANCE`.

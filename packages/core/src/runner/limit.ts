@@ -2,7 +2,7 @@
 // helper. The runner constructs ONE limiter per run (on `ctx`) and wraps each stage lane's
 // `runNodeWithRetries` call in it, so a stage never spawns more than `maxConcurrent` real `pi`
 // processes at once (replacing the previously-UNBOUNDED `Promise.all` fan-out). Adapted from the
-// competitor's `createLimiter` (vendors/pi-dynamic-workflows/src/workflow.ts:1008-1024) — same FIFO
+// competitor's `createLimiter` (vendor/pi-dynamic-workflows/src/workflow.ts:1008-1024) — same FIFO
 // counting-semaphore shape, typed and decoupled — but the default is a fixed, OS-process-conservative
 // value (each lane is a full `pi` child, heavier than the competitor's in-memory sessions), not a
 // CPU-derived one.
