@@ -1,5 +1,5 @@
 import Hero from "./_sections/Hero";
-import AgentsP1 from "./_sections/AgentsP1";
+import ProductScreens from "./_sections/ProductScreens";
 import LayerCards from "./_sections/LayerCards";
 import NodeL1 from "./_sections/NodeL1";
 import ComposeL2 from "./_sections/ComposeL2";
@@ -16,7 +16,7 @@ export default function Home() {
       <div className="grain" aria-hidden />
       <main>
         <Hero />
-        <AgentsP1 />
+        <ProductScreens />
         <LayerCards />
         <NodeL1 />
         <ComposeL2 />
