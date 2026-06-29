@@ -160,6 +160,15 @@ claude -p --permission-mode bypassPermissions \
   < _pi/<id>/prompt.md
 ```
 
+**Model resolution — SETTLED & SHIPPED (`af19417`).** The 3-tier global config (`~/.piflow/model-tiers.json`)
+is REUSED: it gains an optional parallel **`claude` block** with the same `fast`/`balanced`/`deep` keys mapping to
+Claude models (aliases `opus`/`sonnet`/`haiku`, or `claude-*` ids). `pi` reads `tiers`; the claude-code executor
+reads `claude` via `resolveClaudeModel(node, run)` (`runner/model-routing.ts`), precedence:
+`node.model > tiers.claude[tier] > tiers[tier] (only if Claude-valid via isClaudeModel — never leak a pi-only id like
+deepseek to --model) > undefined (omit --model ⇒ Claude account default, e.g. opus[1m] on a Max plan)`. Total — never
+throws (Claude always has a default), unlike pi's loud tier failure. `tier` is thus the portable knob (same node runs
+on either executor); `model` is the executor-specific pin. Example: `{ "tiers": {"deep":"deepseek-r1"}, "claude": {"deep":"opus"} }`.
+
 **AuthPolicy (local subscription):** `augmentSandbox()` (1) adds `~/.claude` (OAuth login) **and the `claude`
 binary** to `read`, (2) strips `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` from the child env so the subscription
 OAuth wins (surface §11 confirms local nodes inherit `process.env`, so a stray exported key would otherwise clobber
