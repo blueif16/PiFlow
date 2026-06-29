@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { compile } from '../src/index.js';
+import { compile, LocalSandboxProvider } from '../src/index.js';
 import type { NodeIntent, WorkflowSpec } from '../src/index.js';
 import { runWorkflow, defaultExecRunner, type ExecRunner } from '../src/runner/index.js';
 import type { CommandContext } from '../src/runner/command.js';
@@ -71,6 +71,36 @@ describe('runWorkflow — skill staging (option C: stage into the sandbox + pass
     // (3) the recursive copy reached the host run dir incl. the nested asset (proves the dir-walk, not just top file).
     expect(await fs.readFile(path.join(outDir, '.pi/skills', skill.name, 'SKILL.md'), 'utf8')).toBe(skill.skillMd);
     expect(await fs.readFile(path.join(outDir, '.pi/skills', skill.name, 'references', 'r.md'), 'utf8')).toBe('reference body');
+
+    await fs.rm(outDir, { recursive: true, force: true });
+    await fs.rm(path.dirname(skill.dir), { recursive: true, force: true });
+  });
+
+  it('IN-PLACE local: the advertised skillPath resolves under the RUN DIR (outDir), not scope.root (repoRoot)', async () => {
+    // REGRESSION: an in-place `local` node runs with cwd = outDir (the run dir), and its skill is staged at
+    // outDir/.pi/skills/<name>. The `--skill` path advertised to pi MUST therefore resolve under outDir — not
+    // `scope.root` (= the host repoRoot, LocalRunScope.root). Before the in-place stage-root fix, the path was
+    // joined on scope.root → it pointed at repoRoot/.pi/skills/<name>, where the skill does NOT exist.
+    const skill = await makeSkill();
+    const outDir = await tmpDir('piflow-run-');
+    const sink: { ctx?: CommandContext } = {};
+    // write the artifact RELATIVE (as a real agent does) so it lands in the in-place cwd (= outDir); capture ctx.
+    const relBuild = (node: { id: string }, _r: unknown, ctx: CommandContext): string => {
+      sink.ctx = ctx;
+      return `printf '%s' ${node.id} > out.txt`;
+    };
+
+    const g = compile(oneNode({ skill: skill.dir }));
+    const { status } = await runWorkflow(g, {
+      run: 'skill-local',
+      outDir,
+      provider: new LocalSandboxProvider({ enforceReadScope: false }),
+      buildCommand: relBuild,
+    });
+
+    expect(status.ok).toBe(true); // the relative artifact lands under outDir (the in-place cwd fix)
+    expect(sink.ctx?.skillPath).toBe(path.posix.join(outDir, '.pi/skills', skill.name));
+    expect(await fs.readFile(path.join(outDir, '.pi/skills', skill.name, 'SKILL.md'), 'utf8')).toBe(skill.skillMd);
 
     await fs.rm(outDir, { recursive: true, force: true });
     await fs.rm(path.dirname(skill.dir), { recursive: true, force: true });

@@ -118,13 +118,19 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // works around three ways (an execCwd split + an absolute @prompt ref + a per-node `wf.nodes` mutation).
   const nodeStage = path.posix.join('_pi', node.id);
   const MCP_CONFIG_FILE = path.posix.join(nodeStage, 'mcp.json');
+  // The in-sandbox ROOT that staged files resolve under (for the absolute paths advertised to pi). An
+  // IN-PLACE provider's per-node sandbox is rooted at the RUN DIR (the cwd-anchoring at scope.create below),
+  // so `_pi/<id>/mcp.json` and `.pi/skills/<name>` live under `outDir` — NOT `scope.root` (LocalRunScope.root
+  // = the host repoRoot, which only coincided with the sandbox root before the in-place anchoring). Isolated/
+  // cloud kinds stage relative to the provider scope root, so they keep `scope.root` unchanged.
+  const stageRoot = IN_PLACE_KINDS.has(ctx.providerKind) ? ctx.outDir : scope.root;
   const isCloud = CLOUD_KINDS.has(ctx.providerKind);
   const stageMcp = Boolean(resolved.extension) && selectedBridgedTool(node) && Boolean(ctx.mcpConfig);
   let mcpEnv: Record<string, string> | undefined;
   if (stageMcp && ctx.mcpConfig) {
-    // Absolute in-sandbox path: the run root + the node's workdir + the staged file. posix join keeps it
-    // valid in a cloud VM; on local providers scope.root is the host repoRoot under which the node resolves.
-    const configPathAbs = path.posix.join(scope.root, node.sandbox.workspace || '.', MCP_CONFIG_FILE);
+    // Absolute in-sandbox path: the staged file under the node's effective sandbox root (`stageRoot` —
+    // outDir in-place, scope.root isolated/cloud). posix join keeps it valid in a cloud VM.
+    const configPathAbs = path.posix.join(stageRoot, node.sandbox.workspace || '.', MCP_CONFIG_FILE);
     // Resolve each referenced $VAR through the broker seam (default: process.env). A host-plugged broker
     // mints a scoped token here so the raw credential never reaches the (cloud) VM.
     mcpEnv = await mcpEnvAdditions(
@@ -332,7 +338,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         const skillRel = path.posix.join('.pi', 'skills', skillStage.name);
         await fs.cp(skillStage.source, path.resolve(ctx.outDir, skillRel), { recursive: true, force: true });
         await stageHostPathIntoSandbox(sandbox, ctx.outDir, skillRel);
-        skillPath = path.posix.join(scope.root, node.sandbox.workspace || '.', skillRel);
+        skillPath = path.posix.join(stageRoot, node.sandbox.workspace || '.', skillRel);
       }
     } catch (e) {
       return finishNode(ctx, node, rec, t0, 'error', `skill staging failed: ${(e as Error).message}`, [], [(e as Error).message]);
