@@ -93,3 +93,55 @@ export const defaultPiCommand: CommandBuilder = (node, resolved, ctx, opts = {})
   parts.push(`@${q(ctx.promptFile)}`);
   return parts.join(' ');
 };
+
+// pi builtin bare name → Claude Code builtin tool name (the read/write/fix/debug set). `ls` has no
+// Claude-native tool (Bash/Glob cover it), so it is intentionally dropped; sdk/mcp tools are OUT of
+// scope for the Claude executor (builtins only), so unmapped names fall away. See
+// docs/design/agent-executor-interface.md §5.
+const CLAUDE_TOOL_BY_PI_NAME: Record<string, string> = {
+  read: 'Read',
+  write: 'Write',
+  edit: 'Edit',
+  grep: 'Grep',
+  find: 'Glob',
+  bash: 'Bash',
+};
+const toClaudeTools = (piNames: string[]): string[] =>
+  piNames.map((piName) => CLAUDE_TOOL_BY_PI_NAME[piName]).filter((t): t is string => Boolean(t));
+
+/** Claude's `--effort` accepts exactly these levels; any other `opts.thinking` value (e.g. `true`) is dropped. */
+const CLAUDE_EFFORTS = new Set(['low', 'medium', 'high']);
+
+/**
+ * The headless **Claude Code** command for one node — the `claude-code` executor (local already-logged-in
+ * subscription, builtins only, for read/write/fix/summarize/debug). Conforms to `CommandBuilder` so it drops
+ * into `RunOptions.buildCommand` exactly like `defaultPiCommand`; everything below the seam (sandbox jail,
+ * artifact-stat verdict, watchdog) is inherited unchanged. Design: docs/design/agent-executor-interface.md §5.
+ *
+ * Invariants: `-p` (print/headless) + `--permission-mode bypassPermissions` (the seatbelt jail is the real
+ * boundary, not Claude's prompt) + `--output-format stream-json --verbose` (a stream keeps the stall-watchdog
+ * fed; the final `result` event carries cost+session). The prompt is piped on **stdin** — Claude `-p` has no
+ * `@file` ref. Warm resume emits `--resume <id>` ONLY on the resume arm: Claude mints the id on create (it is
+ * captured from output), so create/no-session emit no session flag.
+ */
+export const claudeCommand: CommandBuilder = (_node, resolved, ctx, opts = {}) => {
+  const parts: string[] = [
+    'claude',
+    '-p',
+    '--permission-mode',
+    'bypassPermissions',
+    '--output-format',
+    'stream-json',
+    '--verbose',
+  ];
+  if (ctx.model) parts.push('--model', ctx.model);
+  const effort = typeof opts.thinking === 'string' && CLAUDE_EFFORTS.has(opts.thinking) ? opts.thinking : undefined;
+  if (effort) parts.push('--effort', effort);
+  const tools = toClaudeTools(resolved.piTools);
+  if (tools.length) parts.push('--tools', q(tools.join(' ')));
+  const deny = resolved.excludeTools ? toClaudeTools(resolved.excludeTools) : [];
+  if (deny.length) parts.push('--disallowedTools', q(deny.join(' ')));
+  if (opts.session?.resume) parts.push('--resume', q(opts.session.id));
+  // Prompt on stdin (no `@file` in Claude `-p`).
+  return `${parts.join(' ')} < ${q(ctx.promptFile)}`;
+};
