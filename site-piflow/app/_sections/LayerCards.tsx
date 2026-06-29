@@ -38,7 +38,7 @@ export default function LayerCards() {
   const current = FORMATS[active];
 
   return (
-    <section id="layers" data-section="composition" className="relative flex min-h-svh w-full flex-col justify-center overflow-hidden bg-canvas py-20">
+    <section id="layers" data-section="composition" className="theme-blue relative flex min-h-svh w-full flex-col justify-center overflow-hidden bg-canvas py-20">
       <div className="gridpaper pointer-events-none absolute inset-0" aria-hidden />
 
       <div className="relative mx-auto w-full max-w-5xl px-6">

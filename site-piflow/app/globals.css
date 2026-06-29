@@ -50,6 +50,19 @@
   --shadow-lg: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 22px 48px -16px rgba(0, 0, 0, 0.18);
 }
 
+/* Section-scoped accent remap — pages 3 (composition) & 4 (presentation)
+   spark BLUE instead of orange (the first two pages stay orange). Overrides
+   the accent family for the subtree, so every var(--accent) mark + the
+   focus ring re-resolves to blue. */
+.theme-blue {
+  --accent: #2563eb;
+  --accent-strong: #1d4ed8;
+  --accent-60: rgba(37, 99, 235, 0.6);
+  --accent-30: rgba(37, 99, 235, 0.3);
+  --accent-glow: rgba(37, 99, 235, 0.16);
+  --accent-subtle: #eef2ff;
+}
+
 /* Map tokens into the Tailwind v4 theme so utilities can reach them. */
 @theme inline {
   --color-canvas: var(--canvas);
