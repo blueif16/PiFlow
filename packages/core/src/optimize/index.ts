@@ -11,3 +11,16 @@ export { parseCriteria } from './criteria.js';
 export { readVerifyReport } from './tier1.js';
 export { renderRouting } from './render.js';
 export type { RoutingMeta } from './render.js';
+
+// The FIX→GATE→LAND overlord (v1.5 §6) — the deterministic driver + the across-run accept gate + the LAND
+// seam. The driver composes injected model stages (fixer · replayScore) but decides/bounds/lands in code,
+// gating on a candidate copy with the strict-improvement ratchet; it never mutates the live file.
+export { evaluateGate } from './gate.js';
+export type { GateInput, GateVerdict, LandPolicy } from './gate.js';
+export { runFixGate } from './driver.js';
+export type {
+  Fixer, ReplayScore, PrepareCandidate, BaseScore, CandidateEdit,
+  FixGateStages, FixGateOpts, FixGateRecord, FixGateResult,
+} from './driver.js';
+export { writeStagingManifest, adoptFile } from './land.js';
+export type { StageOpts } from './land.js';
