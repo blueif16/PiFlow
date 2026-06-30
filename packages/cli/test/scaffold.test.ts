@@ -371,6 +371,89 @@ describe('scaffold — full check vocabulary (severity, param, pre/post lane) + 
     const node = await readJson(path.join(DIR, 'nodes', 'n', 'node.json'));
     expect(node.checks.post).toEqual([{ kind: 'non-empty', path: 'a.md' }]);
   });
+});
+
+// JUDGE GATE + CHECKPOINT — the two agentic/human gates the loader materializes at LOAD. A `judgeGate`
+// (node.schema.ts:264) becomes a real `<id>__judge` pi node via materializeJudgeNodes; the rubric is an
+// INLINE string the CLI reads from the sibling `judge.md` (the SDK never sees that file — prose-in-md, like
+// prompt.md). A `checkpoint` (node.schema.ts:214) is the G5 HITL block — and unlike a programmatic node it
+// STILL needs a prompt block + an on-disk prompt.md (checkRefs). These round-trip through the REAL loader:
+// a judge gate that mis-emits `kind` or collides the tier, or a checkpoint missing its prompt.md, THROWS.
+describe('scaffold — judge gate (materialized) + checkpoint (G5 HITL)', () => {
+  it('--judge tier[:threshold] inlines judge.md into judgeGate and loadTemplate MATERIALIZES the judge node', async () => {
+    await scaffoldNew(DIR, { name: 'j', description: 'judge demo' });
+    // The agent's job: Write the rubric prose to judge.md FIRST (the CLI inlines it, never authors it).
+    await fs.mkdir(path.join(DIR, 'nodes', 'classify'), { recursive: true });
+    await fs.writeFile(path.join(DIR, 'nodes', 'classify', 'judge.md'), 'The classification must be exhaustive and self-consistent.\n');
+    await runAddNodeCli([
+      DIR,
+      '--id', 'classify',
+      '--artifact', 'spec/classification.json',
+      '--tier', 'fast', // producer tier — MUST differ from the judge tier (the no-self-judge invariant)
+      '--judge', 'deep:7/10',
+      '--judge-on-fail', 'block',
+      '--judge-retry-max', '2',
+    ]);
+    await writeProse('classify');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'classify', 'node.json'));
+    expect(node.judgeGate).toEqual({
+      judgeTier: 'deep',
+      rubric: 'The classification must be exhaustive and self-consistent.', // inlined from judge.md (trimmed)
+      threshold: '7/10',
+      policy: { onFail: 'block', retryMax: 2 },
+    });
+    expect(node.judgeGate.kind).toBeUndefined(); // `kind` is implied by the field name — never emitted
+
+    // The load-bearing round-trip: the REAL loadTemplate MATERIALIZES the judge into a real node with
+    // agentType:'judge' (materialize.ts). If buildNode mis-shaped judgeGate, loadTemplate throws here.
+    const spec = await loadTemplate(DIR);
+    expect(spec.nodes.some((n) => n.agentType === 'judge'), 'a judge node was materialized').toBe(true);
+  });
+
+  it('--judge with tier === judgeTier is rejected by the CLI (no self-judging) before any write', async () => {
+    await scaffoldNew(DIR, { name: 'j', description: 'self-judge' });
+    await fs.mkdir(path.join(DIR, 'nodes', 'n'), { recursive: true });
+    await fs.writeFile(path.join(DIR, 'nodes', 'n', 'judge.md'), 'rubric\n');
+    await expect(
+      runAddNodeCli([DIR, '--id', 'n', '--artifact', 'a.md', '--tier', 'deep', '--judge', 'deep']),
+    ).rejects.toThrow(/self-judg|same tier|differ/i);
+    await expect(fs.access(path.join(DIR, 'nodes', 'n', 'node.json'))).rejects.toThrow(); // no node.json written
+  });
+
+  it('--judge with no sibling judge.md throws a clear CLI error (the rubric prose is the agent’s to write)', async () => {
+    await scaffoldNew(DIR, { name: 'j', description: 'no rubric' });
+    await expect(
+      runAddNodeCli([DIR, '--id', 'n', '--artifact', 'a.md', '--tier', 'fast', '--judge', 'deep']),
+    ).rejects.toThrow(/judge\.md/);
+  });
+
+  it('--checkpoint kind:prompt (+ choices/default/headless) emits the G5 block and loadTemplate accepts it', async () => {
+    await scaffoldNew(DIR, { name: 'k', description: 'checkpoint' });
+    await runAddNodeCli([
+      DIR,
+      '--id', 'gate-ship',
+      '--checkpoint', 'select:Ship A or B?',
+      '--checkpoint-choice', 'A',
+      '--checkpoint-choice', 'B',
+      '--checkpoint-default', 'A',
+      '--checkpoint-headless', 'default',
+      '--checkpoint-timeout', '0',
+    ]);
+    await writeProse('gate-ship'); // a checkpoint node is NOT programmatic — checkRefs demands prompt.md
+
+    const node = await readJson(path.join(DIR, 'nodes', 'gate-ship', 'node.json'));
+    expect(node.checkpoint).toEqual({
+      kind: 'select',
+      prompt: 'Ship A or B?',
+      choices: ['A', 'B'],
+      default: 'A',
+      headless: 'default',
+      timeoutMs: 0,
+    });
+    expect(node.prompt).toEqual({ file: 'prompt.md' }); // still a prompt block (not programmatic)
+    await expect(loadTemplate(DIR)).resolves.toBeDefined();
+  });
 
   // The CLI STRING layer (`runAddNodeCli`) parses each derive flag's value-grammar (design §3) into the same
   // op[] the builder emits. This exercises what the builder test (which passes structured objects) cannot: the

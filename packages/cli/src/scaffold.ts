@@ -104,12 +104,45 @@ export interface NodeOpts {
   onFail?: 'block' | 'warn' | 'stop';
   /** policy.warn action (the consequence of a `warn`-severity verdict). */
   onWarn?: 'block' | 'warn' | 'stop';
+  /** (G5 HITL) A human checkpoint on this node — pauses for a reply. NOT programmatic (the schema still
+   *  requires a `prompt` block, and checkRefs still demands the prompt.md on disk). */
+  checkpoint?: {
+    kind: 'confirm' | 'input' | 'select';
+    prompt: string;
+    choices?: string[];
+    default?: unknown;
+    headless?: 'default' | 'abort';
+    timeoutMs?: number;
+  };
+  /** A JUDGE gate — a different-tier model's verdict, materialized at load into a `<id>__judge` node. The
+   *  `rubric` is INLINE prose (the CLI reads it from the sibling `judge.md`). `judgeTier` MUST differ from
+   *  this node's `tier` (buildNode rejects a collision — no self-judging). */
+  judge?: {
+    judgeTier: string;
+    rubric: string;
+    threshold?: string;
+    policy?: {
+      onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'escalate';
+      retryMax?: number;
+      retryScope?: 'feedback' | 'fix';
+    };
+  };
   /** A no-pi node: runs its declarative ops, omits `prompt`/`tools`. */
   programmatic?: boolean;
 }
 
 /** Pretty-print a JSON object the way the template files are authored (2-space, trailing newline). */
 const toJson = (o: unknown): string => JSON.stringify(o, null, 2) + '\n';
+
+/** Parse a CLI scalar as JSON when it parses (an object/number/bool), else keep the raw string. Used for
+ *  kind-specific check params ({min,path}) and a checkpoint `default` (any type). */
+const jsonOrString = (s: string): unknown => {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return s;
+  }
+};
 
 /** A `CheckOpt` → the `$defs/check` object: omit each optional field unless present (a minimal file). */
 const emitCheck = (c: CheckOpt): Record<string, unknown> => ({
@@ -255,6 +288,38 @@ export function buildNode(opts: NodeOpts): Record<string, unknown> {
       ...(opts.onWarn ? { warn: opts.onWarn } : {}),
     };
   }
+  // (G5 HITL) The human checkpoint block (loader.ts:174 carries it verbatim). NOT a programmatic node —
+  // it keeps its `prompt` block above (the runtime no-pi lane never reads it, but checkRefs demands it).
+  if (opts.checkpoint) {
+    const cp = opts.checkpoint;
+    node.checkpoint = {
+      kind: cp.kind,
+      prompt: cp.prompt,
+      ...(cp.choices?.length ? { choices: cp.choices } : {}),
+      ...(cp.default !== undefined ? { default: cp.default } : {}),
+      ...(cp.headless ? { headless: cp.headless } : {}),
+      ...(cp.timeoutMs !== undefined ? { timeoutMs: cp.timeoutMs } : {}),
+    };
+  }
+  // The JUDGE gate (loader materializes it into a real `<id>__judge` node, materialize.ts). `kind` is
+  // IMPLIED by the field name — never emitted (additionalProperties:false would reject it). The producer
+  // tier MUST differ from judgeTier (no self-judging — a model false-accepts its own work, TeamBench); the
+  // SDK throws a JudgeConfigError at load, but fail in the CLI first for a clearer message + no half-write.
+  if (opts.judge) {
+    const j = opts.judge;
+    if (opts.tier !== undefined && opts.tier === j.judgeTier) {
+      throw new Error(
+        `piflowctl: --judge tier "${j.judgeTier}" must differ from the node's --tier "${opts.tier}" ` +
+          `(no self-judging — a model can't reliably judge its own output)`,
+      );
+    }
+    node.judgeGate = {
+      judgeTier: j.judgeTier,
+      rubric: j.rubric,
+      ...(j.threshold ? { threshold: j.threshold } : {}),
+      ...(j.policy && Object.keys(j.policy).length ? { policy: j.policy } : {}),
+    };
+  }
   if (opts.programmatic) node.programmatic = true;
   return node;
 }
@@ -346,14 +411,65 @@ function parseCheck(entry: string): CheckOpt {
     out.severity = parts[2];
   }
   const paramStr = parts.slice(3).join(':');
-  if (paramStr) {
-    try {
-      out.param = JSON.parse(paramStr);
-    } catch {
-      out.param = paramStr;
-    }
-  }
+  if (paramStr) out.param = jsonOrString(paramStr);
   return out;
+}
+
+/** Parse `--judge <judgeTier>[:threshold]` + read the sibling `judge.md` rubric (the prose the agent Writes;
+ *  the CLI inlines it, never authors it). Throws a clear error if the rubric file is absent/empty. The
+ *  `judgeTier !== node tier` invariant is enforced in `buildNode` (it has the node's `--tier`). */
+async function parseJudge(
+  dir: string,
+  id: string,
+  flagValue: string,
+  policyFlags: { onFail?: string; retryMax?: string; retryScope?: string },
+): Promise<NonNullable<NodeOpts['judge']>> {
+  const colon = flagValue.indexOf(':');
+  const judgeTier = colon < 0 ? flagValue : flagValue.slice(0, colon);
+  const threshold = colon < 0 ? undefined : flagValue.slice(colon + 1);
+  if (!judgeTier) throw new Error(`piflowctl: --judge expects <judgeTier>[:threshold] (got "${flagValue}")`);
+  const rubricPath = path.join(dir, 'nodes', id, 'judge.md');
+  let rubric: string;
+  try {
+    rubric = (await fs.readFile(rubricPath, 'utf8')).trim();
+  } catch {
+    throw new Error(
+      `piflowctl: --judge needs the rubric prose in ${rubricPath} — Write it first (the CLI inlines it, never authors it)`,
+    );
+  }
+  if (!rubric) throw new Error(`piflowctl: ${rubricPath} is empty — write the judge rubric prose first`);
+  const policy: NonNullable<NonNullable<NodeOpts['judge']>['policy']> = {};
+  if (policyFlags.onFail) policy.onFail = policyFlags.onFail as NonNullable<typeof policy.onFail>;
+  if (policyFlags.retryMax !== undefined) policy.retryMax = Number(policyFlags.retryMax);
+  if (policyFlags.retryScope) policy.retryScope = policyFlags.retryScope as NonNullable<typeof policy.retryScope>;
+  return {
+    judgeTier,
+    rubric,
+    ...(threshold ? { threshold } : {}),
+    ...(Object.keys(policy).length ? { policy } : {}),
+  };
+}
+
+/** Parse `--checkpoint <kind>:<prompt>` (+ the sidecar `--checkpoint-*` flags) into the G5 block. `kind` is
+ *  the token before the FIRST colon (so a prompt keeps its own colons). */
+function parseCheckpoint(
+  flagValue: string,
+  sidecars: { choices?: string[]; default?: string; headless?: string; timeoutMs?: string },
+): NonNullable<NodeOpts['checkpoint']> {
+  const colon = flagValue.indexOf(':');
+  if (colon < 1) throw new Error(`piflowctl: --checkpoint expects kind:prompt (got "${flagValue}")`);
+  const kind = flagValue.slice(0, colon);
+  if (kind !== 'confirm' && kind !== 'input' && kind !== 'select') {
+    throw new Error(`piflowctl: --checkpoint kind must be confirm|input|select (got "${kind}")`);
+  }
+  return {
+    kind,
+    prompt: flagValue.slice(colon + 1),
+    ...(sidecars.choices?.length ? { choices: sidecars.choices } : {}),
+    ...(sidecars.default !== undefined ? { default: jsonOrString(sidecars.default) } : {}),
+    ...(sidecars.headless ? { headless: sidecars.headless as 'default' | 'abort' } : {}),
+    ...(sidecars.timeoutMs !== undefined ? { timeoutMs: Number(sidecars.timeoutMs) } : {}),
+  };
 }
 
 // ── derive-hook flag parsers (each emits one canonical `op[]` entry via buildNode) ──────────────────
@@ -438,7 +554,10 @@ const ADD_USAGE =
   '[--mcp <name=url>]... [--check <kind[:path[:severity[:param]]]>]... [--check-pre <kind[:path[:severity[:param]]]>]... ' +
   '[--agent-type <id>] [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
   '[--timeout <ms>] [--retries <n>] [--return-mode optional|required] [--schema <p>] [--skill <p>] ' +
-  '[--prompt-file <f>] [--on-fail block|warn|stop] [--on-warn block|warn|stop] [--programmatic]';
+  '[--prompt-file <f>] [--on-fail block|warn|stop] [--on-warn block|warn|stop] ' +
+  '[--judge <judgeTier[:threshold]>] [--judge-on-fail block|warn|stop|retry|escalate] [--judge-retry-max <n>] [--judge-retry-scope feedback|fix] ' +
+  '[--checkpoint <confirm|input|select:prompt>] [--checkpoint-choice <v>]... [--checkpoint-default <v>] [--checkpoint-headless default|abort] [--checkpoint-timeout <ms>] ' +
+  '[--programmatic]';
 
 /** `piflowctl new <templateDir> [flags]` — emit meta.json + the nodes/ dir. */
 export async function runNewCli(argv: string[]): Promise<void> {
@@ -471,6 +590,23 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     return;
   }
   const num = (v: string | undefined): number | undefined => (v === undefined ? undefined : Number(v));
+  // --judge reads the sibling judge.md (async I/O — kept out of the pure buildNode); --checkpoint folds its
+  // sidecar flags. Both throw on a malformed value BEFORE scaffoldAddNode writes, so no half-authored node.
+  const judge = flags.judge?.[0]
+    ? await parseJudge(dir, id, flags.judge[0], {
+        onFail: flags['judge-on-fail']?.[0],
+        retryMax: flags['judge-retry-max']?.[0],
+        retryScope: flags['judge-retry-scope']?.[0],
+      })
+    : undefined;
+  const checkpoint = flags.checkpoint?.[0]
+    ? parseCheckpoint(flags.checkpoint[0], {
+        choices: flags['checkpoint-choice'],
+        default: flags['checkpoint-default']?.[0],
+        headless: flags['checkpoint-headless']?.[0],
+        timeoutMs: flags['checkpoint-timeout']?.[0],
+      })
+    : undefined;
   const { nodeJson, promptFile, promptExists } = await scaffoldAddNode(dir, {
     id,
     phase: flags.phase?.[0],
@@ -504,6 +640,8 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     checksPre: (flags['check-pre'] ?? []).map(parseCheck),
     onFail: flags['on-fail']?.[0] as NodeOpts['onFail'],
     onWarn: flags['on-warn']?.[0] as NodeOpts['onWarn'],
+    checkpoint,
+    judge,
     programmatic: bools.has('programmatic'),
   });
   const next = bools.has('programmatic')
