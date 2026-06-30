@@ -31,6 +31,23 @@ const writeJson = async (p: string, v: unknown): Promise<void> =>
   fs.writeFile(p, JSON.stringify(v, null, 2) + '\n');
 const nodeJson = (dir: string, id: string): string => path.join(dir, 'nodes', id, 'node.json');
 
+// Hermetic agents catalog (see scaffold.test.ts): seed the in-repo presets into a temp PIFLOW_HOME so the
+// agentType-label case resolves market-research without the dev's real ~/.piflow/agents (absent in CI).
+const AGENT_SEEDS = path.join(HERE, '../../..', '.claude/skills/piflow-init/references/agent-presets');
+let PIFLOW_HOME_DIR: string;
+let SAVED_PIFLOW_HOME: string | undefined;
+beforeEach(async () => {
+  PIFLOW_HOME_DIR = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-home-'));
+  await fs.cp(AGENT_SEEDS, path.join(PIFLOW_HOME_DIR, 'agents'), { recursive: true });
+  SAVED_PIFLOW_HOME = process.env.PIFLOW_HOME;
+  process.env.PIFLOW_HOME = PIFLOW_HOME_DIR;
+});
+afterEach(async () => {
+  if (SAVED_PIFLOW_HOME === undefined) delete process.env.PIFLOW_HOME;
+  else process.env.PIFLOW_HOME = SAVED_PIFLOW_HOME;
+  await fs.rm(PIFLOW_HOME_DIR, { recursive: true, force: true });
+});
+
 /** Run loadTemplate and capture the thrown TemplateError (or fail loudly if it did NOT throw). */
 async function expectReject(dir: string): Promise<TemplateError> {
   try {

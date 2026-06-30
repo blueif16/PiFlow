@@ -49,6 +49,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@piflow/tool-bridge": "workspace:*",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",

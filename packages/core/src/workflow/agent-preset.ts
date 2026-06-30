@@ -88,9 +88,13 @@ export function mergePreset<N extends PresetMergeable>(preset: AgentPreset, node
 
 // ── READ-ONLY catalog adapters (mirror loadModelTiers; never throw on absence) ──────────────────────────
 
-/** Default home of the global, user-extensible preset catalog (parallels `~/.piflow/model-tiers.json`). */
+/**
+ * Default home of the global, user-extensible preset catalog (parallels `~/.piflow/model-tiers.json`).
+ * Honors `PIFLOW_HOME` (the global-home override + unit-test seam, mirroring `globalDir`); falls back to
+ * `~/.piflow`. With `PIFLOW_HOME` unset this is byte-identical to the old `~/.piflow/agents`.
+ */
 export function defaultAgentsDir(): string {
-  return path.join(os.homedir(), '.piflow', 'agents');
+  return path.join(process.env.PIFLOW_HOME ?? path.join(os.homedir(), '.piflow'), 'agents');
 }
 
 /** Drop a trailing `# …` comment that is NOT inside a quoted string (so a quoted `"#abc"` hex survives). */

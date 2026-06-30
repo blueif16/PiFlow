@@ -88,6 +88,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.29.0
+        version: 1.29.0(@cfworker/json-schema@4.1.1)(zod@3.25.76)
       '@piflow/tool-bridge':
         specifier: workspace:*
         version: link:../tool-bridge

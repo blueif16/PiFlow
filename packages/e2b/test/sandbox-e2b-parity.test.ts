@@ -105,6 +105,8 @@ class FakeE2bProcess implements E2bProcess {
       cwd: opts?.cwd,
       env: { ...process.env, ...(opts?.envs ?? {}) },
       shell: true,
+      // Own process group so kill() can reap the shell AND its grandchildren (see kill() below).
+      detached: true,
     });
     let stdout = '';
     let stderr = '';
@@ -124,7 +126,13 @@ class FakeE2bProcess implements E2bProcess {
       },
       async kill(): Promise<void> {
         killed = true;
-        if (!child.killed) { try { child.kill('SIGKILL'); } catch { /* already gone */ } }
+        // Kill the whole process group (negative pid) so a `shell:true` child AND its grandchildren
+        // (e.g. a `sleep`) die together. Otherwise an orphaned grandchild keeps the stdout pipe open,
+        // the child's `close` never fires, and wait() hangs — surfaced as a 20s timeout on Linux CI.
+        if (!child.killed && child.pid !== undefined) {
+          try { process.kill(-child.pid, 'SIGKILL'); }
+          catch { try { child.kill('SIGKILL'); } catch { /* already gone */ } }
+        }
       },
     };
   }

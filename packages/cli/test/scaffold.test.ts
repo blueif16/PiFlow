@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadTemplate, compile, derivesFromOp } from '@piflow/core';
 import { scaffoldNew, scaffoldAddNode, runNewCli, runAddNodeCli } from '../src/scaffold.js';
 
@@ -11,12 +12,29 @@ import { scaffoldNew, scaffoldAddNode, runNewCli, runAddNodeCli } from '../src/s
 // required field, mis-defaults the contract, or mis-wires a dep, `loadTemplate` THROWS and these go red.
 // No mock of the loader — the whole point is that the emitted JSON is the one the engine actually accepts.
 
+// Hermetic agents catalog: the in-repo preset seeds, copied into a temp PIFLOW_HOME so `--agent-type`
+// resolves a preset (e.g. market-research) without the dev's real ~/.piflow/agents (absent in clean CI).
+const AGENT_SEEDS = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../..',
+  '.claude/skills/piflow-init/references/agent-presets',
+);
+
 let DIR: string;
+let HOME_DIR: string;
+let SAVED_HOME: string | undefined;
 beforeEach(async () => {
   DIR = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-scaffold-'));
+  HOME_DIR = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-home-'));
+  await fs.cp(AGENT_SEEDS, path.join(HOME_DIR, 'agents'), { recursive: true });
+  SAVED_HOME = process.env.PIFLOW_HOME;
+  process.env.PIFLOW_HOME = HOME_DIR;
 });
 afterEach(async () => {
+  if (SAVED_HOME === undefined) delete process.env.PIFLOW_HOME;
+  else process.env.PIFLOW_HOME = SAVED_HOME;
   await fs.rm(DIR, { recursive: true, force: true });
+  await fs.rm(HOME_DIR, { recursive: true, force: true });
 });
 
 const readJson = async (p: string): Promise<any> => JSON.parse(await fs.readFile(p, 'utf8'));
