@@ -26,6 +26,11 @@ import { runNodeCli } from './node.js';
 import { runInspectCli } from './inspect.js';
 import { runTelemetryCli } from './telemetry.js';
 import { runGuiCli } from './gui.js';
+import { createRequire } from 'node:module';
+
+// CLI version, read from this package's own package.json (always shipped in the tarball; resolved
+// relative to the compiled dist/cli.js → ../package.json = the package root).
+const VERSION: string = createRequire(import.meta.url)('../package.json').version;
 
 const HELP = `piflowctl — drive + observe a pi-flow run over the .pi/ run layout
 
@@ -46,6 +51,7 @@ USAGE
   piflowctl model   [list | set <tier> <modelId> [--claude] | activate | deactivate]  the model-tier config
   piflowctl claude-code [connect [--token <t>] | status]  OPTIONAL credential for the claude-code executor
   piflowctl gui     [--port <n>] [--no-open]  launch the run viewer; indexes the product at cwd (or global)
+  piflowctl --version                       print the piflowctl version
 
 RUN
   <templateDir> an authored template/ dir (meta.json + nodes/*/). Required.
@@ -210,6 +216,11 @@ async function main(): Promise<void> {
       break;
     case 'gui':
       await runGuiCli(rest);
+      break;
+    case '--version':
+    case '-v':
+    case '-V':
+      process.stdout.write(`${VERSION}\n`);
       break;
     case 'help':
     case '--help':
