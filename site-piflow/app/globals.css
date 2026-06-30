@@ -504,3 +504,94 @@ body {
 .doc-content table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 1.25rem; display: block; overflow-x: auto; }
 .doc-content th, .doc-content td { border: 1px solid var(--hairline); padding: 0.5rem 0.7rem; text-align: left; vertical-align: top; }
 .doc-content th { color: var(--fg); background: var(--surface-2); font-weight: 600; }
+
+/* ============================================================
+   Intro copy — the personal paragraph's "delicate overlay": soft
+   blurred gradient streaks behind key phrases + a frosted glass
+   word, with blue-grey inline links. Purely static (no keyframes),
+   so it is reduced-motion-safe by construction. Scoped under
+   .intro-copy so the generic class names never leak.
+   ============================================================ */
+.intro-copy {
+  --io-green: #4d9900;
+  --io-green-soft: #b8d78c;
+  --io-orange: #ffc079;
+  --io-cream: #f3e9de;
+  /* EXACT same font as the composition heading (Geist Sans · 600 · tracking
+     -0.03em · leading 1.2) so the scrubbed cross-fade morph lands seamlessly. */
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  text-wrap: balance;
+}
+.intro-copy strong { font-weight: 700; color: var(--fg); }
+
+/* Hover SPOTLIGHT — the longer intro paragraph rests in faint grey with ONE
+   sentence in ink (the resting highlight); hovering any sentence moves the ink
+   to it while the rest stay grey. Pure CSS, COLOR-ONLY (never reflows). Gated to
+   hover-capable pointers so touch / mobile show every sentence in full ink —
+   there's no hover there to bloom a greyed sentence back to readable. */
+@media (hover: hover) and (pointer: fine) {
+  .intro-reveal > span {
+    color: var(--fg-faint);
+    /* slow, eased glide so the ink melts from sentence to sentence */
+    transition: color 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .intro-reveal > span:first-child { color: var(--fg); }   /* resting highlight  */
+  .intro-reveal:hover > span { color: var(--fg-faint); }    /* dim all on hover…  */
+  .intro-reveal:hover > span:hover { color: var(--fg); }    /* …except the hovered */
+}
+
+/* floating blurred gradient streak set behind a phrase (decorative) */
+.io-fx {
+  position: relative;
+  display: inline-block;
+  width: var(--w, 2.6em);
+  height: 1em;
+  margin: 0 -0.08em;
+  vertical-align: -0.16em;
+  pointer-events: none;
+}
+.io-fx::before, .io-fx::after {
+  content: "";
+  position: absolute;
+  inset: 0.08em 0;
+  /* the angular clip-path mask (your .angular variant) — echoes the HUD bevels */
+  clip-path: polygon(8% 0, 100% 0, 92% 100%, 0 100%);
+  filter: blur(7px);
+  opacity: 0.82;
+  transform: translate(var(--x, 0), var(--y, 0)) rotate(var(--r, 0deg));
+}
+.io-fx::after { inset: 0.16em 0.18em; clip-path: polygon(10% 0, 100% 0, 86% 100%, 0 100%); filter: blur(14px); opacity: 0.34; }
+.io-fx--green::before { background: linear-gradient(90deg, var(--io-green-soft), var(--io-green)); }
+.io-fx--green::after  { background: var(--io-green); }
+.io-fx--warm::before  { background: linear-gradient(90deg, var(--io-orange), var(--io-cream), rgba(255,255,255,0.7)); }
+.io-fx--warm::after   { background: var(--io-orange); }
+.io-fx--mix::before   { background: linear-gradient(90deg, var(--io-orange), var(--io-cream) 48%, var(--io-green-soft) 68%, var(--io-green)); }
+.io-fx--mix::after    { background: linear-gradient(90deg, var(--io-orange), var(--io-green)); }
+
+/* frosted glass behind a word */
+.io-glass { position: relative; display: inline-block; padding: 0 0.08em; z-index: 1; }
+.io-glass::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: -0.08em; right: -0.08em; top: 0.08em; bottom: 0.02em;
+  border-radius: 0.22em;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* blue-grey inline links — the icon rides inline with the label */
+.io-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  color: #5f82a6;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(95, 130, 166, 0.32);
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.io-link:hover { color: #3f6594; border-bottom-color: rgba(63, 101, 148, 0.6); }
+.io-link svg { width: 0.82em; height: 0.82em; flex: none; }
