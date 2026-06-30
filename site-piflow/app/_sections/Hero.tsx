@@ -3,13 +3,13 @@
    ------------------------------------------------------------
    Hero — full-screen. Fills the viewport (no width container, no
    white frame): content sits directly on the grey field. The
-   engineering grid + morphing ink modules (components/FluidGrid)
-   own the right half; nav rides the top, the product title the
-   lower-left. Modular by design — FluidGrid and the coding panel
+   engineering grid + the PiFlow mark (components/LogoGrid) own the
+   right half; nav rides the top, the product title the lower-left.
+   Modular by design — LogoGrid and the coding panel
    (components/CodeEditor) live in their own files and drop back in
    with a single import.
    ============================================================ */
-import FluidGrid from "@/components/FluidGrid";
+import LogoGrid from "@/components/LogoGrid";
 import HoverGrid from "@/components/HoverGrid";
 import LearnMoreButton from "@/components/LearnMoreButton";
 import BrandPill from "@/components/BrandPill";
@@ -19,11 +19,11 @@ const GITHUB_URL = "https://github.com/blueif16/PiFlow";
 export default function Hero() {
   return (
     <section id="top" data-section="hero" className="relative min-h-svh w-full overflow-hidden">
-      {/* right-half grid + morphing modules (desktop) */}
-      <FluidGrid className="pointer-events-none absolute inset-y-0 right-0 z-0 hidden w-[56%] lg:block" />
+      {/* right-half grid + the PiFlow mark (desktop) */}
+      <LogoGrid className="pointer-events-none absolute inset-y-0 right-0 z-0 hidden w-[56%] lg:block" />
 
       {/* left-side hover field — the grid lights up under the cursor.
-          Scoped to the left 44% (complement of FluidGrid's right 56%) so
+          Scoped to the left 44% (complement of LogoGrid's right 56%) so
           the right half stays untouched. */}
       <HoverGrid className="pointer-events-none absolute inset-y-0 left-0 z-0 hidden w-[44%] lg:block" />
 

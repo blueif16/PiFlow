@@ -13,6 +13,9 @@
      containers (cards/panels) that float on top, exactly like the reference. */
   --canvas: #f1f1f3;                /* grey field — the page floor */
   --canvas-soft: #e9e9ec;           /* a touch greyer — sunken bands / wells */
+  --node-ground: #ededed;           /* studio grey baked into the node tiles —
+                                       the card surface matches it so the art
+                                       reads as the card itself, not a rectangle */
 
   /* Foreground — Geist ink ladder, never pure #000 */
   --fg: #171717;                    /* ink — primary text */
@@ -275,6 +278,30 @@ body {
 .iso-glow { filter: drop-shadow(0 0 7px var(--accent-30)) drop-shadow(0 0 2px var(--accent-60)); }
 
 /* ============================================================
+   Node illustration — the per-card art. The card background is set
+   (per node, --card-ground) to that tile's OWN sampled studio grey,
+   so the object and its ground are one inseparable surface — no
+   rectangle, no edge. At rest the art is fully GREY; the orange
+   BLOOMS when the card (its .group) is hovered or keyboard-focused,
+   so only the active node carries the spark. No mask, no contrast
+   shift — the rest-state grey must equal --card-ground exactly, or a
+   seam reappears. Guarded to hover-capable pointers: touch shows full
+   colour, since there is no hover to bloom it.
+   ============================================================ */
+@media (hover: hover) and (pointer: fine) {
+  .node-art {
+    filter: grayscale(1);
+    transition: filter 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .group:hover .node-art,
+  .group:focus-within .node-art {
+    filter: grayscale(0) saturate(1.06);
+    transform: scale(1.015);
+  }
+}
+
+/* ============================================================
    Buttons — the action system. PRIMARY is ink (grey/black/white),
    never orange; SECONDARY is a hairline ghost. Orange stays
    rationed to marks & status, so the page reads grey & white.
@@ -364,6 +391,35 @@ body {
 }
 .hud-corner--tl { top: 10px; left: 10px; border-right: none; border-bottom: none; }
 .hud-corner--br { bottom: 10px; right: 10px; border-left: none; border-top: none; }
+
+/* Node hover cursor — the custom angular grid-box (NodeCursor) replaces the
+   native pointer over a node card, but ONLY once it's actually live (the JS
+   adds .node-cursor-active on fine-pointer, motion-safe desktop). Without
+   that class the cards keep cursor:pointer, so touch / reduced-motion / no-JS
+   never lose a cursor. */
+.node-cursor-active [data-node-trigger] { cursor: none; }
+
+/* ============================================================
+   View Transitions — gallery (#agents cards) ⇄ /product/[id].
+   The App Router wraps navigations in the View Transitions API
+   (experimental.viewTransition); the shared `node-<id>` name morphs
+   the card title into the detail page while the rest cross-fades.
+   We only retune the timing; under reduced motion the nav is an
+   instant cut (no animated transition).
+   ============================================================ */
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-group(*) {
+    animation-duration: 460ms;
+    animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
 
 /* ============================================================
    Motif — recolor an external SVG via alpha-mask + tint bg, then
@@ -470,7 +526,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .aurora, .flow, .blur-in, .caret, .station-glow { animation: none !important; }
-  .exp-card, .lift { transition: none !important; }
+  .exp-card, .lift, .node-art { transition: none !important; }
 }
 
 /* ============================================================

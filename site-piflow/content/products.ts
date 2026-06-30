@@ -163,10 +163,75 @@ const WORKFLOW: ProductCard[] = [
   soon("wf-soon"),
 ];
 
-const MEMORY: ProductCard[] = [soon("mem-1"), soon("mem-2")];
+const MEMORY: ProductCard[] = [
+  {
+    id: "lessons",
+    title: "Lessons",
+    keywords: ["Hermes-style", "Git-backed"],
+    summary: "Self-correcting memory that records what changed, and why.",
+    details: {
+      lead: "Every node and workflow keeps a Hermes-style memory it writes as it works — backed by a git-supported main collection that records the exact update history of every lesson.",
+      points: [
+        "Hermes-style lessons, captured while the agent runs.",
+        "A git-supported main memory collection records the exact update history.",
+        "A memory.md per node and per workflow.",
+        "Past corrections become durable guidance for the next run.",
+      ],
+    },
+  },
+  {
+    id: "functionality",
+    title: "Functionality",
+    keywords: ["Code graph", "Sliced"],
+    summary: "A code graph that maps how each node gets its work done.",
+    details: {
+      lead: "An optional, built-in open code graph indexes the codebase and maintains a slicing of function records, so every node carries an exact understanding of how its functionality is achieved.",
+      points: [
+        "Optional built-in open code graph.",
+        "Base indexing across the codebase.",
+        "Maintains a slicing of function records.",
+        "A code-map.md per node records every slice it covers.",
+      ],
+    },
+  },
+];
 
 export const PRODUCTS: ProductPanel[] = [
   { key: "agents", name: "Agents", layer: "P1", cards: AGENTS },
   { key: "workflow", name: "Workflow", layer: "P2", cards: WORKFLOW },
   { key: "memory", name: "Memory", layer: "P3", cards: MEMORY },
 ];
+
+/* ---- lookups (shared by the gallery + the /product/[id] detail route) ---- */
+
+/** Find a card and the panel it lives in, by id. */
+export function findCard(
+  id: string,
+): { card: ProductCard; panel: ProductPanel } | undefined {
+  for (const panel of PRODUCTS) {
+    const card = panel.cards.find((c) => c.id === id);
+    if (card) return { card, panel };
+  }
+  return undefined;
+}
+
+/** Every real (clickable, non-placeholder) card id — drives static params. */
+export function clickableCardIds(): string[] {
+  return PRODUCTS.flatMap((p) =>
+    p.cards.filter((c) => !c.comingSoon).map((c) => c.id),
+  );
+}
+
+/** The next clickable node id in order, wrapping around at the end. */
+export function nextCardId(id: string): string {
+  const ids = clickableCardIds();
+  const i = ids.indexOf(id);
+  return ids[(i + 1) % ids.length] ?? id;
+}
+
+/** The previous clickable node id in order, wrapping around at the start. */
+export function prevCardId(id: string): string {
+  const ids = clickableCardIds();
+  const i = ids.indexOf(id);
+  return ids[(i - 1 + ids.length) % ids.length] ?? id;
+}

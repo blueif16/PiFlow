@@ -8,8 +8,8 @@ const COLS = [
     links: [
       { label: "Overview", href: "#top" },
       { label: "Product", href: "#agents" },
-      { label: "Formats", href: "#layers" },
       { label: "Get started", href: "#start" },
+      { label: "Formats", href: "#layers" },
     ],
   },
   {
