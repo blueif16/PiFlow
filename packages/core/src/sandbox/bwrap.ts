@@ -55,7 +55,7 @@
 import { spawnSync } from 'node:child_process';
 import fsSync from 'node:fs';
 import path from 'node:path';
-import { computeScopeRoots, homeDir, tmpDir } from './scope.js';
+import { computeScopeRoots, homeDir } from './scope.js';
 
 // ── platform + availability gating ─────────────────────────────────────────────────────────────────
 
@@ -98,7 +98,13 @@ function probeBwrapOnPath(): boolean {
  */
 function probeBwrapUsable(): boolean {
   if (!probeBwrapOnPath()) return false;
-  const r = spawnSync('bwrap', ['--ro-bind', '/usr', '/usr', '--proc', '/proc', '--dev', '/dev', 'true'], {
+  // Bind the WHOLE root read-only, not just /usr: this is a pure CAPABILITY probe ("can an unprivileged
+  // user namespace be built here"), so it must NOT depend on a node-CLI-shaped filesystem. On a merged-usr
+  // distro (Debian/Fedora) binding ONLY /usr leaves the ELF loader (/lib64 + the /lib symlink chain)
+  // unreachable, so `true` aborts with `execvp ... No such file or directory` (exit 1) even though the
+  // namespace built fine — a FALSE NEGATIVE that silently drops `--sandbox local` to UNSANDBOXED. `--ro-bind
+  // / /` exposes the loader on every distro and is the distro-agnostic check (verified exit 0 on E2B Debian).
+  const r = spawnSync('bwrap', ['--ro-bind', '/', '/', '--proc', '/proc', '--dev', '/dev', 'true'], {
     stdio: 'ignore',
     timeout: 5000,
   });
@@ -192,23 +198,25 @@ function existing(paths: string[]): string[] {
  * Build the bwrap argv for ONE command from the shared scope policy — the PURE construction, factored
  * out so it is unit-testable on ANY platform WITHOUT a real `bwrap` (the tests call this directly). The
  * resulting argv, prefixed by `bwrap`, runs `<cmd>` in a mount namespace whose ONLY contents are:
+ *   - a private in-memory /tmp (host /tmp stays hidden),
  *   - the system read roots + the computed read-roots (toolchain + readScope), bound READ-ONLY,
- *   - the computed write-roots (workdir + writeScope/owns) + the home-scratch + a private /tmp, bound RW,
+ *   - the computed write-roots (workdir + writeScope/owns) + the home-scratch, bound RW,
  *   - a fresh /proc and /dev,
  * with `--chdir <cwd>` and `--die-with-parent`. NO `--unshare-net` (network stays on) and NO process-exec
  * restriction — `sh -c <cmd>` runs with the host's network + exec, only the filesystem is bounded.
  *
- * Bind ORDER matters (bwrap applies ops left-to-right, later overlays earlier): we bind the broad system
- * read roots FIRST, then the rw scope on top (so a writable root nested under a ro system path stays
- * writable), then /tmp and /proc and /dev last. The `cwd` is included as a read root so a node may exec
- * in a workdir subdir even if the caller passes a cwd outside the literal workdir.
+ * Bind ORDER matters (bwrap applies ops left-to-right, later overlays earlier): we lay down the `--tmpfs
+ * /tmp` FIRST (so a write lane nested under /tmp overlays it and survives, instead of being overmounted),
+ * then the broad system read roots, then the rw scope ON TOP (so a writable root nested under a ro system
+ * path stays writable), then /proc and /dev. The bare host /tmp mountpoint is NEVER bound — the writable
+ * /tmp is the tmpfs. The `cwd` is included as a read root so a node may exec in a workdir subdir even if
+ * the caller passes a cwd outside the literal workdir.
  */
 export function buildBwrapArgs(
   cmd: string,
   opts: { workdir: string; readScope: string[]; writeScope?: string[] },
 ): string[] {
   const { readRoots, writeRoots } = computeScopeRoots(opts);
-  const tmp = tmpDir();
 
   // READ-ONLY binds: the system baseline + the toolchain/readScope roots. Filter to existing paths and
   // EXCLUDE any path that is also a write root (a path bound rw must not be re-bound ro afterward, which
@@ -216,20 +224,28 @@ export function buildBwrapArgs(
   const writeSet = new Set(writeRoots);
   const roReadRoots = existing([...SYSTEM_READ_ROOTS, ...readRoots]).filter((p) => !writeSet.has(p));
 
-  // READ-WRITE binds: the node's write lane (workdir + owns) + the home-scratch + $TMPDIR. Filter to
-  // existing host paths (a writeScope dir is created by the sandbox, but a home-scratch dir like ~/.nvm
-  // may be absent on a given box).
-  const rwRoots = existing([...writeRoots, ...homeScratchRoots(), tmp]);
+  // READ-WRITE binds: the node's write lane (workdir + owns) + the home-scratch. DELIBERATELY NOT $TMPDIR
+  // (the `tmp`/tmpDir() value): on Linux that is the bare `/tmp` mountpoint, and binding it is both
+  // pointless (the `--tmpfs /tmp` below overmounts it) and harmful (it would shadow any write lane nested
+  // UNDER /tmp). The private writable /tmp comes from `--tmpfs /tmp`, not from binding host /tmp. Filter to
+  // existing host paths (a writeScope dir is created by the sandbox, but a home-scratch dir like ~/.nvm may
+  // be absent on a given box).
+  const rwRoots = existing([...writeRoots, ...homeScratchRoots()]);
 
   const argv: string[] = [];
+  // A private in-memory /tmp (host /tmp stays hidden), emitted BEFORE the binds so a write lane nested
+  // under /tmp (e.g. a workdir under /tmp) OVERLAYS the fresh tmpfs and survives — bwrap applies ops
+  // left-to-right and a later bind overlays the earlier tmpfs. (If /tmp were tmpfs'd AFTER the binds it
+  // would overmount them → `bwrap: Can't chdir … No such file or directory`.)
+  argv.push('--tmpfs', '/tmp');
   // System + scope reads, read-only. DEST == SRC (identity mount) so absolute paths inside the namespace
   // match the host — the command sees the same paths it would unsandboxed, just narrowed to these.
   for (const p of roReadRoots) argv.push('--ro-bind', p, p);
   // The node's write lane + scratch, read-write. Bound AFTER the ro roots so a writable child of a ro
-  // parent (e.g. a workdir under a ro-bound repo root) wins.
+  // parent (e.g. a workdir under a ro-bound repo root) wins — and after the /tmp tmpfs so an under-/tmp
+  // lane survives.
   for (const p of rwRoots) argv.push('--bind', p, p);
-  // A private in-memory /tmp (host /tmp stays hidden); a fresh procfs + minimal devfs the toolchain needs.
-  argv.push('--tmpfs', '/tmp');
+  // A fresh procfs + minimal devfs the toolchain needs (independent mountpoints; position is fine here).
   argv.push('--proc', '/proc');
   argv.push('--dev', '/dev');
   // cd into the working dir inside the namespace, and tie the sandbox lifetime to the runner.
