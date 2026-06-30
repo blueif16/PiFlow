@@ -99,14 +99,24 @@ describe('runWorkflow — end-to-end on InMemorySandboxProvider (no live pi)', (
 
     const outDir = await tmpOut();
     // Observe concurrency: wrap the default exec runner, tracking how many execs are in flight at once.
+    // Each parallel lane BLOCKS until both lanes have entered, so they are provably in-flight together —
+    // a deterministic barrier, not a fixed-ms overlap window (that raced and intermittently saw 1 on a
+    // loaded CI runner). The timeout is only a safety ceiling: a real SERIAL regression still resolves
+    // with maxInFlight === 1 and fails the assertion below — it never hangs and never false-passes.
+    const PARALLEL_LANES = 2;
     let inFlight = 0;
     let maxInFlight = 0;
+    let entered = 0;
+    let bothEntered!: () => void;
+    const allLanesIn = new Promise<void>((resolve) => {
+      bothEntered = resolve;
+    });
     const tracking: ExecRunner = async (sandbox, cmd, opts) => {
       inFlight++;
       maxInFlight = Math.max(maxInFlight, inFlight);
+      if (++entered >= PARALLEL_LANES) bothEntered();
       try {
-        // a tick of overlap so the two parallel-lane execs are both counted in-flight
-        await new Promise((r) => setTimeout(r, 5));
+        await Promise.race([allLanesIn, new Promise((r) => setTimeout(r, 2000))]);
         return await defaultExecRunner(sandbox, cmd, opts);
       } finally {
         inFlight--;
