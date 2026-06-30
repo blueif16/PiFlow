@@ -1,141 +1,54 @@
 "use client";
 
 /* ============================================================
-   SnapPages — one-gesture snap-paging for the lower full-screen
-   pages (#layers → #start), so the 2→3→4 journey reads as one
-   smooth paged flow. The product section (#agents / ProductScreens)
-   owns its own pinned panel paging and the eased handoff INTO
-   #layers; this picks up there:
-     · within #layers/#start, ONE scroll gesture eases (power3) to
-       the next/prev whole page — the same feel as the panels above;
-     · at the TOP edge (#layers, gesture up) it hands back UP into
-       the product section (its onEnterBack lands the last panel);
-     · at the BOTTOM edge (#start, gesture down) it releases to the
-       footer (native flow resumes).
-   A ScrollTrigger gates the Observer so it's live ONLY inside the
-   #layers..#start band — outside it, ProductScreens' Observer (or
-   native scroll) is in control; the two never run at once.
-   Desktop + motion-safe only; everything else scrolls natively.
-   Mirrors the proven guards in ProductScreens (lock + animating).
+   SnapPages — the GSAP snap for the ONE demo→composition edge.
+   ------------------------------------------------------------
+   ProductScreens (#agents) pins + Observer-pages internally and
+   eases DOWN into #start (the demo). From there #start → #layers
+   was plain native scroll, which read as BROKEN against the paged
+   feel above. This wires that edge with a ScrollTrigger SNAP:
+     · while #start fills the viewport, a settled scroll snaps to
+       whichever end is next in the scroll DIRECTION — a downward
+       flick lands cleanly on the composition first-frame, an upward
+       flick returns to the demo;
+     · the snap range ENDS exactly at #layers top, so once you're in
+       #layers the ComposeOutro morph scrubs natively — the two
+       ScrollTriggers share only that single boundary, never overlap.
+   NON-hijacking (no preventDefault / Observer): the GUI demo iframe
+   stays fully interactive — the page only snaps once you actually
+   scroll it past the demo. Desktop + motion-safe only; everything
+   else scrolls natively.
    ============================================================ */
 
 import { useEffect } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Observer } from "gsap/Observer";
-import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 
-gsap.registerPlugin(ScrollTrigger, Observer, ScrollToPlugin);
-
-const PAGES = ["#layers", "#start"];
+gsap.registerPlugin(ScrollTrigger);
 
 export default function SnapPages() {
   useEffect(() => {
     const mm = gsap.matchMedia();
 
     mm.add("(min-width: 1024px) and (prefers-reduced-motion: no-preference)", () => {
-      const els = PAGES.map((s) => document.querySelector<HTMLElement>(s)).filter(
-        (e): e is HTMLElement => !!e,
-      );
-      if (els.length < 2) return;
+      const start = document.querySelector<HTMLElement>("#start");
+      const layers = document.querySelector<HTMLElement>("#layers");
+      if (!start || !layers) return;
 
-      let index = 0;
-      let animating = false;
-      let lockUntil = 0; // swallow the momentum that carried us into the band
-      const blocked = () => animating || performance.now() < lockUntil;
-
-      // Sudden, eased jump to a whole page — the panel-jump feel from above.
-      const goTo = (i: number) => {
-        animating = true;
-        index = i;
-        gsap.to(window, {
-          scrollTo: { y: els[i], offsetY: 0 },
-          duration: 0.7,
-          ease: "power3.inOut",
-          overwrite: true,
-          onComplete: () => {
-            animating = false;
-            // swallow trailing trackpad momentum so ONE flick = ONE page
-            lockUntil = performance.now() + 420;
-          },
-        });
-      };
-
-      // TOP edge: hand back up into the pinned product section. Land exactly
-      // one viewport above #layers — the product pin's EXIT point (the same
-      // spot the down-handoff left from), so its onEnterBack re-enters on the
-      // last panel and up feels like the mirror of down.
-      const leaveUp = () => {
-        animating = true;
-        obs.disable();
-        const y = Math.max(0, els[0].offsetTop - window.innerHeight);
-        gsap.to(window, {
-          scrollTo: y,
-          duration: 0.6,
-          ease: "power2.inOut",
-          onComplete: () => {
-            animating = false;
-          },
-        });
-      };
-
-      // BOTTOM edge: release to the footer; native scrolling resumes.
-      const leaveDown = () => {
-        animating = true;
-        obs.disable();
-        const last = els[els.length - 1];
-        gsap.to(window, {
-          scrollTo: last.offsetTop + last.offsetHeight,
-          duration: 0.6,
-          ease: "power2.inOut",
-          onComplete: () => {
-            animating = false;
-          },
-        });
-      };
-
-      const obs = Observer.create({
-        target: window,
-        type: "wheel,touch",
-        wheelSpeed: -1,
-        tolerance: 10,
-        preventDefault: true,
-        onUp: () => {
-          // scrolling DOWN the page → advance, or release to the footer
-          if (blocked()) return;
-          index < els.length - 1 ? goTo(index + 1) : leaveDown();
-        },
-        onDown: () => {
-          // scrolling UP the page → go back, or hand to the product section
-          if (blocked()) return;
-          index > 0 ? goTo(index - 1) : leaveUp();
-        },
-      });
-      obs.disable();
-
-      const enter = (i: number) => {
-        index = i;
-        lockUntil = performance.now() + 450;
-        animating = false;
-        obs.enable();
-      };
-
-      // Gate: the Observer is live only across the #layers..#start band.
       const st = ScrollTrigger.create({
-        trigger: els[0],
-        start: "top top+=2",
-        endTrigger: els[els.length - 1],
-        end: "bottom bottom-=2",
-        onEnter: () => enter(0), // arrived scrolling down at #layers
-        onEnterBack: () => enter(els.length - 1), // came up from the footer at #start
-        onLeave: () => obs.disable(), // past #start → footer
-        onLeaveBack: () => obs.disable(), // above #layers → product section
+        trigger: start,
+        start: "top top",
+        end: "bottom top", // ends at #layers top — hands off to the morph scrub
+        snap: {
+          snapTo: [0, 1], // the demo (0) or the composition first-frame (1)
+          directional: true, // a flick settles to the next page in that direction
+          duration: { min: 0.3, max: 0.7 },
+          delay: 0.08, // let trackpad momentum die before settling
+          ease: "power3.inOut", // same eased feel as the panel jumps above
+        },
       });
 
-      return () => {
-        obs.kill();
-        st.kill();
-      };
+      return () => st.kill();
     });
 
     return () => mm.revert();

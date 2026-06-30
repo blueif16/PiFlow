@@ -2,30 +2,32 @@
    Landing page — section order & our shared names (data-section):
      1. Hero               #top     data-section="hero"          <Hero/>
      2. Function page      #agents  data-section="function"      <ProductScreens/>  (Agent · Workflow · Memory)
-     3. Composition page   #layers  data-section="composition"   <LayerCards/>      (@SDK · @CLI · @Skills)
-     4. Presentation/demo  #start   data-section="presentation"  <CTA/>             (GUI / TUI showcase — file still named CTA.tsx)
-     +  Footer
+     3. Presentation/demo  #start   data-section="presentation"  <CTA/>             (GUI / TUI showcase — file still named CTA.tsx)
+     4. Compose → About    #layers  data-section="outro"         <ComposeOutro/>    (formats cells DISSOLVE → personal intro + footer, one scrubbed morph)
+   Scroll handoff down the page: ProductScreens (#agents) pins +
+   Observer-pages, then eases DOWN into #start; a ScrollTrigger SNAP
+   (components/SnapPages) carries the #start → #layers demo→composition
+   edge; #layers is then a scroll-scrubbed morph (composition → intro)
+   that ALSO absorbs the page footer beneath its drawn-out divider.
    ============================================================ */
 import Hero from "./_sections/Hero";
 import ProductScreens from "./_sections/ProductScreens";
-import LayerCards from "./_sections/LayerCards";
 import CTA from "./_sections/CTA";
-import Footer from "./_sections/Footer";
+import ComposeOutro from "./_sections/ComposeOutro";
 import SnapPages from "@/components/SnapPages";
 
 export default function Home() {
   return (
     <>
       <div className="grain" aria-hidden />
-      {/* one-gesture snap-paging across the lower full-screen pages (3 → 4) */}
+      {/* GSAP snap for the demo→composition (#start → #layers) edge */}
       <SnapPages />
       <main>
         <Hero />
         <ProductScreens />
-        <LayerCards />
         <CTA />
+        <ComposeOutro />
       </main>
-      <Footer />
     </>
   );
 }
