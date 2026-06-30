@@ -4,7 +4,7 @@
  * The GUI talks to a Vite dev middleware over `/__piflow/*` endpoints (index, run-view,
  * stream, tree, agents, node-config, control, …). In the published static demo THERE IS
  * NO SERVER, so this module answers those calls from data bundled into the build at
- * `demo/data/**` — making the demo 100% static (zero network calls to `/__piflow/*`).
+ * `site-piflow/demo-data/**` — making the demo 100% static (zero network calls to `/__piflow/*`).
  *
  * It MUST be imported FIRST in `main.tsx` (before any React/component module), because it
  * patches the two browser primitives the data layer uses — `window.fetch` (runIndex,
@@ -23,17 +23,19 @@
  *   - everything NOT /__piflow/...       → the real fetch (e.g. the asset/font requests).
  *
  * Refresh: re-capture from the live dev server and re-run `npm run build:demo`
- * (see demo/data/README).
+ * (see site-piflow/demo-data/README).
  */
 
-// Eagerly bundle every JSON under demo/data/** — `eager` + `import: "default"` inlines the
-// parsed objects into the build, so there is no runtime fetch to disk. Keys are paths
-// relative to THIS file, e.g. "./data/run-view/gs01.json".
-const dataModules = import.meta.glob<unknown>("./data/**/*.json", { eager: true, import: "default" });
+// Eagerly bundle every JSON under the site's demo-data/** — `eager` + `import: "default"`
+// inlines the parsed objects into the build, so there is no runtime fetch to disk. The data
+// LIVES IN THE SITE (`site-piflow/demo-data/`, it exists only to power the marketing demo);
+// Vite bundles this cross-package import fine. Keys are paths relative to THIS file, e.g.
+// "../../site-piflow/demo-data/run-view/demo-fusion.json".
+const dataModules = import.meta.glob<unknown>("../../site-piflow/demo-data/**/*.json", { eager: true, import: "default" });
 
-/** Look a bundled file up by its `demo/data`-relative path (e.g. "run-view/gs01.json"). */
+/** Look a bundled file up by its `demo-data`-relative path (e.g. "run-view/demo-fusion.json"). */
 function bundled(rel: string): unknown | undefined {
-  return dataModules[`./data/${rel}`];
+  return dataModules[`../../site-piflow/demo-data/${rel}`];
 }
 
 /** A 200 JSON Response from a plain object (mirrors the dev middleware's `sendJson`). */

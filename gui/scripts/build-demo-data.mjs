@@ -1,7 +1,8 @@
 // build-demo-data.mjs — capture the CURATED set of example runs into the static-demo bundle.
 //
 // The marketing site's `/gui-demo/` is a pure-frontend build (no server): `gui/demo/demoFetch.ts`
-// answers the GUI's `/__piflow/*` calls from JSON bundled under `gui/demo/data/**`. This script
+// answers the GUI's `/__piflow/*` calls from JSON bundled under `site-piflow/demo-data/**` (the data
+// lives in the SITE, since it exists only to power the marketing demo). This script
 // (re)generates that bundle for a HAND-PICKED list of light, on-brand example runs, distilling each
 // the EXACT way the live dev middleware does — `buildSnapshot` for the index rows + `buildRunView`
 // for the per-run view + the same fs walk for the file tree — so the demo never drifts from the
@@ -28,7 +29,7 @@ const FEATURED = [
 ];
 
 const PRODUCT_ID = "piflow";
-const OUT = path.resolve(REPO, "gui/demo/data");
+const OUT = path.resolve(REPO, "site-piflow/demo-data");
 const CORE = path.resolve(REPO, "packages/core/dist/observe/index.js");
 
 // The live `/__piflow/tree/<run>` walk, replicated 1:1 (gui/vite.config.ts piflowTree) so a leaf's id

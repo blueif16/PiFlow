@@ -1,9 +1,10 @@
 # Demo data (static flowmap demo)
 
 Bundled JSON that powers the pure-frontend demo built by `npm run build:demo` and served
-from the marketing site at `/gui-demo/`. At runtime there is NO server — `demo/demoFetch.ts`
+from the marketing site at `/gui-demo/`. At runtime there is NO server — `gui/demo/demoFetch.ts`
 answers the GUI's `/__piflow/*` calls from these files (inlined into the build via
-`import.meta.glob({ eager: true })`), so the demo makes zero network calls to `/__piflow/*`.
+`import.meta.glob({ eager: true })` over `site-piflow/demo-data/**`), so the demo makes zero
+network calls to `/__piflow/*`.
 
 ## Contents
 - `index.json` — the trimmed global index (the featured runs). The LAST thread is the default
