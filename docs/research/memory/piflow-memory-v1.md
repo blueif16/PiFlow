@@ -146,7 +146,10 @@ understand — and sometimes fix — that code. Two parts, handled separately:
 
 **5b. Understanding = `code-map.md`, always OKF-standard; resolution scales with codegraph.** *How the
 project code in the node's scope actually works* — what the components do, the seams, their contracts,
-the non-obvious gotchas. The **OKF format is the constant (always on, ~free); the codegraph is the one
+the non-obvious gotchas.
+> **→ Designed in depth (2026-06-30) in `code-understanding-and-anti-drift.md`:** the function/vertical
+> LIFECYCLE slice (def→derive→consume→observe→render, not the per-node stub), the internal deterministic
+> ANTI-DRIFT cascade, and the experiment backlog. Read that for Leg B; this §5b is the original framing. The **OKF format is the constant (always on, ~free); the codegraph is the one
 opt-in that scales the resolution** — slice cardinality 1→N, a structural anchor, and a global
 functionality index. Two tiers, one reader:
 

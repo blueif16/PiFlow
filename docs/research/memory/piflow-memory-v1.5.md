@@ -348,6 +348,9 @@ here, NOT a second catalog.** Each file under `docs/research/memory/` is referen
 its finding is used):
 - **Prior canon (the substrate this builds on):** `piflow-memory-v1.md` (the two legs + the §2 scaffold, SHIPPED)
   · `harvested-practices.md` (the Hermes / RondoFlow / ADK harvest + the four-memory framing).
+- **Leg B — code understanding (world/code), the loop's code-context input:** `code-understanding-and-anti-drift.md`
+  (the function/vertical lifecycle slice + the internal anti-drift cascade + the experiment backlog; supersedes
+  `v1 §5b`'s design depth) · `anti-drift-sota-2026-06-30.md` (the SOTA survey grounding that cascade).
 - **The scoring cascade (§4):** `eval-llm-judge-reliability-2026-06.md` · `eval-trajectory-process-scoring-2026-06.md`
   · `eval-visual-perceptual-quality-2026-06.md`.
 - **The overlord + its SOTA additions (§6):** `skillopt-sleep-loop-control-2026-06-29.md` (the loop-control
