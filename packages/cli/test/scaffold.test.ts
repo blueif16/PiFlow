@@ -127,6 +127,84 @@ describe('scaffold — emit a template the real loadTemplate accepts', () => {
   });
 });
 
+// (G6) `--agent-type <id>` binds a BASE AGENT preset (~/.piflow/agents/<id>.md) into the node via the REAL
+// `mergePreset` (no re-implementation) — drift-free. It folds ONLY node.json-resident config: tools.allow
+// (preset base UNION the explicit --tool), tools.deny (preset ∪ --deny, deny wins), prompt.skill (--skill
+// wins, else the preset's first skill), and the agentType LABEL (which observe → the GUI key the icon off).
+// It NEVER writes prompt.md (the role-prompt stays the author's). These tests use the REAL catalog under
+// ~/.piflow/agents/ (the six base agents ship there) and the REAL loadTemplate, so a dropped fold reddens.
+describe('scaffold — --agent-type binds a base agent preset (mergePreset, observable label)', () => {
+  it('folds the preset tools + skill + agentType LABEL and round-trips through loadTemplate', async () => {
+    await scaffoldNew(DIR, { name: 'mr', description: 'market-research lane' });
+    // Only the id + the preset — no --tool/--skill: every tool + the skill come FROM the preset.
+    await runAddNodeCli([DIR, '--id', 'research', '--artifact', 'brief.md', '--agent-type', 'market-research']);
+    await writeProse('research');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'research', 'node.json'));
+    // Item 1 — the preset's four tools + its skill + the branding label, all on node.json.
+    expect(node.tools.allow).toEqual(
+      expect.arrayContaining(['fs:read', 'fs:write', 'oc.firecrawl:firecrawl_search', 'oc.tavily:tavily_search']),
+    );
+    expect(node.prompt.skill).toBe('multi-source-research');
+    expect(node.agentType).toBe('market-research');
+
+    // Item 5 — the emitted node.json is engine-valid: the REAL loadTemplate accepts it AND carries the
+    // agentType label onto the compiled intent (observe reads it from there). Throws on any §8 violation.
+    const spec = await loadTemplate(DIR);
+    const research = spec.nodes.find((n) => n.label === 'research')!;
+    expect(research.agentType).toBe('market-research');
+  });
+
+  it('composes additively with an explicit --tool (union, no dupes) and --skill wins over the preset', async () => {
+    await scaffoldNew(DIR, { name: 'mr', description: 'compose' });
+    await runAddNodeCli([
+      DIR,
+      '--id', 'research',
+      '--artifact', 'brief.md',
+      '--agent-type', 'market-research',
+      '--tool', 'mcp.apollo:search', // an ADDED tool on top of the preset's four
+      '--tool', 'fs:read',           // a DUP of a preset tool — must not double
+      '--skill', 'my-own-skill',     // explicit --skill WINS over the preset's multi-source-research
+    ]);
+    await writeProse('research');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'research', 'node.json'));
+    // Item 2 — all four preset tools AND the added one; the dup collapses (set semantics in mergePreset).
+    expect(node.tools.allow).toEqual(
+      expect.arrayContaining([
+        'fs:read', 'fs:write', 'oc.firecrawl:firecrawl_search', 'oc.tavily:tavily_search', 'mcp.apollo:search',
+      ]),
+    );
+    expect(node.tools.allow.filter((t: string) => t === 'fs:read')).toHaveLength(1); // no dupe
+    expect(node.prompt.skill).toBe('my-own-skill'); // node wins
+    expect(node.agentType).toBe('market-research');
+    await expect(loadTemplate(DIR)).resolves.toBeDefined();
+  });
+
+  it('an unknown preset id THROWS (non-zero) and writes NO node.json', async () => {
+    await scaffoldNew(DIR, { name: 'x', description: 'd' });
+    // Item 3 — the scaffolder never invents a preset; the unknown id is fail-closed.
+    await expect(
+      runAddNodeCli([DIR, '--id', 'research', '--artifact', 'brief.md', '--agent-type', 'does-not-exist']),
+    ).rejects.toThrow(/unknown agent preset/);
+    // No node.json written — the throw precedes the write (buildNode throws before scaffoldAddNode's fs.writeFile).
+    await expect(fs.access(path.join(DIR, 'nodes', 'research', 'node.json'))).rejects.toThrow();
+  });
+
+  it('re-stamping a node that has a prompt.md with --agent-type leaves the prose UNTOUCHED', async () => {
+    await scaffoldNew(DIR, { name: 'x', description: 'd' });
+    await scaffoldAddNode(DIR, { id: 'research', artifacts: ['brief.md'] });
+    // Item 4 — the author wrote the prose (role-prompt + task); re-stamping with the preset must not clobber it.
+    const promptPath = path.join(DIR, 'nodes', 'research', 'prompt.md');
+    await fs.writeFile(promptPath, 'ROLE PROMPT + my task');
+    await runAddNodeCli([DIR, '--id', 'research', '--artifact', 'brief.md', '--agent-type', 'market-research']);
+
+    const node = await readJson(path.join(DIR, 'nodes', 'research', 'node.json'));
+    expect(node.agentType).toBe('market-research'); // config: re-stamped.
+    expect(await fs.readFile(promptPath, 'utf8')).toBe('ROLE PROMPT + my task'); // prose: untouched.
+  });
+});
+
 // The scaffolder emits the CANONICAL `op[]` envelope for the derive hooks (seed/project/merge/promote/
 // registryProject) — NOT the deprecated `hooks` alias — because authoring `op[]` short-circuits the loader's
 // alias-lowering (lower.ts:48 — `if (def.op) return def.op`). `op[]` is the SOLE derive rep (the legacy

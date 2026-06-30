@@ -13,6 +13,8 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { loadAgentPreset, mergePreset } from '@piflow/core';
+import type { PresetMergeable } from '@piflow/core';
 
 /** A `--mcp name=url` server entry → the `node.json` `mcp.servers` value (http transport inferred). */
 export type McpServers = Record<string, { transport: string; url: string }>;
@@ -83,6 +85,11 @@ export interface NodeOpts {
   schema?: string;
   /** Optional SKILL.md pointer inlined into the realized prompt. */
   skill?: string;
+  /** (G6) Adopt a base agent PRESET (`~/.piflow/agents/<id>.md`): folds its tools+skill+agentType LABEL
+   *  into this node via the real `mergePreset` (preset base UNION the explicit `--tool`; `--deny` + the
+   *  preset's deny both apply, deny wins; explicit `--skill` wins). NEVER touches prompt.md (the role-prompt
+   *  stays the author's to prepend). An unknown id THROWS — the scaffolder never invents a preset. */
+  agentType?: string;
   /** Prompt body file, node-folder-relative (default: 'prompt.md'). */
   promptFile?: string;
   /** Post-checks over produced artifacts. */
@@ -120,6 +127,37 @@ export function buildMeta(dir: string, opts: NewOpts): Record<string, unknown> {
  * alone, and includes each optional block ONLY when its flag was given (so the file stays minimal).
  */
 export function buildNode(opts: NodeOpts): Record<string, unknown> {
+  // (G6) Resolve the agent-PRESET binding FIRST so the rest of the builder emits the FOLDED config. The
+  // preset folds ONLY node.json-resident config (tools.allow/deny, prompt.skill, the agentType LABEL) via
+  // the REAL `mergePreset` (drift-free) — it NEVER writes prompt.md (the role-prompt stays the author's to
+  // prepend; `runAddNodeCli` prints the one-line note). An unknown id THROWS — never an invented preset.
+  let tools = opts.tools;
+  let deny = opts.deny;
+  let skill = opts.skill;
+  let agentType = opts.agentType;
+  if (opts.agentType) {
+    const preset = loadAgentPreset(opts.agentType);
+    if (!preset) {
+      throw new Error(
+        `piflowctl: unknown agent preset "${opts.agentType}" (no ~/.piflow/agents/${opts.agentType}.md)`,
+      );
+    }
+    // mergePreset operates on the MERGEABLE subset; pass the node's tools/skill so the union/deny-wins/
+    // node-skill-wins rules run in ONE place (core). `prompt: ''` is a throwaway — we discard the merged
+    // role+task prompt because prompt.md is never the scaffolder's to write.
+    const mergeable: PresetMergeable = {
+      prompt: '',
+      ...(opts.skill !== undefined ? { skill: opts.skill } : {}),
+      ...(opts.tools?.length || opts.deny?.length
+        ? { tools: { ...(opts.tools?.length ? { allow: opts.tools } : {}), ...(opts.deny?.length ? { deny: opts.deny } : {}) } }
+        : {}),
+    };
+    const merged = mergePreset(preset, mergeable);
+    tools = merged.tools?.allow;
+    deny = merged.tools?.deny;
+    skill = merged.skill;
+    agentType = merged.agentType;
+  }
   const node: Record<string, unknown> = {
     id: opts.id,
     phase: opts.phase ?? opts.id,
@@ -127,14 +165,17 @@ export function buildNode(opts: NodeOpts): Record<string, unknown> {
   };
   // PROSE pointer — omitted on a programmatic (no-pi) node, which the schema's allOf permits.
   if (!opts.programmatic) {
-    node.prompt = { file: opts.promptFile ?? 'prompt.md', ...(opts.skill ? { skill: opts.skill } : {}) };
+    node.prompt = { file: opts.promptFile ?? 'prompt.md', ...(skill ? { skill } : {}) };
   }
+  // (G6) The agent-PRESET branding LABEL — emitted only when bound. The runner treats it as opaque; observe
+  // → the GUI keys the preset icon off it. Round-trips through loadTemplate (node.schema.ts + loader.ts).
+  if (agentType) node.agentType = agentType;
   // Engine selector — emitted only when set (absent ⇒ the loader defaults to 'pi', byte-identical).
   if (opts.executor) node.executor = opts.executor;
-  if (opts.tools?.length || opts.deny?.length) {
+  if (tools?.length || deny?.length) {
     node.tools = {
-      ...(opts.tools?.length ? { allow: opts.tools } : {}),
-      ...(opts.deny?.length ? { deny: opts.deny } : {}),
+      ...(tools?.length ? { allow: tools } : {}),
+      ...(deny?.length ? { deny } : {}),
     };
   }
   if (opts.mcp && Object.keys(opts.mcp).length) node.mcp = { servers: opts.mcp };
@@ -346,7 +387,7 @@ const ADD_USAGE =
   '[--owns <glob>]... [--read <p>]... [--tool <t>]... [--deny <t>]... [--inject <p>]... ' +
   '[--seed <to=from>]... [--promote <from=to[:reducer]>]... [--project <to=from[,from2]>]... ' +
   '[--merge-run <cmd[:args][@cwd]>]... [--registry-project <source=,mapRef=,key=>] ' +
-  '[--mcp <name=url>]... [--check <kind[:path]>]... [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
+  '[--mcp <name=url>]... [--check <kind[:path]>]... [--agent-type <id>] [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
   '[--timeout <ms>] [--retries <n>] [--return-mode optional|required] [--schema <p>] [--skill <p>] ' +
   '[--prompt-file <f>] [--on-fail block|warn|stop] [--programmatic]';
 
@@ -408,6 +449,7 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     returnMode: flags['return-mode']?.[0] as NodeOpts['returnMode'],
     schema: flags.schema?.[0],
     skill: flags.skill?.[0],
+    agentType: flags['agent-type']?.[0],
     promptFile: flags['prompt-file']?.[0],
     checks: (flags.check ?? []).map(parseCheck),
     onFail: flags['on-fail']?.[0] as NodeOpts['onFail'],
@@ -418,5 +460,11 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     : promptExists
       ? `prompt exists: ${promptFile} (left untouched)`
       : `next: Write ${promptFile} (the node's prose — never scaffolded)`;
-  process.stdout.write(`wrote ${nodeJson}\n${next}\n`);
+  // (G6) The preset folds CONFIG only; its role-PROMPT stays the author's to prepend (prose ≠ scaffolder's
+  // job). Print the one-line reminder so the agent prepends the role before the node's task in prompt.md.
+  const at = flags['agent-type']?.[0];
+  const presetNote = at
+    ? `\nagent-type ${at}: prepend its role-prompt (~/.piflow/agents/${at}.md) to this node's prompt.md.`
+    : '';
+  process.stdout.write(`wrote ${nodeJson}\n${next}${presetNote}\n`);
 }

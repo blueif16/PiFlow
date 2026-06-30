@@ -101,6 +101,9 @@ ADD-NODE
   Edges/contract: --dep <id> · --artifact <p> · --owns <glob> · --read <p>  (each repeatable;
                 owns defaults out/**, read defaults {{RUN}}).
   Tools/io:     --tool <t> · --deny <t> · --inject <p> · --mcp <name=url>  (each repeatable).
+  Base agent:   --agent-type <id>  adopt a preset (~/.piflow/agents/<id>.md): folds its tools (UNION --tool;
+                deny wins) + skill (--skill wins) + the agentType LABEL into node.json. Prints a note to
+                prepend its role-prompt to prompt.md (prose stays yours). Unknown id ⇒ non-zero exit.
   Hooks:        --seed <to=from> (PRE) · --promote <from=to[:reducer]> · --project <to=from[,from2]> ·
                 --merge-run <cmd[:args][@cwd]> · --registry-project <source=,mapRef=,key=>  (emit canonical
                 op[] derives; seed runs PRE, the rest POST in project→merge→promote order; each repeatable).
