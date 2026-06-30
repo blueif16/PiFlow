@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadTemplate, compile, derivesFromOp, expandReroute } from '@piflow/core';
+import { loadTemplate, compile, derivesFromOp, expandReroute, expandFusion, expandSubworkflow } from '@piflow/core';
 import { scaffoldNew, scaffoldAddNode, runNewCli, runAddNodeCli } from '../src/scaffold.js';
 
 // The scaffolder EMITS schema-valid meta.json + node.json from flags so an agent only Writes prose
@@ -531,6 +531,89 @@ describe('scaffold — execution gate + escalate/reroute control actions (op[])'
     expect(node.inject).toBeUndefined();
     const spec = await loadTemplate(DIR);
     expect(spec.nodes.find((n) => n.label === 'verify')!.io.reads).toContain('spec.md');
+  });
+});
+
+// TOPOLOGY (fusion, subworkflow) + CONTRACT EXTRAS (fullAccess, fillSentinel). loadTemplate does NOT expand
+// fusion/subworkflow — those run in the run-path — so these tests carry the block through loadTemplate AND
+// drive the real expander (expandFusion / expandSubworkflow) to prove the emitted shape actually expands.
+// fusion/subworkflow are TOP-LEVEL node fields; fullAccess/fillSentinel live INSIDE contract — emitting either
+// in the wrong place trips an additionalProperties:false boundary and loadTemplate THROWS.
+describe('scaffold — fusion + subworkflow topology + contract extras (fullAccess, fillSentinel)', () => {
+  it('--fusion best-of-n (+ -n) emits a top-level fusion block that loadTemplate carries and expandFusion expands', async () => {
+    await scaffoldNew(DIR, { name: 'f', description: 'fusion' });
+    await runAddNodeCli([DIR, '--id', 'synth', '--artifact', 'out/synth.md', '--fusion', 'best-of-n', '--fusion-n', '5']);
+    await writeProse('synth');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'synth', 'node.json'));
+    expect(node.fusion).toEqual({ mode: 'best-of-n', n: 5 });
+
+    const spec = await loadTemplate(DIR);
+    expect(spec.nodes.find((n) => n.label === 'synth')!.fusion).toEqual({ mode: 'best-of-n', n: 5 });
+    // best-of-n expands into n sibling producers + the node as judge — proves the emitted shape is buildable.
+    const expanded = expandFusion(spec);
+    expect(expanded.nodes.length).toBeGreaterThan(spec.nodes.length);
+  });
+
+  it('--fusion moa (+ --fusion-panel/--fusion-judge) emits the panel and loadTemplate accepts it', async () => {
+    await scaffoldNew(DIR, { name: 'f', description: 'moa' });
+    await runAddNodeCli([
+      DIR, '--id', 'synth', '--artifact', 'out/synth.md',
+      '--fusion', 'moa', '--fusion-panel', 'fast', '--fusion-panel', 'deep', '--fusion-judge', 'deep', '--fusion-obligations',
+    ]);
+    await writeProse('synth');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'synth', 'node.json'));
+    expect(node.fusion).toEqual({ mode: 'moa', panel: ['fast', 'deep'], judge: 'deep', obligations: true });
+    const spec = await loadTemplate(DIR);
+    expect(expandFusion(spec).nodes.length).toBeGreaterThan(spec.nodes.length); // moa: panel siblings + judge
+  });
+
+  it('--subworkflow <ref> emits the block and the ref RESOLVES through expandSubworkflow (real child template)', async () => {
+    await scaffoldNew(DIR, { name: 's', description: 'subworkflow' });
+    // The child sub-template the ref points at (parent-root-relative). A real, loadable 1-node template.
+    const subNode = path.join(DIR, 'sub', 'nodes', 'work');
+    await fs.mkdir(subNode, { recursive: true });
+    await fs.writeFile(path.join(DIR, 'sub', 'meta.json'), JSON.stringify({ id: 'sub', name: 'sub', description: 'd' }));
+    await fs.writeFile(path.join(subNode, 'node.json'), JSON.stringify({
+      id: 'work', phase: 'work', deps: [], prompt: { file: 'prompt.md' },
+      contract: { artifacts: ['out/done.md'], owns: ['out/**'], readScope: ['{{RUN}}'] },
+    }));
+    await fs.writeFile(path.join(subNode, 'prompt.md'), 'do work\n');
+
+    await runAddNodeCli([DIR, '--id', 'gate', '--artifact', 'out/gate.md', '--subworkflow', 'sub']);
+    await writeProse('gate');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'gate', 'node.json'));
+    expect(node.subworkflow).toEqual({ ref: 'sub' });
+
+    const spec = await loadTemplate(DIR);
+    expect(spec.nodes.find((n) => n.label === 'gate')!.subworkflow).toEqual({ ref: 'sub' });
+    // The ref must resolve to the real child — RED if buildNode emitted a wrong ref or shape.
+    const inlined = await expandSubworkflow(spec, { loadChild: (ref: string) => loadTemplate(path.resolve(DIR, ref)) });
+    expect(inlined.nodes.some((n) => n.label.includes('work'))).toBe(true);
+  });
+
+  it('--full-access + --fill-sentinel emit INSIDE contract; loadTemplate threads fullAccess onto the sandbox', async () => {
+    await scaffoldNew(DIR, { name: 'c', description: 'contract extras' });
+    await runAddNodeCli([DIR, '--id', 'n', '--artifact', 'a.md', '--full-access', '--fill-sentinel', '<FILL:']);
+    await writeProse('n');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'n', 'node.json'));
+    expect(node.contract.fullAccess).toBe(true); // boolean, not the string "true" (schema rejects a string)
+    expect(node.contract.fillSentinel).toBe('<FILL:');
+    expect(node.fullAccess, 'belongs INSIDE contract, never top-level').toBeUndefined();
+
+    const wf = compile(await loadTemplate(DIR));
+    expect(wf.nodes['n'].sandbox.fullAccess).toBe(true); // threaded onto the per-node jail-off posture
+  });
+
+  it('--fusion with an invalid mode is rejected by the CLI before any write', async () => {
+    await scaffoldNew(DIR, { name: 'f', description: 'bad mode' });
+    await expect(
+      runAddNodeCli([DIR, '--id', 'n', '--artifact', 'a.md', '--fusion', 'ensemble']),
+    ).rejects.toThrow(/moa|best-of-n|mode/i);
+    await expect(fs.access(path.join(DIR, 'nodes', 'n', 'node.json'))).rejects.toThrow();
   });
 
   // The CLI STRING layer (`runAddNodeCli`) parses each derive flag's value-grammar (design §3) into the same

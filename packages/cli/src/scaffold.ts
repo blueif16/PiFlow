@@ -133,6 +133,14 @@ export interface NodeOpts {
       retryScope?: 'feedback' | 'fix';
     };
   };
+  /** (Phase 2) FUSION activation — siblings + judge expansion (run-path `expandFusion`). `mode` required. */
+  fusion?: { mode: 'moa' | 'best-of-n'; n?: number; panel?: string[]; judge?: string; obligations?: boolean; verify?: boolean };
+  /** (G9) SUBWORKFLOW — inline a sub-template as a sub-DAG in place of this node. `ref` = sub-template dir, parent-root-relative. */
+  subworkflow?: { ref: string };
+  /** Per-node jail-off → `contract.fullAccess` (run OUTSIDE the local fs jail; loosen-only, LOCAL-only). */
+  fullAccess?: boolean;
+  /** A write-first sentinel → `contract.fillSentinel` (still-present ⇒ the artifact is incomplete). */
+  fillSentinel?: string;
   /** A no-pi node: runs its declarative ops, omits `prompt`/`tools`. */
   programmatic?: boolean;
 }
@@ -243,6 +251,10 @@ export function buildNode(opts: NodeOpts): Record<string, unknown> {
     artifacts: opts.artifacts ?? [],
     owns: opts.owns ?? ['out/**'],
     readScope: opts.readScope ?? ['{{RUN}}'],
+    // contract-resident extras (the fs-scope + completeness axes). fullAccess is emitted ONLY when true
+    // (false/absent are byte-identical downstream); fillSentinel is a string (the schema also allows null).
+    ...(opts.fullAccess ? { fullAccess: true } : {}),
+    ...(opts.fillSentinel !== undefined ? { fillSentinel: opts.fillSentinel } : {}),
     ...(opts.schema ? { schema: opts.schema } : {}),
     ...(opts.returnMode ? { returnMode: opts.returnMode } : {}),
   };
@@ -343,6 +355,26 @@ export function buildNode(opts: NodeOpts): Record<string, unknown> {
       ...(j.policy && Object.keys(j.policy).length ? { policy: j.policy } : {}),
     };
   }
+  // (Phase 2) FUSION — top-level activation (loader carries verbatim; run-path expandFusion makes the node a
+  // judge + N sibling producers). `mode` is the one required key — validate the enum here for a clear error.
+  if (opts.fusion) {
+    const f = opts.fusion;
+    if (f.mode !== 'moa' && f.mode !== 'best-of-n') {
+      throw new Error(`piflowctl: --fusion mode must be moa|best-of-n (got "${f.mode}")`);
+    }
+    node.fusion = {
+      mode: f.mode,
+      ...(f.n !== undefined ? { n: f.n } : {}),
+      ...(f.panel?.length ? { panel: f.panel } : {}),
+      ...(f.judge ? { judge: f.judge } : {}),
+      ...(f.obligations ? { obligations: true } : {}),
+      ...(f.verify === false ? { verify: false } : {}),
+    };
+  }
+  // (G9) SUBWORKFLOW — top-level; run-path expandSubworkflow inlines the referenced sub-template's nodes in
+  // place of this node. loadTemplate accepts any non-empty ref (it does NOT resolve the dir) — expandSubworkflow
+  // is the resolution oracle.
+  if (opts.subworkflow) node.subworkflow = { ref: opts.subworkflow.ref };
   if (opts.programmatic) node.programmatic = true;
   return node;
 }
@@ -593,7 +625,8 @@ const ADD_USAGE =
   '[--prompt-file <f>] [--on-fail block|warn|stop] [--on-warn block|warn|stop] ' +
   '[--judge <judgeTier[:threshold]>] [--judge-on-fail block|warn|stop|retry|escalate] [--judge-retry-max <n>] [--judge-retry-scope feedback|fix] ' +
   '[--checkpoint <confirm|input|select:prompt>] [--checkpoint-choice <v>]... [--checkpoint-default <v>] [--checkpoint-headless default|abort] [--checkpoint-timeout <ms>] ' +
-  '[--programmatic]';
+  '[--fusion <moa|best-of-n>] [--fusion-n <n>] [--fusion-panel <model|tier>]... [--fusion-judge <model|tier>] [--fusion-obligations] [--fusion-no-verify] ' +
+  '[--subworkflow <ref>] [--full-access] [--fill-sentinel <s>] [--programmatic]';
 
 /** `piflowctl new <templateDir> [flags]` — emit meta.json + the nodes/ dir. */
 export async function runNewCli(argv: string[]): Promise<void> {
@@ -617,7 +650,12 @@ export async function runNewCli(argv: string[]): Promise<void> {
 
 /** `piflowctl add-node <templateDir> --id <id> [flags]` — emit one node.json (prose is the agent's). */
 export async function runAddNodeCli(argv: string[]): Promise<void> {
-  const { positional, flags, bools } = parseArgs(argv, ['programmatic']);
+  const { positional, flags, bools } = parseArgs(argv, [
+    'programmatic',
+    'full-access',
+    'fusion-obligations',
+    'fusion-no-verify',
+  ]);
   const dir = positional[0];
   const id = flags.id?.[0];
   if (!dir || !id) {
@@ -681,6 +719,19 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     onWarn: flags['on-warn']?.[0] as NodeOpts['onWarn'],
     checkpoint,
     judge,
+    fusion: flags.fusion?.[0]
+      ? {
+          mode: flags.fusion[0] as 'moa' | 'best-of-n',
+          n: num(flags['fusion-n']?.[0]),
+          panel: flags['fusion-panel'],
+          judge: flags['fusion-judge']?.[0],
+          obligations: bools.has('fusion-obligations') ? true : undefined,
+          verify: bools.has('fusion-no-verify') ? false : undefined,
+        }
+      : undefined,
+    subworkflow: flags.subworkflow?.[0] ? { ref: flags.subworkflow[0] } : undefined,
+    fullAccess: bools.has('full-access') ? true : undefined,
+    fillSentinel: flags['fill-sentinel']?.[0],
     programmatic: bools.has('programmatic'),
   });
   const next = bools.has('programmatic')
