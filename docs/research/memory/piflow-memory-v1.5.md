@@ -340,3 +340,25 @@ artifacts — so the projector's output = the `hermes-routing.md` shape (`Sympto
 Owner/route → generalization + anti-reward-hack → smallest durable edit`; e.g. `_prior-runs/gs01/hermes-routing.md:17-37`),
 and the MEMORIZE step's durable distillation = the OKF `log.md` `_lesson:_` line. The optimizer automates a record
 a human used to hand-write; reproduce its shape, don't design a new one.
+
+## 8. Grounding & provenance — every research file, and where it lands
+
+**This doc is the canonical source of truth for the optimization layer; the folder `README.md` is a thin pointer
+here, NOT a second catalog.** Each file under `docs/research/memory/` is referenced once below (and inline where
+its finding is used):
+- **Prior canon (the substrate this builds on):** `piflow-memory-v1.md` (the two legs + the §2 scaffold, SHIPPED)
+  · `harvested-practices.md` (the Hermes / RondoFlow / ADK harvest + the four-memory framing).
+- **The scoring cascade (§4):** `eval-llm-judge-reliability-2026-06.md` · `eval-trajectory-process-scoring-2026-06.md`
+  · `eval-visual-perceptual-quality-2026-06.md`.
+- **The overlord + its SOTA additions (§6):** `skillopt-sleep-loop-control-2026-06-29.md` (the loop-control
+  reference — driver shape, gate placement, stage→adopt, caps) · `vendor-skillopt-mastra-2026-06-29.md` (the
+  held-out gate + the SKILL_DEFECT/EXECUTION_LAPSE classifier; Mastra as the no-self-optimization contrast) ·
+  `eval-codex-goalmode-loop-patterns-2026-06.md` (the gap-check → the four additions).
+- **What the SDK emits today (§2, §5, §7):** `gap-analysis-optimizer-substrate-2026-06-29.md` (Tier-0 telemetry
+  ~built, Tier-1 binary; the replay harness + scalar + triage projector are the gaps; the prioritized build list).
+- **The dogfood target — game-omni (§4, §6, §7):** `game-omni-sdk-wiring-2026-06-29.md` (the 16-node DAG; the
+  run-scoped MEMORY practice vs Leg-A) · `game-omni-quality-assets-and-sdk-gap-2026-06-29.md` (the criteria
+  fixture covering all nodes; the eval prompt-suites; the live codegraph/OKF; the NODE×OUTPUT×tier matrix) ·
+  `game-omni-verify-extraction-2026-06-29.md` (Tier-1 = the standalone `verify-milestone` CLI; the ABSTAIN rule;
+  dropping the gate in dogfood is clean) · `game-omni-presdk-era-2026-06-29.md` (what the migration LOST; the
+  proven `hermes-routing.md` / OKF `_lesson:_` output shapes; the concrete success test).
