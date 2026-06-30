@@ -12,7 +12,6 @@
 import LogoGrid from "@/components/LogoGrid";
 import HoverGrid from "@/components/HoverGrid";
 import LearnMoreButton from "@/components/LearnMoreButton";
-import BrandPill from "@/components/BrandPill";
 
 const GITHUB_URL = "https://github.com/blueif16/PiFlow";
 
@@ -34,10 +33,9 @@ export default function Hero() {
       {/* content layer — fills the viewport, nav top / title bottom */}
       <div className="relative z-10 flex min-h-svh flex-col px-4 pt-4 sm:px-6 sm:pt-6 lg:px-10 lg:pt-8">
         {/* ── TOP PILLS ───────────────────────────────────────── */}
-        <nav className="flex items-center justify-between gap-3">
-          {/* left pill: logo chip + minimal links — the shared BrandPill */}
-          <BrandPill />
-
+        {/* the left pill is the page-level FixedBrandPill (fixed corner); only
+            the GitHub pill rides the hero nav, so it sits on the right */}
+        <nav className="flex items-center justify-end gap-3">
           {/* right pill: GitHub only — anti-diagonal cut (TL+BR), mirrors the left */}
           <div className="hud-frame-anti [--hud-bevel:14px] inline-flex items-center bg-white px-1 py-1.5 shadow-[var(--shadow-sm)]">
             <a

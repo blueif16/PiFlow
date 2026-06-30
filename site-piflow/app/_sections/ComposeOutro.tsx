@@ -26,7 +26,6 @@ import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Package, Terminal, Sparkles } from "lucide-react";
-import BrandPill from "@/components/BrandPill";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -150,11 +149,7 @@ export default function ComposeOutro() {
         <div className="relative flex min-h-svh w-full flex-col lg:motion-safe:sticky lg:motion-safe:top-0 lg:motion-safe:h-svh lg:motion-safe:overflow-hidden">
           <div className="gridpaper pointer-events-none absolute inset-0" aria-hidden />
 
-          {/* persistent top-left brand pill — sits in the sticky stage so it
-              holds the corner through the whole composition→intro morph */}
-          <div className="absolute left-4 top-4 z-30 sm:left-6 sm:top-6 lg:left-10 lg:top-8">
-            <BrandPill />
-          </div>
+          {/* top-left brand pill is the page-level FixedBrandPill */}
 
           {/* ── STAGE BODY — the frame + the morphing content ── */}
           <div className="relative flex flex-1 items-center justify-center px-6 py-14">

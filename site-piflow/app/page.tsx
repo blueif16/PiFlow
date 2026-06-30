@@ -15,13 +15,16 @@ import ProductScreens from "./_sections/ProductScreens";
 import CTA from "./_sections/CTA";
 import ComposeOutro from "./_sections/ComposeOutro";
 import SnapPages from "@/components/SnapPages";
+import FixedBrandPill from "@/components/FixedBrandPill";
 
 export default function Home() {
   return (
     <>
       <div className="grain" aria-hidden />
-      {/* GSAP snap for the demo→composition (#start → #layers) edge */}
+      {/* GSAP forced jump for the demo↔composition (#start ↔ #layers) edge */}
       <SnapPages />
+      {/* one fixed top-left pill for the whole page (hides over #agents' rail) */}
+      <FixedBrandPill />
       <main>
         <Hero />
         <ProductScreens />
