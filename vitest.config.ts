@@ -16,5 +16,9 @@ export default defineConfig({
     ],
     environment: 'node',
     watch: false,
+    // ink-testing-library full-App renders cost ~1-2s each and run under the parallel fork pool, where CPU
+    // contention can push a correct render past the 5s default → false timeouts. The unit tests finish in
+    // ms, so this generous ceiling only absorbs slow-but-correct TUI renders; it does not mask real hangs.
+    testTimeout: 20000,
   },
 });

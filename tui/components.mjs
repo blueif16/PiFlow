@@ -18,8 +18,8 @@ import { StageDag, runToMermaid, dagViewport, scrollStart } from './dag.mjs';
 export const html = htm.bind(React.createElement);
 
 // ── visual vocabulary ──────────────────────────────────────────────────────────
-export const GLYPH = { ok: '✔', running: '', error: '✘', blocked: '⊘', gap: '◐', reused: '↺', pending: '·', dry: '∅', done: '✔', failed: '✘' };
-const COLOR = { ok: 'green', running: 'cyan', error: 'red', blocked: 'yellow', gap: 'yellow', reused: 'gray', pending: 'gray', dry: 'magenta', done: 'green', failed: 'red' };
+export const GLYPH = { ok: '✔', running: '◐', error: '✘', blocked: '⊘', gap: '◐', reused: '↺', pending: '·', dry: '∅', 'awaiting-input': '⏸', done: '✔', failed: '✘' };
+const COLOR = { ok: 'green', running: 'cyan', error: 'red', blocked: 'yellow', gap: 'yellow', reused: 'gray', pending: 'gray', dry: 'magenta', 'awaiting-input': 'magenta', done: 'green', failed: 'red' };
 const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const BIN_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.pdf', '.zip', '.gz', '.woff', '.woff2', '.ttf', '.otf', '.mp3', '.wav', '.ogg', '.mp4', '.mov', '.bin', '.wasm']);
 
@@ -53,7 +53,7 @@ const fmtDur = (msV) => {
   const m = Math.floor(s / 60);
   return `${m}m${String(s % 60).padStart(2, '0')}s`;
 };
-const fmtTok = (t) => (!t ? '' : t > 999 ? `${(t / 1000).toFixed(1)}k` : String(t));
+const fmtTok = (t) => (!t ? '' : t > 999999 ? `${(t / 1e6).toFixed(1)}M` : t > 999 ? `${(t / 1000).toFixed(1)}k` : String(t));
 const fmtBytes = (b) => (b == null ? '' : b < 1024 ? `${b}b` : b < 1048576 ? `${(b / 1024).toFixed(1)}k` : `${(b / 1048576).toFixed(1)}M`);
 // Sub-cell timeline bar: the start snaps to a cell, but the bar's END is drawn with
 // 1/8-width left-anchored block glyphs (▏▎▍▌▋▊▉█) so a short or odd-length span reads at
@@ -195,10 +195,36 @@ function NodeSub(n, tail, fi = 0, filesFocused = false) {
   const brief = (a) => (a.length ? a.slice(0, 2).join(', ') + (a.length > 2 ? ` +${a.length - 2}` : '') : '·');
   const tb = n.toolBreakdown ? Object.entries(n.toolBreakdown).map(([k, v]) => `${k}:${v}`).join('  ') : '';
 
-  // head section (no top margin): identity · runtime meta · description · skill
+  // CONTEXT pressure: peak / pi-native window with a % — amber ≥70%, red ≥85% (the telemetry threshold).
+  const ctxPeak = n.tokens?.contextPeak || 0;
+  const ctxWin = n.contextWindow || 0;
+  const ctxPct = ctxWin > 0 ? ctxPeak / ctxWin : 0;
+  const ctxColor = ctxPct >= 0.85 ? 'red' : ctxPct >= 0.7 ? 'yellow' : null;
+  const ctxStr = ctxWin > 0 ? `${fmtTok(ctxPeak) || 0}/${fmtTok(ctxWin)} ${Math.round(ctxPct * 100)}%` : `${fmtTok(ctxPeak) || 0}`;
+
+  // HEALTH / ANOMALY badges — the shared telemetry lens distilled to one warning line: a token-capped
+  // (truncated) stop, provider rate-limit retries, a tool loop (same tool ≥3× with identical args), a
+  // slow-vs-baseline run, and context pressure. Empty ⇒ the line is omitted (a clean node shows nothing).
+  const warns = [];
+  if (n.truncated) warns.push(`truncated${n.stopReason ? ` (${n.stopReason})` : ''}`);
+  if (n.retries > 0) warns.push(`${n.retries}× retry`);
+  if (n.maxToolRepeat >= 3) warns.push(`loop ${n.repeatedTool || 'tool'}×${n.maxToolRepeat}`);
+  if (n.expectedMs && n.durationMs && n.priorSamples > 0 && n.durationMs > n.expectedMs * 2) warns.push(`slow ${(n.durationMs / n.expectedMs).toFixed(1)}×`);
+  if (ctxPct >= 0.85) warns.push(`ctx ${Math.round(ctxPct * 100)}%`);
+  const warnColor = n.truncated || n.maxToolRepeat >= 3 || ctxPct >= 0.85 ? 'red' : 'yellow';
+
+  // head section (no top margin): identity · runtime meta · health · checkpoint · description · skill
   const head = [];
   head.push(html`<${Text} key="t" bold color=${COLOR[n.status]} wrap="truncate">${GLYPH[n.status] || '·'} ${n.label} <${Text} dimColor>[${n.id}]${n.agentType ? ` · ${n.agentType}` : ''}${n.hasSchema ? ' · schema' : ''}<//><//>`);
-  head.push(html`<${Text} key="m" dimColor wrap="truncate">${n.phase || ''} · stage ${n.stageIndex || '?'} · ${n.toolCalls || 0} tools · think ${fmtTok(n.thinking?.chars) || 0} · ctx ${fmtTok(n.tokens?.contextPeak) || 0}${tb ? ` · ${tb}` : ''}<//>`);
+  head.push(html`<${Text} key="m" wrap="truncate"><${Text} dimColor>${n.phase || ''} · stage ${n.stageIndex || '?'} · ${n.toolCalls || 0} tools · think ${fmtTok(n.thinking?.chars) || 0} · ctx <//><${Text} color=${ctxColor || undefined} dimColor=${!ctxColor}>${ctxStr}<//>${tb ? html`<${Text} dimColor> · ${tb}<//>` : null}<//>`);
+  if (warns.length) head.push(html`<${Text} key="warn" color=${warnColor} wrap="truncate">⚠ ${warns.join(' · ')}<//>`);
+  if (n.checkpoint) {
+    const ck = n.checkpoint;
+    const txt = ck.status === 'pending'
+      ? `⏸ awaiting ${ck.kind || 'input'}${ck.prompt ? ` · ${ck.prompt}` : ''}`
+      : `⏸ ${ck.kind || 'input'} resolved${ck.reply != null ? ` → ${String(ck.reply)}` : ''}`;
+    head.push(html`<${Text} key="ck" color=${ck.status === 'pending' ? 'magenta' : 'gray'} wrap="truncate">${txt}<//>`);
+  }
   if (io.description) head.push(html`<${Text} key="d">${io.description}<//>`);
   if (io.skill) head.push(html`<${Text} key="sk" wrap="truncate"><${Text} dimColor>skill ▸ <//>${io.skill}<//>`);
 
@@ -223,9 +249,13 @@ function NodeSub(n, tail, fi = 0, filesFocused = false) {
     sections.push(html`<${Box} key="own" marginTop=${1}><${Text} dimColor wrap="truncate">writes (owned)  ${io.owns.join(' · ')}<//><//>`);
   }
 
+  // Collapse whitespace so a multi-line summary/issue (the rich view can capture a raw event tail) stays
+  // ONE truncated line instead of spilling rows and inflating the panel height.
+  const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
   const foot = [];
-  if (n.summary) foot.push(html`<${Text} key="sum" dimColor wrap="truncate">summary  ${n.summary}<//>`);
-  if (n.issues?.length) foot.push(html`<${Text} key="iss" color="yellow" wrap="truncate">! ${n.issues[0]}<//>`);
+  if (n.missing?.length) foot.push(html`<${Text} key="miss" color="red" wrap="truncate">missing  ${n.missing.join(', ')}<//>`);
+  if (n.summary) foot.push(html`<${Text} key="sum" dimColor wrap="truncate">summary  ${oneLine(n.summary)}<//>`);
+  if (n.issues?.length) foot.push(html`<${Text} key="iss" color="yellow" wrap="truncate">! ${oneLine(n.issues[0])}<//>`);
   if (n.pipelineFindings?.length) foot.push(html`<${Text} key="pf" dimColor>findings ▾ (${n.pipelineFindings.length})<//>`);
   if (foot.length) sections.push(html`<${Box} key="foot" flexDirection="column" marginTop=${1}>${foot}<//>`);
 
@@ -256,8 +286,12 @@ export function DetailCol(thread, detail, di, focus, h, fi = 0, view = 'list', d
   const [s, e] = viewport(order.length, di, listH);
   const tick = detail.tick || 0;
 
+  // Live fleet position from the shared ThreadRow (summarizeRun): stage progress + phase. Null-guarded so
+  // a finished/unknown run omits the segment entirely (never renders `null`/`undefined`/`NaN`).
+  const stageSeg = thread.stageIndex != null && thread.stageTotal != null ? ` · stage ${thread.stageIndex}/${thread.stageTotal}` : '';
+  const phaseSeg = thread.phase != null ? ` · ${thread.phase}` : '';
   const head = html`<${Text} key="head" wrap="truncate">
-    <${Text} bold>${m.run.id}<//> <${Text} color=${COLOR[m.run.done ? (m.run.ok === false ? 'failed' : 'done') : 'running']}>${m.run.done ? (m.run.ok === false ? 'FAILED' : 'DONE') : 'running'}<//> <${Text} dimColor>· ${m.run.provider || ''}/${m.run.model || ''} · ${fmtDur(m.run.durationMs ?? m.run.elapsedMs)} · ${m.totals.toolCalls} tools · ${fmtTok(m.totals.tokensBillable) || 0} tok<//>
+    <${Text} bold>${m.run.id}<//> <${Text} color=${COLOR[m.run.done ? (m.run.ok === false ? 'failed' : 'done') : 'running']}>${m.run.done ? (m.run.ok === false ? 'FAILED' : 'DONE') : 'running'}<//> <${Text} dimColor>· ${m.run.provider || ''}/${m.run.model || ''} · ${fmtDur(m.run.durationMs ?? m.run.elapsedMs)} · ${m.totals.toolCalls} tools · ${fmtTok(m.totals.tokensBillable) || 0} tok${stageSeg}${phaseSeg}<//>
   <//>`;
 
   const sub = NodeSub(m.nodes[order[Math.min(di, order.length - 1)]], detail.tail, fi, focus === 3);

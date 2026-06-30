@@ -21,8 +21,8 @@ import htm from 'htm';
 const html = htm.bind(React.createElement);
 
 // Local visual vocab (small copy — keeping it here avoids a components.mjs⇄dag.mjs import cycle).
-const GLYPH = { ok: '✔', running: '◐', error: '✘', blocked: '⊘', gap: '◐', reused: '↺', pending: '·', dry: '∅', done: '✔', failed: '✘' };
-const COLOR = { ok: 'green', running: 'cyan', error: 'red', blocked: 'yellow', gap: 'yellow', reused: 'gray', pending: 'gray', dry: 'magenta', done: 'green', failed: 'red' };
+const GLYPH = { ok: '✔', running: '◐', error: '✘', blocked: '⊘', gap: '◐', reused: '↺', pending: '·', dry: '∅', 'awaiting-input': '⏸', done: '✔', failed: '✘' };
+const COLOR = { ok: 'green', running: 'cyan', error: 'red', blocked: 'yellow', gap: 'yellow', reused: 'gray', pending: 'gray', dry: 'magenta', 'awaiting-input': 'magenta', done: 'green', failed: 'red' };
 const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 // SELECTION is a SEPARATE visual channel from status, reserved so the navigation cursor can never be
 // confused with a node's state. It must NOT be any value in COLOR (cyan=running, green=ok, …) — bold
@@ -288,7 +288,7 @@ export function runToMermaid(model) {
   const order = m.stages.flatMap((st) => st.nodeIds);
   const id = (s) => 'n_' + String(s).replace(/[^a-zA-Z0-9_]/g, '_');
   const esc = (s) => String(s ?? '').replace(/["\n]/g, ' ').trim();
-  const CLASS = { ok: 'ok', done: 'ok', running: 'run', error: 'err', failed: 'err', blocked: 'warn', gap: 'warn', reused: 'reuse', pending: 'pend', dry: 'dry' };
+  const CLASS = { ok: 'ok', done: 'ok', running: 'run', error: 'err', failed: 'err', blocked: 'warn', gap: 'warn', reused: 'reuse', pending: 'pend', dry: 'dry', 'awaiting-input': 'wait' };
   const out = [
     `%% pi-runner ${esc(m.run?.id || 'run')} — ${m.run?.provider || ''}/${m.run?.model || ''}`,
     'flowchart LR',
@@ -299,6 +299,7 @@ export function runToMermaid(model) {
     '  classDef reuse fill:#1b1b22,stroke:#8b949e,color:#d0d7de;',
     '  classDef pend fill:#1b1b22,stroke:#6e7681,color:#9aa3ad;',
     '  classDef dry fill:#1f1426,stroke:#bc8cff,color:#e7d4ff;',
+    '  classDef wait fill:#231426,stroke:#bc8cff,color:#e7d4ff,stroke-dasharray:3 2;', // (G5) parked human gate
   ];
   m.stages.forEach((st) => {
     out.push(`  subgraph s${st.index}["stage ${st.index}${st.phase ? ' · ' + esc(st.phase) : ''}"]`);
