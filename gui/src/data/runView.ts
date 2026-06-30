@@ -22,6 +22,9 @@ export interface NodeConfig {
   retries?: number;
   agentType?: string;
   programmatic?: boolean;
+  /** (per-node-full-access) the per-node fs jail was unlocked (`--sandbox local` jail off for this node).
+   *  Drives the `unlocked` node skin; a local-only, loosen-only posture. Mirrors core `NodeConfig`. */
+  fullAccess?: boolean;
   sandbox?: { workspace?: string; readScope?: string[]; owns?: string[]; };
 }
 
@@ -291,10 +294,17 @@ export function effectiveSandbox(view: RunView, node: RunViewNode): SandboxProvi
   return node.config?.programmatic ? "local" : view.sandbox;
 }
 
-/** (SKIN channel) Map a backend kind → its node skin. Extensible (a future `danger-full-access` skin maps
- *  here); only cloud→'cloud' is implemented now, everything else (incl. undefined) is the default 'flat'. */
-export function sandboxSkin(kind: SandboxProviderKind | undefined): "flat" | "cloud" {
-  return kind && CLOUD.has(kind) ? "cloud" : "flat";
+/** (SKIN channel) Map a node's EFFECTIVE backend + config → its node skin. A PURE projection of config —
+ *  no run-level field. Precedence (per-node-full-access §4): cloud backend → 'cloud' (the extruded block);
+ *  else `node.config.fullAccess` → 'unlocked' (the fs jail was opened — a small NEUTRAL unlock glyph); else
+ *  'flat' (local, jailed — INCLUDING a programmatic node: it has no sandbox to unlock, so it stays flat). */
+export function sandboxSkin(
+  kind: SandboxProviderKind | undefined,
+  node?: RunViewNode,
+): "flat" | "cloud" | "unlocked" {
+  if (kind && CLOUD.has(kind)) return "cloud";
+  if (node?.config?.fullAccess) return "unlocked";
+  return "flat";
 }
 
 /** Map the engine's node status ladder onto the design-system's visual NodeStatus. */
@@ -375,14 +385,15 @@ export function toFlowGraph(view: RunView, catalog: AgentCatalog = {}): { nodes:
     const stageIndex = rv.stageIndex ?? 1;
     const lane = rv.lane ?? 0;
     const preset = rv.agentType ? catalog[rv.agentType] : undefined;
-    // (SKIN channel) The node's runtime skin from its EFFECTIVE backend (programmatic ⇒ local; else the
-    // run's backend). Set `runtime` only when 'cloud' is meaningful — 'flat' is the default (no DOM attr).
-    const skin = sandboxSkin(effectiveSandbox(view, rv));
+    // (SKIN channel) The node's runtime skin from its EFFECTIVE backend + config (programmatic ⇒ local; cloud
+    // backend ⇒ 'cloud'; else config.fullAccess ⇒ 'unlocked'). Set `runtime` only when it carries meaning —
+    // 'flat' is the default (no DOM attr).
+    const skin = sandboxSkin(effectiveSandbox(view, rv), rv);
     const data: FlowNodeData = {
       title: rv.label,
       kind: "agent",
       typeLabel: rv.phase ?? "node",
-      ...(skin === "cloud" ? { runtime: skin } : {}),
+      ...(skin !== "flat" ? { runtime: skin } : {}),
       // (G6) the preset's branding, resolved from the catalog by the node's agentType label. The icon is
       // a KEY the chip maps to a bundled glyph; absent/unknown ⇒ the default agent glyph (never blocks).
       ...(preset ? { agentIcon: preset.icon, agentColor: preset.color, agentLabel: preset.label ?? rv.agentType } : {}),

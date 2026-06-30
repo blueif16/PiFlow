@@ -66,9 +66,10 @@ export type FlowNodeData = {
   content?: string;
   /** how to render `content`: markdown / json get a themed reader (else inferred from typeLabel) */
   contentType?: "text" | "markdown" | "json";
-  /** (SKIN channel) the node's runtime skin from its EFFECTIVE sandbox backend. 'cloud' ⇒ the extruded 3D
-   *  block + cloud glyph (runs in daytona/e2b); omitted/'flat' ⇒ the default local card (no data-runtime). */
-  runtime?: "flat" | "cloud";
+  /** (SKIN channel) the node's runtime skin from its EFFECTIVE sandbox backend + config. 'cloud' ⇒ the
+   *  extruded 3D block + cloud glyph (runs in daytona/e2b); 'unlocked' ⇒ the per-node fs jail was opened
+   *  (config.fullAccess) → a small NEUTRAL unlock glyph; omitted/'flat' ⇒ the default local card (no attr). */
+  runtime?: "flat" | "cloud" | "unlocked";
   /** 0..1 determinate progress; omit while running for an indeterminate sweep */
   progress?: number;
   /** Config panel: rectangular config blocks in the HUD */
@@ -200,6 +201,18 @@ function CloudGlyph() {
   );
 }
 
+/** (SKIN channel) The unlock glyph — a small OPEN padlock (the shackle swung clear of the body), drawn in
+ *  the same recessive inline pattern as CloudGlyph. NEUTRAL, not an alarm: it signals "this node's fs jail
+ *  was unlocked", muted (see .ds-node__runtime--unlocked in glass.css) — never red/danger. */
+function UnlockGlyph() {
+  return (
+    <svg className="ds-node__unlock" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="3.5" y="7.5" width="9" height="6" rx="1.3" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M5.5 7.5V5a2.5 2.5 0 014.9-.7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { expand } = useExpand();
   const { mode } = useViewMode();
@@ -214,6 +227,10 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   // (SKIN channel) a 'cloud' node renders as the extruded 3D block (data-runtime drives glass.css) + a
   // cloud glyph + an extended aria-label, so the runtime is signaled by SHAPE + GLYPH + TEXT, not color alone.
   const isCloud = data.runtime === "cloud";
+  // (SKIN channel) an 'unlocked' node (per-node fs jail opened, config.fullAccess) gets a small NEUTRAL
+  // open-padlock glyph in the header — informative, not an alarm (no red/danger; muted via glass.css).
+  const isUnlocked = data.runtime === "unlocked";
+  const hasRuntimeGlyph = isCloud || isUnlocked;
 
   return (
     <motion.div
@@ -221,10 +238,10 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       className="ds-node"
       data-status={status}
       data-kind={data.kind}
-      {...(isCloud ? { "data-runtime": "cloud" } : {})}
+      {...(hasRuntimeGlyph ? { "data-runtime": data.runtime } : {})}
       role="button"
       tabIndex={0}
-      aria-label={`${data.kind} ${data.title}.${isCloud ? " Runs in cloud." : ""} Press Enter to expand.`}
+      aria-label={`${data.kind} ${data.title}.${isCloud ? " Runs in cloud." : ""}${isUnlocked ? " Sandbox unlocked — full filesystem access." : ""} Press Enter to expand.`}
       onClick={() => expand(id)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -245,7 +262,17 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
             <CloudGlyph />
           </span>
         )}
-        <span className="ds-node__type" style={{ marginLeft: isCloud ? undefined : "auto" }}>
+        {isUnlocked && (
+          <span
+            className="ds-node__runtime ds-node__runtime--unlocked"
+            style={{ marginLeft: "auto" }}
+            title="Sandbox unlocked — full filesystem access"
+            aria-label="sandbox unlocked — full filesystem access"
+          >
+            <UnlockGlyph />
+          </span>
+        )}
+        <span className="ds-node__type" style={{ marginLeft: hasRuntimeGlyph ? undefined : "auto" }}>
           {data.agentLabel ?? data.typeLabel}
         </span>
       </div>
