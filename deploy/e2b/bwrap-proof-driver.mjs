@@ -18,9 +18,11 @@ import os from 'node:os';
 import path from 'node:path';
 
 const results = [];
-function check(id, label, pass, evidence) {
-  results.push({ id, pass });
-  console.log(`CHECK ${JSON.stringify({ id, pass, label, evidence: String(evidence).slice(0, 400) })}`);
+// `expectFail:true` marks a DIAGNOSTIC that documents the OLD (pre-fix) behavior — it is SUPPOSED to fail on
+// a merged-usr distro, so it never counts toward the run's failure tally (the summary reports it separately).
+function check(id, label, pass, evidence, expectFail = false) {
+  results.push({ id, pass, expectFail });
+  console.log(`CHECK ${JSON.stringify({ id, pass, expectFail, label, evidence: String(evidence).slice(0, 400) })}`);
 }
 
 // Run `cmd` under the REAL piflow bwrap argv for the given scope. Returns code/stdout/stderr + the argv.
@@ -33,20 +35,23 @@ function runJailed(cmd, { workdir, granted }) {
 // ── 0. capability probes — distinguish "namespace uncapable" from "bind-set too small" ──────────────
 const bwrapProbe = (args) => spawnSync('bwrap', [...args, 'true'], { encoding: 'utf8', timeout: 10000 });
 
-// A) piflow's CURRENT probe (bwrap.ts probeBwrapUsable / the test's bwrapCanBuildNamespace): binds /usr only.
+// A) DIAGNOSTIC — the OLD /usr-only probe (pre-75a3336). EXPECTED to FAIL on a merged-usr distro: the
+//    namespace builds but `true`'s ELF loader (/lib64 + the /lib symlink chain) isn't bound → exit 1. This
+//    is the false-negative that silently dropped `--sandbox local` to unsandboxed (Finding A).
 const pUsr = bwrapProbe(['--ro-bind', '/usr', '/usr', '--proc', '/proc', '--dev', '/dev']);
-check('PROBE_USR_ONLY', "piflow's current probe (`--ro-bind /usr /usr … true`)", pUsr.status === 0,
-  `exit=${pUsr.status} stderr=${(pUsr.stderr ?? '').trim()}`);
+check('PROBE_OLD_USR_ONLY', 'OLD /usr-only probe (pre-fix; documents the merged-usr false-negative)', pUsr.status === 0,
+  `exit=${pUsr.status} stderr=${(pUsr.stderr ?? '').trim()}`, true);
 
-// B) same probe + the dynamic linker dir bound: if THIS passes where (A) failed, (A) failed on the
-//    missing ELF interpreter (/lib64/ld-linux-*.so), NOT on namespace capability.
+// B) DIAGNOSTIC — OLD probe + /lib64 only: still insufficient (the loader symlink chain also needs /lib),
+//    proving the fix had to be `--ro-bind / /`, not a one-dir patch. EXPECTED to FAIL on merged-usr.
 const pLoader = bwrapProbe(['--ro-bind', '/usr', '/usr', '--ro-bind', '/lib64', '/lib64', '--proc', '/proc', '--dev', '/dev']);
-check('PROBE_USR_PLUS_LIB64', '…+ `--ro-bind /lib64 /lib64` (the loader)', pLoader.status === 0,
-  `exit=${pLoader.status} stderr=${(pLoader.stderr ?? '').trim()}`);
+check('PROBE_OLD_USR_PLUS_LIB64', 'OLD probe + /lib64 only (still insufficient — needs /lib too)', pLoader.status === 0,
+  `exit=${pLoader.status} stderr=${(pLoader.stderr ?? '').trim()}`, true);
 
-// C) whole-root ro bind: the definitive "can a user namespace be built at all here?" probe.
+// C) piflow's CURRENT capability probe — exactly what bwrap.ts probeBwrapUsable() now spawns. MUST pass
+//    where a user namespace can be built (binding all of / ro exposes the loader on every distro).
 const pRoot = bwrapProbe(['--ro-bind', '/', '/', '--proc', '/proc', '--dev', '/dev']);
-check('PROBE_FULL_ROOT', 'namespace IS buildable (`--ro-bind / / … true`)', pRoot.status === 0,
+check('PROBE_CURRENT', "piflow's CURRENT probe (`--ro-bind / / … true`) — namespace buildable", pRoot.status === 0,
   `exit=${pRoot.status} stderr=${(pRoot.stderr ?? '').trim()}`);
 if (pRoot.status !== 0) {
   console.log('SUMMARY namespace-uncapable — cannot prove the jail here');
@@ -98,15 +103,17 @@ check('NET_ON', 'network NOT unshared (agent must reach its gateway)', !sampleAr
   `--unshare-net present=${sampleArgv.includes('--unshare-net')}`);
 
 // ── summary ─────────────────────────────────────────────────────────────────────────────────────────
-// The VERDICT is the clean proof: the $HOME battery (workdir NOT under /tmp, no tmpfs-overmount confound)
-// + the network invariant. PROBE_* and the tmp.* battery are reported as DIAGNOSTICS, not gates — a
-// PROBE_USR_ONLY failure is an expected FINDING (the merged-usr loader gap), and a tmp.* failure isolates
-// the `--tmpfs /tmp`-after-binds confound; neither means the jail mechanism is broken.
-const passed = results.filter((r) => r.pass).length;
-console.log(`SUMMARY ${passed}/${results.length} PASS`);
+// The VERDICT is the clean proof: the $HOME battery (workdir NOT under /tmp) + the network invariant. The
+// `tmp.*` battery (workdir UNDER /tmp) proves Finding B's `--tmpfs /tmp`-first fix and must ALSO pass now.
+// The two PROBE_OLD_* checks are expected-fail DIAGNOSTICS documenting the merged-usr loader gap (Finding A)
+// — they never count as failures (the run's tally excludes `expectFail`).
+const real = results.filter((r) => !r.expectFail);
+const passed = real.filter((r) => r.pass).length;
+const expectedFails = results.filter((r) => r.expectFail).map((r) => `${r.id}=${r.pass ? 'pass' : 'fail(expected)'}`);
+console.log(`SUMMARY ${passed}/${real.length} PASS (+${results.length - real.length} expected-fail diagnostics: ${expectedFails.join(', ')})`);
 const verdictIds = results.filter((r) => r.id.startsWith('home.') || r.id === 'NET_ON');
 const verdictFailed = verdictIds.filter((r) => !r.pass).map((r) => r.id);
-const allFailed = results.filter((r) => !r.pass).map((r) => r.id);
-if (allFailed.length) console.log(`FAILED ${JSON.stringify(allFailed)}`);
+const realFailed = real.filter((r) => !r.pass).map((r) => r.id);
+if (realFailed.length) console.log(`FAILED ${JSON.stringify(realFailed)}`);
 console.log(`VERDICT ${verdictFailed.length ? 'JAIL-NOT-PROVEN' : 'JAIL-PROVEN'} (home battery + net; ${verdictIds.length - verdictFailed.length}/${verdictIds.length})`);
-process.exit(verdictFailed.length ? 1 : 0);
+process.exit(verdictFailed.length || realFailed.length ? 1 : 0);

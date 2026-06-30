@@ -131,6 +131,24 @@ export class LocalSandbox implements Sandbox {
               profileDir: os.tmpdir(),
             })
           : null;
+      // FAIL-CLOSED: enforcement was requested for a real command but the host has NO kernel jail
+      // backend (unsupported OS, or linux without bubblewrap → localJailPlan returned null). REFUSE to
+      // run rather than silently run UNSANDBOXED — resolve a failure ExecResult (code 126, "cannot
+      // execute") so the runner classifies it as a failure; NEVER reject (exec never throws by contract).
+      // Nothing is spawned (no listeners) and no plan exists (no profilePath to unlink), so there is
+      // nothing to clean up. The ONLY way to run unsandboxed is the explicit danger-full-access bypass
+      // (enforceReadScope:false), which short-circuits above and never reaches this guard.
+      if (this.enforceReadScope && cmd && plan === null) {
+        resolve({
+          stdout: '',
+          stderr:
+            `piflow: refusing to run unsandboxed — --sandbox local requires the OS read-scope jail ` +
+            `(macOS seatbelt / Linux bubblewrap), unavailable on this host (${process.platform}). ` +
+            `Install bubblewrap and allow unprivileged user namespaces, or use --sandbox danger-full-access to bypass.`,
+          code: 126,
+        });
+        return;
+      }
       const child = spawn(plan ? plan.file : cmd, plan ? plan.argv : [], {
         cwd,
         env: { ...process.env, ...this.env, ...opts.env },
