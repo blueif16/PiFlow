@@ -1,0 +1,7 @@
+{
+  "_comment": "OKF substrate for piflow's OWN codebase (dogfood of the world/code leg). System-agnostic generator copied verbatim from game-omni; point repoRoot/memoryDir at any repo to reuse. Paths resolve relative to this file's dir; codegraph is optional (skipped if absent or OKF_NO_CODEGRAPH).",
+  "repoRoot": "../..",
+  "memoryDir": "/Users/tk/.claude/projects/-Users-tk-Desktop-piflow/memory",
+  "codegraph": "codegraph",
+  "noise": ["node_modules", "/out/", "/dist/", "package-lock", "pnpm-lock", "/.venv/", "/coverage/", "/.codegraph/", "/.git/", "reference/", "/_prior-runs/"]
+}
