@@ -286,8 +286,12 @@ export function DetailCol(thread, detail, di, focus, h, fi = 0, view = 'list', d
   const [s, e] = viewport(order.length, di, listH);
   const tick = detail.tick || 0;
 
+  // Live fleet position from the shared ThreadRow (summarizeRun): stage progress + phase. Null-guarded so
+  // a finished/unknown run omits the segment entirely (never renders `null`/`undefined`/`NaN`).
+  const stageSeg = thread.stageIndex != null && thread.stageTotal != null ? ` · stage ${thread.stageIndex}/${thread.stageTotal}` : '';
+  const phaseSeg = thread.phase != null ? ` · ${thread.phase}` : '';
   const head = html`<${Text} key="head" wrap="truncate">
-    <${Text} bold>${m.run.id}<//> <${Text} color=${COLOR[m.run.done ? (m.run.ok === false ? 'failed' : 'done') : 'running']}>${m.run.done ? (m.run.ok === false ? 'FAILED' : 'DONE') : 'running'}<//> <${Text} dimColor>· ${m.run.provider || ''}/${m.run.model || ''} · ${fmtDur(m.run.durationMs ?? m.run.elapsedMs)} · ${m.totals.toolCalls} tools · ${fmtTok(m.totals.tokensBillable) || 0} tok<//>
+    <${Text} bold>${m.run.id}<//> <${Text} color=${COLOR[m.run.done ? (m.run.ok === false ? 'failed' : 'done') : 'running']}>${m.run.done ? (m.run.ok === false ? 'FAILED' : 'DONE') : 'running'}<//> <${Text} dimColor>· ${m.run.provider || ''}/${m.run.model || ''} · ${fmtDur(m.run.durationMs ?? m.run.elapsedMs)} · ${m.totals.toolCalls} tools · ${fmtTok(m.totals.tokensBillable) || 0} tok${stageSeg}${phaseSeg}<//>
   <//>`;
 
   const sub = NodeSub(m.nodes[order[Math.min(di, order.length - 1)]], detail.tail, fi, focus === 3);

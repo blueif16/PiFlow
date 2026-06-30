@@ -16,6 +16,12 @@ export interface IndexThread {
   stageTotal: number | null;
   phase: string | null;
   runningNode: string | null;
+  /** the in-flight tool of the running node (from its events); null when no running node or no open tool call. */
+  runningTool: string | null;
+  /** ms since the run last wrote status (now − updatedAt) for a running run; null otherwise. */
+  staleMs: number | null;
+  /** true when a running run has been silent past the shared stale threshold (staleMs > ~90s). */
+  runningStalled: boolean;
   nodesDone: number;
   nodesTotal: number;
   frac: number;

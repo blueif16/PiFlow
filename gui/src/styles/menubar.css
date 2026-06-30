@@ -57,6 +57,10 @@
 .ds-menubar__status[data-state="done"]    { color: var(--ds-success-fg); }
 .ds-menubar__status[data-state="failed"]  { color: var(--ds-error-fg); }
 .ds-menubar__status[data-state="running"] { color: var(--ds-text-accent); }
+/* live focus (running node:tool, phase) reads as dim secondary text next to the count */
+.ds-menubar__live { color: var(--ds-text-tertiary); }
+/* stall cue: amber accent on the marker, reusing the shared warning token */
+.ds-menubar__status[data-stalled="true"] .ds-menubar__stalled { color: var(--ds-warning-fg); }
 
 .ds-menubar__icon {
   display: inline-flex;
