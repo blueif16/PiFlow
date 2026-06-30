@@ -31,10 +31,14 @@ export interface NewOpts {
   phases?: string[];
 }
 
-/** A post-check on a produced artifact (`--check non-empty:findings/findings.md`). */
+/** An integrity check on an artifact (`--check field-present:verify/r.json:warn:verdict`). The full
+ *  `$defs/check` shape (node.schema.ts): a `kind`, an optional `path`, a `severity` (fail|warn — the
+ *  verdict on failure), and a kind-specific `param` (dotted field, regex, or an object like {min,path}). */
 export interface CheckOpt {
   kind: string;
   path?: string;
+  severity?: 'fail' | 'warn';
+  param?: unknown;
 }
 
 /** Options for `scaffoldAddNode` (emit one `nodes/<id>/node.json`). `id` is the only required field. */
@@ -67,6 +71,12 @@ export interface NodeOpts {
   promote?: { from: string; to: string; merge?: 'set' | 'append' | 'deepMerge' }[];
   /** registryProject: project a registry record's op-map over a frozen source — `{ source, mapRef, key }`. */
   registryProject?: { source: string; mapRef: string; key: string };
+  /** EXECUTION GATE(s) → a POST `op.run` whose non-zero exit BLOCKS the node (test/build/lint). `{ cmd, args?, cwd? }`. */
+  gateRun?: { cmd: string; args?: string[]; cwd?: string }[];
+  /** (M4) Escalate to a stronger tier/model on failure → `op.action{kind:'escalate', via}` (→ io.escalate.tier). */
+  escalate?: string;
+  /** (M3) Bounded reroute back to an upstream node on failure → `op.action{kind:'rerouteTo', node, max}`. */
+  reroute?: { node: string; max: number };
   /** Per-node external MCP servers (loader REJECTS a literal secret — use $VAR refs in values). */
   mcp?: McpServers;
   /** Which agent ENGINE runs this node: 'pi' (default fleet) or 'claude-code' (headless local Claude). */
@@ -92,16 +102,69 @@ export interface NodeOpts {
   agentType?: string;
   /** Prompt body file, node-folder-relative (default: 'prompt.md'). */
   promptFile?: string;
-  /** Post-checks over produced artifacts. */
+  /** Post-checks over produced artifacts (the `checks.post` lane). */
   checks?: CheckOpt[];
+  /** Pre-checks over staged inputs (the `checks.pre` lane — runs BEFORE the model). */
+  checksPre?: CheckOpt[];
   /** policy.fail action (default omitted ⇒ the engine default 'block'). */
   onFail?: 'block' | 'warn' | 'stop';
+  /** policy.warn action (the consequence of a `warn`-severity verdict). */
+  onWarn?: 'block' | 'warn' | 'stop';
+  /** (G5 HITL) A human checkpoint on this node — pauses for a reply. NOT programmatic (the schema still
+   *  requires a `prompt` block, and checkRefs still demands the prompt.md on disk). */
+  checkpoint?: {
+    kind: 'confirm' | 'input' | 'select';
+    prompt: string;
+    choices?: string[];
+    default?: unknown;
+    headless?: 'default' | 'abort';
+    timeoutMs?: number;
+  };
+  /** A JUDGE gate — a different-tier model's verdict, materialized at load into a `<id>__judge` node. The
+   *  `rubric` is INLINE prose (the CLI reads it from the sibling `judge.md`). `judgeTier` MUST differ from
+   *  this node's `tier` (buildNode rejects a collision — no self-judging). */
+  judge?: {
+    judgeTier: string;
+    rubric: string;
+    threshold?: string;
+    policy?: {
+      onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'escalate';
+      retryMax?: number;
+      retryScope?: 'feedback' | 'fix';
+    };
+  };
+  /** (Phase 2) FUSION activation — siblings + judge expansion (run-path `expandFusion`). `mode` required. */
+  fusion?: { mode: 'moa' | 'best-of-n'; n?: number; panel?: string[]; judge?: string; obligations?: boolean; verify?: boolean };
+  /** (G9) SUBWORKFLOW — inline a sub-template as a sub-DAG in place of this node. `ref` = sub-template dir, parent-root-relative. */
+  subworkflow?: { ref: string };
+  /** Per-node jail-off → `contract.fullAccess` (run OUTSIDE the local fs jail; loosen-only, LOCAL-only). */
+  fullAccess?: boolean;
+  /** A write-first sentinel → `contract.fillSentinel` (still-present ⇒ the artifact is incomplete). */
+  fillSentinel?: string;
   /** A no-pi node: runs its declarative ops, omits `prompt`/`tools`. */
   programmatic?: boolean;
 }
 
 /** Pretty-print a JSON object the way the template files are authored (2-space, trailing newline). */
 const toJson = (o: unknown): string => JSON.stringify(o, null, 2) + '\n';
+
+/** Parse a CLI scalar as JSON when it parses (an object/number/bool), else keep the raw string. Used for
+ *  kind-specific check params ({min,path}) and a checkpoint `default` (any type). */
+const jsonOrString = (s: string): unknown => {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return s;
+  }
+};
+
+/** A `CheckOpt` → the `$defs/check` object: omit each optional field unless present (a minimal file). */
+const emitCheck = (c: CheckOpt): Record<string, unknown> => ({
+  kind: c.kind,
+  ...(c.path ? { path: c.path } : {}),
+  ...(c.severity ? { severity: c.severity } : {}),
+  ...(c.param !== undefined ? { param: c.param } : {}),
+});
 
 /** The workflow id baked from the template dir: parent basename when the dir is `template/`, else its own. */
 function deriveId(dir: string): string {
@@ -188,45 +251,130 @@ export function buildNode(opts: NodeOpts): Record<string, unknown> {
     artifacts: opts.artifacts ?? [],
     owns: opts.owns ?? ['out/**'],
     readScope: opts.readScope ?? ['{{RUN}}'],
+    // contract-resident extras (the fs-scope + completeness axes). fullAccess is emitted ONLY when true
+    // (false/absent are byte-identical downstream); fillSentinel is a string (the schema also allows null).
+    ...(opts.fullAccess ? { fullAccess: true } : {}),
+    ...(opts.fillSentinel !== undefined ? { fillSentinel: opts.fillSentinel } : {}),
     ...(opts.schema ? { schema: opts.schema } : {}),
     ...(opts.returnMode ? { returnMode: opts.returnMode } : {}),
   };
-  // (G13) The canonical `op[]` envelope for the DERIVE hooks. Authoring `op[]` short-circuits the loader's
-  // alias-lowering (`lower.ts:48` — `if (def.op) return def.op`), so a node WITH derive hooks must ALSO carry
-  // its `inject` here (folded as PRE read-ops) or it would be dropped; `checks`/`policy` stay below (the
-  // loader reads them independently). The derives RUN because `op[]` is the SOLE derive rep (the legacy
-  // `node.ops` + its back-fill were retired in U6) and the runner reads each family off `op[]` via
-  // `derivesFromOp`. Order is canonical pre→post: inject reads · seed · project · registryProject · merge · promote.
-  const derive: Record<string, unknown>[] = [];
+  // (G13) The canonical `op[]` envelope. It carries the DERIVE hooks (seed/project/registryProject/merge/
+  // promote), EXECUTION GATES (op.run), and CONTROL ACTIONS (escalate/reroute) — ONE ordered list. Authoring
+  // `op[]` short-circuits the loader's alias-lowering (`lower.ts` — `if (def.op) return def.op`), so a node
+  // WITH any op MUST ALSO carry its `inject` here (folded as PRE read-ops) or it would be dropped; `checks`/
+  // `policy` stay below (the loader reads them independently via collectChecks/toPolicy). The derives RUN
+  // because `op[]` is the SOLE derive rep (legacy `node.ops` retired in U6); the runner reads each family off
+  // `op[]` (`derivesFromOp`/`runOpsFromOp`/`lowerActions`). Canonical order: pre reads · seed · project ·
+  // registryProject · merge · promote (post derives) · execution gates (post) · control actions (on-failure).
+  const ops: Record<string, unknown>[] = [];
   for (const s of opts.seed ?? []) {
-    derive.push({ when: 'pre', writes: [s.to], transform: { kind: 'seed', from: s.from } });
+    ops.push({ when: 'pre', writes: [s.to], transform: { kind: 'seed', from: s.from } });
   }
   for (const p of opts.project ?? []) {
     const reads = Array.isArray(p.from) ? p.from : [p.from];
-    derive.push({ when: 'post', writes: [p.to], reads, transform: { kind: 'project', from: p.from } });
+    ops.push({ when: 'post', writes: [p.to], reads, transform: { kind: 'project', from: p.from } });
   }
   if (opts.registryProject) {
     const { source, mapRef, key } = opts.registryProject;
-    derive.push({ when: 'post', transform: { kind: 'projectRegistry', source, mapRef, key } });
+    ops.push({ when: 'post', transform: { kind: 'projectRegistry', source, mapRef, key } });
   }
   if (opts.mergeRun?.length) {
-    const ops = opts.mergeRun.map((r) => ({
+    const mergeOps = opts.mergeRun.map((r) => ({
       run: { cmd: r.cmd, ...(r.args?.length ? { args: r.args } : {}), ...(r.cwd ? { cwd: r.cwd } : {}) },
     }));
-    derive.push({ when: 'post', transform: { kind: 'merge', ops } });
+    ops.push({ when: 'post', transform: { kind: 'merge', ops: mergeOps } });
   }
   for (const p of opts.promote ?? []) {
-    derive.push({ when: 'post', transform: { kind: 'promote', from: p.from, to: p.to, ...(p.merge ? { reducer: p.merge } : {}) } });
+    ops.push({ when: 'post', transform: { kind: 'promote', from: p.from, to: p.to, ...(p.merge ? { reducer: p.merge } : {}) } });
   }
-  if (derive.length) {
-    node.op = [...(opts.inject ?? []).map((p) => ({ when: 'pre', reads: [p] })), ...derive];
+  // EXECUTION GATE — a POST `op.run`; a non-zero exit BLOCKS the node (`onFailure:'block'`; node-lifecycle
+  // partitions blocking op-failures). Distinct from `--merge-run` (a `transform.merge` data-derive, no verdict).
+  for (const g of opts.gateRun ?? []) {
+    ops.push({
+      when: 'post',
+      run: { cmd: g.cmd, ...(g.args?.length ? { args: g.args } : {}), ...(g.cwd ? { cwd: g.cwd } : {}) },
+      onFailure: 'block',
+    });
+  }
+  // CONTROL ACTIONS (on failure) — escalate `via` lowers to io.escalate.tier (M4); reroute `node` lowers to
+  // io.reroute.onFail (M3 bounded self-fix; `node` must be a strict ancestor — expandReroute is the oracle).
+  if (opts.escalate) ops.push({ when: 'on-failure', action: { kind: 'escalate', via: opts.escalate } });
+  if (opts.reroute) {
+    ops.push({ when: 'on-failure', action: { kind: 'rerouteTo', node: opts.reroute.node, max: opts.reroute.max } });
+  }
+  if (ops.length) {
+    node.op = [...(opts.inject ?? []).map((p) => ({ when: 'pre', reads: [p] })), ...ops];
   } else if (opts.inject?.length) {
-    node.inject = opts.inject; // no derive hooks ⇒ inject stays the legacy alias (the loader lowers it).
+    node.inject = opts.inject; // no op[] entries ⇒ inject stays the legacy alias (the loader lowers it).
   }
-  if (opts.checks?.length) {
-    node.checks = { post: opts.checks.map((c) => ({ kind: c.kind, ...(c.path ? { path: c.path } : {}) })) };
+  // DETECTION (§4) — the full `$defs/check` shape in BOTH lanes (pre over staged inputs, post over produced
+  // artifacts). `collectChecks` (render.ts) folds kind/path/param/severity onto the runtime `io.checks`, so a
+  // dropped severity/param silently weakens the gate — emit every present field. ⊥ policy (below).
+  if (opts.checks?.length || opts.checksPre?.length) {
+    node.checks = {
+      ...(opts.checksPre?.length ? { pre: opts.checksPre.map(emitCheck) } : {}),
+      ...(opts.checks?.length ? { post: opts.checks.map(emitCheck) } : {}),
+    };
   }
-  if (opts.onFail) node.policy = { fail: opts.onFail };
+  // CONSEQUENCE (§4) — verdict→action. Each lane (warn|fail) omitted ⇒ the engine default (fail→block).
+  if (opts.onFail || opts.onWarn) {
+    node.policy = {
+      ...(opts.onFail ? { fail: opts.onFail } : {}),
+      ...(opts.onWarn ? { warn: opts.onWarn } : {}),
+    };
+  }
+  // (G5 HITL) The human checkpoint block (loader.ts:174 carries it verbatim). NOT a programmatic node —
+  // it keeps its `prompt` block above (the runtime no-pi lane never reads it, but checkRefs demands it).
+  if (opts.checkpoint) {
+    const cp = opts.checkpoint;
+    node.checkpoint = {
+      kind: cp.kind,
+      prompt: cp.prompt,
+      ...(cp.choices?.length ? { choices: cp.choices } : {}),
+      ...(cp.default !== undefined ? { default: cp.default } : {}),
+      ...(cp.headless ? { headless: cp.headless } : {}),
+      ...(cp.timeoutMs !== undefined ? { timeoutMs: cp.timeoutMs } : {}),
+    };
+  }
+  // The JUDGE gate (loader materializes it into a real `<id>__judge` node, materialize.ts). `kind` is
+  // IMPLIED by the field name — never emitted (additionalProperties:false would reject it). The producer
+  // tier MUST differ from judgeTier (no self-judging — a model false-accepts its own work, TeamBench); the
+  // SDK throws a JudgeConfigError at load, but fail in the CLI first for a clearer message + no half-write.
+  if (opts.judge) {
+    const j = opts.judge;
+    if (opts.tier !== undefined && opts.tier === j.judgeTier) {
+      throw new Error(
+        `piflowctl: --judge tier "${j.judgeTier}" must differ from the node's --tier "${opts.tier}" ` +
+          `(no self-judging — a model can't reliably judge its own output)`,
+      );
+    }
+    node.judgeGate = {
+      judgeTier: j.judgeTier,
+      rubric: j.rubric,
+      ...(j.threshold ? { threshold: j.threshold } : {}),
+      ...(j.policy && Object.keys(j.policy).length ? { policy: j.policy } : {}),
+    };
+  }
+  // (Phase 2) FUSION — top-level activation (loader carries verbatim; run-path expandFusion makes the node a
+  // judge + N sibling producers). `mode` is the one required key — validate the enum here for a clear error.
+  if (opts.fusion) {
+    const f = opts.fusion;
+    if (f.mode !== 'moa' && f.mode !== 'best-of-n') {
+      throw new Error(`piflowctl: --fusion mode must be moa|best-of-n (got "${f.mode}")`);
+    }
+    node.fusion = {
+      mode: f.mode,
+      ...(f.n !== undefined ? { n: f.n } : {}),
+      ...(f.panel?.length ? { panel: f.panel } : {}),
+      ...(f.judge ? { judge: f.judge } : {}),
+      ...(f.obligations ? { obligations: true } : {}),
+      ...(f.verify === false ? { verify: false } : {}),
+    };
+  }
+  // (G9) SUBWORKFLOW — top-level; run-path expandSubworkflow inlines the referenced sub-template's nodes in
+  // place of this node. loadTemplate accepts any non-empty ref (it does NOT resolve the dir) — expandSubworkflow
+  // is the resolution oracle.
+  if (opts.subworkflow) node.subworkflow = { ref: opts.subworkflow.ref };
   if (opts.programmatic) node.programmatic = true;
   return node;
 }
@@ -302,10 +450,81 @@ function parseMcp(entries: string[] | undefined): McpServers | undefined {
   return servers;
 }
 
-/** Parse `--check kind[:path]` into a post-check. */
+/** Parse `--check kind[:path[:severity[:param]]]` into a check (used for both the post and pre lanes).
+ *  Positional, colon-delimited: the terse `kind` / `kind:path` forms stay back-compatible. `severity` ∈
+ *  fail|warn (empty segment ⇒ default fail). `param` is EVERYTHING after the 3rd colon (so a regex/dotted
+ *  field keeps its own colons), JSON-parsed when it parses (count-floor's `{min,path}`, a number) else the
+ *  raw string (a `field-present` dotted field, a regex). The loader is the oracle for an out-of-set kind. */
 function parseCheck(entry: string): CheckOpt {
-  const colon = entry.indexOf(':');
-  return colon < 0 ? { kind: entry } : { kind: entry.slice(0, colon), path: entry.slice(colon + 1) };
+  const parts = entry.split(':');
+  const out: CheckOpt = { kind: parts[0] };
+  if (parts[1]) out.path = parts[1];
+  if (parts[2]) {
+    if (parts[2] !== 'fail' && parts[2] !== 'warn') {
+      throw new Error(`piflowctl: --check severity must be fail|warn (got "${parts[2]}")`);
+    }
+    out.severity = parts[2];
+  }
+  const paramStr = parts.slice(3).join(':');
+  if (paramStr) out.param = jsonOrString(paramStr);
+  return out;
+}
+
+/** Parse `--judge <judgeTier>[:threshold]` + read the sibling `judge.md` rubric (the prose the agent Writes;
+ *  the CLI inlines it, never authors it). Throws a clear error if the rubric file is absent/empty. The
+ *  `judgeTier !== node tier` invariant is enforced in `buildNode` (it has the node's `--tier`). */
+async function parseJudge(
+  dir: string,
+  id: string,
+  flagValue: string,
+  policyFlags: { onFail?: string; retryMax?: string; retryScope?: string },
+): Promise<NonNullable<NodeOpts['judge']>> {
+  const colon = flagValue.indexOf(':');
+  const judgeTier = colon < 0 ? flagValue : flagValue.slice(0, colon);
+  const threshold = colon < 0 ? undefined : flagValue.slice(colon + 1);
+  if (!judgeTier) throw new Error(`piflowctl: --judge expects <judgeTier>[:threshold] (got "${flagValue}")`);
+  const rubricPath = path.join(dir, 'nodes', id, 'judge.md');
+  let rubric: string;
+  try {
+    rubric = (await fs.readFile(rubricPath, 'utf8')).trim();
+  } catch {
+    throw new Error(
+      `piflowctl: --judge needs the rubric prose in ${rubricPath} — Write it first (the CLI inlines it, never authors it)`,
+    );
+  }
+  if (!rubric) throw new Error(`piflowctl: ${rubricPath} is empty — write the judge rubric prose first`);
+  const policy: NonNullable<NonNullable<NodeOpts['judge']>['policy']> = {};
+  if (policyFlags.onFail) policy.onFail = policyFlags.onFail as NonNullable<typeof policy.onFail>;
+  if (policyFlags.retryMax !== undefined) policy.retryMax = Number(policyFlags.retryMax);
+  if (policyFlags.retryScope) policy.retryScope = policyFlags.retryScope as NonNullable<typeof policy.retryScope>;
+  return {
+    judgeTier,
+    rubric,
+    ...(threshold ? { threshold } : {}),
+    ...(Object.keys(policy).length ? { policy } : {}),
+  };
+}
+
+/** Parse `--checkpoint <kind>:<prompt>` (+ the sidecar `--checkpoint-*` flags) into the G5 block. `kind` is
+ *  the token before the FIRST colon (so a prompt keeps its own colons). */
+function parseCheckpoint(
+  flagValue: string,
+  sidecars: { choices?: string[]; default?: string; headless?: string; timeoutMs?: string },
+): NonNullable<NodeOpts['checkpoint']> {
+  const colon = flagValue.indexOf(':');
+  if (colon < 1) throw new Error(`piflowctl: --checkpoint expects kind:prompt (got "${flagValue}")`);
+  const kind = flagValue.slice(0, colon);
+  if (kind !== 'confirm' && kind !== 'input' && kind !== 'select') {
+    throw new Error(`piflowctl: --checkpoint kind must be confirm|input|select (got "${kind}")`);
+  }
+  return {
+    kind,
+    prompt: flagValue.slice(colon + 1),
+    ...(sidecars.choices?.length ? { choices: sidecars.choices } : {}),
+    ...(sidecars.default !== undefined ? { default: jsonOrString(sidecars.default) } : {}),
+    ...(sidecars.headless ? { headless: sidecars.headless as 'default' | 'abort' } : {}),
+    ...(sidecars.timeoutMs !== undefined ? { timeoutMs: Number(sidecars.timeoutMs) } : {}),
+  };
 }
 
 // ── derive-hook flag parsers (each emits one canonical `op[]` entry via buildNode) ──────────────────
@@ -365,6 +584,18 @@ function parseMergeRun(entry: string): NonNullable<NodeOpts['mergeRun']>[number]
   return { cmd, ...(args.length ? { args } : {}), ...(cwd ? { cwd } : {}) };
 }
 
+/** Parse `--reroute node[:max]` → a bounded reroute back to an upstream node (default max 1). `node` is the
+ *  LHS of the FIRST `:`; the optional RHS is the attempt budget. The target must be a strict ancestor —
+ *  `expandReroute` is the run-path oracle (loadTemplate alone accepts any id). */
+function parseReroute(entry: string): NonNullable<NodeOpts['reroute']> {
+  const colon = entry.indexOf(':');
+  if (colon < 0) return { node: entry, max: 1 };
+  const node = entry.slice(0, colon);
+  const max = Number(entry.slice(colon + 1));
+  if (!node || !Number.isFinite(max)) throw new Error(`piflowctl: --reroute expects node[:max] (got "${entry}")`);
+  return { node, max };
+}
+
 /** Parse `--registry-project source=…,mapRef=…,key=…` → a POST registryProject (all three required). */
 function parseRegistryProject(entry: string): NonNullable<NodeOpts['registryProject']> {
   const fields: Record<string, string> = {};
@@ -387,9 +618,15 @@ const ADD_USAGE =
   '[--owns <glob>]... [--read <p>]... [--tool <t>]... [--deny <t>]... [--inject <p>]... ' +
   '[--seed <to=from>]... [--promote <from=to[:reducer]>]... [--project <to=from[,from2]>]... ' +
   '[--merge-run <cmd[:args][@cwd]>]... [--registry-project <source=,mapRef=,key=>] ' +
-  '[--mcp <name=url>]... [--check <kind[:path]>]... [--agent-type <id>] [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
+  '[--gate-run <cmd[:args][@cwd]>]... [--escalate <tier|model>] [--reroute <node[:max]>] ' +
+  '[--mcp <name=url>]... [--check <kind[:path[:severity[:param]]]>]... [--check-pre <kind[:path[:severity[:param]]]>]... ' +
+  '[--agent-type <id>] [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
   '[--timeout <ms>] [--retries <n>] [--return-mode optional|required] [--schema <p>] [--skill <p>] ' +
-  '[--prompt-file <f>] [--on-fail block|warn|stop] [--programmatic]';
+  '[--prompt-file <f>] [--on-fail block|warn|stop] [--on-warn block|warn|stop] ' +
+  '[--judge <judgeTier[:threshold]>] [--judge-on-fail block|warn|stop|retry|escalate] [--judge-retry-max <n>] [--judge-retry-scope feedback|fix] ' +
+  '[--checkpoint <confirm|input|select:prompt>] [--checkpoint-choice <v>]... [--checkpoint-default <v>] [--checkpoint-headless default|abort] [--checkpoint-timeout <ms>] ' +
+  '[--fusion <moa|best-of-n>] [--fusion-n <n>] [--fusion-panel <model|tier>]... [--fusion-judge <model|tier>] [--fusion-obligations] [--fusion-no-verify] ' +
+  '[--subworkflow <ref>] [--full-access] [--fill-sentinel <s>] [--programmatic]';
 
 /** `piflowctl new <templateDir> [flags]` — emit meta.json + the nodes/ dir. */
 export async function runNewCli(argv: string[]): Promise<void> {
@@ -413,7 +650,12 @@ export async function runNewCli(argv: string[]): Promise<void> {
 
 /** `piflowctl add-node <templateDir> --id <id> [flags]` — emit one node.json (prose is the agent's). */
 export async function runAddNodeCli(argv: string[]): Promise<void> {
-  const { positional, flags, bools } = parseArgs(argv, ['programmatic']);
+  const { positional, flags, bools } = parseArgs(argv, [
+    'programmatic',
+    'full-access',
+    'fusion-obligations',
+    'fusion-no-verify',
+  ]);
   const dir = positional[0];
   const id = flags.id?.[0];
   if (!dir || !id) {
@@ -422,6 +664,23 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     return;
   }
   const num = (v: string | undefined): number | undefined => (v === undefined ? undefined : Number(v));
+  // --judge reads the sibling judge.md (async I/O — kept out of the pure buildNode); --checkpoint folds its
+  // sidecar flags. Both throw on a malformed value BEFORE scaffoldAddNode writes, so no half-authored node.
+  const judge = flags.judge?.[0]
+    ? await parseJudge(dir, id, flags.judge[0], {
+        onFail: flags['judge-on-fail']?.[0],
+        retryMax: flags['judge-retry-max']?.[0],
+        retryScope: flags['judge-retry-scope']?.[0],
+      })
+    : undefined;
+  const checkpoint = flags.checkpoint?.[0]
+    ? parseCheckpoint(flags.checkpoint[0], {
+        choices: flags['checkpoint-choice'],
+        default: flags['checkpoint-default']?.[0],
+        headless: flags['checkpoint-headless']?.[0],
+        timeoutMs: flags['checkpoint-timeout']?.[0],
+      })
+    : undefined;
   const { nodeJson, promptFile, promptExists } = await scaffoldAddNode(dir, {
     id,
     phase: flags.phase?.[0],
@@ -439,6 +698,9 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     registryProject: flags['registry-project']?.[0]
       ? parseRegistryProject(flags['registry-project'][0])
       : undefined,
+    gateRun: (flags['gate-run'] ?? []).map(parseMergeRun), // same cmd[:args][@cwd] grammar; emitted as a gate
+    escalate: flags.escalate?.[0],
+    reroute: flags.reroute?.[0] ? parseReroute(flags.reroute[0]) : undefined,
     mcp: parseMcp(flags.mcp),
     executor: flags.executor?.[0] as NodeOpts['executor'],
     model: flags.model?.[0],
@@ -452,7 +714,24 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     agentType: flags['agent-type']?.[0],
     promptFile: flags['prompt-file']?.[0],
     checks: (flags.check ?? []).map(parseCheck),
+    checksPre: (flags['check-pre'] ?? []).map(parseCheck),
     onFail: flags['on-fail']?.[0] as NodeOpts['onFail'],
+    onWarn: flags['on-warn']?.[0] as NodeOpts['onWarn'],
+    checkpoint,
+    judge,
+    fusion: flags.fusion?.[0]
+      ? {
+          mode: flags.fusion[0] as 'moa' | 'best-of-n',
+          n: num(flags['fusion-n']?.[0]),
+          panel: flags['fusion-panel'],
+          judge: flags['fusion-judge']?.[0],
+          obligations: bools.has('fusion-obligations') ? true : undefined,
+          verify: bools.has('fusion-no-verify') ? false : undefined,
+        }
+      : undefined,
+    subworkflow: flags.subworkflow?.[0] ? { ref: flags.subworkflow[0] } : undefined,
+    fullAccess: bools.has('full-access') ? true : undefined,
+    fillSentinel: flags['fill-sentinel']?.[0],
     programmatic: bools.has('programmatic'),
   });
   const next = bools.has('programmatic')

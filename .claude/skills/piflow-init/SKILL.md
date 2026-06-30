@@ -59,11 +59,34 @@ that is how a silent, wrong workflow gets built.
 - **The scaffold loop IS the convenience pathway — author by flags, never by hand-writing node JSON.** Stamp any
   template (COMPOSE, or extend a PORT) with the CLI: `piflowctl new <dir>` → per node `piflowctl add-node <dir>
   --id <id> [--dep …] [--tool …] [--artifact …] [--owns …] [--on-fail block] [--agent-type <base>]` (config is
-  emitted from flags, re-runnable as a deterministic function of them) → `Write` each `nodes/<id>/prompt.md` (the
+  emitted from flags, re-runnable as a deterministic function of them; the FULL gate/judge/checkpoint/control
+  surface is flags too — see the gate-authoring bullet below) → `Write` each `nodes/<id>/prompt.md` (the
   PROSE — the only part that's yours) → `piflowctl extract <dir>` to TEST (free DAG preview, no model — the real
   loadTemplate gate). `--agent-type <base>` binds a whole base agent (its tools + skill + the OBSERVABLE label,
   via the real `mergePreset`) in one flag. This is how a node is scaffolded or customized in a single line —
   reach for it before hand-authoring, and `extract` after every change to confirm the DAG still compiles.
+- **Gates, judges, checkpoints, and control are FLAGS — never hand-edit `node.json` for them.** The WHOLE
+  per-node gate surface is reachable from `add-node`; each flag emits the exact schema field the loader honors,
+  so `node.json` stays a deterministic function of the flags and `piflowctl extract` (the loadTemplate gate) is
+  the oracle. Author by flag; the only prose you Write is `prompt.md` (and a judge's `judge.md`):
+  - **Checks** — `--check <kind[:path[:severity[:param]]]>` (post lane) · `--check-pre …` (pre lane) ·
+    `--on-fail`/`--on-warn block|warn|stop`. `severity`=fail|warn; `param`=a dotted field, a regex, or a JSON
+    object (`{min,path}` for count-floor) — JSON-parsed when it parses. (terse `kind`/`kind:path` still works.)
+  - **Execution gate** — `--gate-run <cmd[:args][@cwd]>`: a POST shell gate whose non-zero exit BLOCKS the node.
+    Distinct from `--merge-run` (a `transform.merge` data-derive with NO verdict) — use `--gate-run` for a test/
+    build/lint gate, `--merge-run` to generate an asset.
+  - **Judge** (a DIFFERENT-model verdict, materialized at load into a real `<id>__judge` node) — Write the rubric
+    prose to `nodes/<id>/judge.md` FIRST, then `--judge <judgeTier[:threshold]>`; the CLI inlines `judge.md` into
+    `judgeGate.rubric`. `judgeTier` MUST differ from the node's `--tier` (no self-judging — the CLI rejects a
+    collision before any write). `--judge-on-fail … · --judge-retry-max <n> · --judge-retry-scope feedback|fix`.
+  - **HITL** — `--checkpoint <confirm|input|select:prompt>` (+ `--checkpoint-choice/-default/-headless/-timeout`):
+    the G5 human gate. It is NOT programmatic — it still needs its `prompt.md`.
+  - **Control** — `--escalate <tier|model>` (on failure, retry on a stronger model → `io.escalate`) ·
+    `--reroute <node[:max]>` (on failure, loop back to an upstream node — the target MUST be a strict ANCESTOR).
+  - **Topology** — `--fusion <moa|best-of-n>` (+ `--fusion-n/-panel/-judge/-obligations/-no-verify`: panel/
+    best-of-n + judge expansion) · `--subworkflow <ref>` (inline a sub-template as a sub-DAG in place of the node).
+  - **Contract** — `--full-access` (per-node jail-off, LOCAL only) · `--fill-sentinel <s>` · `--schema <p>` ·
+    `--return-mode required` (the zero-artifact gate-node idiom). These ride INSIDE `contract`.
 
 > **The per-run shape (designed, partially confident — not a separate "store" to build).** There is no
 > database/registry layer: the TEMPLATE itself (`.piflow/<wf>/template/`, D8) is the canonical source — authored

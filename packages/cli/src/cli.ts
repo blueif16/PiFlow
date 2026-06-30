@@ -113,8 +113,22 @@ ADD-NODE
   Hooks:        --seed <to=from> (PRE) · --promote <from=to[:reducer]> · --project <to=from[,from2]> ·
                 --merge-run <cmd[:args][@cwd]> · --registry-project <source=,mapRef=,key=>  (emit canonical
                 op[] derives; seed runs PRE, the rest POST in project→merge→promote order; each repeatable).
-  Gates:        --check <kind[:path]> (repeatable) · --on-fail block|warn|stop · --return-mode optional|required.
-  Routing:      --model · --provider · --tier · --timeout <ms> · --retries <n> · --schema <p> · --skill <p>.
+  Checks:       --check <kind[:path[:severity[:param]]]> (post) · --check-pre <…> (pre) · --on-fail/--on-warn block|warn|stop.
+                kind=non-empty|json-parses|field-present|count-floor|regex-present|… ; severity=fail|warn; param=dotted
+                field, a regex, or a JSON object ({min,path}) — JSON-parsed when it parses. (each --check repeatable)
+  Exec gate:    --gate-run <cmd[:args][@cwd]>  a POST shell gate — a non-zero exit BLOCKS the node (≠ --merge-run,
+                which is a data derive with no verdict). Repeatable.
+  Control:      --escalate <tier|model>  on failure, retry on a stronger model (→ io.escalate) ·
+                --reroute <node[:max]>   on failure, loop back to an upstream node (the target MUST be a strict ancestor).
+  Judge:        --judge <judgeTier[:threshold]>  a DIFFERENT-model verdict, materialized into a real <id>__judge node.
+                Write nodes/<id>/judge.md (the rubric prose) FIRST — the CLI inlines it. judgeTier MUST differ from --tier.
+                --judge-on-fail block|warn|stop|retry|escalate · --judge-retry-max <n> · --judge-retry-scope feedback|fix.
+  HITL:         --checkpoint <confirm|input|select:prompt>  a human gate (G5) · --checkpoint-choice <v> (repeatable, select) ·
+                --checkpoint-default <v> · --checkpoint-headless default|abort · --checkpoint-timeout <ms>.
+  Topology:     --fusion <moa|best-of-n> (+ --fusion-n <n> · --fusion-panel <m> (rep) · --fusion-judge <m> · --fusion-obligations ·
+                --fusion-no-verify)  panel/best-of-n + judge expansion · --subworkflow <ref>  inline a sub-template as a sub-DAG.
+  Contract+:    --full-access (per-node jail-off, LOCAL only) · --fill-sentinel <s> · --schema <p> · --return-mode optional|required.
+  Routing:      --model · --provider · --tier · --timeout <ms> · --retries <n> · --skill <p>.
   --programmatic  a no-pi node (omits prompt/tools; its declarative ops ARE the node).
   Emits/overwrites node.json from the flags; NEVER touches nodes/<id>/prompt.md (yours to Write).
 
