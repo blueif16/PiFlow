@@ -47,7 +47,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # piflow is posix-only: seatbelt (macOS) + bwrap (Linux) sandbox backends; macOS is the dev host.
+        # Windows has no sandbox backend and isn't a target, so the matrix is the two supported OSes.
+        os: [ubuntu-latest, macos-latest]
         node: [20, 22, 24]
     runs-on: ${{ matrix.os }}
     steps:
@@ -72,6 +74,13 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
 
+      # GitHub's ubuntu runners clamp unprivileged user namespaces (AppArmor on 24.04), which stops bwrap
+      # from building its mount namespace. Relax the clamp so the bwrap kernel-jail tests actually run and
+      # PROVE enforcement (|| true: the key is absent on kernels without the clamp, where userns works).
+      - name: Allow unprivileged user namespaces for bwrap (Linux)
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
       - name: Build
         run: pnpm run build
 
@@ -83,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
