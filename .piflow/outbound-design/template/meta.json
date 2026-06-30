@@ -1,0 +1,5 @@
+{
+  "id": "outbound-design",
+  "name": "Outbound playbook designer",
+  "description": "A research→synthesize→author blueprint instance for the cold-email outbound playbook. Four market-research lanes (deliverability/warmup playbook, Apollo+Prospeo enrichment waterfall, domain/inbox infrastructure provisioning, biweekly campaign analyzer) fan out in parallel, a plan node fuses them into one outbound design doc, and a general-purpose author node turns that design into a runnable piflow template. Worked golden instance of references/blueprints/research-synthesize-author.md."
+}

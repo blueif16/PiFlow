@@ -1,0 +1,35 @@
+{
+  "id": "synthesize",
+  "phase": "synthesize",
+  "deps": [
+    "research-playbook",
+    "research-enrich",
+    "research-infra",
+    "research-analyzer"
+  ],
+  "prompt": {
+    "file": "prompt.md"
+  },
+  "tools": {
+    "allow": [
+      "read",
+      "write",
+      "submit_result"
+    ]
+  },
+  "contract": {
+    "artifacts": [
+      "design/outbound-design.md"
+    ],
+    "owns": [
+      "design/**"
+    ],
+    "readScope": [
+      "{{RUN}}",
+      "{{RUN}}/research"
+    ]
+  },
+  "policy": {
+    "fail": "block"
+  }
+}

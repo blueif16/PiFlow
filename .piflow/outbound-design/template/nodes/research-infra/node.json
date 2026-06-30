@@ -1,0 +1,31 @@
+{
+  "id": "research-infra",
+  "phase": "research",
+  "deps": [],
+  "prompt": {
+    "file": "prompt.md",
+    "skill": "multi-source-research"
+  },
+  "tools": {
+    "allow": [
+      "fs:read",
+      "fs:write",
+      "oc.firecrawl:firecrawl_search",
+      "oc.tavily:tavily_search"
+    ]
+  },
+  "contract": {
+    "artifacts": [
+      "research/infra/brief.md"
+    ],
+    "owns": [
+      "research/infra/**"
+    ],
+    "readScope": [
+      "{{RUN}}"
+    ]
+  },
+  "policy": {
+    "fail": "block"
+  }
+}

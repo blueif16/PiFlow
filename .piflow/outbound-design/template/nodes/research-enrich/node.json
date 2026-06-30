@@ -1,0 +1,31 @@
+{
+  "id": "research-enrich",
+  "phase": "research",
+  "deps": [],
+  "prompt": {
+    "file": "prompt.md",
+    "skill": "multi-source-research"
+  },
+  "tools": {
+    "allow": [
+      "fs:read",
+      "fs:write",
+      "oc.firecrawl:firecrawl_search",
+      "oc.tavily:tavily_search"
+    ]
+  },
+  "contract": {
+    "artifacts": [
+      "research/enrich/brief.md"
+    ],
+    "owns": [
+      "research/enrich/**"
+    ],
+    "readScope": [
+      "{{RUN}}"
+    ]
+  },
+  "policy": {
+    "fail": "block"
+  }
+}

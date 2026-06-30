@@ -1,0 +1,34 @@
+{
+  "id": "author",
+  "phase": "author",
+  "deps": [
+    "synthesize"
+  ],
+  "prompt": {
+    "file": "prompt.md"
+  },
+  "tools": {
+    "allow": [
+      "read",
+      "write",
+      "edit",
+      "bash",
+      "submit_result"
+    ]
+  },
+  "contract": {
+    "artifacts": [
+      "out/outbound-playbook/template/meta.json"
+    ],
+    "owns": [
+      "out/**"
+    ],
+    "readScope": [
+      "{{RUN}}",
+      "{{RUN}}/design"
+    ]
+  },
+  "policy": {
+    "fail": "block"
+  }
+}

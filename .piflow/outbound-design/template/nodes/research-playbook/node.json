@@ -1,0 +1,31 @@
+{
+  "id": "research-playbook",
+  "phase": "research",
+  "deps": [],
+  "prompt": {
+    "file": "prompt.md",
+    "skill": "multi-source-research"
+  },
+  "tools": {
+    "allow": [
+      "fs:read",
+      "fs:write",
+      "oc.firecrawl:firecrawl_search",
+      "oc.tavily:tavily_search"
+    ]
+  },
+  "contract": {
+    "artifacts": [
+      "research/playbook/brief.md"
+    ],
+    "owns": [
+      "research/playbook/**"
+    ],
+    "readScope": [
+      "{{RUN}}"
+    ]
+  },
+  "policy": {
+    "fail": "block"
+  }
+}
