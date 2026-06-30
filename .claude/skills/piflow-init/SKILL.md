@@ -234,11 +234,12 @@ are in `reference/sdk-consumer.md` — read it first.** The flow:
   render Gemini-safe automatically (`StringEnum`, `tools/params.ts` / `tools/compile.ts` #21) — authoring is
   unchanged. CAVEAT: an `oc.*` tool with a pure native execute runs end-to-end TODAY; a `mcp.*` tool routed
   through the bridge still needs the `$VAR`→value EXPANSION, a `@piflow/tool-bridge` follow-on **deferred
-  (#14)** — `template/checks.ts:271-273`. FORWARD-POINTER: `docs/design/node-action-protocol.md` is the
-  CONVERGING canonical node-action format (a unified `op[]` envelope), but its `op[]` is milestone M5 and is
-  **NOT loadable today** (no `op`/`OpSpec` field in the loader/template types — the loader will REJECT it). So
-  author today's loadable shape — `tools`/`mcp` above + `hooks`/`checks`/`policy` — and treat that doc as the
-  target the format moves toward; **do NOT emit `op[]` yet.**
+  (#14)** — `template/checks.ts:271-273`. NODE-ACTION FORMAT: `docs/design/node-action-protocol.md` is the
+  canonical node-action format (a unified `op[]` envelope) and it is **AS-BUILT — `op[]` LOADS today**: the `op`
+  field is in the node schema and the loader lowers it (`lowerToOps`/`lowerActions` → `intent.op`/`actions`,
+  `template/loader.ts:102-160`). `tools`/`mcp`/`hooks`/`checks`/`policy` are the ergonomic ALIASES the loader
+  lowers INTO `op[]`, so authoring EITHER the aliases or `op[]` directly is fine — they converge on the same
+  canonical envelope.
 - **Hand-roll the orchestration; reach for pi-native only at the interpretation surfaces.** The
   driver's own deterministic plumbing (the DAG, filesystem coordination, artifact `stat()`, worktree)
   is YOURS — pi is minimal by design (no sub-agents, no native typed-return) and *expects* you to own
