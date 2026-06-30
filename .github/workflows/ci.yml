@@ -50,7 +50,9 @@ jobs:
         # piflow is posix-only: seatbelt (macOS) + bwrap (Linux) sandbox backends; macOS is the dev host.
         # Windows has no sandbox backend and isn't a target, so the matrix is the two supported OSes.
         os: [ubuntu-latest, macos-latest]
-        node: [20, 22, 24]
+        # Node 22 is the floor: the openclaw dev-tooling pins undici 8.x, which calls
+        # worker_threads.markAsUncloneable (Node >=22.10), absent on Node 20.
+        node: [22, 24]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -74,12 +76,25 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y bubblewrap
 
-      # GitHub's ubuntu runners clamp unprivileged user namespaces (AppArmor on 24.04), which stops bwrap
-      # from building its mount namespace. Relax the clamp so the bwrap kernel-jail tests actually run and
-      # PROVE enforcement (|| true: the key is absent on kernels without the clamp, where userns works).
+      # Ubuntu 24.04 (ubuntu-latest) restricts unprivileged user namespaces via an AppArmor profile AND two
+      # sysctls — the single sysctl alone is NOT enough (bwrap still aborts). Best-effort: load a permissive
+      # AppArmor profile for /usr/bin/bwrap granting `userns`, then relax both sysctls. All `|| true` so a
+      # runner where this is absent/unneeded never reds the job — the bwrap test self-probes namespace
+      # capability and skips-with-reason if a namespace still can't be built (it never silently passes).
       - name: Allow unprivileged user namespaces for bwrap (Linux)
         if: runner.os == 'Linux'
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+        run: |
+          sudo tee /etc/apparmor.d/bwrap >/dev/null <<'EOF' || true
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/bwrap>
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/bwrap || true
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_unconfined=0 || true
 
       - name: Build
         run: pnpm run build
