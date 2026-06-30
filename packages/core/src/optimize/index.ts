@@ -30,3 +30,8 @@ export type { StageOpts } from './land.js';
 // enforcing abstain→null and VAL-hygiene. The product (game-omni) supplies oracle · mineTask · copyScope.
 export { makeReplayStages } from './replay.js';
 export type { CheckableTask, ReplayOracle, MineTask, CopyScope, ReplayDeps, ReplayStages } from './replay.js';
+// The MINING half of the replay binding (v1.5 §5.1) — the default trace task-miner. Reads the incumbent's
+// recorded report from a run trace into a CheckableTask (game-omni default config, injectable); the live
+// oracle (which imports the product's verify harness + builds the candidate) stays product-side.
+export { mineTaskFromTrace, gameOmniNodeToMilestone } from './mine.js';
+export type { MineOpts } from './mine.js';
