@@ -31,10 +31,14 @@ export interface NewOpts {
   phases?: string[];
 }
 
-/** A post-check on a produced artifact (`--check non-empty:findings/findings.md`). */
+/** An integrity check on an artifact (`--check field-present:verify/r.json:warn:verdict`). The full
+ *  `$defs/check` shape (node.schema.ts): a `kind`, an optional `path`, a `severity` (fail|warn — the
+ *  verdict on failure), and a kind-specific `param` (dotted field, regex, or an object like {min,path}). */
 export interface CheckOpt {
   kind: string;
   path?: string;
+  severity?: 'fail' | 'warn';
+  param?: unknown;
 }
 
 /** Options for `scaffoldAddNode` (emit one `nodes/<id>/node.json`). `id` is the only required field. */
@@ -92,16 +96,28 @@ export interface NodeOpts {
   agentType?: string;
   /** Prompt body file, node-folder-relative (default: 'prompt.md'). */
   promptFile?: string;
-  /** Post-checks over produced artifacts. */
+  /** Post-checks over produced artifacts (the `checks.post` lane). */
   checks?: CheckOpt[];
+  /** Pre-checks over staged inputs (the `checks.pre` lane — runs BEFORE the model). */
+  checksPre?: CheckOpt[];
   /** policy.fail action (default omitted ⇒ the engine default 'block'). */
   onFail?: 'block' | 'warn' | 'stop';
+  /** policy.warn action (the consequence of a `warn`-severity verdict). */
+  onWarn?: 'block' | 'warn' | 'stop';
   /** A no-pi node: runs its declarative ops, omits `prompt`/`tools`. */
   programmatic?: boolean;
 }
 
 /** Pretty-print a JSON object the way the template files are authored (2-space, trailing newline). */
 const toJson = (o: unknown): string => JSON.stringify(o, null, 2) + '\n';
+
+/** A `CheckOpt` → the `$defs/check` object: omit each optional field unless present (a minimal file). */
+const emitCheck = (c: CheckOpt): Record<string, unknown> => ({
+  kind: c.kind,
+  ...(c.path ? { path: c.path } : {}),
+  ...(c.severity ? { severity: c.severity } : {}),
+  ...(c.param !== undefined ? { param: c.param } : {}),
+});
 
 /** The workflow id baked from the template dir: parent basename when the dir is `template/`, else its own. */
 function deriveId(dir: string): string {
@@ -223,10 +239,22 @@ export function buildNode(opts: NodeOpts): Record<string, unknown> {
   } else if (opts.inject?.length) {
     node.inject = opts.inject; // no derive hooks ⇒ inject stays the legacy alias (the loader lowers it).
   }
-  if (opts.checks?.length) {
-    node.checks = { post: opts.checks.map((c) => ({ kind: c.kind, ...(c.path ? { path: c.path } : {}) })) };
+  // DETECTION (§4) — the full `$defs/check` shape in BOTH lanes (pre over staged inputs, post over produced
+  // artifacts). `collectChecks` (render.ts) folds kind/path/param/severity onto the runtime `io.checks`, so a
+  // dropped severity/param silently weakens the gate — emit every present field. ⊥ policy (below).
+  if (opts.checks?.length || opts.checksPre?.length) {
+    node.checks = {
+      ...(opts.checksPre?.length ? { pre: opts.checksPre.map(emitCheck) } : {}),
+      ...(opts.checks?.length ? { post: opts.checks.map(emitCheck) } : {}),
+    };
   }
-  if (opts.onFail) node.policy = { fail: opts.onFail };
+  // CONSEQUENCE (§4) — verdict→action. Each lane (warn|fail) omitted ⇒ the engine default (fail→block).
+  if (opts.onFail || opts.onWarn) {
+    node.policy = {
+      ...(opts.onFail ? { fail: opts.onFail } : {}),
+      ...(opts.onWarn ? { warn: opts.onWarn } : {}),
+    };
+  }
   if (opts.programmatic) node.programmatic = true;
   return node;
 }
@@ -302,10 +330,30 @@ function parseMcp(entries: string[] | undefined): McpServers | undefined {
   return servers;
 }
 
-/** Parse `--check kind[:path]` into a post-check. */
+/** Parse `--check kind[:path[:severity[:param]]]` into a check (used for both the post and pre lanes).
+ *  Positional, colon-delimited: the terse `kind` / `kind:path` forms stay back-compatible. `severity` ∈
+ *  fail|warn (empty segment ⇒ default fail). `param` is EVERYTHING after the 3rd colon (so a regex/dotted
+ *  field keeps its own colons), JSON-parsed when it parses (count-floor's `{min,path}`, a number) else the
+ *  raw string (a `field-present` dotted field, a regex). The loader is the oracle for an out-of-set kind. */
 function parseCheck(entry: string): CheckOpt {
-  const colon = entry.indexOf(':');
-  return colon < 0 ? { kind: entry } : { kind: entry.slice(0, colon), path: entry.slice(colon + 1) };
+  const parts = entry.split(':');
+  const out: CheckOpt = { kind: parts[0] };
+  if (parts[1]) out.path = parts[1];
+  if (parts[2]) {
+    if (parts[2] !== 'fail' && parts[2] !== 'warn') {
+      throw new Error(`piflowctl: --check severity must be fail|warn (got "${parts[2]}")`);
+    }
+    out.severity = parts[2];
+  }
+  const paramStr = parts.slice(3).join(':');
+  if (paramStr) {
+    try {
+      out.param = JSON.parse(paramStr);
+    } catch {
+      out.param = paramStr;
+    }
+  }
+  return out;
 }
 
 // ── derive-hook flag parsers (each emits one canonical `op[]` entry via buildNode) ──────────────────
@@ -387,9 +435,10 @@ const ADD_USAGE =
   '[--owns <glob>]... [--read <p>]... [--tool <t>]... [--deny <t>]... [--inject <p>]... ' +
   '[--seed <to=from>]... [--promote <from=to[:reducer]>]... [--project <to=from[,from2]>]... ' +
   '[--merge-run <cmd[:args][@cwd]>]... [--registry-project <source=,mapRef=,key=>] ' +
-  '[--mcp <name=url>]... [--check <kind[:path]>]... [--agent-type <id>] [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
+  '[--mcp <name=url>]... [--check <kind[:path[:severity[:param]]]>]... [--check-pre <kind[:path[:severity[:param]]]>]... ' +
+  '[--agent-type <id>] [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
   '[--timeout <ms>] [--retries <n>] [--return-mode optional|required] [--schema <p>] [--skill <p>] ' +
-  '[--prompt-file <f>] [--on-fail block|warn|stop] [--programmatic]';
+  '[--prompt-file <f>] [--on-fail block|warn|stop] [--on-warn block|warn|stop] [--programmatic]';
 
 /** `piflowctl new <templateDir> [flags]` — emit meta.json + the nodes/ dir. */
 export async function runNewCli(argv: string[]): Promise<void> {
@@ -452,7 +501,9 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     agentType: flags['agent-type']?.[0],
     promptFile: flags['prompt-file']?.[0],
     checks: (flags.check ?? []).map(parseCheck),
+    checksPre: (flags['check-pre'] ?? []).map(parseCheck),
     onFail: flags['on-fail']?.[0] as NodeOpts['onFail'],
+    onWarn: flags['on-warn']?.[0] as NodeOpts['onWarn'],
     programmatic: bools.has('programmatic'),
   });
   const next = bools.has('programmatic')

@@ -282,6 +282,95 @@ describe('scaffold — hook flags emit a canonical op[] the real loadTemplate co
     expect(node.inject).toEqual(['{{RUN}}/x.md']); // unchanged: no hooks ⇒ no op[], inject stays the alias.
     expect(node.op).toBeUndefined();
   });
+});
+
+// The check vocabulary the loader HONORS is richer than `{kind, path}`: a `check` carries `severity`
+// (fail|warn) and a kind-specific `param` (dotted field, regex, or an object like {min,path}), in a `pre`
+// OR `post` lane (node.schema.ts:$defs/check; collectChecks reads all four → io.checks). The lossy `--check`
+// (kind:path only) forced agents to hand-edit node.json for the documented `field-present + param + severity`
+// shape (templates/quality/verify). These prove the scaffolder now emits the FULL check shape and the real
+// loadTemplate carries severity+param onto the runtime `io.checks` — the post-check engine actually enforces.
+describe('scaffold — full check vocabulary (severity, param, pre/post lane) + policy.warn', () => {
+  it('--check kind:path:severity:param emits the full post-check and loadTemplate carries it onto io.checks', async () => {
+    await scaffoldNew(DIR, { name: 'c', description: 'rich check' });
+    await runAddNodeCli([
+      DIR,
+      '--id', 'review',
+      '--artifact', 'verify/review.json',
+      '--check', 'json-parses:verify/review.json',
+      '--check', 'field-present:verify/review.json:warn:verdict',
+    ]);
+    await writeProse('review');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'review', 'node.json'));
+    // The lossy emitter dropped severity+param; the full emitter keeps them. RED until buildNode carries them.
+    expect(node.checks.post).toEqual([
+      { kind: 'json-parses', path: 'verify/review.json' },
+      { kind: 'field-present', path: 'verify/review.json', severity: 'warn', param: 'verdict' },
+    ]);
+
+    // The load-bearing round-trip: the REAL loadTemplate accepts it AND collectChecks carries severity+param
+    // onto the runtime io.checks (the post-check engine). Throws on any §8 violation.
+    const spec = await loadTemplate(DIR);
+    const review = spec.nodes.find((n) => n.label === 'review')!;
+    expect(review.io.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: 'field-present', param: 'verdict', severity: 'warn' }),
+      ]),
+    );
+  });
+
+  it('an object param (count-floor {min,path}) is parsed from JSON, not left a string', async () => {
+    await scaffoldNew(DIR, { name: 'c', description: 'object param' });
+    await runAddNodeCli([
+      DIR,
+      '--id', 'gather',
+      '--artifact', 'out/items.json',
+      '--check', 'count-floor:out/items.json:fail:{"min":3,"path":"items"}',
+    ]);
+    const node = await readJson(path.join(DIR, 'nodes', 'gather', 'node.json'));
+    // RED if the param stays a string — count-floor's predicate needs an object {min, path}.
+    expect(node.checks.post[0].param).toEqual({ min: 3, path: 'items' });
+  });
+
+  it('--check-pre lands in the pre lane (over staged inputs) and loadTemplate accepts it', async () => {
+    await scaffoldNew(DIR, { name: 'c', description: 'pre check' });
+    await runAddNodeCli([
+      DIR,
+      '--id', 'build',
+      '--artifact', 'out.md',
+      '--inject', '{{RUN}}/spec.md',
+      '--check-pre', 'non-empty:spec.md',
+    ]);
+    await writeProse('build');
+    await fs.writeFile(path.join(DIR, 'spec.md'), 'a staged input\n'); // the injected read must exist on disk
+
+    const node = await readJson(path.join(DIR, 'nodes', 'build', 'node.json'));
+    expect(node.checks.pre).toEqual([{ kind: 'non-empty', path: 'spec.md' }]);
+    expect(node.checks.post).toBeUndefined(); // the pre lane never bleeds into post
+    await expect(loadTemplate(DIR)).resolves.toBeDefined();
+  });
+
+  it('--on-warn emits policy.warn alongside --on-fail (both verdict→action lanes)', async () => {
+    await scaffoldNew(DIR, { name: 'c', description: 'policy warn' });
+    await runAddNodeCli([
+      DIR,
+      '--id', 'n',
+      '--artifact', 'a.md',
+      '--check', 'non-empty:a.md',
+      '--on-fail', 'block',
+      '--on-warn', 'warn',
+    ]);
+    const node = await readJson(path.join(DIR, 'nodes', 'n', 'node.json'));
+    expect(node.policy).toEqual({ fail: 'block', warn: 'warn' });
+  });
+
+  it('the terse --check kind:path form is unchanged (back-compat: no severity/param keys leak in)', async () => {
+    await scaffoldNew(DIR, { name: 'c', description: 'terse' });
+    await runAddNodeCli([DIR, '--id', 'n', '--artifact', 'a.md', '--check', 'non-empty:a.md']);
+    const node = await readJson(path.join(DIR, 'nodes', 'n', 'node.json'));
+    expect(node.checks.post).toEqual([{ kind: 'non-empty', path: 'a.md' }]);
+  });
 
   // The CLI STRING layer (`runAddNodeCli`) parses each derive flag's value-grammar (design §3) into the same
   // op[] the builder emits. This exercises what the builder test (which passes structured objects) cannot: the
