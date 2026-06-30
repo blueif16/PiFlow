@@ -18,6 +18,7 @@ import path from 'node:path';
 import { runJsonFile } from '@piflow/core';
 import { App, html } from './components.mjs';
 import { discoverFleet } from './model.mjs';
+import { makeFsSource } from './source-fs.mjs';
 
 function parseArgs(args) {
   const c = { runDir: null, every: 2 };
@@ -51,4 +52,5 @@ if (!process.stdout.isTTY) {
   console.error('piflow-tui needs an interactive terminal (TTY). Run it directly in your shell.');
   process.exit(1);
 }
+config.source = makeFsSource();
 render(html`<${App} config=${config} />`, { patchConsole: false });

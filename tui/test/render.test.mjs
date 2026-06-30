@@ -11,6 +11,7 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { buildFixture } from './fixtures/build-fixture.mjs';
 import { discoverNamespaces, buildModel, subscribeRun } from '../model.mjs';
+import { makeFsSource } from '../source-fs.mjs';
 import { App, html } from '../components.mjs';
 import { GLYPH } from '../components.mjs';
 
@@ -66,7 +67,7 @@ describe('shared @piflow/core/observe reader → model adapter', () => {
 
 describe('migrated monitor renders against the .pi/ fixture', () => {
   it('renders without crashing and shows each node id + a status indicator from the run', async () => {
-    const config = { runDir, every: 2 };
+    const config = { runDir, every: 2, source: makeFsSource() };
     const { lastFrame, unmount } = render(html`<${App} config=${config} />`);
     // The first paint is the header alone; the detail columns fill once the ASYNC refresh (the shared
     // readRunModel adapter) resolves. Poll the frame until the node labels land (bounded) rather than

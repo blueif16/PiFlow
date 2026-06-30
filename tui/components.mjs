@@ -5,14 +5,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Box, Text, useInput, useApp, useWindowSize } from 'ink';
 import htm from 'htm';
-import fs from 'fs';
-import path from 'path';
-import { spawn } from 'child_process';
-// MIGRATED: the data-acquisition layer is now a THIN ADAPTER over the SHARED observability source
-// (@piflow/core/observe, via ./model.mjs) — `buildModel`/`discoverNamespaces` map a `readRunModel`
-// snapshot into this view shape; `subscribeRun` folds the live `watchRun` node-event stream into the
-// per-node text tail. The TUI opens NO `.pi/` file itself. The view layer below is unchanged.
-import { discoverNamespaces, discoverFleet, buildModel, subscribeRun } from './model.mjs';
+// The view layer is renderer-agnostic and carries NO environment I/O of its own: all run data (the four
+// data methods) AND the file ops (overlay read · OS handoff · Mermaid export) come from an injected
+// `config.source`. The terminal entry (pi-tui.mjs) injects the fs-backed source (./source-fs.mjs, a thin
+// adapter over the SHARED @piflow/core/observe reader/stream); a browser entry injects ./source-static.mjs
+// (pre-distilled data). So this file imports NO node builtins and mounts unchanged in the browser.
 import { StageDag, runToMermaid, dagViewport, scrollStart } from './dag.mjs';
 
 export const html = htm.bind(React.createElement);
@@ -21,28 +18,6 @@ export const html = htm.bind(React.createElement);
 export const GLYPH = { ok: '✔', running: '◐', error: '✘', blocked: '⊘', gap: '◐', reused: '↺', pending: '·', dry: '∅', 'awaiting-input': '⏸', done: '✔', failed: '✘' };
 const COLOR = { ok: 'green', running: 'cyan', error: 'red', blocked: 'yellow', gap: 'yellow', reused: 'gray', pending: 'gray', dry: 'magenta', 'awaiting-input': 'magenta', done: 'green', failed: 'red' };
 const SPIN = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-const BIN_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.bmp', '.pdf', '.zip', '.gz', '.woff', '.woff2', '.ttf', '.otf', '.mp3', '.wav', '.ogg', '.mp4', '.mov', '.bin', '.wasm']);
-
-// Read a file for the in-terminal overlay viewer. Text files come back as lines; binaries (and very
-// large files) come back flagged so the overlay shows metadata instead of garbage bytes.
-function readForOverlay(abs) {
-  try {
-    const size = fs.statSync(abs).size;
-    if (BIN_EXT.has(path.extname(abs).toLowerCase()) || size > 1024 * 1024) return { size, binary: true, lines: [] };
-    const raw = fs.readFileSync(abs, 'utf8');
-    if (raw.includes('\u0000')) return { size, binary: true, lines: [] };
-    return { size, binary: false, lines: raw.split('\n') };
-  } catch (e) { return { size: 0, binary: false, lines: [`(cannot read: ${e && e.message || e})`] }; }
-}
-
-// Fallback for binaries only (images, etc.) — hand off to the OS default app. Text is shown IN the TUI.
-function openExternal(abs) {
-  try {
-    const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-    const args = process.platform === 'win32' ? ['/c', 'start', '', abs] : [abs];
-    spawn(cmd, args, { detached: true, stdio: 'ignore' }).unref();
-  } catch { /* best-effort */ }
-}
 
 const clampWrap = (i, n) => (n <= 0 ? 0 : ((i % n) + n) % n);
 const pad = (s, n) => String(s ?? '').padEnd(n).slice(0, n);
@@ -365,6 +340,9 @@ export function Overlay(ov, scroll, h) {
 // ── the app ─────────────────────────────────────────────────────────────────────
 export function App({ config }) {
   const { exit } = useApp();
+  // The injected environment: all run data (discover/build/subscribe) + file ops (open/export). The
+  // terminal injects the fs source (pi-tui.mjs); a browser injects the static one. No I/O lives here.
+  const source = config.source;
   const { columns, rows } = useWindowSize();
   const [nss, setNss] = useState([]);
   const [ni, setNi] = useState(0);
@@ -408,7 +386,7 @@ export function App({ config }) {
     // the whole UI — that empty frame was a periodic flash. Keep the last good list instead.
     // FLEET mode discovers ALL registered repos' runs (config.fleet); SINGLE mode projects the one run dir.
     let namespaces = null;
-    try { namespaces = config.fleet ? await discoverFleet() : await discoverNamespaces(config); } catch { /* transient — keep last good */ }
+    try { namespaces = config.fleet ? await source.discoverFleet() : await source.discoverNamespaces(config); } catch { /* transient — keep last good */ }
     if (namespaces && namespaces.length) setNss(namespaces);
     const list = namespaces && namespaces.length ? namespaces : nssRef.current;
     const ns = list[Math.min(ni, Math.max(0, list.length - 1))];
@@ -417,7 +395,7 @@ export function App({ config }) {
     try {
       // MIGRATED: buildModel adapts a `readRunModel(thr.runDir)` snapshot — the shared reader; no bespoke
       // `.pi/` read. The live text tail is folded in from the subscribeRun stream (the `live` ref).
-      const model = await buildModel({ runDir: thr.runDir, run: thr.run });
+      const model = await source.buildModel({ runDir: thr.runDir, run: thr.run });
       const byNode = live.current.get(thr.runDir)?.byNode || {};
       foldLiveIntoModel(model, byNode);
       const order = model.stages.flatMap((st) => st.nodeIds);
@@ -437,7 +415,7 @@ export function App({ config }) {
   const curRunDir = nss[ni]?.threads[ti]?.runDir || config.runDir;
   useEffect(() => {
     if (!curRunDir) return undefined;
-    const stop = subscribeRun({
+    const stop = source.subscribeRun({
       runDir: curRunDir, run: undefined, pollMs: (config.every || 2) * 1000,
       onTail: (byNode) => { live.current.set(curRunDir, { byNode }); },
     });
@@ -477,7 +455,7 @@ export function App({ config }) {
       if (key.pageUp) { setOvScroll((s) => Math.max(0, s - view)); return; }
       if (input === 'g') { setOvScroll(0); return; }
       if (input === 'G') { setOvScroll(maxScroll); return; }
-      if (input === 'o' && overlay.binary) { openExternal(overlay.abs); return; }
+      if (input === 'o' && overlay.binary) { source.openExternal(overlay.abs); return; }
       return;
     }
 
@@ -488,12 +466,10 @@ export function App({ config }) {
     if (input === 'e') {                                                      // export this run as a Mermaid .mmd snapshot
       const m = detail?.model;
       if (m && m.run?.id && nss[ni]) {
-        try {
-          // MIGRATED: the run dir is the artifact home — export beside it (was out/<id>/graph.mmd).
-          const file = path.join(nss[ni].runDir, 'graph.mmd');
-          fs.writeFileSync(file, runToMermaid(m));
-          setNotice(`✔ saved ${path.relative(nss[ni].dir, file)}`);
-        } catch (e) { setNotice(`✘ export failed: ${(e && e.message) || e}`); }
+        // The source owns persistence (fs write beside the run dir, or a no-op notice in the browser); the
+        // renderer only builds the pure Mermaid string. writeExport returns the notice line (or throws).
+        try { setNotice(source.writeExport(nss[ni], runToMermaid(m))); }
+        catch (e) { setNotice(`✘ export failed: ${(e && e.message) || e}`); }
       } else setNotice('no run to export');
       return;
     }
@@ -531,12 +507,10 @@ export function App({ config }) {
       if (key.return) {
         const f = files[clampWrap(fi, files.length || 1)];
         if (f && nss[ni]) {
-          // MIGRATED: a node's files are relative to the run dir (was out/<id>/<rel>).
-          const rel = f.path || f.rel;
-          const abs = path.isAbsolute(rel) ? rel : path.join(nss[ni].runDir, rel);
-          const data = readForOverlay(abs);
-          setOvScroll(0);
-          setOverlay({ rel: f.rel, abs, size: data.size, binary: data.binary, lines: data.lines });
+          // The source resolves the file against the run dir and reads it (fs in the terminal; an inline
+          // notice in the browser), returning the overlay payload { rel, abs, size, binary, lines }.
+          const ov = source.openFile(nss[ni], f);
+          if (ov) { setOvScroll(0); setOverlay(ov); }
         }
         return;
       }
