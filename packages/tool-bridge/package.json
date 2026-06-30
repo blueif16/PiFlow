@@ -4,6 +4,9 @@
   "type": "module",
   "description": "Pi Flow tool-bridge — the MCP transport runtime the generated pi `-e` extension imports. `callTool(address, params, opts)` connects to the configured MCP server, performs the JSON-RPC tools/call, and maps the result back to pi's tool-execute shape.",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "keywords": [
     "mcp",
     "model-context-protocol",

@@ -6,7 +6,7 @@
   "description": "Elegant terminal monitor for pi-runner: namespaces → threads → node detail, live.",
   "bin": { "pi-tui": "./pi-tui.mjs" },
   "scripts": { "start": "node pi-tui.mjs" },
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22" },
   "dependencies": {
     "htm": "^3.1.1",
     "ink": "^7.0.6",

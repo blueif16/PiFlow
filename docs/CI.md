@@ -9,7 +9,7 @@ Two GitHub Actions workflows, one per intent:
 
 | Workflow | Trigger | Does |
 |---|---|---|
-| `ci.yml` | every PR + push | the gate ladder: lint, build, pack-verify, the test matrix (Node 20/22/24 × ubuntu/windows), and the CLI smoke test |
+| `ci.yml` | every PR + push | the gate ladder: lint, build, pack-verify, the test matrix (Node 22/24 × ubuntu/macos), and the CLI smoke test |
 | `release.yml` | push to `main` | `changesets/action` — opens/updates a "Version Packages" PR, and on merge **publishes** changed packages via npm OIDC trusted publishing |
 
 `ci.yml` proves the artifact is *correct*; `release.yml` is the only thing that *ships* it. Nothing publishes from a PR.
