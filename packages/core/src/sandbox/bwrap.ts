@@ -28,10 +28,11 @@
 // read/write scope is the boundary. The ONLY thing bwrap bounds here is the
 // filesystem view.
 //
-// AVAILABILITY: returns null (caller runs bare, UNSANDBOXED) when NOT linux, OR
-// when `bwrap` is not on PATH — warning ONCE in the not-available case so a Linux
-// box WITHOUT bubblewrap NEVER silently believes it is sandboxed. The probe is
-// memoized (one PATH scan per process).
+// AVAILABILITY: returns null (a "no jail" SIGNAL — the FAIL-CLOSED caller REFUSES,
+// it does NOT run bare) when NOT linux, OR when `bwrap` is not on PATH / cannot build
+// a user namespace — warning ONCE in the not-available case so a Linux box WITHOUT a
+// usable bubblewrap NEVER silently believes it is sandboxed. The probe is memoized
+// (one capability spawn per process).
 //
 // STATUS: the argv CONSTRUCTION is unit-tested cross-platform (sandbox-bwrap.test.ts).
 // The kernel EPERM enforcement is PENDING a Linux CI run — it CANNOT be verified on
@@ -136,9 +137,9 @@ function warnNoBwrapOnce(): void {
   // eslint-disable-next-line no-console
   console.warn(
     `[bwrap] --sandbox local wants the bubblewrap filesystem jail on linux, but \`bwrap\` is not on PATH ` +
-      `or cannot build a user namespace (e.g. an AppArmor unprivileged-userns clamp) — running ` +
-      `UNSANDBOXED (no read/write scope boundary). Install bubblewrap and allow unprivileged user ` +
-      `namespaces to enforce per-node scope on this host.`,
+      `or cannot build a user namespace (e.g. an AppArmor unprivileged-userns clamp) — the jail is ` +
+      `UNAVAILABLE, so the run will REFUSE this node (fail-closed). Install bubblewrap and allow ` +
+      `unprivileged user namespaces, or pass --sandbox danger-full-access to run unsandboxed.`,
   );
 }
 
@@ -273,11 +274,11 @@ export interface BwrapExecPlan {
 
 /**
  * Build the `bwrap` wrapping for ONE command — the Linux peer of `seatbeltExecPlan`. Returns
- * `{file:'bwrap', argv:[…]}` on linux WITH bubblewrap available, or `null` (caller runs bare,
- * UNSANDBOXED) when NOT linux OR when `bwrap` is not on PATH — warning ONCE in the not-available case so
- * a Linux box without bubblewrap never silently believes it is sandboxed. `profileDir` is accepted for
- * signature-parity with `seatbeltExecPlan` (the dispatcher passes the same opts to both) but unused —
- * bwrap writes no profile.
+ * `{file:'bwrap', argv:[…]}` on linux WITH bubblewrap usable, or `null` (a "no jail" SIGNAL — the
+ * FAIL-CLOSED caller REFUSES, it does NOT run bare) when NOT linux OR when `bwrap` is not on PATH / cannot
+ * build a namespace — warning ONCE in the not-available case so a Linux box without a usable bubblewrap
+ * never silently believes it is sandboxed. `profileDir` is accepted for signature-parity with
+ * `seatbeltExecPlan` (the dispatcher passes the same opts to both) but unused — bwrap writes no profile.
  */
 export function bwrapExecPlan(
   cmd: string,

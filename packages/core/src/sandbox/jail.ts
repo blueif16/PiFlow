@@ -1,9 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // jail.ts — the OS DISPATCHER for `--sandbox local`'s kernel filesystem jail.
 // `--sandbox local` means "OS-isolated, backend chosen by the OS": this picks the
-// seatbelt plan on darwin, the bwrap plan on linux, else null (warn once → bare
-// exec, UNSANDBOXED). LocalSandbox.exec calls THIS, not a backend directly, so the
-// in-place provider is portable: one call site, the right kernel jail per host.
+// seatbelt plan on darwin, the bwrap plan on linux, else null (warn once). A null is
+// a "no jail available" SIGNAL — LocalSandbox.exec is FAIL-CLOSED and REFUSES rather
+// than running bare (only the explicit danger-full-access bypass runs unsandboxed).
+// exec calls THIS, not a backend directly, so the in-place provider is portable: one
+// call site, the right kernel jail per host.
 //
 // Both backends return the SAME plan shape — `{file, argv, profilePath?}` — so the
 // caller spawns `plan.file` with `plan.argv` and unlinks `plan.profilePath` (only
@@ -33,7 +35,8 @@ function warnNoBackendOnce(): void {
   // eslint-disable-next-line no-console
   console.warn(
     `[jail] --sandbox local has no kernel filesystem jail backend on ${process.platform} ` +
-      `(darwin→seatbelt, linux→bwrap) — running UNSANDBOXED. The read/write scope boundary is NOT enforced.`,
+      `(darwin→seatbelt, linux→bwrap) — the jail is UNAVAILABLE, so the run will REFUSE (fail-closed). ` +
+      `Pass --sandbox danger-full-access to run unsandboxed.`,
   );
 }
 
@@ -41,11 +44,12 @@ function warnNoBackendOnce(): void {
  * Pick the kernel filesystem jail for this OS and build its exec plan for ONE command.
  *   - darwin → `seatbeltExecPlan` (sandbox-exec + a per-exec SBPL profile),
  *   - linux  → `bwrapExecPlan` (bubblewrap bind-mount argv; itself returns null+warn if bwrap is missing),
- *   - else   → null, warning ONCE (bare exec, UNSANDBOXED).
+ *   - else   → null, warning ONCE (no backend on this OS).
  * Same `{workdir, readScope, writeScope, profileDir}` opts go to whichever backend answers, so the two
- * jails grant the identical scope (they share `computeScopeRoots`). Returns null ⇒ the caller runs the
- * bare command. NOTE: a null from the linux branch means bwrap is unavailable (bwrapExecPlan already
- * warned its own, more specific message); a null from THIS function's else-branch means an unsupported OS.
+ * jails grant the identical scope (they share `computeScopeRoots`). Returns null ⇒ NO jail is available;
+ * the FAIL-CLOSED caller (LocalSandbox.exec) refuses the command unless danger-full-access is set — it does
+ * NOT run bare. NOTE: a null from the linux branch means bwrap is unavailable (bwrapExecPlan already warned
+ * its own, more specific message); a null from THIS function's else-branch means an unsupported OS.
  */
 export function localJailPlan(
   cmd: string,

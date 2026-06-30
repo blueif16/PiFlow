@@ -171,6 +171,64 @@ describe('LocalSandbox — exec contract (nonzero exit, process-group kill on si
   }, 15000);
 });
 
+// ── 5b. FAIL-CLOSED: enforce requested + NO kernel backend ⇒ REFUSE to run (never bare) ──────────────
+//
+// `--sandbox local` is secure by default, so when enforcement is requested but the host has NO kernel
+// jail backend (an unsupported OS, or linux without bubblewrap → localJailPlan returns null), exec MUST
+// REFUSE rather than silently run the command UNSANDBOXED (the old fail-OPEN bare fallback). The ONLY way
+// to run unsandboxed is the explicit `enforceReadScope:false` danger-full-access bypass, which is unchanged.
+// We force process.platform='sunos' so localJailPlan hits its default branch (null) on every host; on the
+// real macOS kernel the actual spawn/touch still works, so the danger-path test below genuinely runs bare.
+
+describe('LocalSandbox — exec is FAIL-CLOSED when no kernel jail backend exists', () => {
+  it('enforceReadScope=true + no jail backend ⇒ exec REFUSES and never runs the command', async () => {
+    // Force an OS with no jail backend so localJailPlan returns null. The secure-default LocalSandbox must
+    // then REFUSE: resolve a nonzero ExecResult with an actionable message AND never spawn the command — so
+    // the observable side effect (the MARKER file) must NOT exist. On the old bare-fallback code this would
+    // spawn `touch`, create MARKER, and resolve code 0 → this test goes RED on that code (the fail-closed
+    // load-bearing assertion is `fs.access(marker)` rejecting).
+    const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'sunos', configurable: true });
+    const work = await tmpWork();
+    const marker = path.join(work, 'MARKER');
+    try {
+      const sb = await LocalSandbox.create({ readScope: [], outputDir: 'out', workdir: work }); // secure default
+      const r = await sb.exec(`touch ${JSON.stringify(marker)}`);
+      expect(r.code).not.toBe(0); // refusal surfaced as a failure ExecResult (126)
+      expect(r.stderr).toMatch(/refusing to run unsandboxed|danger-full-access/i);
+      // THE load-bearing assertion: nothing was spawned, so the side effect never happened.
+      await expect(fs.access(marker)).rejects.toThrow();
+    } finally {
+      if (origPlatform) Object.defineProperty(process, 'platform', origPlatform);
+      await fs.rm(work, { recursive: true, force: true });
+    }
+  });
+
+  it('danger bypass (enforceReadScope=false) + no jail backend ⇒ exec STILL runs the command bare', async () => {
+    // The complement: the explicit danger-full-access bypass must NOT be caught by the fail-closed guard —
+    // it short-circuits before localJailPlan and runs bare. Same forced no-backend platform; the identical
+    // command must SUCCEED and the MARKER must appear. Guards against an over-broad guard that also breaks
+    // the documented escape hatch. (On the real macOS kernel `touch` genuinely runs even with platform
+    // spoofed to 'sunos', since spoofing only changes localJailPlan's JS branch, not the real syscall.)
+    const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'sunos', configurable: true });
+    const work = await tmpWork();
+    const marker = path.join(work, 'MARKER');
+    try {
+      const sb = await LocalSandbox.create(
+        { readScope: [], outputDir: 'out', workdir: work },
+        { enforceReadScope: false }, // the danger-full-access bypass
+      );
+      const r = await sb.exec(`touch ${JSON.stringify(marker)}`);
+      expect(r.code).toBe(0); // bare run succeeded
+      await expect(fs.access(marker)).resolves.toBeUndefined(); // the side effect really happened
+    } finally {
+      if (origPlatform) Object.defineProperty(process, 'platform', origPlatform);
+      await fs.rm(work, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── 6. READ-SCOPE JAIL: secure by default (darwin), with a danger bypass that actually turns it off ───
 
 // On darwin the in-place LocalSandbox now wraps every exec in the shared sandbox-exec read-scope jail by
