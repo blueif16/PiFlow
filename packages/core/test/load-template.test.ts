@@ -167,6 +167,21 @@ describe('loadTemplate — HAPPY PATH (the unmodified fixture LOADS)', () => {
     expect(wf.nodes['w2a-levels'].agentType).toBeUndefined();
   });
 
+  // claude-code executor — the loader must CARRY the authored `executor` selector through to the compiled
+  // NodeSpec so dispatch routes the node to `claude -p` instead of `pi` (RunOptions.buildCommand reads it).
+  // The runtime already READS executor at the 3 dispatch seams; this guards the TEMPLATE authoring path —
+  // the last gap (node.json → NodeSpec). Mirrors the G6 agentType carry.
+  it('carries the authored `executor` selector onto the compiled NodeSpec (claude-code)', async () => {
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.executor = 'claude-code';
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    const wf = compile(await loadTemplate(dir));
+    expect(wf.nodes['w0-classify'].executor).toBe('claude-code');
+    // additive: a node that declares none stays undefined downstream (⇒ pi, byte-identical to today).
+    expect(wf.nodes['w2a-levels'].executor).toBeUndefined();
+  });
+
   it('a NodeIntent with NO derives compiles to a NodeSpec with op[] undefined (additive — absence stays absent)', () => {
     // The additivity guarantee: an authored node that declares no derives is byte-for-byte op-free
     // downstream (`op[]` is the SOLE derive rep since U6 — no `op` ⇒ derivesFromOp yields five empty lists).
@@ -186,6 +201,16 @@ describe('loadTemplate — §8 STATIC CHECKS (each goes RED when violated)', () 
     // A typo'd top-level key the schema's `additionalProperties:false` must reject — `contract` stays
     // INTACT so the ONLY thing that can fail this node is the schema check (an unambiguous RED signal).
     n.depz = n.deps;
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    const e = await expectReject(dir);
+    expect(e.message).toMatch(/schema/i);
+    expect(e.message).toContain('w0-classify');
+  });
+
+  it('(1b) an unknown executor value (not pi|claude-code) → REJECT (enum guard)', async () => {
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.executor = 'gpt-cli'; // not one of the two recognized executors
     await writeJson(nodeJson(dir, 'w0-classify'), n);
     const e = await expectReject(dir);
     expect(e.message).toMatch(/schema/i);

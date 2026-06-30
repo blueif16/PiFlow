@@ -67,6 +67,8 @@ export interface NodeOpts {
   registryProject?: { source: string; mapRef: string; key: string };
   /** Per-node external MCP servers (loader REJECTS a literal secret — use $VAR refs in values). */
   mcp?: McpServers;
+  /** Which agent ENGINE runs this node: 'pi' (default fleet) or 'claude-code' (headless local Claude). */
+  executor?: 'pi' | 'claude-code';
   /** Per-node routing (G1). */
   model?: string;
   provider?: string;
@@ -127,6 +129,8 @@ export function buildNode(opts: NodeOpts): Record<string, unknown> {
   if (!opts.programmatic) {
     node.prompt = { file: opts.promptFile ?? 'prompt.md', ...(opts.skill ? { skill: opts.skill } : {}) };
   }
+  // Engine selector — emitted only when set (absent ⇒ the loader defaults to 'pi', byte-identical).
+  if (opts.executor) node.executor = opts.executor;
   if (opts.tools?.length || opts.deny?.length) {
     node.tools = {
       ...(opts.tools?.length ? { allow: opts.tools } : {}),
@@ -342,7 +346,7 @@ const ADD_USAGE =
   '[--owns <glob>]... [--read <p>]... [--tool <t>]... [--deny <t>]... [--inject <p>]... ' +
   '[--seed <to=from>]... [--promote <from=to[:reducer]>]... [--project <to=from[,from2]>]... ' +
   '[--merge-run <cmd[:args][@cwd]>]... [--registry-project <source=,mapRef=,key=>] ' +
-  '[--mcp <name=url>]... [--check <kind[:path]>]... [--model <m>] [--provider <g>] [--tier <t>] ' +
+  '[--mcp <name=url>]... [--check <kind[:path]>]... [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
   '[--timeout <ms>] [--retries <n>] [--return-mode optional|required] [--schema <p>] [--skill <p>] ' +
   '[--prompt-file <f>] [--on-fail block|warn|stop] [--programmatic]';
 
@@ -395,6 +399,7 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
       ? parseRegistryProject(flags['registry-project'][0])
       : undefined,
     mcp: parseMcp(flags.mcp),
+    executor: flags.executor?.[0] as NodeOpts['executor'],
     model: flags.model?.[0],
     provider: flags.provider?.[0],
     tier: flags.tier?.[0],

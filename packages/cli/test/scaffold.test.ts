@@ -94,6 +94,25 @@ describe('scaffold — emit a template the real loadTemplate accepts', () => {
     expect(node.mcp.servers.deepwiki).toEqual({ transport: 'http', url: 'https://mcp.deepwiki.com/mcp' });
   });
 
+  // The --executor flag → buildNode → node.json carry. Scaffold OWNS the emitted SHAPE; the
+  // schema-accepts + loader-carries + compile-passes round-trip is owned (and mutation-checked) by core's
+  // load-template.test.ts ('carries the authored `executor` selector onto the compiled NodeSpec'), which
+  // imports the worktree src directly — the reliable home for a cross-package core feature.
+  it('the --executor flag emits a schema-valid executor onto node.json', async () => {
+    await runNewCli([DIR, '--name', 'x', '--description', 'd']);
+    await runAddNodeCli([DIR, '--id', 'fixer', '--artifact', 'f.md', '--executor', 'claude-code']);
+
+    const node = await readJson(path.join(DIR, 'nodes', 'fixer', 'node.json'));
+    expect(node.executor).toBe('claude-code');
+  });
+
+  it('a node with no --executor flag omits the key (additive ⇒ pi default, byte-identical to today)', async () => {
+    await runNewCli([DIR, '--name', 'x', '--description', 'd']);
+    await runAddNodeCli([DIR, '--id', 'plain', '--artifact', 'f.md']);
+    const node = await readJson(path.join(DIR, 'nodes', 'plain', 'node.json'));
+    expect(node.executor).toBeUndefined();
+  });
+
   it('re-emitting a node overwrites node.json but never touches an existing prompt.md', async () => {
     await scaffoldNew(DIR, { name: 'x', description: 'd' });
     await scaffoldAddNode(DIR, { id: 'n', artifacts: ['a.md'] });

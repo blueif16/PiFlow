@@ -157,6 +157,10 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   // (G6) Carry the agent-PRESET label verbatim (the preset was already expanded into tools/prompt at init);
   // it rides to observe so the GUI renders the icon. Additive — a node with none stays label-free.
   if (n.def.agentType) intent.agentType = n.def.agentType;
+  // (claude-code executor) Carry the per-node ENGINE selector verbatim → the dense NodeSpec. The runner
+  // routes on it at dispatch (claudeCommand vs defaultPiCommand), model res, and the credential seam.
+  // Additive: absent ⇒ 'pi', byte-identical to today. The schema's enum already gated the value.
+  if (n.def.executor) intent.executor = n.def.executor;
   // (G1) Carry the per-node routing fields verbatim; the runner resolves the effective model (model-routing.ts).
   if (n.def.model) intent.model = n.def.model;
   if (n.def.provider) intent.provider = n.def.provider;

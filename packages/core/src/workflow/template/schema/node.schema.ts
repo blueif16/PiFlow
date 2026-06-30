@@ -60,6 +60,15 @@ export const nodeSchema = {
       minLength: 1,
       description: 'Agent-preset LABEL (branding) — expanded into tools/prompt at init; GUI icon key. Omitted ⇒ none.',
     },
+    executor: {
+      // Which agent ENGINE runs this node: the `pi` fleet (default) or a headless local Claude Code
+      // session (`claude -p`). Omitted ⇒ 'pi' (byte-identical to today). A 'claude-code' node dispatches
+      // via the claudeCommand builder + the host-resolved OAuth credential (runner/claude-executor.ts);
+      // see docs/design/agent-executor-interface.md.
+      type: 'string',
+      enum: ['pi', 'claude-code'],
+      description: "Agent engine for this node: 'pi' (default fleet) or 'claude-code' (headless local Claude). Omitted ⇒ pi.",
+    },
     tools: {
       type: 'object',
       additionalProperties: false,

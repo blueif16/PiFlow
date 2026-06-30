@@ -33,6 +33,12 @@ export interface TemplateNode {
    * the runner treats it as opaque; observe carries it so the GUI renders the preset's icon. Omitted ⇒ none.
    */
   agentType?: string;
+  /**
+   * Which agent ENGINE runs this node: the `pi` fleet (default) or a headless local Claude Code session
+   * (`claude -p`). Omitted ⇒ 'pi' (byte-identical). Carried verbatim onto the dense `NodeSpec.executor`,
+   * which the runner reads at the 3 dispatch seams (command/model/credential). See node.schema.ts `executor`.
+   */
+  executor?: 'pi' | 'claude-code';
   tools?: { allow?: string[]; deny?: string[] };
   mcp?: { servers?: Record<string, unknown>; ref?: string };
   inject?: string[];
