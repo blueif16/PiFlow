@@ -121,6 +121,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
@@ -135,5 +136,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadRunView` (gui/src/data/runView.ts:105) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:60) — 14 callers in `gui/vite.config.ts`, `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/langgraph/src/stream.ts` +4 more; tests: `packages/cli/test/watch.test.ts`, `packages/core/test/observe.test.ts`
 
-<sub>derived 2026-06-30 · arc=43 commits · files=8 · lessons=19</sub>
+<sub>derived 2026-06-30 · arc=43 commits · files=8 · lessons=20</sub>
 <!-- okf:auto-end -->

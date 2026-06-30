@@ -116,6 +116,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[swarm-consensus-deferred]]
@@ -128,5 +129,5 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/catalog/introspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/runner.test.ts`, `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`
 - `loadMcpCatalog` (packages/core/src/catalog/client.ts:60) — 5 callers in `packages/core/src/catalog/client.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/catalog-sync.test.ts`
 
-<sub>derived 2026-06-30 · arc=27 commits · files=9 · lessons=22</sub>
+<sub>derived 2026-06-30 · arc=27 commits · files=9 · lessons=23</sub>
 <!-- okf:auto-end -->

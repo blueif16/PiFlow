@@ -89,6 +89,7 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 
 **Alias matches** (review — may include false positives):
 - [[piflow-optimize-layer-built]]
+- [[piflow-rollout-enablement]]
 - [[runs-live-in-product-runs-folder]]
 
 ### Code anchors / blast radius (codegraph)
@@ -99,5 +100,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/index.ts`, `packages/core/src/names/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/index.ts`, `packages/core/src/names/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-06-30 · arc=25 commits · files=7 · lessons=2</sub>
+<sub>derived 2026-06-30 · arc=25 commits · files=7 · lessons=3</sub>
 <!-- okf:auto-end -->

@@ -123,6 +123,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
+- [[piflow-rollout-enablement]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
@@ -136,5 +137,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `watchRun` (packages/cli/src/watch.ts:60) — 14 callers in `gui/vite.config.ts`, `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/langgraph/src/stream.ts` +4 more; tests: `packages/cli/test/watch.test.ts`, `packages/core/test/observe.test.ts`
 - `readRunModel` (packages/core/src/observe/read.ts:104) — 16 callers in `packages/cli/src/status.ts`, `packages/core/src/observe/discover.ts`, `packages/core/src/observe/watch.ts`, `packages/langgraph/src/stream.ts` +3 more; tests: `packages/cli/test/status.test.ts`, `packages/core/test/checkpoint.test.ts`, `packages/core/test/observe.test.ts`, `tui/test/rich-dag.test.mjs`
 
-<sub>derived 2026-06-30 · arc=35 commits · files=10 · lessons=23</sub>
+<sub>derived 2026-06-30 · arc=35 commits · files=10 · lessons=24</sub>
 <!-- okf:auto-end -->

@@ -131,6 +131,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
+- [[piflow-rollout-enablement]]
 - [[sandbox-readscope-default-on]]
 - [[swarm-consensus-deferred]]
 - [[tui-dag-structure-source]]
@@ -143,5 +144,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
 - `loadModelsIndex` (packages/core/src/runner/model-routing.ts:200) — 7 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/model-routing.test.ts`
 
-<sub>derived 2026-06-30 · arc=34 commits · files=10 · lessons=23</sub>
+<sub>derived 2026-06-30 · arc=34 commits · files=10 · lessons=24</sub>
 <!-- okf:auto-end -->

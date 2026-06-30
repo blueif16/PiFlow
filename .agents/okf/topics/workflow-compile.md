@@ -134,6 +134,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
 - [[swarm-consensus-deferred]]
 - [[tui-dag-structure-source]]
@@ -146,5 +147,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:195) — 28 callers in `gui/vite.config.ts`, `packages/cli/src/extract.ts`, `packages/cli/src/inspect.ts`, `packages/cli/src/run.ts` +2 more; tests: `packages/cli/test/inspect.test.ts`, `packages/cli/test/run.test.ts`, `packages/cli/test/scaffold-memory.test.ts`, `packages/cli/test/scaffold.test.ts` +11
 - `NodeSpec` (packages/core/src/types.ts:17) — 46 callers in `packages/cli/src/inspect.ts`, `packages/core/src/contract.ts`, `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts` +9 more; tests: `packages/core/test/command-session.test.ts`, `packages/core/test/command-skill.test.ts`, `packages/core/test/escalate-loop.test.ts`, `packages/core/test/journal.test.ts` +6
 
-<sub>derived 2026-06-30 · arc=56 commits · files=5 · lessons=21</sub>
+<sub>derived 2026-06-30 · arc=56 commits · files=5 · lessons=22</sub>
 <!-- okf:auto-end -->

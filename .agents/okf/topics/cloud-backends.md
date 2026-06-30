@@ -153,6 +153,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
@@ -166,5 +167,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:18) — 2 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-06-30 · arc=67 commits · files=8 · lessons=24</sub>
+<sub>derived 2026-06-30 · arc=67 commits · files=8 · lessons=25</sub>
 <!-- okf:auto-end -->

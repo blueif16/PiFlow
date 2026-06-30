@@ -92,6 +92,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[piflow-rollout-enablement]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -101,5 +102,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `runFixGate` (packages/core/src/optimize/driver.ts:79) — 9 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-driver.test.ts`, `packages/core/test/optimize-loop-gs01.test.ts`, `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-driver-events.test.ts` +1
 - `NodeScore` (packages/core/src/optimize/types.ts:73) — 17 callers in `packages/cli/src/optimize-fix.ts`, `packages/cli/src/optimize.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/score.ts` +1 more; tests: `packages/core/test/optimize-loop-gs01.test.ts`, `packages/core/test/optimize-triage.test.ts`
 
-<sub>derived 2026-06-30 · arc=9 commits · files=11 · lessons=9</sub>
+<sub>derived 2026-06-30 · arc=9 commits · files=11 · lessons=10</sub>
 <!-- okf:auto-end -->

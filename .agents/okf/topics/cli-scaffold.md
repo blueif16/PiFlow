@@ -162,6 +162,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
@@ -178,5 +179,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
 - `runNewCli` (packages/cli/src/scaffold.ts:415) — 4 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-06-30 · arc=74 commits · files=8 · lessons=31</sub>
+<sub>derived 2026-06-30 · arc=74 commits · files=8 · lessons=32</sub>
 <!-- okf:auto-end -->

@@ -147,6 +147,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
@@ -161,5 +162,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-06-30 · arc=56 commits · files=8 · lessons=30</sub>
+<sub>derived 2026-06-30 · arc=56 commits · files=8 · lessons=31</sub>
 <!-- okf:auto-end -->
