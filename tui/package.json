@@ -6,7 +6,10 @@
   "description": "Pi Flow terminal monitor — the ink DAG/per-node run viewer, reading the .pi/ run layout.",
   "license": "MIT",
   "bin": { "piflow-tui": "./pi-tui.mjs" },
-  "scripts": { "start": "node pi-tui.mjs" },
+  "scripts": {
+    "start": "node pi-tui.mjs",
+    "demo:build": "vite build --config vite.config.demo.ts"
+  },
   "engines": { "node": ">=20" },
   "dependencies": {
     "@piflow/core": "*",
@@ -15,6 +18,15 @@
     "react": "^19.2.0"
   },
   "devDependencies": {
-    "ink-testing-library": "^4.0.0"
+    "@vitejs/plugin-react": "^6",
+    "@xterm/addon-fit": "^0.11",
+    "@xterm/xterm": "^6",
+    "buffer": "^6",
+    "events": "^3",
+    "ink-canvas": "^0.4.5",
+    "ink-testing-library": "^4.0.0",
+    "react-dom": "^19",
+    "readable-stream": "^4",
+    "vite": "^8"
   }
 }

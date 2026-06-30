@@ -60,11 +60,15 @@ export default function CTA() {
               className="h-full w-full border-0 bg-white"
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center">
-              <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-fg-faint">
-                TUI preview
-              </p>
-            </div>
+            // the real piflow terminal monitor (ink-canvas → xterm.js), running pure-frontend from
+            // /tui-demo/ off the SAME curated data as the GUI demo. Target index.html explicitly for the
+            // same reason as the GUI branch (Next 308-redirects the bare dir and 404s a blank iframe).
+            <iframe
+              src="/tui-demo/index.html"
+              title="piflow TUI — interactive demo"
+              loading="lazy"
+              className="h-full w-full border-0 bg-white"
+            />
           )}
         </div>
       </div>
