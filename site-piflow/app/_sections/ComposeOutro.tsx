@@ -236,7 +236,7 @@ export default function ComposeOutro() {
                       the closing line, self-colored so they stay live under the dim. */}
                   <p className="intro-copy intro-reveal text-balance text-3xl text-fg sm:text-4xl">
                     <span>
-                      I&apos;m Shiran Wang, currently building{" "}
+                      Hi! I&apos;m Shiran, building{" "}
                       <span className="io-fx io-fx--warm" style={{ "--w": "3em", "--x": "-0.04em", "--y": "-0.02em", "--r": "-1.5deg" } as React.CSSProperties} aria-hidden />
                       <span className="io-glass">agentic applications</span>.
                     </span>{" "}
