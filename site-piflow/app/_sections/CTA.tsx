@@ -14,6 +14,7 @@
    ============================================================ */
 
 import { useState } from "react";
+import BrandPill from "@/components/BrandPill";
 
 type View = {
   key: string;
@@ -39,6 +40,11 @@ export default function CTA() {
       className="theme-blue relative flex min-h-svh w-full flex-col overflow-hidden bg-canvas"
     >
       <div className="gridpaper pointer-events-none absolute inset-0" aria-hidden />
+
+      {/* persistent top-left brand pill (shared with the hero / composition) */}
+      <div className="absolute left-4 top-4 z-30 sm:left-6 sm:top-6 lg:left-10 lg:top-8">
+        <BrandPill />
+      </div>
 
       {/* ── render panel — ONE container, centred at a reduced width ── */}
       <div className="relative mx-auto flex w-full max-w-5xl flex-1 items-stretch px-4 py-4 sm:px-6 sm:py-6">

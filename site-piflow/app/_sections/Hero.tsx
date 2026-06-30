@@ -12,19 +12,9 @@
 import FluidGrid from "@/components/FluidGrid";
 import HoverGrid from "@/components/HoverGrid";
 import LearnMoreButton from "@/components/LearnMoreButton";
-import ProductMenu from "@/components/ProductMenu";
+import BrandPill from "@/components/BrandPill";
 
 const GITHUB_URL = "https://github.com/blueif16/PiFlow";
-
-// Brand mark — the PiFlow glyph. Source asset is a black square with a
-// white glyph; `invert` flips it to the all-black mark on transparent, so
-// on the white nav pill only the black glyph reads (theme is white).
-function LogoMark() {
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src="/bw_icon.svg" alt="PiFlow" className="size-8 invert" />
-  );
-}
 
 export default function Hero() {
   return (
@@ -45,23 +35,8 @@ export default function Hero() {
       <div className="relative z-10 flex min-h-svh flex-col px-4 pt-4 sm:px-6 sm:pt-6 lg:px-10 lg:pt-8">
         {/* ── TOP PILLS ───────────────────────────────────────── */}
         <nav className="flex items-center justify-between gap-3">
-          {/* left pill: logo chip + minimal links — diagonal cut (TR+BL) */}
-          <div className="hud-frame [--hud-bevel:14px] inline-flex items-center gap-1 bg-white py-1.5 pl-1.5 pr-2 shadow-[var(--shadow-sm)]">
-            <LogoMark />
-            <ProductMenu className="ml-1.5" />
-            <a
-              href="/docs"
-              className="px-2.5 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
-            >
-              Docs
-            </a>
-            <a
-              href="#agents"
-              className="px-2.5 text-sm font-medium text-fg-muted transition-colors hover:text-fg"
-            >
-              Demo
-            </a>
-          </div>
+          {/* left pill: logo chip + minimal links — the shared BrandPill */}
+          <BrandPill />
 
           {/* right pill: GitHub only — anti-diagonal cut (TL+BR), mirrors the left */}
           <div className="hud-frame-anti [--hud-bevel:14px] inline-flex items-center bg-white px-1 py-1.5 shadow-[var(--shadow-sm)]">
