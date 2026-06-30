@@ -231,23 +231,23 @@ export default function ComposeOutro() {
                       the closing line, self-colored so they stay live under the dim. */}
                   <p className="intro-copy intro-reveal text-balance text-3xl text-fg sm:text-4xl">
                     <span>
-                      My name is Shiran, and I&apos;ve been building{" "}
+                      Hi, I&apos;m Shiran 👋 I&apos;ve been building{" "}
                       <span className="io-fx io-fx--warm" style={{ "--w": "3em", "--x": "-0.04em", "--y": "-0.02em", "--r": "-1.5deg" } as React.CSSProperties} aria-hidden />
-                      <span className="io-glass">agentic applications</span> since the early days of MCP.
+                      <span className="io-glass">agentic applications</span> since MCP first became available,
                     </span>{" "}
                     <span>
-                      Ever since, I&apos;ve been all-in on the{" "}
+                      and I&apos;ve been hooked on{" "}
                       <span className="io-fx io-fx--mix" style={{ "--w": "2.9em", "--x": "0.02em", "--y": "0.03em", "--r": "1deg" } as React.CSSProperties} aria-hidden />
-                      <span className="io-glass">agentic workflows</span> that power them.
+                      <span className="io-glass">agentic workflows</span> ever since.
                     </span>{" "}
                     <span>
-                      These days my focus is the{" "}
+                      Lately, my focus has been on{" "}
                       <span className="io-fx io-fx--green" style={{ "--w": "2.5em", "--y": "-0.04em", "--r": "-2deg" } as React.CSSProperties} aria-hidden />
-                      <span className="io-glass">AI-in-education</span> front.
+                      <span className="io-glass">AI in education</span> — making learning tools that feel more useful, personal, and accessible.
                     </span>{" "}
-                    <span>I&apos;d love to connect.</span>{" "}
+                    <span>I&apos;d love to connect —</span>{" "}
                     <span>
-                      Here&apos;s where to find me 👉{" "}
+                      here&apos;s where to find me 👉{" "}
                       {SOCIALS.map((s) => (
                         <a
                           key={s.label}
