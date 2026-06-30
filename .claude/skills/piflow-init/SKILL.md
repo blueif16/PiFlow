@@ -126,6 +126,15 @@ are in `reference/sdk-consumer.md` — read it first.** The flow:
 - **The criteria fixture** — standing up a workflow seeds `<repo>/.agents/skill-system-criteria.md`, the
   per-node human-judged quality bar (NEVER injected into a prompt). Maintained by `hermes-skill-system` (the
   improve loop — see piflow-enhance).
+- **Claude Code executor (per-node, OPTIONAL)** — a node may run on a headless local **Claude Code** session
+  instead of a `pi`: author `--executor claude-code` on `piflowctl add-node` (or `"executor":"claude-code"` in
+  `node.json`), and map its Claude-side tier models with `piflowctl model set <tier> <id> --claude` (aliases
+  `opus|sonnet|haiku` or full `claude-*` ids). The credential is a ONE-TIME, freely-SKIPPABLE step:
+  `piflowctl claude-code connect` persists a `claude setup-token` to `~/.piflow/claude-code.json` (chmod 600).
+  **Skip it on macOS** — an existing `claude` login (keychain) is used automatically; the file is the portable
+  layer for Linux/cloud. The runner resolves the token host-side (env → that file → local login) and strips
+  `ANTHROPIC_API_KEY` so a stray key never silently bills the API. Absent on a node ⇒ `pi`, byte-identical to
+  today. `docs/design/agent-executor-interface.md`.
 
 ## The laws (do not violate)
 - **Single source of truth = the structured template.** Improve a wave by editing its node def / its skill in
