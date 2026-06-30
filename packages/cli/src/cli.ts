@@ -21,7 +21,7 @@ import { runClaudeCodeCli } from './claude-code.js';
 import { runStatusCli } from './status.js';
 import { runWatchCli } from './watch.js';
 import { runExtractCli } from './extract.js';
-import { runSchemaCli } from './schema.js';
+import { runSchemaCli, renderAddNodeHelp } from './schema.js';
 import { runRunCli } from './run.js';
 import { runNodeCli } from './node.js';
 import { runInspectCli } from './inspect.js';
@@ -43,7 +43,7 @@ USAGE
   piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--stop too)
   piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
   piflowctl extract <templateDir>           free DAG preview (node count + parallel lanes; no model)
-  piflowctl schema  [node|meta|workflow]    print the SDK's machine-readable authoring JSON Schema
+  piflowctl schema  [<topic>]               the add-node authoring reference (bare = topic index; --json = JSON Schema)
   piflowctl status  <rundir> [--every <s>]  per-node table + stage/rollup (verified on disk)
   piflowctl watch   <rundir> [--notify]     silent sentinel — one line on done / fail / dead-stall
   piflowctl telemetry <rundir> [nodeId] [--watch] [--verbose] [--json]  agent-facing digest:
@@ -106,32 +106,12 @@ NEW
 
 ADD-NODE
   <templateDir> the template dir (must hold meta.json). --id <id> is required.
-  Edges/contract: --dep <id> · --artifact <p> · --owns <glob> · --read <p>  (each repeatable;
-                owns defaults out/**, read defaults {{RUN}}).
-  Tools/io:     --tool <t> · --deny <t> · --inject <p> · --mcp <name=url>  (each repeatable).
-  Base agent:   --agent-type <id>  adopt a preset (~/.piflow/agents/<id>.md): folds its tools (UNION --tool;
-                deny wins) + skill (--skill wins) + the agentType LABEL into node.json. Prints a note to
-                prepend its role-prompt to prompt.md (prose stays yours). Unknown id ⇒ non-zero exit.
-  Hooks:        --seed <to=from> (PRE) · --promote <from=to[:reducer]> · --project <to=from[,from2]> ·
-                --merge-run <cmd[:args][@cwd]> · --registry-project <source=,mapRef=,key=>  (emit canonical
-                op[] derives; seed runs PRE, the rest POST in project→merge→promote order; each repeatable).
-  Checks:       --check <kind[:path[:severity[:param]]]> (post) · --check-pre <…> (pre) · --on-fail/--on-warn block|warn|stop.
-                kind=non-empty|json-parses|field-present|count-floor|regex-present|… ; severity=fail|warn; param=dotted
-                field, a regex, or a JSON object ({min,path}) — JSON-parsed when it parses. (each --check repeatable)
-  Exec gate:    --gate-run <cmd[:args][@cwd]>  a POST shell gate — a non-zero exit BLOCKS the node (≠ --merge-run,
-                which is a data derive with no verdict). Repeatable.
-  Control:      --escalate <tier|model>  on failure, retry on a stronger model (→ io.escalate) ·
-                --reroute <node[:max]>   on failure, loop back to an upstream node (the target MUST be a strict ancestor).
-  Judge:        --judge <judgeTier[:threshold]>  a DIFFERENT-model verdict, materialized into a real <id>__judge node.
-                Write nodes/<id>/judge.md (the rubric prose) FIRST — the CLI inlines it. judgeTier MUST differ from --tier.
-                --judge-on-fail block|warn|stop|retry|escalate · --judge-retry-max <n> · --judge-retry-scope feedback|fix.
-  HITL:         --checkpoint <confirm|input|select:prompt>  a human gate (G5) · --checkpoint-choice <v> (repeatable, select) ·
-                --checkpoint-default <v> · --checkpoint-headless default|abort · --checkpoint-timeout <ms>.
-  Topology:     --fusion <moa|best-of-n> (+ --fusion-n <n> · --fusion-panel <m> (rep) · --fusion-judge <m> · --fusion-obligations ·
-                --fusion-no-verify)  panel/best-of-n + judge expansion · --subworkflow <ref>  inline a sub-template as a sub-DAG.
-  Contract+:    --full-access (per-node jail-off, LOCAL only) · --fill-sentinel <s> · --schema <p> · --return-mode optional|required.
-  Routing:      --model · --provider · --tier · --timeout <ms> · --retries <n> · --skill <p>.
-  --programmatic  a no-pi node (omits prompt/tools; its declarative ops ARE the node).
+  The authoring flags below render from the SAME CLI_TOPICS source as 'piflowctl schema <topic>'
+  (schema.ts), so this help and the topic reference can never diverge. Pull one topic at a time with
+  'piflowctl schema <topic>'.
+
+${renderAddNodeHelp()}
+
   Emits/overwrites node.json from the flags; NEVER touches nodes/<id>/prompt.md (yours to Write).
 
 INSPECT
@@ -144,12 +124,13 @@ INSPECT
 EXTRACT
   <templateDir> an authored template/ dir. Prints stages + parallel lanes. FREE (no model).
 
-SCHEMA
-  [node|meta|workflow]  print the @piflow/core JSON Schema (draft 2020-12) for that file — the
-                machine-readable AUTHORING CONTRACT an agent targets when emitting node.json /
-                meta.json / workflow.json. Default 'node' (the node-authoring schema, with rich
-                per-field descriptions). The output IS the SDK's own schema (re-exported, never
-                copied), so it can never drift. An unknown selector errors with the valid ones.
+SCHEMA  (the self-describing add-node authoring reference — pull one topic at a time)
+  (no arg)      a concise INDEX: one '<topic> — <summary>' line per topic, then 'piflowctl schema <topic>'.
+  <topic>       that topic's concise flag grammar ONLY (node · tools · agent · routing · derive · checks ·
+                control · judge · hitl · topology · contract · commands). Unknown topic ⇒ non-zero exit,
+                listing the valid topics. Same CLI_TOPICS source as the ADD-NODE help (can't diverge).
+  --json [node|meta|workflow]  the escape hatch: the formal @piflow/core JSON Schema (draft 2020-12,
+                default 'node') — re-exported from the SDK, never copied, so it can't drift.
 
 STATUS
   <rundir>      a run dir holding .pi/run.json. Default '.'.

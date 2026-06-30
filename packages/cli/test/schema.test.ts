@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { nodeSchema, metaSchema, workflowSchema } from '@piflow/core';
-import { runSchemaCli } from '../src/schema.js';
+import { nodeSchema } from '@piflow/core';
+import { runSchemaCli, CLI_TOPICS, renderAddNodeHelp } from '../src/schema.js';
 
-// `piflowctl schema [node|meta|workflow]` makes the SDK self-describing: it prints the SAME schema
-// objects @piflow/core exports, so an authoring agent in any repo can fetch the machine-readable
-// node-authoring contract on demand. The load-bearing assertion here is the ANTI-DRIFT one: the
-// captured stdout, JSON-parsed, must DEEP-EQUAL the schema imported from @piflow/core. If the command
-// ever hand-copies or diverges from the SDK's schema, this test goes RED — which is the whole point.
+// `piflowctl schema <topic>` is a TOPIC-SEGMENTED, concise CLI-syntax reference for the add-node
+// authoring flags: an agent pulls only the slice it needs, instead of a front-loaded raw dump. The
+// load-bearing guarantee is ANTI-DRIFT BY SINGLE SOURCE: `CLI_TOPICS` is the ONE data structure rendered
+// into BOTH `piflowctl schema` AND the add-node `--help`, so the two can never diverge. The `--json`
+// escape hatch keeps the formal @piflow/core schema re-export (anti-drift by construction).
 
-/** Run `runSchemaCli(argv)`, capturing whatever it writes to stdout (and the resulting exit code). */
+/** Run `runSchemaCli(argv)`, capturing whatever it writes to stdout/stderr (and the exit code). */
 function capture(argv: string[]): { stdout: string; stderr: string; exitCode: number } {
   let stdout = '';
   let stderr = '';
@@ -32,56 +32,112 @@ function capture(argv: string[]): { stdout: string; stderr: string; exitCode: nu
   return { stdout, stderr, exitCode };
 }
 
+// Every add-node authoring flag the reference MUST cover (the canonical list from the spec). The
+// coverage test asserts each appears in EXACTLY ONE topic's lines — so the reference can't silently drop
+// (or duplicate) a flag.
+const CANONICAL_FLAGS = [
+  // node (the spine)
+  '--id', '--phase', '--dep', '--artifact', '--owns', '--read', '--return-mode', '--programmatic', '--prompt-file',
+  // tools
+  '--tool', '--deny', '--inject', '--mcp',
+  // agent
+  '--agent-type', '--skill', '--executor',
+  // routing
+  '--model', '--provider', '--tier', '--timeout', '--retries',
+  // derive
+  '--seed', '--project', '--merge-run', '--promote', '--registry-project',
+  // checks (+ gate)
+  '--check', '--check-pre', '--on-fail', '--on-warn', '--gate-run',
+  // control
+  '--escalate', '--reroute',
+  // judge
+  '--judge', '--judge-on-fail', '--judge-retry-max', '--judge-retry-scope',
+  // hitl
+  '--checkpoint', '--checkpoint-choice', '--checkpoint-default', '--checkpoint-headless', '--checkpoint-timeout',
+  // topology
+  '--fusion', '--fusion-n', '--fusion-panel', '--fusion-judge', '--fusion-obligations', '--fusion-no-verify', '--subworkflow',
+  // contract
+  '--full-access', '--fill-sentinel', '--schema',
+] as const;
+
 afterEach(() => {
   vi.restoreAllMocks();
   process.exitCode = 0;
 });
 
-describe('piflowctl schema — self-describing SDK authoring schemas', () => {
-  it('prints the node schema by default, DEEP-EQUAL to @piflow/core nodeSchema (anti-drift)', () => {
+describe('piflowctl schema — topic-segmented CLI-syntax reference', () => {
+  it('the bare INDEX lists every topic key and prints NO flags (no front-loading)', () => {
     const { stdout, exitCode } = capture([]);
     expect(exitCode).toBe(0);
-    // The structural anti-drift guarantee: the printed JSON IS the SDK's own schema object.
-    expect(JSON.parse(stdout)).toEqual(nodeSchema);
+    // Every topic key appears in the index…
+    for (const key of Object.keys(CLI_TOPICS)) {
+      expect(stdout).toContain(key);
+    }
+    // …but the index must not front-load any flag syntax.
+    expect(stdout).not.toMatch(/--[a-z]/);
+    // and it points the agent at the next call.
+    expect(stdout).toContain('piflowctl schema <topic>');
   });
 
-  it("'node' selector prints the node schema (DEEP-EQUAL to @piflow/core nodeSchema)", () => {
-    const { stdout, exitCode } = capture(['node']);
+  it('`schema judge` prints the judge flags AND the judge.md + tier-must-differ gotcha', () => {
+    const { stdout, exitCode } = capture(['judge']);
     expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout)).toEqual(nodeSchema);
+    expect(stdout).toContain('--judge');
+    expect(stdout).toContain('--judge-on-fail');
+    expect(stdout).toContain('--judge-retry-scope');
+    // The two load-bearing gotchas for judge authoring:
+    expect(stdout).toContain('judge.md');
+    expect(stdout.toLowerCase()).toMatch(/judgetier.*differ|differ.*--tier/);
+    // A topic page is the slice ONLY — it must NOT dump an unrelated topic's flag.
+    expect(stdout).not.toContain('--fusion');
   });
 
-  it('the node schema output carries the real authoring fields (judgeGate, op, checks)', () => {
-    const { stdout } = capture(['node']);
-    // Proves it is the actual AUTHORING schema agents need — not some thin/placeholder object.
-    expect(stdout).toContain('judgeGate');
-    expect(stdout).toContain('op');
-    expect(stdout).toContain('checks');
-  });
-
-  it("'meta' selector prints the meta schema (DEEP-EQUAL to @piflow/core metaSchema)", () => {
-    const { stdout, exitCode } = capture(['meta']);
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout)).toEqual(metaSchema);
-  });
-
-  it("'workflow' selector prints the workflow schema (DEEP-EQUAL to @piflow/core workflowSchema)", () => {
-    const { stdout, exitCode } = capture(['workflow']);
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(stdout)).toEqual(workflowSchema);
-  });
-
-  it('pretty-prints with 2-space indentation', () => {
-    const { stdout } = capture(['node']);
-    expect(stdout).toBe(`${JSON.stringify(nodeSchema, null, 2)}\n`);
-  });
-
-  it('an unknown selector exits non-zero and lists the valid selectors on stderr', () => {
+  it('an unknown topic exits non-zero and lists the valid topics on stderr', () => {
     const { stdout, stderr, exitCode } = capture(['bogus']);
     expect(exitCode).not.toBe(0);
     expect(stdout).toBe('');
-    expect(stderr).toContain('node');
-    expect(stderr).toContain('meta');
-    expect(stderr).toContain('workflow');
+    // Lists the real topics so the agent can self-correct.
+    for (const key of Object.keys(CLI_TOPICS)) {
+      expect(stderr).toContain(key);
+    }
+  });
+
+  it('SINGLE SOURCE: the lines `schema <topic>` prints are the SAME content the add-node --help renders', () => {
+    const help = renderAddNodeHelp();
+    // Prove (for two independent topics) that the help body literally contains the topic page's lines —
+    // i.e. both surfaces render from the one CLI_TOPICS structure, so they cannot diverge.
+    for (const topic of ['judge', 'derive'] as const) {
+      for (const line of CLI_TOPICS[topic].lines) {
+        expect(help).toContain(line);
+      }
+    }
+  });
+
+  it('COVERAGE: every add-node flag appears in EXACTLY ONE topic page', () => {
+    for (const flag of CANONICAL_FLAGS) {
+      // Count topics whose lines mention this flag as a standalone token (boundary on the flag, so
+      // `--check` does not match `--check-pre`).
+      const owners = Object.entries(CLI_TOPICS).filter(([, t]) =>
+        t.lines.some((l) =>
+          new RegExp(`(^|[^-\\w])${flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^-\\w]|$)`).test(l),
+        ),
+      );
+      expect(
+        owners.length,
+        `${flag} must be covered by exactly one topic (found: ${owners.map(([k]) => k).join(',') || 'none'})`,
+      ).toBe(1);
+    }
+  });
+
+  it('`schema --json node` still DEEP-EQUALS the imported @piflow/core nodeSchema (anti-drift escape hatch)', () => {
+    const { stdout, exitCode } = capture(['--json', 'node']);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout)).toEqual(nodeSchema);
+  });
+
+  it('`schema --json` defaults to the node schema', () => {
+    const { stdout, exitCode } = capture(['--json']);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout)).toEqual(nodeSchema);
   });
 });
