@@ -6,6 +6,7 @@
     "file": "prompt.md",
     "skill": "multi-source-research"
   },
+  "agentType": "market-research",
   "tools": {
     "allow": [
       "fs:read",

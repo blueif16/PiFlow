@@ -13,6 +13,7 @@ import { markersFromNode, emitMarkers } from '../../contract.js';
 import type { TemplateNode } from './types.js';
 import { lowerToOps } from './lower.js';
 import { gatesFromOp } from '../../runner/op-dispatch.js';
+import { loadAgentPreset, defaultAgentsDir } from '../agent-preset.js';
 
 /** Strip a leading `{{RUN}}/` so an injected forced-read renders as a RUN-relative path in the fold. */
 const runRel = (p: string): string => p.replace(/^\{\{RUN\}\}\//, '');
@@ -40,12 +41,61 @@ export function toPolicy(p: TemplateNode['policy']): Policy | undefined {
   return p as Policy;
 }
 
+/** Options for the realized-prompt renderer (the role-preset catalog seam — injectable for tests). */
+export interface RenderOpts {
+  /** Catalog dir for `agentType` preset resolution. Default `~/.piflow/agents/` (the SDK-boundary home). */
+  agentsDir?: string;
+}
+
 /**
- * Render a node's realized prompt: the prose body + the DRIVER-* marker tail (§6 step 2). Uses the
- * EXISTING `markersFromNode` codec AS-IS over a materialized NodeSpec (artifacts/owns/readScope/schema/
- * checks/policy/return). Tokens in the markers are carried through verbatim (the caller resolves them).
+ * Thrown when a node names an `agentType` preset that cannot be resolved at render. A node declaring a
+ * preset it can't load is a TEMPLATE buildability failure (the loader's fail-closed convention) — we
+ * fail LOUDLY rather than silently emit a node that looks bound but inherits no role.
  */
-export function renderRealizedPrompt(def: TemplateNode, prose: string): string {
+export class MissingPresetError extends Error {
+  constructor(public readonly agentType: string, public readonly nodeId: string) {
+    super(
+      `node "${nodeId}" declares agentType "${agentType}" but no preset "${agentType}.md" could be ` +
+        `loaded from the agents catalog — the role-prompt cannot be inherited. ` +
+        `Add the preset to ~/.piflow/agents/ (or remove the agentType binding).`,
+    );
+    this.name = 'MissingPresetError';
+  }
+}
+
+/**
+ * Resolve a node's RAW prose into the role-inherited prose used by BOTH render sites (loader · init-RUN),
+ * so the role is applied IDENTICALLY and cannot drift. When `def.agentType` is set, prepend the named
+ * preset's role-prompt body (the SAME `role + "\n\n" + task` order as the author-time `mergePreset`):
+ * the preset is the SINGLE source — editing it updates every inheriting node, never copied into prompt.md.
+ *
+ * PURE w.r.t. its inputs except the one unavoidable disk read of the preset catalog (mirrors how
+ * `loadAgentPreset` is the read-only adapter over `~/.piflow/agents/`). A node with NO `agentType`
+ * (every bespoke/programmatic node) returns its prose UNCHANGED — byte-identical to before. A missing
+ * preset THROWS (`MissingPresetError`) — fail-closed, never a silently un-bound node.
+ */
+export function withRolePrompt(def: TemplateNode, prose: string, opts: RenderOpts = {}): string {
+  if (!def.agentType) return prose; // bespoke/programmatic node: no inheritance, unchanged.
+  const preset = loadAgentPreset(def.agentType, opts.agentsDir ?? defaultAgentsDir());
+  if (!preset) throw new MissingPresetError(def.agentType, def.id);
+  // ROLE first, TASK after — the exact additive composition `mergePreset` uses (agent-preset.ts:81).
+  // An empty task (no prose) ⇒ role alone, so the node is never left blank when bound.
+  return prose ? `${preset.prompt}\n\n${prose}` : preset.prompt;
+}
+
+/**
+ * Render a node's realized prompt: the (role-inherited) prose body + the DRIVER-* marker tail (§6 step 2).
+ * Uses the EXISTING `markersFromNode` codec AS-IS over a materialized NodeSpec (artifacts/owns/readScope/
+ * schema/checks/policy/return). Tokens in the markers are carried through verbatim (the caller resolves them).
+ *
+ * When `def.agentType` is set, the node INHERITS its preset's role-prompt at the head of the body (resolved
+ * BY REFERENCE via `withRolePrompt`, single-sourced from the preset). Both call sites (loader render-at-load
+ * + init-RUN render-at-instantiation) start from the RAW prose and route through here, so the role is applied
+ * exactly ONCE per final prompt and the two sites cannot drift.
+ */
+export function renderRealizedPrompt(def: TemplateNode, prose: string, opts: RenderOpts = {}): string {
+  // Inherit the preset's role-prompt FIRST (no-op when the node has no agentType), then render the tail.
+  prose = withRolePrompt(def, prose, opts);
   const c = def.contract;
   // (M5 · G13) Lower the deprecated aliases into the canonical op[] so the realized prompt carries a
   // DRIVER-OP marker (the codec round-trips it) AND #10: each pre-op's `reads` (the injected forced-reads)

@@ -36,7 +36,12 @@ export type { LoadTemplateOpts } from './workflow/template/loader.js';
 // deferred · markersFromNode tail · EMPTY io.json/events.jsonl/state.json stubs). Template ≅ run (D7).
 export { instantiateRun } from './workflow/template/instantiate.js';
 export type { InstantiateRunOpts, InstantiateRunResult, InstantiatedNode } from './workflow/template/instantiate.js';
-export { renderRealizedPrompt } from './workflow/template/render.js';
+// `renderRealizedPrompt` + the `withRolePrompt` role-inheritance seam: when a node sets `agentType`, the
+// realized prompt INHERITS the named preset's role-prompt at the head (role first, the node's task after),
+// resolved BY REFERENCE from the preset — single-sourced, never copied into prompt.md. A missing preset is a
+// fail-closed `MissingPresetError` (never a silently un-bound node). Both render sites share this one path.
+export { renderRealizedPrompt, withRolePrompt, MissingPresetError } from './workflow/template/render.js';
+export type { RenderOpts } from './workflow/template/render.js';
 
 // G6 — agentType presets: the PURE author-time merge utility + the read-only catalog adapter. The catalog
 // (named types, icons, role-prompts) is PRODUCT DATA in ~/.piflow/agents/ — only this LOGIC lives in core.
