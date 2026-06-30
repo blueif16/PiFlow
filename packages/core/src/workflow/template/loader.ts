@@ -147,6 +147,10 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
       write: c.owns.slice(),
       // per-node hard wall-clock cap (ms) → runner reads node.sandbox.timeoutMs (else the run-level default).
       ...(n.def.timeoutMs ? { timeoutMs: n.def.timeoutMs } : {}),
+      // per-node JAIL-OFF (`contract.fullAccess`) → `sandbox.fullAccess`: a `true` runs this node outside the
+      // local fs jail (scope.create passes enforceReadScope:false). Threaded like read/write (sits with the
+      // fs-scope axis); OMITTED when absent so a normal node's sandbox is byte-identical to today.
+      ...(c.fullAccess ? { fullAccess: true } : {}),
     },
   };
   // (M5 · G13) Carry the lowered op[] envelope onto the intent → the dense NodeSpec. `op[]` is the SOLE

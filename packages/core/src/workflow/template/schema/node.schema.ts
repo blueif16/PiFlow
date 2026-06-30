@@ -143,6 +143,14 @@ export const nodeSchema = {
           description: 'KIND 2 exposed dirs the model explores via `read` + the OS allow-list (§6a).',
           items: { type: 'string', minLength: 1 },
         },
+        fullAccess: {
+          // Per-node JAIL-OFF posture → `node.sandbox.fullAccess`. When true, this node's `pi` runs OUTSIDE
+          // the local fs jail (full host read+write — the per-node `--sandbox danger-full-access`), nullifying
+          // `readScope`/`owns` for THIS node only. Loosen-only, LOCAL-only (a no-op in a cloud VM). Sits with
+          // readScope/owns (the fs-scope axis). Omitted/false ⇒ jailed exactly as today.
+          type: 'boolean',
+          description: 'Per-node jail-off: run this node OUTSIDE the local fs jail (full host access). Omitted ⇒ jailed.',
+        },
         schema: {
           type: 'string',
           minLength: 1,

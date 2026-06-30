@@ -200,6 +200,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     sandbox = await scope.create({
       readScope: node.sandbox.read,
       writeScope: node.sandbox.write, // = contract.owns; bounds file-write* to the node's lane (darwin jail)
+      // Per-node FULL-ACCESS: a `fullAccess` node runs its `pi` OUTSIDE the local fs jail (the per-node
+      // danger-full-access). Only a `fullAccess` node overrides — `undefined` ⇒ inherit the run-level provider
+      // policy (the LocalSandboxProvider's `?? this.enforceReadScope`). A no-op for cloud/inmemory providers.
+      enforceReadScope: node.sandbox.fullAccess ? false : undefined,
       outputDir: sbLoc.outputDir,
       workdir: sbLoc.workdir,
       image: node.sandbox.image,
@@ -759,7 +763,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
  * location and OMITTED when absent (no `undefined` keys, so the on-disk slice stays minimal). `sandbox` here is
  * per-node SCOPING (workspace/readScope/owns), NOT the chosen backend — that is run-level (`status.sandbox`).
  */
-function buildNodeConfig(node: NodeSpec): NodeConfig {
+export function buildNodeConfig(node: NodeSpec): NodeConfig {
   const cfg: NodeConfig = {};
   if (node.model !== undefined) cfg.model = node.model;                 // types.ts: NodeSpec.model
   if (node.provider !== undefined) cfg.provider = node.provider;        // types.ts: NodeSpec.provider
@@ -777,6 +781,9 @@ function buildNodeConfig(node: NodeSpec): NodeConfig {
   if (node.io.retries !== undefined) cfg.retries = node.io.retries;    // types.ts: NodeIO.retries (per-node budget)
   if (node.agentType !== undefined) cfg.agentType = node.agentType;    // types.ts: NodeSpec.agentType
   if (node.programmatic === true) cfg.programmatic = true;             // types.ts: NodeSpec.programmatic
+  // Jail-off posture: set ONLY on an explicit `true` (OMIT on false/absent — the minimal-slice rule), so a
+  // jailed node's slice is byte-identical to today. Parallels `programmatic`; both are unjailed concepts.
+  if (node.sandbox?.fullAccess === true) cfg.fullAccess = true;        // types.ts: SandboxSpec.fullAccess
   // Per-node SCOPING (the write-authority globs are SandboxSpec.write = the node's `owns`).
   if (sandbox) {
     const sb: NonNullable<NodeConfig['sandbox']> = {};

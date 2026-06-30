@@ -257,7 +257,13 @@ export class LocalSandboxProvider implements SandboxProvider {
   }
 
   create(opts: CreateOpts): Promise<Sandbox> {
-    return LocalSandbox.create(opts, { enforceReadScope: this.enforceReadScope });
+    // Per-node jail override (the `fullAccess` posture): a node may opt OUT of the jail (`enforceReadScope:
+    // false`) while the run stays secure. Per-node `false` WINS over the provider's run-level policy; an
+    // absent override inherits `this.enforceReadScope` (the common case). Loosen-only — a node never
+    // re-tightens a danger run (a danger provider's `false` is unaffected by an absent per-node override).
+    return LocalSandbox.create(opts, {
+      enforceReadScope: opts.enforceReadScope ?? this.enforceReadScope,
+    });
   }
 
   /**

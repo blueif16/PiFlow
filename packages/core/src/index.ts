@@ -193,6 +193,9 @@ export type { HookReport, RunHooksOpts } from './hooks/index.js';
 // Runner (M1 execution loop — create→stage→exec→collect→dispose; watchdogs · halt-on-failure ·
 // --from resume · run-status.json). The pi-spawn is injectable (buildCommand/execRunner) so it runs offline.
 export { runWorkflow, defaultExecRunner, defaultPiCommand, lastJsonBlock, writeStatus, artifactState, nowISO } from './runner/index.js';
+// buildNodeConfig — the curated per-node config-slice builder (the SKIN channel mirror). Surfaced so a test
+// can pin the slice mapping (e.g. the `fullAccess`/`programmatic` carve-outs) directly off the resolved NodeSpec.
+export { buildNodeConfig } from './runner/index.js';
 // (op⊖ops) derivesFromOp / gatesFromOp / runOpsFromOp — reconstruct the per-family executor inputs from a
 // node's canonical `op[]` (the SOLE derive rep; the legacy `node.ops` was retired in U6). The runner reads
 // derives/gates/run ops through these three adapters (one home), and consumers (inspector) render via them.

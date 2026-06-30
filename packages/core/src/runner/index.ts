@@ -1,7 +1,7 @@
 // @piflow/core/runner — the M1 execution loop + its injection seams. Barrel for the parent to wire
 // into src/index.ts (the parent owns the public-export edit; this file only collects the runner API).
 
-export { runWorkflow, defaultExecRunner, defaultCheckpointWait, lastJsonBlock, selectedBridgedTool } from './runner.js';
+export { runWorkflow, defaultExecRunner, defaultCheckpointWait, lastJsonBlock, selectedBridgedTool, buildNodeConfig } from './runner.js';
 export type { RunOptions, RunResult, ExecRunner, ExecWatchdogOpts, CheckpointWaiter } from './runner.js';
 // (op⊖ops) derivesFromOp / gatesFromOp / runOpsFromOp — the SINGLE OpSpec→executor-input adapter home (the
 // SOLE derive rep is `op[]`). Surfaced so consumers (the CLI inspector) render derives from `op[]` instead of

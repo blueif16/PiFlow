@@ -241,6 +241,13 @@ export async function runRerouteGate(ctx: RunContext, node: NodeSpec): Promise<N
  * The op executors (`stageSeed`/`applyProjectionOp`/`runProjection`/`runMerge`/`applyMergeOp`/`evaluateChecks`)
  * and `finishNode` are REUSED UNCHANGED — this lane only changes the dispatch frame (no model, no pi). Called
  * OUTSIDE the G2 limiter (it holds no process/slot), exactly like the other no-pi node kinds.
+ *
+ * UNJAILED, the NO-LLM sibling of `fullAccess`. A programmatic node also runs unjailed (host ops, never
+ * `scope.create`), but for a DIFFERENT reason: its command is fixed + repo-authored (no LLM to contain →
+ * safe by construction), whereas a `fullAccess` pi node reaches the jail seam (`scope.create` →
+ * `LocalSandbox.exec`) and the author explicitly opts an LLM out of it. ONE concept (unjailed = programmatic
+ * ∨ fullAccess), TWO code paths — so there is deliberately NO shared `nodeIsUnjailed` predicate (it would be
+ * dead code); the config records both slices (`programmatic`, `fullAccess`) for a viewer to reason together.
  */
 export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promise<NodeStatusRecord> {
   const rec = ctx.status.nodes[srcNode.id];

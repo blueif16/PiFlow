@@ -254,6 +254,11 @@
   align-items: center;
   color: var(--ds-text-accent);
 }
+/* UNLOCKED (per-node fs jail opened, config.fullAccess) — a small NEUTRAL open-padlock glyph. Informative,
+   NOT an alarm: muted text color, no extrusion, no red/danger wash. The shape (open padlock) carries it. */
+.ds-node__runtime--unlocked {
+  color: var(--ds-text-tertiary);
+}
 
 /* header / body — structure via a hairline divider, not a colored bar */
 .ds-node__header {

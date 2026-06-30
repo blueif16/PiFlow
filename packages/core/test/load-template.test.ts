@@ -293,6 +293,40 @@ describe('loadTemplate — §8 STATIC CHECKS (each goes RED when violated)', () 
   });
 });
 
+// per-node `fullAccess` — the AUTHORED jail-off flag. It is a per-node fs-scope posture, so it is authored
+// where the OTHER fs scope lives: under `contract` (alongside `readScope`/`owns`), and the loader threads it
+// onto `node.sandbox.fullAccess` exactly as it threads `contract.readScope`→`sandbox.read`/`owns`→`write`.
+// The schema must ACCEPT a boolean and REJECT a non-boolean (an unchecked field is the bug this guards).
+describe('loadTemplate — per-node contract.fullAccess (the jail-off authoring flag)', () => {
+  it('ACCEPTS contract.fullAccess:true and threads it onto the compiled node.sandbox.fullAccess', async () => {
+    // The authored boolean must (a) pass the schema gate (no REJECT) and (b) ride loader→compile onto the
+    // dense NodeSpec at `sandbox.fullAccess`, which is the field the runner (scope.create) + buildNodeConfig
+    // both key off. If the schema dropped it (additionalProperties:false) loadTemplate would REJECT; if the
+    // loader failed to thread it, `sandbox.fullAccess` would be undefined and the second assertion fails.
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.contract.fullAccess = true;
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    const wf = compile(await loadTemplate(dir)); // must NOT throw (schema accepts the field)
+    expect(wf.nodes['w0-classify'].sandbox.fullAccess).toBe(true);
+    // additive: a node that declares none stays undefined downstream (byte-identical to today).
+    expect(wf.nodes['w2a-levels'].sandbox.fullAccess).toBeUndefined();
+  });
+
+  it('REJECTS a non-boolean contract.fullAccess (the schema actually validates the type)', async () => {
+    // The negative control that makes the ACCEPT test meaningful: a string `fullAccess` must be REJECTED by
+    // the schema's `type: boolean`. If the schema accepted any type (or omitted the field), this would NOT
+    // reject and the ACCEPT test above could be passing for the wrong reason (a loose/absent schema).
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.contract.fullAccess = 'yes'; // wrong type
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    const e = await expectReject(dir);
+    expect(e.message).toMatch(/schema/i);
+    expect(e.message).toContain('w0-classify');
+  });
+});
+
 // #3 (M2) — the per-node `mcp.servers` field is now READ (the M1 carry). A committable template must
 // reference secrets as `$VAR`/`${VAR}` env REFERENCES, never a literal secret on disk. The loader rejects
 // a literal secret-bearing value loudly at author time (the SecretResolver allowlist contract, design §4).

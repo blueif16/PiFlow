@@ -468,3 +468,78 @@ describe('LocalSandboxProvider — enforceReadScope posture (what the CLI flag s
     expect(new LocalSandboxProvider({ enforceReadScope: false }).enforceReadScope).toBe(false);
   });
 });
+
+// ── 8. PER-NODE jail OVERRIDE: CreateOpts.enforceReadScope flows through the provider (fullAccess) ─────
+//
+// `fullAccess` is a per-NODE posture: a single node may opt OUT of the jail while the rest of the run stays
+// jailed. The runner expresses this by passing `enforceReadScope:false` in that node's `CreateOpts`, which
+// the provider must honor OVER its own run-level policy (per-node `false` wins; absent ⇒ inherit the
+// provider). This is the seam the §5.3/§5.4 wiring depends on — without it a `fullAccess` node would still
+// run jailed because the provider would ignore the override and apply only its own `this.enforceReadScope`.
+describe('LocalSandboxProvider — per-node CreateOpts.enforceReadScope override (fullAccess)', () => {
+  darwinIt(
+    'a SECURE provider still UNJAILS the one node whose CreateOpts says enforceReadScope:false (per-node false wins)',
+    async () => {
+      // The load-bearing per-node assertion: the provider is secure-by-default (jail ON for the run), but a
+      // single node's CreateOpts carries `enforceReadScope:false`. That node's exec must run BARE — the
+      // identical out-of-scope read that EPERMs under the provider's default posture (asserted below) must
+      // LEAK here. If `create` ignored the per-node flag and applied only `this.enforceReadScope`, the read
+      // would be denied and this would fail — proving the override genuinely flows CreateOpts → exec.
+      const scratch = await homeScratch('pernode-override');
+      const work = path.join(scratch, 'work');
+      const denied = path.join(scratch, 'denied');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(denied, { recursive: true });
+      await fs.writeFile(path.join(denied, 'secret.txt'), 'PERNODE_LEAK');
+      try {
+        const provider = new LocalSandboxProvider(); // secure by default (enforceReadScope === true)
+        const sb = await provider.create({
+          readScope: [work],
+          writeScope: [work],
+          outputDir: 'out',
+          workdir: work,
+          enforceReadScope: false, // the per-node fullAccess override
+        });
+        const leak = await sb.exec(`cat ${JSON.stringify(path.join(denied, 'secret.txt'))}`);
+        expect(leak.code).toBe(0);
+        expect(leak.stdout).toContain('PERNODE_LEAK');
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'ABSENT CreateOpts.enforceReadScope inherits the provider policy: a secure provider STILL jails the node',
+    async () => {
+      // The complement: when a node does NOT carry the override (the common case — every non-fullAccess
+      // node), `create` must fall back to the provider's run-level policy. A secure provider therefore
+      // STILL jails this node, so the identical out-of-scope read EPERMs. This proves the override is a
+      // genuine `?? this.enforceReadScope` fallthrough, not a blanket `false`.
+      const scratch = await homeScratch('pernode-inherit');
+      const work = path.join(scratch, 'work');
+      const denied = path.join(scratch, 'denied');
+      await fs.mkdir(work, { recursive: true });
+      await fs.mkdir(denied, { recursive: true });
+      await fs.writeFile(path.join(denied, 'secret.txt'), 'STILL_JAILED');
+      try {
+        const provider = new LocalSandboxProvider(); // secure by default
+        const sb = await provider.create({
+          readScope: [work],
+          writeScope: [work],
+          outputDir: 'out',
+          workdir: work,
+          // NO enforceReadScope → inherit the provider's secure policy.
+        });
+        const blocked = await sb.exec(`cat ${JSON.stringify(path.join(denied, 'secret.txt'))}`);
+        expect(blocked.code).not.toBe(0);
+        expect(blocked.stdout).not.toContain('STILL_JAILED');
+        expect(blocked.stderr).toMatch(/Operation not permitted|Permission denied/i);
+      } finally {
+        await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+});

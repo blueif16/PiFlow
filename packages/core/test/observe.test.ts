@@ -218,8 +218,10 @@ describe('buildRunView — the SKIN channel surfaces the run sandbox + per-node 
       agentType: 'market-research',
       sandbox: { workspace: '.', readScope: ['spec/'], owns: ['out/'] },
     };
-    // (b') a programmatic node carries the carve-out flag in its slice.
-    status.nodes.b2.config = { programmatic: true };
+    // (b') a programmatic node carries the carve-out flag in its slice. `fullAccess` is the sibling jail-off
+    // carve-out — both are top-level NodeConfig booleans that must round-trip verbatim (§5.8: observe needs
+    // no change; the slice carries `fullAccess` for the GUI skin to read "ran unlocked" off config).
+    status.nodes.b2.config = { programmatic: true, fullAccess: true };
     await writeFixture(runDir, status, nodes);
 
     const { view } = buildRunView(runDir);
@@ -239,7 +241,7 @@ describe('buildRunView — the SKIN channel surfaces the run sandbox + per-node 
       agentType: 'market-research',
       sandbox: { workspace: '.', readScope: ['spec/'], owns: ['out/'] },
     });
-    expect(vById.b2.config).toEqual({ programmatic: true });
+    expect(vById.b2.config).toEqual({ programmatic: true, fullAccess: true });
 
     // a node with NO config slice surfaces undefined (additive).
     expect(vById.b1.config).toBeUndefined();

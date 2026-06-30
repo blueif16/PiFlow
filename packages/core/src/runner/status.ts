@@ -57,6 +57,12 @@ export interface NodeConfig {
   agentType?: string;
   /** No-pi declarative node (`node.programmatic === true`). */
   programmatic?: boolean;
+  /**
+   * Jail-off posture (`node.sandbox.fullAccess === true`): this node's `pi` ran OUTSIDE the local fs jail
+   * (full host access). Top-level, parallel to `programmatic` — a real per-node execution knob the single
+   * observe path mirrors so a viewer (the GUI skin) reads "ran unlocked" off config. Omitted ⇒ jailed.
+   */
+  fullAccess?: boolean;
   /** Per-node SCOPING (not the backend): workspace cwd + read scope + write-authority globs. */
   sandbox?: { workspace?: string; readScope?: string[]; owns?: string[] };
 }

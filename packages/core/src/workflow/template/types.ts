@@ -50,6 +50,12 @@ export interface TemplateNode {
     artifacts: string[];
     owns: string[];
     readScope: string[];
+    /**
+     * Per-node JAIL-OFF posture → runtime `node.sandbox.fullAccess`. When true, this node's `pi` runs OUTSIDE
+     * the local fs jail (full host read+write), nullifying `readScope`/`owns` for THIS node only. Loosen-only;
+     * LOCAL-only (a no-op in a cloud VM). Sits with `readScope`/`owns` (the fs-scope axis). Omitted ⇒ jailed.
+     */
+    fullAccess?: boolean;
     schema?: string;
     returnMode?: 'optional' | 'required';
     fillSentinel?: string | null;

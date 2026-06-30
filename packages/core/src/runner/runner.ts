@@ -294,7 +294,7 @@ export { runNodeWithRetries } from './retry.js';
 // retry.ts (runNode) import ONE-WAY into that module (RISK 2). Imported here for the run loop's dispatch
 // (runNode via retry's runNodeWithRetries; cappedRecord at the total-cap gate) and re-exported for symmetry.
 import { runNode, finishNode, cappedRecord } from './node-lifecycle.js';
-export { runNode, finishNode, cappedRecord } from './node-lifecycle.js';
+export { runNode, finishNode, cappedRecord, buildNodeConfig } from './node-lifecycle.js';
 export type { AttemptOverride } from './node-lifecycle.js';
 
 // ── G4 resume + run-scope open seam — moved to ./resume.ts ───────────────────────────────────────────
