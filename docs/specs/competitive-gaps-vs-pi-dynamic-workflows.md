@@ -1,6 +1,6 @@
 # Competitive gap analysis — piflow vs `QuintinShaw/pi-dynamic-workflows`
 
-> Status: living backlog. Created 2026-06-25. Source under `vendors/pi-dynamic-workflows`
+> Status: living backlog. Created 2026-06-25. Source under `vendor/pi-dynamic-workflows`
 > (commit cloned 2026-06-25). Evidence is cited as `file:line` in BOTH repos. Honest by
 > construction: where we are PARTIAL or ABSENT it says so; where we are AHEAD it says so.
 >
@@ -52,7 +52,7 @@ heterogeneity.
 
 ### 1a. How PDW wires tools to a subagent (shared & subtractive)
 
-- One Pi process runs the workflow JS in a `vm` (`vendors/.../src/workflow.ts:830-861`). Each
+- One Pi process runs the workflow JS in a `vm` (`vendor/.../src/workflow.ts:830-861`). Each
   subagent is an **in-memory session**: `createAgentSession({ sessionManager: SessionManager.inMemory(), … })`
   (`src/agent.ts:372-385`).
 - Tools are built **once** per `WorkflowAgent`: `baseTools = createCodingTools(cwd)` — the built-in pi
@@ -391,7 +391,7 @@ optional per-stage token budget. Cost stays blocked until pi reports it.
   **aspirational** — `extractWorkflow` returns a raw result, not a `WorkflowSpec`; no bridge exists in
   core.)
 - **Interactive TUI control** (pause/resume/stop/restart/save from the keyboard,
-  `vendors/.../src/workflow-ui.ts:9,468`). Ours is **monitor-only by design** — steer by talking to the
+  `vendor/.../src/workflow-ui.ts:9,468`). Ours is **monitor-only by design** — steer by talking to the
   agents in the terminal.
 
 ## 5. Sequencing

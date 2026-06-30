@@ -2,7 +2,7 @@
 
 > Status: DESIGN ONLY (no source edited). Created 2026-06-25. Every existing-code claim cites a
 > `file:line` read in `@piflow/core` at this commit. Competitor evidence cites
-> `vendors/pi-dynamic-workflows/...`. Framing: `docs/specs/competitive-gaps-vs-pi-dynamic-workflows.md`
+> `vendor/pi-dynamic-workflows/...`. Framing: `docs/specs/competitive-gaps-vs-pi-dynamic-workflows.md`
 > §G2 (lines 125–139).
 
 ## 1. Objective
@@ -45,7 +45,7 @@ fan-out, which forks one real `pi` per node with no limit.
 
 ## 3. Reference (competitor) — the limiter pattern
 
-- **The limiter primitive** — `createLimiter(limit)` (`vendors/pi-dynamic-workflows/src/workflow.ts:1008-1024`):
+- **The limiter primitive** — `createLimiter(limit)` (`vendor/pi-dynamic-workflows/src/workflow.ts:1008-1024`):
   a counting semaphore with an FIFO wait queue. `active >= limit` ⇒ the caller awaits a queued
   `resolve`; `next()` (the `finally`) decrements and shifts the queue. Zero deps, ~15 lines.
 - **Concurrency normalization** (`workflow.ts:284-286`, `normalizeConcurrency` `:1085-1088`):

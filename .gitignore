@@ -2,7 +2,6 @@
 
 # Vendored third-party repos for analysis (never committed)
 vendor/
-vendors/
 
 # JS/TS build + deps (the packages/ SDK)
 node_modules/

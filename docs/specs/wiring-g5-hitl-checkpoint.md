@@ -51,7 +51,7 @@ paused run. The design leaves a clean **forward path** to do the same in the TUI
 
 ## 3. Reference (competitor) — checkpoint semantics, with file:line
 
-PDW's `checkpoint(promptText, options)` (`vendors/pi-dynamic-workflows/src/workflow.ts:788-828`):
+PDW's `checkpoint(promptText, options)` (`vendor/pi-dynamic-workflows/src/workflow.ts:788-828`):
 
 - **`CheckpointOptions`** (`workflow.ts:173-185`): `kind?: "confirm" | "input" | "select"`,
   `choices?: string[]`, `default?: unknown`, `headless?: "default" | "abort"` (default `"default"`),
@@ -463,7 +463,7 @@ Driven through the runner's injectable seams (`buildCommand`/`execRunner` are al
 1. **Every existing-code claim cites a file:line read** — **PASS**. All citations
    (command.ts, types.ts, runner.ts, observe/*, status.ts, layout.ts, state.ts, vite.config.ts,
    Companion.tsx, NodeHud.tsx, runStream.ts, tui/model.mjs, tui/components.mjs, node.schema.ts,
-   template/types.ts, vendors/…/workflow.ts) come from files read this session; discrepancies recorded.
+   template/types.ts, vendor/…/workflow.ts) come from files read this session; discrepancies recorded.
 2. **Surfaces through the ONE observe run-view stream (named file + field shape), not a side channel**
    — **PASS**. `RunViewNode.checkpoint` (+ `NodeView.checkpoint`) in `observe/runView.ts:29-65` /
    `observe/types.ts:19-38`, with a derived `NodeStatus 'awaiting-input'` in

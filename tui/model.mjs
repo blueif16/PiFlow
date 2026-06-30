@@ -57,16 +57,16 @@ async function tryRichView(runDir) {
 // shared `edges` (a write of A that B reads back = edge A→B) so the per-node inspector + the DAG still
 // draw the data flow. One definition of "the truth", many views.
 export async function buildModel({ runDir, run } = {}) {
-  // STRUCTURE from the lean snapshot: status/stage/lane + the io.json-DERIVED data-flow edges. (The rich
-  // `buildRunView` derives edges from events.jsonl writes/reads, which a run may not carry — so the
-  // io-ledger edges from `readRunModel` stay the structural source of truth.)
+  // STRUCTURE from the lean snapshot: status/stage/lane + the io.json-DERIVED data-flow edges. This is the
+  // FALLBACK structure — when the rich view is available, `overlayRichTelemetry` adopts its resolved-DAG
+  // stages + edges (the GUI's authoritative topology) over these, which a real run's empty io.json lacks.
   let model;
   try { model = await readRunModel(runDir); }
   catch { return emptyModel(run); }
   const view = adaptModel(model, run);
-  // TELEMETRY overlay: real per-node tokens/ctx/tools from the RICH run-view (the SAME distiller the GUI
-  // renders). A no-op when the rich view is unavailable (dist not built / no run.json) — rows then keep
-  // the null-rendered telemetry, exactly the prior behaviour.
+  // TELEMETRY + STRUCTURE overlay: real per-node tokens/ctx/tools AND the resolved-DAG stages/edges/files
+  // from the RICH run-view (the SAME distiller the GUI renders). A no-op when the rich view is unavailable
+  // (dist not built / no run.json) — the view then keeps the lean snapshot's io-ledger structure.
   const rich = await tryRichView(runDir);
   if (rich) overlayRichTelemetry(view, rich);
   return view;
@@ -76,9 +76,11 @@ export async function buildModel({ runDir, run } = {}) {
  * Overlay the RICH `RunView` (`buildRunView`) telemetry onto an already-structured view (from
  * `adaptModel`), keyed by node id: `tokens` (the `RunTokens` shape the renderer reads as
  * `n.tokens.contextPeak` / `n.tokens.billable`), `contextWindow`, `model`/`provider`, `toolCalls`,
- * `toolBreakdown`, real Gantt timestamps, and the run-level token/cost/toolCall rollups. Structure
- * (status, stages, io edges) is left untouched. Mutates `view` in place. The live `node-event` overlay
- * (foldLiveIntoModel) still wins for the running node (it OR-folds over these snapshot values).
+ * `toolBreakdown`, real Gantt timestamps, and the run-level token/cost/toolCall rollups. STRUCTURE
+ * (stages/lanes) AND the data-flow io (edges + per-node input/output files) are also adopted from the
+ * rich view — it reads the run-local resolved DAG (`.pi/workflow.json`) the GUI renders, which the lean
+ * `readRunModel` snapshot can't see, so the TUI draws the SAME connected graph and real files. Mutates
+ * `view` in place. The live `node-event` overlay (foldLiveIntoModel) still wins for the running node.
  */
 export function overlayRichTelemetry(view, rich) {
   const byId = new Map((rich.nodes || []).map((n) => [n.id, n]));
@@ -91,6 +93,21 @@ export function overlayRichTelemetry(view, rich) {
     if (rn.provider != null) row.provider = rn.provider;
     if (rn.toolCalls) row.toolCalls = rn.toolCalls;
     if (rn.toolBreakdown && Object.keys(rn.toolBreakdown).length) row.toolBreakdown = rn.toolBreakdown;
+    if (rn.thinkingChars) row.thinking = { chars: rn.thinkingChars }; // the live fold (foldLiveIntoModel) wins for the running node
+    // HEALTH / ANOMALY signals — the GUI's anomaly lens, surfaced verbatim so the inspector can WARN:
+    // rate-limit retries, a token-capped (truncated) stop, a tool/model loop, and slow-vs-baseline timing.
+    row.retries = rn.retries || 0;
+    row.stopReason = rn.stopReason ?? null;
+    row.truncated = !!rn.truncated;
+    row.modelCalls = rn.modelCalls || 0;
+    row.maxToolRepeat = rn.maxToolRepeat || 0;
+    row.repeatedTool = rn.repeatedTool ?? null;
+    if (rn.expectedMs != null) row.expectedMs = rn.expectedMs;
+    if (rn.priorSamples != null) row.priorSamples = rn.priorSamples;
+    if (rn.agentType) row.agentType = rn.agentType;
+    if (rn.summary) row.summary = rn.summary;
+    if (rn.issues && rn.issues.length) row.issues = rn.issues;
+    if (rn.checkpoint) row.checkpoint = rn.checkpoint; // (G5) the human-gate payload (prompt/kind/reply)
     // Real Gantt window from the rich view's timestamps (the lean snapshot carries none).
     const s = rn.startedAt ? Date.parse(rn.startedAt) : NaN;
     const e = rn.endedAt ? Date.parse(rn.endedAt) : NaN;
@@ -103,8 +120,7 @@ export function overlayRichTelemetry(view, rich) {
   // readRunModel reconstructs stages from the engine's LAST published barrier, which on a FINISHED run
   // collapses to one singleton stage per node (the DAG drew as a vertical line); the phase grouping stays
   // correct (parallel siblings share a stage, each on its own lane). When the rich stages are present we
-  // take them (and each node's stageIndex/lane) as the layout. Edges stay the io.json-derived ones from
-  // readRunModel that the per-node inspector reads.
+  // take them (and each node's stageIndex/lane) as the layout.
   if (Array.isArray(rich.stages) && rich.stages.length) {
     view.stages = rich.stages.map((st) => ({ index: st.index, phase: st.phase ?? null, parallel: !!st.parallel, nodeIds: [...st.nodeIds] }));
     view.stageTimes = view.stages.map((st) => ({ index: st.index, durationMs: null }));
@@ -115,6 +131,15 @@ export function overlayRichTelemetry(view, rich) {
       if (rn.lane != null) row.lane = rn.lane;
     }
   }
+
+  // DATA FLOW: adopt the rich view's edges (the authoritative resolved-DAG topology) + real input/output
+  // files. On a real run `readRunModel`'s io.json ledger is empty — its edges are 0 — so adaptModel left
+  // every node with NO inputs/outputs and the DAG drew disconnected boxes. The rich view carries the
+  // declared edges (one source the GUI draws) plus per-node writes/artifacts with verified/bytes. We
+  // rebuild each node's `io.inputs`/`io.outputs` from them so the DAG (io.outputs[].toNodes) and the
+  // inspector (flow · INPUTS/OUTPUTS) read the SAME connected graph. A no-op when the rich view has
+  // neither edges nor files (degenerate/no-dist), so adaptModel's io.json fallback survives.
+  overlayRichIo(view, rich);
 
   // Real Gantt window across nodes (was a flat 0→1 band without timestamps).
   const starts = Object.values(view.nodes).map((n) => n.startMs).filter((x) => x != null);
@@ -134,7 +159,67 @@ export function overlayRichTelemetry(view, rich) {
     cost: tt.cost || 0,
   };
   if (rich.provider && !view.run.provider) view.run.provider = rich.provider;
-  if (rich.model && view.run.model == null) view.run.model = rich.model;
+  // Run-level model: the rich view's top-level `model` is often null (a fleet run stamps provider but no
+  // single model). Fall back to the first node's resolved model so the header reads "provider/MiniMax-M3"
+  // instead of "provider/" — the per-node models already populated above are the authoritative source.
+  if (view.run.model == null) view.run.model = rich.model || Object.values(view.nodes).map((n) => n.model).find(Boolean) || null;
+}
+
+/**
+ * Rebuild each node's `io.inputs`/`io.outputs` from the RICH view's authoritative data-flow: edges (the
+ * resolved-DAG topology that drives the DAG arrows + the inspector's flow/INPUTS/OUTPUTS) and real output
+ * files (writes ∪ artifacts, merged by path, carrying verified→exists + bytes). The DAG reads
+ * `io.outputs[].toNodes`, so the full outbound-consumer set is attached to a node's first output row (the
+ * renderer unions same-pair edges, then transitively reduces) — and a node that has consumers but no
+ * known output file still gets ONE synthetic output row so its edges survive. INPUTS are one row per
+ * upstream producer (the edge `from`). A no-op (leaving adaptModel's io.json-derived io intact) when the
+ * rich view carries neither edges nor files, e.g. when the dist isn't built. Mutates `view` in place.
+ */
+export function overlayRichIo(view, rich) {
+  const edges = rich.edges || [];
+  const richNodes = rich.nodes || [];
+  const hasFiles = richNodes.some((n) => (n.writes?.length || 0) + (n.artifacts?.length || 0) > 0);
+  if (!edges.length && !hasFiles) return; // nothing richer than the lean io ledger — keep adaptModel's.
+
+  const labelOf = (id) => richNodes.find((n) => n.id === id)?.label || view.nodes[id]?.label || id;
+  const inboundOf = {};  // consumer id → [edge]
+  const outboundOf = {}; // producer id → [edge]
+  for (const e of edges) { (inboundOf[e.to] ||= []).push(e); (outboundOf[e.from] ||= []).push(e); }
+
+  for (const rn of richNodes) {
+    const row = view.nodes[rn.id];
+    if (!row) continue;
+
+    // INPUTS — one row per distinct upstream producer (the edge `from`); rel is the flowing file basename.
+    const seenIn = new Set();
+    const inputs = (inboundOf[rn.id] || []).filter((e) => { const k = `${e.from}|${e.path}`; if (seenIn.has(k)) return false; seenIn.add(k); return true; })
+      .map((e) => ({ rel: e.path ? baseName(e.path) : '', path: e.path || null, fromNode: e.from, fromLabel: labelOf(e.from), functionality: null, exists: null, bytes: null, kind: 'in' }));
+
+    // OUTPUTS — real files this node produced (writes ∪ artifacts), merged by run-relative display path so
+    // a write and its declared artifact collapse to ONE row; the artifact carries the authoritative
+    // exists/bytes. The full outbound-consumer set rides EVERY output row (the node's outputs all feed its
+    // consumers — we can't reliably map file→consumer when an edge declares no file, and labelling one
+    // output "terminal" while the node clearly feeds downstream is wrong). The DAG unions same-pair edges.
+    const fileMap = new Map();
+    for (const w of rn.writes || []) { const rel = w.displayPath || w.path; fileMap.set(rel, { ...(fileMap.get(rel) || {}), rel, exists: w.verified ?? null, bytes: w.bytes ?? null }); }
+    for (const a of rn.artifacts || []) { const rel = a.displayPath || a.path; fileMap.set(rel, { ...(fileMap.get(rel) || {}), rel, exists: a.exists, bytes: a.bytes }); }
+    const consumers = [...new Set((outboundOf[rn.id] || []).map((e) => e.to))];
+    const consumerLabels = consumers.map(labelOf);
+    let outputs = [...fileMap.values()].map((f) => ({
+      rel: f.rel, path: f.rel, exists: f.exists ?? null, bytes: f.bytes ?? null, functionality: null, kind: 'out',
+      toNodes: consumers, toLabels: consumerLabels,
+    }));
+    if (!outputs.length && consumers.length) {
+      // Consumers but no known produced file (e.g. a contract edge with no write event) — one synthetic row
+      // so the DAG keeps the outbound edges.
+      const p = (outboundOf[rn.id][0] || {}).path || '';
+      outputs = [{ rel: p ? baseName(p) : '', path: p || null, exists: null, bytes: null, functionality: null, kind: 'out', toNodes: consumers, toLabels: consumerLabels }];
+    }
+
+    row.io.inputs = inputs;
+    row.io.outputs = outputs;
+    row.io.owns = outputs.map((o) => baseName(o.rel)).filter(Boolean);
+  }
 }
 
 /** Map the shared RunModel → the view shape. Pure (no I/O) — all data is already in `model`. */
@@ -167,7 +252,8 @@ export function adaptModel(model, run) {
       id: n.id,
       label: n.label || n.id,
       phase: n.phase || null,
-      agentType: null,
+      // (G6) the agent-preset label — verbatim from the shared model (was dropped to null).
+      agentType: n.agentType || null,
       hasSchema: false,
       stageIndex: n.stageIndex || null,
       lane: n.lane || 0,
@@ -179,10 +265,23 @@ export function adaptModel(model, run) {
       startMs: null, endMs: null,
       // Live cosmetics accumulated from the node-event stream (subscribeRun), not re-read from files.
       tokens: null,
+      contextWindow: null,
       toolCalls: 0,
       toolBreakdown: null,
       thinking: null,
       eventCount: 0,
+      // HEALTH signals — the GUI's anomaly lens; null/0 here, filled by overlayRichTelemetry when the rich
+      // view is available (the lean snapshot carries none), so a no-dist run just shows no warnings.
+      retries: 0,
+      stopReason: null,
+      truncated: false,
+      modelCalls: 0,
+      maxToolRepeat: 0,
+      repeatedTool: null,
+      expectedMs: null,
+      priorSamples: null,
+      // (G5) the parked human-checkpoint payload — present (from the shared NodeView) iff a marker exists.
+      checkpoint: n.checkpoint || null,
       // artifact verification IS in the shared model — surface verified/total + the missing set.
       artifactsVerified: n.artifactsVerified ?? 0,
       artifactsTotal: n.artifactsTotal ?? 0,

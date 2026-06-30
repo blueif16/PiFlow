@@ -63,8 +63,13 @@ export function MenuBar({ activeRun, onSelectRun, ix }: { activeRun: string; onS
         </button>
 
         {active && (
-          <span className="ds-menubar__status" data-state={active.state}>
+          <span className="ds-menubar__status" data-state={active.state} data-stalled={active.state === "running" && active.runningStalled ? "true" : undefined}>
             {active.nodesDone}/{active.nodesTotal} · {formatMs(active.elapsedMs)}
+            {active.state === "running" && active.phase && <span className="ds-menubar__live"> · {active.phase}</span>}
+            {active.state === "running" && active.runningNode && (
+              <span className="ds-menubar__live"> · {active.runningNode}{active.runningTool ? `:${active.runningTool}` : ""}</span>
+            )}
+            {active.state === "running" && active.runningStalled && <span className="ds-menubar__stalled"> · stalled</span>}
           </span>
         )}
 

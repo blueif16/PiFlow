@@ -46,7 +46,7 @@ Pi is "aggressively extensible." Capability is added four ways, bundled as a **P
 - **The reference competitor lives here too:** `@quintinshaw/pi-dynamic-workflows` (20.6K/mo) — "Claude-Code-style
   dynamic workflows … fan out across 100s of subagents, model routing, token/cost accounting, resume,
   git-worktree isolation, /workflows TUI, /deep-research" `[CAT]`. This is the published form of the
-  `vendors/pi-dynamic-workflows` competitor in our backlog (see [competitive-gaps-pdw]).
+  `vendor/pi-dynamic-workflows` competitor in our backlog (see [competitive-gaps-pdw]).
 
 ## 3. THE load-bearing fact: **pi has NO native MCP**
 

@@ -68,12 +68,12 @@ journal removes the human from that decision.
 
 ## 3. Reference (competitor) — adopt vs reject
 
-The competitor (`vendors/pi-dynamic-workflows`, "PDW") resumes a **linear `agent()` call sequence in one
+The competitor (`vendor/pi-dynamic-workflows`, "PDW") resumes a **linear `agent()` call sequence in one
 process** with in-memory results:
 
 - **Call-identity hash** — `hashAgentCall(prompt, model, phase, options, agentDefKey)` → `sha256` of
   `JSON.stringify({prompt, model, tier, phase, agentType, agentDef, schema})`
-  (`vendors/pi-dynamic-workflows/src/workflow.ts:1040-1058`). The `agentDef` field is the **resolved**
+  (`vendor/pi-dynamic-workflows/src/workflow.ts:1040-1058`). The `agentDef` field is the **resolved**
   agentType definition (tools/model/prompt) so editing a `.pi/agents/*.md` invalidates the call
   (`workflow.ts:1053-1055`).
 - **Journal entry** — `{ index, hash, result }` keyed by a monotonic **`callSeq`** assigned at lexical
@@ -82,7 +82,7 @@ process** with in-memory results:
   AND its hash matches; the first miss sets `firstMiss = min(firstMiss, callIndex)`, so that call **and
   everything after** run live (`workflow.ts:402-417`).
 - **Crash safety** — atomic `tmp`+`rename`, a `.bak` fallback, and a cross-process **lock lease** (`wx`
-  open, PID liveness check, stale-lock reclaim) (`vendors/.../src/run-persistence.ts:172-187`,
+  open, PID liveness check, stale-lock reclaim) (`vendor/.../src/run-persistence.ts:172-187`,
   `:253-285`, `load` falls back to `.bak` at `:189-202`).
 - **Determinism guard** — PDW neuters `Date.now`/`Math.random` in the vm so a re-run reproduces the
   cached value (`workflow.ts:227-244`). Not portable to us (no vm; each node is a real `pi`).

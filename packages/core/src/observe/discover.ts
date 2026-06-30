@@ -16,11 +16,58 @@ import fssync from 'node:fs';
 import path from 'node:path';
 import { readRunModel } from './read.js';
 import { buildRunView } from './runView.js';
-import { runJsonFile } from '../runner/layout.js';
+import { runJsonFile, nodeEventsFile } from '../runner/layout.js';
 import type { Registry } from './registry.js';
 
 /** The terminal-OK statuses a thread row counts as "done" (mirrors the observe status ladder). */
 const TERMINAL_OK = new Set(['ok', 'reused', 'gap', 'dry']);
+
+/**
+ * A running thread whose `.pi/run.json` last updated more than this long ago counts as STALLED. ONE
+ * named threshold so the producer (`runningStalled`) and every consumer agree — the TUI's ThreadCol
+ * stale highlight (`tui/components.mjs`: `t.staleMs > 90000`) reads against this same 90s bar.
+ */
+export const STALE_MS_THRESHOLD = 90_000;
+
+/**
+ * The tool the running node is CURRENTLY executing, derived robustly from its `events.jsonl`: the LAST
+ * `tool_execution_start` whose `toolCallId` never saw a matching `tool_execution_end` (an in-flight call).
+ * Re-read here (a single file, the one running node) because `buildRunView` FLATTENS in-flight spans into
+ * its timeline as `durMs:0` entries indistinguishable from genuinely-instant completed tools — its private
+ * `open` map (the only robust in-flight signal) is closed+cleared in `finalize`, so the computed run-view
+ * cannot expose "the current tool". Returns null when the file is absent, holds no open call, or is torn.
+ */
+function runningToolOf(runDir: string, nodeId: string): string | null {
+  const f = nodeEventsFile(runDir, nodeId);
+  let raw: string;
+  try {
+    raw = fssync.readFileSync(f, 'utf8');
+  } catch {
+    return null; // no events archive (node emitted nothing / not started) — no in-flight tool to show
+  }
+  // toolCallId → toolName for every started-but-not-yet-ended call; insertion order = start order, so the
+  // LAST surviving entry is the most-recently-started in-flight tool (the one the node is running now).
+  const open = new Map<string, string>();
+  for (const line of raw.split('\n')) {
+    const s = line.trim();
+    if (!s) continue;
+    let ev: { type?: unknown; toolName?: unknown; toolCallId?: unknown };
+    try {
+      ev = JSON.parse(s);
+    } catch {
+      continue; // a torn line never derails the scan
+    }
+    const id = typeof ev.toolCallId === 'string' ? ev.toolCallId : null;
+    if (ev.type === 'tool_execution_start' && id) {
+      open.set(id, typeof ev.toolName === 'string' ? ev.toolName : '');
+    } else if (ev.type === 'tool_execution_end' && id) {
+      open.delete(id);
+    }
+  }
+  let last: string | null = null;
+  for (const name of open.values()) last = name; // keep the last-inserted still-open call
+  return last || null;
+}
 
 /** A workflow's template meta (the fields a view reads; the rest of `meta.json` rides along untyped). */
 export type NamespaceMeta = {
@@ -172,6 +219,24 @@ export async function summarizeRun(runDir: string): Promise<ThreadRow | null> {
   } catch {
     /* no rich view (run carries no events) — tokens/cost null-render as 0 */
   }
+
+  // ── live, running-only fields (mirroring the `!m.done && …` gating of elapsedMs above) ──────────────
+  // staleMs: how long since the run last wrote `.pi/run.json` (now − updatedAt) for a RUNNING run, when
+  // updatedAt is a valid date. null for a done run, or when updatedAt is missing/unparseable. Clock-based,
+  // matching the existing `elapsedMs` live-snapshot precedent (no new impurity beyond the Date.now() it uses).
+  const updatedMs = m.updatedAt ? Date.parse(m.updatedAt) : NaN;
+  const staleMs = !m.done && Number.isFinite(updatedMs) ? Math.max(0, Date.now() - updatedMs) : null;
+  const runningStalled = staleMs != null && staleMs > STALE_MS_THRESHOLD;
+  // phase: the current phase label for a running run — prefer the running node's phase; else the phase of
+  // the first node in the engine's last-published barrier (`m.stage.nodeIds`); else null. A done run is null.
+  const stageNode = m.stage?.nodeIds?.length
+    ? nodes.find((n) => n.id === m.stage!.nodeIds[0])
+    : undefined;
+  const phase = m.done ? null : (running?.phase ?? stageNode?.phase ?? null);
+  // runningTool: the in-flight tool of the running node, scanned from its events.jsonl (the only robust
+  // in-flight source — see runningToolOf). null when there is no running node or no open tool call.
+  const runningTool = running ? runningToolOf(runDir, running.id) : null;
+
   return {
     run: m.run,
     runDir: path.resolve(runDir),
@@ -181,10 +246,10 @@ export async function summarizeRun(runDir: string): Promise<ThreadRow | null> {
     ok: m.ok ?? null,
     stageIndex: m.stage?.index ?? null,
     stageTotal: m.stage?.total ?? null,
-    phase: null,
+    phase,
     runningNode: running?.id ?? null,
-    runningTool: null,
-    runningStalled: false,
+    runningTool,
+    runningStalled,
     nodesDone,
     nodesTotal: nodes.length,
     frac: m.done ? 1 : nodes.length ? nodesDone / nodes.length : 0,
@@ -196,8 +261,8 @@ export async function summarizeRun(runDir: string): Promise<ThreadRow | null> {
     cost,
     provider: m.provider ?? null,
     model: m.model ?? null,
-    updatedAt: null,
-    staleMs: null,
+    updatedAt: m.updatedAt ?? null,
+    staleMs,
     errorNode: errored?.id ?? null,
   };
 }
