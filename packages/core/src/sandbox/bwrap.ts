@@ -52,6 +52,7 @@
 //     network-free shell).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { spawnSync } from 'node:child_process';
 import fsSync from 'node:fs';
 import path from 'node:path';
 import { computeScopeRoots, homeDir, tmpDir } from './scope.js';
@@ -88,10 +89,26 @@ function probeBwrapOnPath(): boolean {
   return false;
 }
 
+/**
+ * Can `bwrap` actually BUILD a namespace here? On PATH is necessary but NOT sufficient — Ubuntu 24.04's
+ * AppArmor clamp on unprivileged user namespaces lets bubblewrap install yet abort on every invocation.
+ * So we probe CAPABILITY (spawn a no-op jail), not mere presence: a present-but-broken bwrap is treated
+ * as UNAVAILABLE, so exec falls through to the SAME warn-once + bare path as a missing bwrap — never
+ * masking the command's own exit code with bwrap's abort code. Skips the spawn when bwrap is absent.
+ */
+function probeBwrapUsable(): boolean {
+  if (!probeBwrapOnPath()) return false;
+  const r = spawnSync('bwrap', ['--ro-bind', '/usr', '/usr', '--proc', '/proc', '--dev', '/dev', 'true'], {
+    stdio: 'ignore',
+    timeout: 5000,
+  });
+  return r.status === 0;
+}
+
 /** Indirection so tests can stub the probe (and the memo) without a real `bwrap` on the host. */
 const _probe: { isAvailable: () => boolean } = {
   isAvailable(): boolean {
-    if (bwrapAvailableCache === undefined) bwrapAvailableCache = probeBwrapOnPath();
+    if (bwrapAvailableCache === undefined) bwrapAvailableCache = probeBwrapUsable();
     return bwrapAvailableCache;
   },
 };
@@ -113,8 +130,9 @@ function warnNoBwrapOnce(): void {
   // eslint-disable-next-line no-console
   console.warn(
     `[bwrap] --sandbox local wants the bubblewrap filesystem jail on linux, but \`bwrap\` is not on PATH ` +
-      `— running UNSANDBOXED (no read/write scope boundary). Install bubblewrap (e.g. apt-get install ` +
-      `bubblewrap) to enforce per-node scope on this host.`,
+      `or cannot build a user namespace (e.g. an AppArmor unprivileged-userns clamp) — running ` +
+      `UNSANDBOXED (no read/write scope boundary). Install bubblewrap and allow unprivileged user ` +
+      `namespaces to enforce per-node scope on this host.`,
   );
 }
 

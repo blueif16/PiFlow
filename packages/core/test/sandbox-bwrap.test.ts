@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -25,6 +26,21 @@ import { localJailPlan, __resetJailWarningForTest } from '../src/sandbox/jail.js
 // ── platform gate for the KERNEL test (the only part that needs a real bwrap) ────────────────────────
 const linuxIt = process.platform === 'linux' ? it : it.skip;
 const SKIP_MSG = `(skipped on ${process.platform}: bwrap is Linux-only — no mount namespace to assert; PENDING a Linux CI run)`;
+
+// The KERNEL-enforcement case needs a bwrap that can ACTUALLY build a namespace — not merely be installed.
+// GitHub's ubuntu runners clamp unprivileged user namespaces (AppArmor), so a presence-only gate would run
+// the test just for bwrap to abort. Probe REAL capability (spawn a no-op jail): run the test when it can
+// build a namespace (PROVING the boundary), skip-with-reason when it genuinely can't — never a false red,
+// and never a blanket skip that would hide a regression on a capable box.
+function bwrapCanBuildNamespace(): boolean {
+  if (process.platform !== 'linux') return false;
+  const r = spawnSync('bwrap', ['--ro-bind', '/usr', '/usr', '--proc', '/proc', '--dev', '/dev', 'true'], {
+    stdio: 'ignore',
+    timeout: 5000,
+  });
+  return r.status === 0;
+}
+const kernelIt = bwrapCanBuildNamespace() ? it : it.skip;
 
 // A scope fixture under a temp dir. The argv-construction tests only need PATHS (the dirs need not exist
 // for the pure builder — but buildBwrapArgs filters binds to EXISTING host paths, so we create real dirs
@@ -256,7 +272,7 @@ describe('localJailPlan — OS dispatch (darwin→seatbelt, linux→bwrap, else�
 // kernel EPERM behavior is UNVERIFIED.
 
 describe('bwrap kernel filesystem jail — EPERM enforcement (linux only)', () => {
-  linuxIt(
+  kernelIt(
     `reads/writes in-scope OK, out-of-scope read+write denied by the namespace ${SKIP_MSG}`,
     async () => {
       // Stage granted (in readScope + writeScope/workdir) and denied (neither) sibling trees, then run
