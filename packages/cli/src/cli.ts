@@ -14,6 +14,7 @@
 // NO run model of their own — the shared reader VERIFIES artifacts on disk (verified, not trusted).
 
 import { runLogsCli, ensurePiflowHome } from '@piflow/core';
+import { runInitCli } from './init/index.js';
 import { runNewCli, runAddNodeCli } from './scaffold.js';
 import { runModelCli } from './model.js';
 import { runClaudeCodeCli } from './claude-code.js';
@@ -29,6 +30,7 @@ import { runGuiCli } from './gui.js';
 const HELP = `piflowctl — drive + observe a pi-flow run over the .pi/ run layout
 
 USAGE
+  piflowctl init                            interactive setup wizard for ~/.piflow (model tiers + optional executors)
   piflowctl new     <templateDir> [flags]   scaffold meta.json + the nodes/ dir (then add-node + Write prose)
   piflowctl add-node <templateDir> --id <id> [flags]  emit one schema-valid node.json (prose is yours)
   piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
@@ -80,6 +82,13 @@ NODE
   --stop        STOP the run by signalling its controlling process GROUP (SIGTERM→SIGKILL grace). This is a
                 per-RUN stop, not just one node: the runner records the run controller's pid in .pi/run.json
                 and spawns each node detached in that group. A run with no recorded pid (older run) errors.
+
+INIT
+  (no args)     an interactive wizard over ~/.piflow. Core step: your pi provider's model tiers
+                (fast/balanced/deep). Optional, gated, skippable step: the Claude Code executor —
+                authorize your local Claude coding plan (a 'claude setup-token', or your existing login)
+                then map the Claude-side tier models. Writes the SAME config as 'model set' / 'claude-code
+                connect'; non-interactive callers (agents/CI) use those granular commands instead.
 
 NEW
   <templateDir> the template dir to create (e.g. .piflow/<wf>/template). Writes meta.json + nodes/.
@@ -157,6 +166,9 @@ async function main(): Promise<void> {
   ensurePiflowHome();
   const [sub, ...rest] = process.argv.slice(2);
   switch (sub) {
+    case 'init':
+      await runInitCli(rest);
+      break;
     case 'new':
       await runNewCli(rest);
       break;

@@ -62,8 +62,8 @@ function flagValue(args: string[], name: string): string | undefined {
   return i >= 0 ? args[i + 1] : undefined;
 }
 
-/** Best-effort, spawn-free check: is a `claude` executable on $PATH? */
-function claudeBinOnPath(): boolean {
+/** Best-effort, spawn-free check: is a `claude` executable on $PATH? (Reused by `piflowctl init`.) */
+export function claudeBinOnPath(): boolean {
   for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
     if (dir && existsSync(path.join(dir, 'claude'))) return true;
   }
