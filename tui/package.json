@@ -10,7 +10,7 @@
     "start": "node pi-tui.mjs",
     "demo:build": "vite build --config vite.config.demo.ts"
   },
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22" },
   "dependencies": {
     "@piflow/core": "workspace:*",
     "htm": "^3.1.1",

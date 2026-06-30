@@ -4,6 +4,9 @@
   "type": "module",
   "description": "Pi Flow core — the L1 node-envelope schema spine, the DAG compiler (data-flow edge inference), the contract-marker codec, and reference primitives (in-memory sandbox, builtin tool registry, hook runner).",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
   "keywords": [
     "workflow",
     "orchestration",
