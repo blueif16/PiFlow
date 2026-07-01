@@ -11,8 +11,8 @@
 
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { scoreRun as coreScoreRun, triage, deriveRecurrence, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
-import type { ReplayOracle, CopyScope, Fixer, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect } from '@piflow/core';
+import { scoreRun as coreScoreRun, triage, deriveRecurrence, memorize, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
+import type { ReplayOracle, CopyScope, Fixer, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect, FixGateResult } from '@piflow/core';
 import { resolveTopicsDir, resolveSlice } from './understand.js';
 
 /** The product binding the CLI dynamic-imports — the LIVE stages that stay product-side (out of @piflow/core). */
@@ -23,6 +23,10 @@ export interface OptimizeBinding {
   copyScope: CopyScope;
   /** the context-isolated fixer that edits the candidate copy per defect bucket. */
   fixer: Fixer;
+  /** OPTIONAL: run the product's workflow for a round and return its finished run dir — the `run` stage of the
+   * multi-round `--rounds N` loop. Product-side (boundary law: @piflow/core cannot know how to run the workflow).
+   * REQUIRED only for `--rounds > 1`; the single-shot `--fix` path (an already-finished run) never calls it. */
+  run?: (round: number) => Promise<string>;
   /** optional: customize the default trace miner (node→milestone map, val/train split). */
   mineOpts?: MineOpts;
   /** OPTIONAL per-node fix-cycle counter (backs `--fix-cycle-ceiling`): reads how many failed cycles a node
@@ -110,6 +114,82 @@ export function enrichCodeMap(defects: Defect[], resolve: (key: string) => strin
   }
 }
 
+/** Where the product template lives relative to a canonical run dir (`.piflow/<wf>/runs/<id>` → …/template). */
+export function templateDirFor(runDir: string): string {
+  return path.resolve(runDir, '..', '..', 'template');
+}
+
+/**
+ * SCORE → TRIAGE → enrich: the ONE worklist composition both the single-shot `--fix` and the multi-round loop
+ * share (never duplicated divergently). Reads the run, folds the two tiers, projects the four-way worklist with
+ * the Leg-A recurrence (the SKILL signal), then dereferences each SKILL lesson's `[[okf-slice]]` pointer into
+ * `scope.codeMap` (resolve-at-read). `scoreRun` is injectable so it is testable without a live trace; `node`
+ * scopes the worklist to one node (the cost/safety filter). Returns the enriched defects + the score pass so a
+ * caller (memorize) can re-use them without re-scoring. Degrades silently on missing memory/slices — never throws.
+ */
+export async function scoreTriageEnrich(
+  runDir: string,
+  opts: { scoreRun?: OptimizeFixDeps['scoreRun']; node?: string } = {},
+): Promise<{ scores: NodeScore[]; digest: RunDigest; defects: Defect[]; templateDir: string }> {
+  const { scores, digest } = await (opts.scoreRun ?? coreScoreRun)(runDir);
+  // Leg-A recurrence (the SKILL signal): resolve the product template from the run dir; deriveRecurrence
+  // degrades to an empty index (⇒ pure LAPSE) if the path/memory is absent, so it can never crash the fix run.
+  const templateDir = templateDirFor(runDir);
+  const recurrence = deriveRecurrence({ templateDir, nodes: scores.map((s) => s.node) });
+  // `--node <substr>` scopes the worklist to one node — the live oracle is expensive (build + browser per
+  // candidate) and a degenerate incumbent (e.g. a bound-exhausted stub scoring 0) can make any edit look like
+  // an improvement, so a targeted first run is both the cost bound and the safety scope.
+  const defects = triage(scores, digest, { recurrence }).filter((d) => (opts.node ? d.node.includes(opts.node) : true));
+
+  // Leg-A ↔ Leg-B cross-reference (piflow-memory-v1.5 §6/§8): dereference each SKILL lesson's `[[okf-slice]]`
+  // link to the slice's curated code-map and inline it into the fixer's scope-context — resolve-at-read, never
+  // a stored copy (so it reads the CURRENT drift-gated slice). Degrades silently if the repo has no `.agents/
+  // okf/` or the linked slice is absent; the pointer + root/prevention still reach the fixer.
+  const topicsDir = resolveTopicsDir(runDir);
+  if (topicsDir) enrichCodeMap(defects, (key) => resolveSlice(topicsDir, key));
+
+  return { scores, digest, defects, templateDir };
+}
+
+/** The FIX→GATE bounds/policy shared by the single-shot and the multi-round paths (autoAdopt + the budgets). */
+export interface FixGatePolicy {
+  autoAdopt: boolean;
+  editBudget?: number;
+  tokenBudget?: number;
+  fixCycleCeiling?: number;
+}
+
+/**
+ * Compose the binding's LIVE stages (oracle/copyScope/fixer + the optional fix-cycle counter) with the
+ * product-agnostic core driver, bound to ONE run dir. Returns the `fixGate(defects, rejectedBuffer)` closure the
+ * loop's `fixGate` stage IS — the single-shot path calls it once. The rejectedBuffer is THREADED so a dead edit
+ * never re-recurs (across the loop's rounds). Identical wiring to what the single-shot path used inline (the fix-
+ * cycle ceiling stays opt-in on BOTH sides; core no-ops it when the binding omits the counter stages).
+ */
+export function makeFixGateRunner(
+  binding: OptimizeBinding,
+  runDir: string,
+  policy: FixGatePolicy,
+  onEvent: OptimizeEventSink | undefined,
+): (defects: Defect[], rejectedBuffer: Set<string>) => Promise<FixGateResult> {
+  const mineTask = mineTaskFromTrace(runDir, binding.mineOpts);
+  const stages = makeReplayStages({ oracle: binding.oracle, mineTask, copyScope: binding.copyScope });
+  return (defects, rejectedBuffer) =>
+    runFixGate(defects, {
+      fixer: binding.fixer,
+      ...stages,
+      ...(binding.readFixCycles ? { readFixCycles: binding.readFixCycles } : {}),
+      ...(binding.bumpFixCycles ? { bumpFixCycles: binding.bumpFixCycles } : {}),
+    }, {
+      autoAdopt: policy.autoAdopt,
+      rejectedBuffer,
+      ...(policy.editBudget !== undefined ? { editBudget: policy.editBudget } : {}),
+      ...(policy.tokenBudget !== undefined ? { tokenBudget: policy.tokenBudget } : {}),
+      ...(policy.fixCycleCeiling !== undefined ? { fixCycleCeiling: policy.fixCycleCeiling } : {}),
+      ...(onEvent ? { onEvent } : {}),
+    });
+}
+
 export async function runOptimizeFixCli(argv: string[], deps: OptimizeFixDeps = {}): Promise<void> {
   const args = parseOptimizeFixArgs(argv);
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
@@ -124,51 +204,45 @@ export async function runOptimizeFixCli(argv: string[], deps: OptimizeFixDeps = 
     return;
   }
 
-  // SCORE → TRIAGE: the worklist (reuses the read path; scoreRun injectable for tests).
-  const { scores, digest } = await (deps.scoreRun ?? coreScoreRun)(args.dir);
-  // `--node <substr>` scopes the worklist to one node — the live oracle is expensive (build + browser per
-  // candidate) and a degenerate incumbent (e.g. a bound-exhausted stub scoring 0) can make any edit look like
-  // an improvement, so a targeted first run is both the cost bound and the safety scope.
-  // Leg-A recurrence (the SKILL signal): resolve the product template from the run dir; deriveRecurrence
-  // degrades to an empty index (⇒ pure LAPSE) if the path/memory is absent, so it can never crash the fix run.
-  const templateDir = path.resolve(args.dir, '..', '..', 'template');
-  const recurrence = deriveRecurrence({ templateDir, nodes: scores.map((s) => s.node) });
-  const defects = triage(scores, digest, { recurrence }).filter((d) => (args.node ? d.node.includes(args.node) : true));
+  // SCORE → TRIAGE → enrich (the shared worklist composition; scoreRun injectable for tests).
+  const { scores, digest, defects, templateDir } = await scoreTriageEnrich(args.dir, {
+    ...(deps.scoreRun ? { scoreRun: deps.scoreRun } : {}),
+    ...(args.node ? { node: args.node } : {}),
+  });
 
-  // Leg-A ↔ Leg-B cross-reference (piflow-memory-v1.5 §6/§8): dereference each SKILL lesson's `[[okf-slice]]`
-  // link to the slice's curated code-map and inline it into the fixer's scope-context — resolve-at-read, never
-  // a stored copy (so it reads the CURRENT drift-gated slice). Degrades silently if the repo has no `.agents/
-  // okf/` or the linked slice is absent; the pointer + root/prevention still reach the fixer.
-  const topicsDir = resolveTopicsDir(args.dir);
-  if (topicsDir) enrichCodeMap(defects, (key) => resolveSlice(topicsDir, key));
-
-  // Compose the binding's LIVE stages with the product-agnostic core driver. The driver decides/bounds/stages.
+  // Compose the binding's LIVE stages with the product-agnostic core driver (the shared runner — same wiring the
+  // multi-round loop uses). --watch: stream the live FIX→GATE progress through the driver's OWN OptimizeEventSink
+  // (fire-and-forget; a throwing print never breaks the loop). --watch-json prints raw JSON.
   const binding = await loadBinding(args.binding);
-  const mineTask = mineTaskFromTrace(args.dir, binding.mineOpts);
-  const stages = makeReplayStages({ oracle: binding.oracle, mineTask, copyScope: binding.copyScope });
-  // --watch: stream the live FIX→GATE progress through the driver's OWN OptimizeEventSink (fire-and-forget;
-  // a throwing print never breaks the loop — the driver swallows sink throws). --watch-json prints raw JSON.
   const onEvent: OptimizeEventSink | undefined = args.watch
     ? (e) => print(args.watchJson ? JSON.stringify(e) : renderOptimizeEvent(e))
     : undefined;
-  // The per-node fix-cycle ceiling is opt-in on BOTH sides: the flag AND a binding that exports the counter
-  // stages. If the binding lacks them, the ceiling is inert (core no-ops it) — an unported binding still runs.
-  const result = await runFixGate(defects, {
-    fixer: binding.fixer,
-    ...stages,
-    ...(binding.readFixCycles ? { readFixCycles: binding.readFixCycles } : {}),
-    ...(binding.bumpFixCycles ? { bumpFixCycles: binding.bumpFixCycles } : {}),
-  }, {
+  const policy: FixGatePolicy = {
     autoAdopt: args.autoAdopt,
     ...(args.editBudget !== undefined ? { editBudget: args.editBudget } : {}),
     ...(args.tokenBudget !== undefined ? { tokenBudget: args.tokenBudget } : {}),
     ...(args.fixCycleCeiling !== undefined ? { fixCycleCeiling: args.fixCycleCeiling } : {}),
-    ...(onEvent ? { onEvent } : {}),
-  });
+  };
+  const fixGate = makeFixGateRunner(binding, args.dir, policy, onEvent);
+  const result = await fixGate(defects, new Set<string>());
 
   const stagingDir = args.stagingDir ?? path.join(args.dir, 'optimize', 'staging');
   const manifestPath = await writeStagingManifest(result, { stagingDir });
   const escalated = result.skipped.length ? `; ${result.skipped.length} node(s) escalated at the fix-cycle ceiling` : '';
   print(`optimize --fix: ${result.accepted}/${result.attempted} edit(s) accepted (${result.stoppedReason})${escalated}; manifest → ${manifestPath}`);
   process.stderr.write(`\noptimize --fix: staged ${result.accepted} accepted edit(s) across ${defects.length} defect(s) in ${digest.run || args.dir}; nothing landed live (adopt is a separate step).\n`);
+
+  // MEMORIZE (Leg-A): persist the run's tier0-signature LAPSE/SKILL defects into `<template>/nodes/<node>/memory.md`
+  // so the two-run recurrence carry needs no human hand-write — this closes the cross-INVOCATION loop (run `--fix`
+  // on run-1, and a later run with the SAME signature triages SKILL, not LAPSE). Idempotent (the count is derived
+  // from the run trail). Off the critical path; a failure here must never sink an already-staged fix.
+  try {
+    const { lessons } = memorize(scores, defects, { runDir: args.dir, templateDir });
+    const appended = lessons.filter((l) => l.action === 'append').length;
+    const updated = lessons.filter((l) => l.action === 'update').length;
+    // to stderr (mirrors the read-only `optimize --memorize` path) so the primary stdout summary stays one line.
+    process.stderr.write(`optimize --fix: memorized ${lessons.length} lesson(s) — ${appended} appended, ${updated} updated\n`);
+  } catch (e) {
+    process.stderr.write(`optimize --fix: MEMORIZE skipped (${(e as Error).message}); the staged fix is unaffected.\n`);
+  }
 }

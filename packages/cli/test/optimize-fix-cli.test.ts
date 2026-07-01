@@ -17,7 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseOptimizeFixArgs, loadBinding, runOptimizeFixCli, enrichCodeMap } from '../src/optimize-fix.js';
-import { scoreNodes } from '@piflow/core';
+import { scoreNodes, triage, deriveRecurrence } from '@piflow/core';
 import type { RunDigest, NodeDigest, Tier1Result, Tier1Check, Defect } from '@piflow/core';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -260,5 +260,62 @@ describe('runOptimizeFixCli — composition smoke (scoreRun injected)', () => {
     expect(events.length).toBeGreaterThan(0);
     expect(events.every((e) => typeof e.type === 'string')).toBe(true);
     expect(events.some((e) => e.type === 'gated')).toBe(true);
+  });
+});
+
+// ── (A) MEMORIZE wired into the single-shot path: the cross-invocation recurrence loop closes ────────────────
+// The v1.5 "it-works" contract (piflow-memory-v1.5 §6): run `--fix` on run-1 → the run's tier0-signature LAPSE
+// persists to <template>/nodes/<node>/memory.md at recurrence 1. A SECOND run's triage over the SAME signature
+// then reads that memory.md and buckets SKILL (not LAPSE) — the two-run carry with no human hand-write. Driven
+// THROUGH runOptimizeFixCli (scoreRun injected; the FAKE binding's fixer/oracle are trivial) so it proves the
+// wire, not the core (memorize is unit-tested in core). The canonical layout is <base>/runs/<id> + <base>/template.
+describe('runOptimizeFixCli — MEMORIZE closes the cross-run recurrence loop', () => {
+  // a self-originating structural failure (anomaly `failed`, no tier1) → tier0.disqualified → a LAPSE defect
+  // that memorize RECORDS. signatureOf = `<node>::failed`, shared by the writer and the run-2 reader.
+  const lapseDigest = (node: string): RunDigest => ({
+    run: 'r', done: true, ok: false, durationMs: 1,
+    totals: { nodes: 1, ok: 0, failed: 1, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
+    nodes: [{ ...dnode(node), outcome: 'error', anomalies: ['failed'] }], anomalies: [], rootCauses: [],
+  });
+
+  it('run-1 --fix WRITES the lesson; run-2 triage over the same signature buckets SKILL (not LAPSE)', async () => {
+    const NODE = 'w4-execute-m2';
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-base-'));
+    const templateDir = path.join(base, 'template');
+    const runsDir = path.join(base, 'runs');
+    const run1 = path.join(runsDir, 'run-1');
+    await fs.mkdir(run1, { recursive: true });
+    await fs.mkdir(templateDir, { recursive: true });
+
+    // triage of THIS run (no memory yet) → a LAPSE (recurrence index empty ⇒ stays LAPSE) — the pre-condition.
+    const scores1 = scoreNodes({ digest: lapseDigest(NODE), tier1ByNode: new Map() });
+    expect(triage(scores1, lapseDigest(NODE), { recurrence: deriveRecurrence({ templateDir, nodes: [NODE] }) })[0].bucket).toBe('LAPSE');
+
+    // run-1 --fix: scoreRun injected. The binding is FAKE (fixer/oracle trivial). MEMORIZE must persist the LAPSE.
+    // The memorize summary goes to stderr (like the read-only `optimize --memorize` path) — capture it there.
+    const errLines: string[] = [];
+    const origWrite = process.stderr.write.bind(process.stderr);
+    (process.stderr as unknown as { write: (s: string) => boolean }).write = (s: string) => { errLines.push(String(s)); return true; };
+    try {
+      await runOptimizeFixCli(
+        ['--fix', run1, '--binding', FAKE, '--staging-dir', path.join(base, 'stage')],
+        { scoreRun: async () => ({ scores: scores1, digest: lapseDigest(NODE) }), print: () => {} },
+      );
+    } finally {
+      (process.stderr as unknown as { write: typeof origWrite }).write = origWrite;
+    }
+
+    // the lesson landed in the node's memory.md at recurrence 1, keyed by the shared signature.
+    const memory = await fs.readFile(path.join(templateDir, 'nodes', NODE, 'memory.md'), 'utf8');
+    expect(memory).toContain(`sig: ${NODE}::failed`);
+    expect(memory).toContain('recurrence: 1');
+    // a one-line summary of lessons written is printed (to stderr).
+    expect(errLines.some((l) => /memoriz/i.test(l))).toBe(true);
+
+    // run-2: the SAME signature now recurs in memory (count 1 ≥ threshold 1) → the reader flips the bucket to SKILL.
+    const scores2 = scoreNodes({ digest: lapseDigest(NODE), tier1ByNode: new Map() });
+    const recurrence2 = deriveRecurrence({ templateDir, nodes: [NODE] });
+    const defects2 = triage(scores2, lapseDigest(NODE), { recurrence: recurrence2 });
+    expect(defects2[0].bucket).toBe('SKILL'); // ← the cross-invocation recurrence loop closed
   });
 });

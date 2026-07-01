@@ -28,6 +28,7 @@ import { runInspectCli } from './inspect.js';
 import { runTelemetryCli } from './telemetry.js';
 import { runOptimizeCli } from './optimize.js';
 import { runOptimizeFixCli } from './optimize-fix.js';
+import { runOptimizeLoopCli } from './optimize-loop.js';
 import { runGuiCli } from './gui.js';
 import { runTuiCli } from './tui.js';
 import { runSkillsCli } from './skills.js';
@@ -262,8 +263,11 @@ async function main(): Promise<void> {
       await runTelemetryCli(rest);
       break;
     case 'optimize':
-      // `--fix` routes to the FIX→GATE→LAND driver (writes a staging manifest); bare `optimize` is read-only.
-      if (rest.includes('--fix')) await runOptimizeFixCli(rest);
+      // `--rounds N` routes to the MULTI-ROUND overlord (autonomous-propose: run→score→fix→memorize per round;
+      // the `run` stage is product-side, so N>1 needs a binding that exports `run`). `--fix` routes to the
+      // single-shot FIX→GATE→LAND driver (writes a staging manifest); bare `optimize` is read-only.
+      if (rest.includes('--rounds')) await runOptimizeLoopCli(rest);
+      else if (rest.includes('--fix')) await runOptimizeFixCli(rest);
       else await runOptimizeCli(rest);
       break;
     case 'logs':
