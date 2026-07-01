@@ -4,7 +4,7 @@
   "deps": ["harden"],
   "agentType": "general-purpose",
   "prompt": { "file": "prompt.md" },
-  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash", "edit"] },
   "inject": ["{{RUN}}/harden/hardened.md"],
   "contract": {
     "artifacts": ["out/explainer.md"],

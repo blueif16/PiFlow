@@ -186,20 +186,17 @@ describe('blueprint stamp — candidate-fusion-refine round-trips the golden dee
   // tools. Every lane denies bash (shape) + carries a non-empty post-check over its artifact (shape) +
   // returnMode optional (shape). fusion + inject are per-lane holes.
   //
-  // plan/publish are encoded as NO-preset lanes hand-wiring tools.allow [read, write, submit_result] — the
-  // EXACT golden tool set — which reproduces their tools deep-equal. Their ONLY irreproducible field is the
-  // `agentType: "general-purpose"` LABEL (see the it.fails finding below): buildNode cannot emit a bare
-  // agentType label without running mergePreset, and the general-purpose seed folds `edit`+`bash` into allow,
-  // so `--agent-type general-purpose` yields `allow:[read,write,edit,submit_result]` — a mismatch. So the
-  // fully-round-trippable subset (draft·harden·meta + the two hand-wired producers' MECHANICAL wiring) is the
-  // green gate, and the full-golden deep-equal (with the label) is pinned as a known finding via it.fails.
+  // plan/publish keep the general-purpose brand; `--deny edit` narrows the broad preset
+  // [read,write,edit,bash,submit_result] (bash denied by the shape) to the golden's [read,write,submit_result],
+  // so brand AND tools round-trip. (The golden's deny was completed to [bash, edit] to close the earlier
+  // finding that its plan/publish were hand-authored to a tool set the preset could not produce.)
   const draftHardenPlan = {
     blueprint: 'candidate-fusion-refine',
     params: {},
     lanes: [
-      // plan/publish hand-wired (agentType null) so their tools + wiring round-trip; the missing label is
-      // the it.fails finding. draft/harden inherit the default agent (agentType null) as the golden does.
-      { role: 'plan', id: 'plan', agentType: null, extraTools: ['read', 'write', 'submit_result'] },
+      // plan/publish keep the general-purpose brand + `--deny edit` (the shape denies bash) → golden tools.
+      // draft/harden inherit the default agent (agentType null) as the golden does.
+      { role: 'plan', id: 'plan', agentType: 'general-purpose', denyTools: ['edit'] },
       {
         role: 'draft',
         id: 'draft',
@@ -220,8 +217,8 @@ describe('blueprint stamp — candidate-fusion-refine round-trips the golden dee
       {
         role: 'publish',
         id: 'publish',
-        agentType: null,
-        extraTools: ['read', 'write', 'submit_result'],
+        agentType: 'general-purpose',
+        denyTools: ['edit'],
         inject: ['{{RUN}}/harden/hardened.md'],
       },
     ],
@@ -234,43 +231,18 @@ describe('blueprint stamp — candidate-fusion-refine round-trips the golden dee
     },
   };
 
-  // The two FUSION lanes (draft·harden) — where the full lane-plan field set lives (fusion mode/panel/judge/n,
-  // inject, deny, checks, returnMode, no-preset tools) — plus meta, round-trip the golden deep-equal.
-  it('stamps draft·harden (the fusion lanes) + meta identical to the golden', async () => {
+  // All 4 nodes + meta round-trip deep-equal: the fusion lanes (draft·harden — the full field set: fusion
+  // mode/panel/judge/n, inject, deny, checks, returnMode) AND the general-purpose plan/publish (brand + tools).
+  it('stamps all 4 nodes + meta identical to the golden', async () => {
     const planPath = await writePlan(draftHardenPlan);
     const { code, err } = await run('stamp', 'candidate-fusion-refine', '--plan', planPath, '--into', DIR);
     expect(err, 'stamp should not error').toBe('');
     expect(code).toBe(0);
-    await assertRoundTrip(path.join(REPO_ROOT, '.piflow/example-fusion/template'), ['draft', 'harden']);
+    await assertRoundTrip(
+      path.join(REPO_ROOT, '.piflow/example-fusion/template'),
+      ['plan', 'draft', 'harden', 'publish'],
+    );
   });
-
-  // FINDING (pinned, not swept): binding plan/publish with `--agent-type general-purpose` — the golden's
-  // agentType label — cannot reproduce their `tools.allow: [read, write, submit_result]`. mergePreset folds
-  // the general-purpose seed's `allow:[read,write,edit,bash,submit_result]`; denying only `bash` (the golden's
-  // deny) leaves `edit` in allow (→ [read,write,EDIT,submit_result]); also denying `edit` reproduces allow but
-  // then deny becomes [bash, EDIT] ≠ the golden's [bash]. buildNode has NO path to emit a bare agentType label
-  // with hand-wired tools that differ from the preset merge, so the golden's plan/publish are irreproducible
-  // as-authored. This it.fails PINS that: it is green while the diff exists and REDDENS the moment buildNode
-  // (or the golden) changes so the full 4-node deep-equal WITH the label passes — the signal to un-pin it.
-  it.fails(
-    'FINDING: plan/publish agentType:general-purpose label is irreproducible (preset folds edit/bash into allow)',
-    async () => {
-      const labelledPlan = {
-        ...draftHardenPlan,
-        lanes: draftHardenPlan.lanes.map((l) =>
-          l.id === 'plan' || l.id === 'publish' ? { ...l, agentType: 'general-purpose' } : l,
-        ),
-      };
-      const planPath = await writePlan(labelledPlan);
-      const { code } = await run('stamp', 'candidate-fusion-refine', '--plan', planPath, '--into', DIR);
-      expect(code).toBe(0);
-      // The full 4-node deep-equal WITH the general-purpose label — fails on plan/publish tools.allow today.
-      await assertRoundTrip(
-        path.join(REPO_ROOT, '.piflow/example-fusion/template'),
-        ['plan', 'draft', 'harden', 'publish'],
-      );
-    },
-  );
 });
 
 describe('blueprint stamp — guard rails', () => {

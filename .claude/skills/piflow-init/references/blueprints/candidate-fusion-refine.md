@@ -41,10 +41,10 @@ PARAMETRIC lives INSIDE `draft` and `harden`: the panel tier-set, the best-of-n 
 
 | role | base agent (`--agent-type`) | fusion flags | skill | extra `--tool` |
 |---|---|---|---|---|
-| **plan** | **general-purpose** | — (plain node) | — | — (preset carries `read write submit_result`) |
+| **plan** | **general-purpose** | — (plain node) | — | `--deny bash --deny edit` (narrow the broad preset `read write edit bash submit_result` → `read write submit_result`) |
 | **draft** | **author** (or `general-purpose`) | `--fusion moa --fusion-panel fast --fusion-panel balanced --fusion-panel deep --fusion-judge deep` | — | — |
 | **harden** | **verify** (or `general-purpose`) | `--fusion best-of-n --fusion-n 3` (+ `--tier deep`) | — | — |
-| **publish** | **general-purpose** | — (plain node) | — | — |
+| **publish** | **general-purpose** | — (plain node) | — | `--deny bash --deny edit` |
 
 Bind each node with `--agent-type <id>` — one flag folds the preset's tools + skill + `agentType` label via
 `mergePreset`; the role is inherited BY REFERENCE, so each `prompt.md` holds ONLY its task. `--fusion-panel` is
@@ -83,7 +83,8 @@ judge write UNDER their parent's `owns` (materialized), so you author no extra o
 
 `.piflow/example-fusion/template/` — the DAG-explainer pipeline (`plan → draft → harden → publish`).
 `draft/node.json` carries `fusion:{mode:"moa", panel:["fast","balanced","deep"], judge:"deep"}`; `harden` carries
-`fusion:{mode:"best-of-n", n:3}` with `tier:"deep"`; `plan`/`publish` are plain `general-purpose` consumers. Each
+`fusion:{mode:"best-of-n", n:3}` with `tier:"deep"`; `plan`/`publish` are `general-purpose` consumers narrowed
+via `deny:[bash, edit]` to `read·write·submit_result`. Each
 node `inject`s the prior stage's artifact and `owns` its own namespace (`plan/** draft/** harden/** out/**`).
 `extract` shows the 4-node spine; `run --dry-run` (or the GUI, F for Fusion mode) shows the siblings+judge
 expansion. Inspect it for a concrete realization of every rule above.

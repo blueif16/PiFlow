@@ -4,7 +4,7 @@
   "deps": [],
   "agentType": "general-purpose",
   "prompt": { "file": "prompt.md" },
-  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash"] },
+  "tools": { "allow": ["read", "write", "submit_result"], "deny": ["bash", "edit"] },
   "contract": {
     "artifacts": ["plan/outline.md"],
     "owns": ["plan/**"],
