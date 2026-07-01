@@ -41,6 +41,19 @@ export const CLOUD_WORKERS: readonly WorkerKind[] = ['e2b', 'daytona'];
 /** Full worker precedence (cloud-first, then local) — the ORDER is the contract (a mutation test flips it). */
 export const WORKER_PRECEDENCE: readonly WorkerKind[] = ['e2b', 'daytona', 'local'];
 
+/** The valid `--host` / `context host use` kinds (for validation + error listing). */
+export const HOST_KINDS: readonly HostKind[] = ['local', 'fly', 'railway', 'selfhost', 'docker'];
+/** The valid `context worker use` kinds (docker deferred — see WorkerKind). */
+export const WORKER_KINDS: readonly WorkerKind[] = ['local', 'daytona', 'e2b'];
+
+/** Which cloud workers have credentials in the given env — the cascade's `configured` set (E2B/DAYTONA keys). */
+export function configuredWorkers(env: NodeJS.ProcessEnv): Set<WorkerKind> {
+  const s = new Set<WorkerKind>();
+  if (env.E2B_API_KEY) s.add('e2b');
+  if (env.DAYTONA_API_KEY) s.add('daytona');
+  return s;
+}
+
 /**
  * One named context — the two axes we switch between: WHERE the control plane runs (`baseUrl`/`token` +
  * `host`) and WHERE its workers run (`worker`). `host`/`worker` are optional for back-compat: a legacy entry
