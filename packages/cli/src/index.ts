@@ -19,3 +19,6 @@ export {
 export type { NewOpts, NodeOpts, CheckOpt, McpServers } from './scaffold.js';
 export { runTemplate, dryRunPlan, parseRunArgs, runRunCli } from './run.js';
 export type { RunDeps, ParsedRunArgs } from './run.js';
+// The DEFAULT file-backed fix-cycle counter port — the CLI-seam provider that makes `--fix-cycle-ceiling` work
+// out-of-the-box (a product can reuse it, or override it by exporting its own readFixCycles/bumpFixCycles).
+export { makeDefaultFixCyclesPort } from './optimize-fix.js';

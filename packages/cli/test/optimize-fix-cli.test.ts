@@ -12,11 +12,11 @@
 // Run: npx vitest run packages/cli/test/optimize-fix-cli.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync as existsSyncNode } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseOptimizeFixArgs, loadBinding, runOptimizeFixCli, enrichCodeMap } from '../src/optimize-fix.js';
+import { parseOptimizeFixArgs, loadBinding, runOptimizeFixCli, enrichCodeMap, makeDefaultFixCyclesPort } from '../src/optimize-fix.js';
 import { scoreNodes, triage, deriveRecurrence } from '@piflow/core';
 import type { RunDigest, NodeDigest, Tier1Result, Tier1Check, Defect } from '@piflow/core';
 
@@ -29,6 +29,8 @@ const DISTILL = path.join(HERE, 'fixtures', 'distill-binding.mjs');
 const DISTILL_THROWS = path.join(HERE, 'fixtures', 'distill-throws-binding.mjs');
 // A1: a binding that ALSO exports the optional `liveRootFor` stage → records carry a landable liveRoot for `--adopt`.
 const LIVEROOTFOR = path.join(HERE, 'fixtures', 'liverootfor-binding.mjs');
+// A6: a binding that hand-rolls its OWN readFixCycles/bumpFixCycles port → it must WIN over the CLI default.
+const FIXCYCLES = path.join(HERE, 'fixtures', 'fixcycles-binding.mjs');
 
 describe('parseOptimizeFixArgs', () => {
   it('parses the run dir, the required --binding, and the bound/policy flags', () => {
@@ -105,6 +107,50 @@ describe('enrichCodeMap — resolve each SKILL lesson\'s [[okf-slice]] pointer t
   });
 });
 
+// ── (A6) the CLI-seam DEFAULT fix-cycle counter port — file-backed per-node bookkeeping ─────────────────────
+// The core ceiling (driver.ts) reads/bumps a per-node re-attempt counter through INJECTED stages; it persists
+// nothing (boundary law). game-omni hand-rolls that port; this default supplies it at the CLI seam so
+// `--fix-cycle-ceiling` works out-of-the-box. T1 tests the port in isolation (pure fs bookkeeping → a real-
+// tmpdir unit test, not a mock). Shape mirrors game-omni's scope.mjs:63-88: `{ node, cycles, updatedAt }`,
+// corrupt→0, per-node sidecar under `<runDir>/optimize/`.
+describe('makeDefaultFixCyclesPort — the default file-backed per-node counter (round-trip + corrupt-tolerance)', () => {
+  it('reads 0 fresh, round-trips bump→read, isolates per node, and writes the sidecar under <runDir>/optimize', async () => {
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-cyc-'));
+    const port = makeDefaultFixCyclesPort(runDir);
+
+    expect(port.readFixCycles('n')).toBe(0);        // absent sidecar → 0
+    port.bumpFixCycles('n');
+    expect(port.readFixCycles('n')).toBe(1);        // bump → read round-trips through the file
+    port.bumpFixCycles('n');
+    expect(port.readFixCycles('n')).toBe(2);        // increments, not overwrites
+
+    // the sidecar landed at the documented per-run location.
+    const sidecar = path.join(runDir, 'optimize', '.fixcycles-n.json');
+    const data = JSON.parse(await fs.readFile(sidecar, 'utf8'));
+    expect(data.cycles).toBe(2);
+
+    // per-node isolation: a different node is unaffected by n's count.
+    expect(port.readFixCycles('m')).toBe(0);
+  });
+
+  it('is corrupt-tolerant: a malformed sidecar reads 0 (never throws)', async () => {
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-cyc-'));
+    await fs.mkdir(path.join(runDir, 'optimize'), { recursive: true });
+    await fs.writeFile(path.join(runDir, 'optimize', '.fixcycles-c.json'), '{ not valid json');
+    const port = makeDefaultFixCyclesPort(runDir);
+    expect(port.readFixCycles('c')).toBe(0);        // corrupt → fresh start, no throw
+  });
+
+  it('sanitizes an unsafe node id into the sidecar filename ([^\\w.-] → _)', async () => {
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-cyc-'));
+    const port = makeDefaultFixCyclesPort(runDir);
+    port.bumpFixCycles('a/b:c');
+    // the path separator/colon are neutralized so the sidecar is one flat file, not a nested path.
+    expect(existsSyncNode(path.join(runDir, 'optimize', '.fixcycles-a_b_c.json'))).toBe(true);
+    expect(port.readFixCycles('a/b:c')).toBe(1);
+  });
+});
+
 describe('loadBinding — the dynamic-import seam', () => {
   it('loads a binding module exporting { oracle, copyScope, fixer }', async () => {
     const b = await loadBinding(FAKE);
@@ -157,9 +203,12 @@ describe('runOptimizeFixCli — composition smoke (scoreRun injected)', () => {
     expect(manifest.records[0].landed).toBe('staged'); // auto-adopt OFF → the win stages for the human
   });
 
-  it('OPTIONALITY: a binding WITHOUT the fix-cycle port still validates and runs with --fix-cycle-ceiling (ceiling inert)', async () => {
-    // The FAKE binding exports NO readFixCycles/bumpFixCycles. With --fix-cycle-ceiling set, the CLI must still
-    // load it and drive FIX→GATE to completion (core no-ops the ceiling when the counter stages are absent).
+  it('OPTIONALITY: a binding WITHOUT its own port + --fix-cycle-ceiling runs to completion; the CLI default ceiling is ACTIVE but (node under the ceiling) does not trip', async () => {
+    // A6 changed the old "ceiling inert" behavior: the FAKE binding exports NO readFixCycles/bumpFixCycles, but
+    // when --fix-cycle-ceiling is set the CLI now supplies makeDefaultFixCyclesPort so the ceiling is ACTIVE by
+    // default. This node has 0 consumed cycles (fresh run dir) < ceiling 3, so it is NOT skipped — the edit is
+    // attempted and accepted exactly as before. This test now asserts "active-but-under-ceiling" (the T2
+    // companion asserts "at-ceiling → skipped"); it is NOT the old inertness claim.
     const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-run-'));
     const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-stage-'));
     await fs.mkdir(path.join(runDir, 'verify'), { recursive: true });
@@ -172,14 +221,109 @@ describe('runOptimizeFixCli — composition smoke (scoreRun injected)', () => {
     const tier1ByNode = new Map([['w4-execute-m2', t1('M2', [{ id: 'M2-A3', gate: 'fidelity', passed: false }])]]);
     const fakeScoreRun = async () => ({ scores: scoreNodes({ digest, tier1ByNode }), digest });
 
+    const lines: string[] = [];
     await runOptimizeFixCli(
       ['--fix', runDir, '--binding', FAKE, '--staging-dir', stagingDir, '--fix-cycle-ceiling', '3'],
-      { scoreRun: fakeScoreRun, print: () => {} },
+      { scoreRun: fakeScoreRun, print: (s) => lines.push(s) },
     );
 
     const manifest = JSON.parse(await fs.readFile(path.join(stagingDir, 'manifest.json'), 'utf8'));
-    expect(manifest.summary.accepted).toBe(1);          // the inert ceiling didn't block the accepted edit
+    expect(manifest.summary.accepted).toBe(1);          // under the ceiling → the edit is still attempted + accepted
     expect(manifest.records[0].node).toBe('w4-execute-m2');
+    // nothing escalated (the node is below the ceiling), so the summary carries no escalation clause.
+    expect(lines.some((l) => /escalated at the fix-cycle ceiling/.test(l))).toBe(false);
+    // the accepted edit was NOT a failed cycle, so no count was bumped: the default sidecar stays absent.
+    expect(existsSyncNode(path.join(runDir, 'optimize', '.fixcycles-w4-execute-m2.json'))).toBe(false);
+  });
+
+  it('T2 (gap-closing): the CLI default makes --fix-cycle-ceiling ACTIVE by default — a node already at the ceiling is ESCALATED (skipped), not re-attempted', async () => {
+    // This is what proves the TASK: the flag was inert for any binding lacking its own port; now the CLI default
+    // supplies the counters so the ceiling bounds re-attempts out-of-the-box. Pre-seed the default sidecar with
+    // cycles: 1 == ceiling 1 → the driver must SKIP the node (surface it on result.skipped → the printed
+    // escalation clause) instead of attempting it (so NO manifest record for that node).
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-run-'));
+    const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-stage-'));
+    await fs.mkdir(path.join(runDir, 'verify'), { recursive: true });
+    await fs.writeFile(path.join(runDir, 'verify', 'report.M2.json'), JSON.stringify({ milestoneId: 'M2', marker: 'VALIDATION_FAILED', passed: false, fixOutcome: 'exhausted' }));
+    // pre-seed the DEFAULT sidecar so the target node has already consumed 1 cycle (== the ceiling).
+    await fs.mkdir(path.join(runDir, 'optimize'), { recursive: true });
+    await fs.writeFile(path.join(runDir, 'optimize', '.fixcycles-w4-execute-m2.json'), JSON.stringify({ node: 'w4-execute-m2', cycles: 1 }));
+    const digest: RunDigest = {
+      run: 'tmp', done: true, ok: true, durationMs: 1,
+      totals: { nodes: 1, ok: 1, failed: 0, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
+      nodes: [dnode('w4-execute-m2')], anomalies: [], rootCauses: [],
+    };
+    const tier1ByNode = new Map([['w4-execute-m2', t1('M2', [{ id: 'M2-A3', gate: 'fidelity', passed: false }])]]);
+    const fakeScoreRun = async () => ({ scores: scoreNodes({ digest, tier1ByNode }), digest });
+
+    const lines: string[] = [];
+    await runOptimizeFixCli(
+      ['--fix', runDir, '--binding', FAKE, '--staging-dir', stagingDir, '--fix-cycle-ceiling', '1'],
+      { scoreRun: fakeScoreRun, print: (s) => lines.push(s) },
+    );
+
+    // the node was ESCALATED, not attempted: the summary reports the escalation and the manifest has no record for it.
+    expect(lines.some((l) => /escalated at the fix-cycle ceiling/.test(l))).toBe(true);
+    const manifest = JSON.parse(await fs.readFile(path.join(stagingDir, 'manifest.json'), 'utf8'));
+    expect(manifest.records.some((r: { node: string }) => r.node === 'w4-execute-m2')).toBe(false);
+    expect(manifest.summary.attempted).toBe(0);         // the ceiling short-circuited before any fixer attempt
+  });
+
+  it('T3 (precedence): a binding that hand-rolls its OWN fix-cycle port WINS — the CLI default is never materialized', async () => {
+    // game-omni ships makeFixCyclesPort; the CLI default must not override it. Point the binding's own port at a
+    // DISTINCT dir (PIFLOW_TEST_FIXCYCLES_DIR), pre-seed cycles: 1 there, and run with --fix-cycle-ceiling 1: the
+    // node escalates via the BINDING's counts, and NO default `<runDir>/optimize/.fixcycles-*.json` is created.
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-run-'));
+    const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-stage-'));
+    const ownDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-own-'));
+    await fs.mkdir(path.join(runDir, 'verify'), { recursive: true });
+    await fs.writeFile(path.join(runDir, 'verify', 'report.M2.json'), JSON.stringify({ milestoneId: 'M2', marker: 'VALIDATION_FAILED', passed: false, fixOutcome: 'exhausted' }));
+    // pre-seed the BINDING's own sidecar (not the default location) so its port reports cycles: 1.
+    await fs.writeFile(path.join(ownDir, 'own-w4-execute-m2.json'), JSON.stringify({ node: 'w4-execute-m2', cycles: 1 }));
+    const digest: RunDigest = {
+      run: 'tmp', done: true, ok: true, durationMs: 1,
+      totals: { nodes: 1, ok: 1, failed: 0, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
+      nodes: [dnode('w4-execute-m2')], anomalies: [], rootCauses: [],
+    };
+    const tier1ByNode = new Map([['w4-execute-m2', t1('M2', [{ id: 'M2-A3', gate: 'fidelity', passed: false }])]]);
+    const fakeScoreRun = async () => ({ scores: scoreNodes({ digest, tier1ByNode }), digest });
+
+    const lines: string[] = [];
+    const prev = process.env.PIFLOW_TEST_FIXCYCLES_DIR;
+    process.env.PIFLOW_TEST_FIXCYCLES_DIR = ownDir;
+    try {
+      await runOptimizeFixCli(
+        ['--fix', runDir, '--binding', FIXCYCLES, '--staging-dir', stagingDir, '--fix-cycle-ceiling', '1'],
+        { scoreRun: fakeScoreRun, print: (s) => lines.push(s) },
+      );
+    } finally {
+      if (prev === undefined) delete process.env.PIFLOW_TEST_FIXCYCLES_DIR; else process.env.PIFLOW_TEST_FIXCYCLES_DIR = prev;
+    }
+
+    // the binding's OWN port drove the escalation (its pre-seeded count tripped the ceiling)…
+    expect(lines.some((l) => /escalated at the fix-cycle ceiling/.test(l))).toBe(true);
+    // …and the CLI default was NEVER materialized (precedence: binding wins).
+    expect(existsSyncNode(path.join(runDir, 'optimize', '.fixcycles-w4-execute-m2.json'))).toBe(false);
+  });
+
+  it('T4 (no flag → no sidecar): without --fix-cycle-ceiling the CLI does NOT materialize the default counter', async () => {
+    // The default is gated on the ceiling flag being present (no stray sidecar files on every run). Run the FAKE
+    // binding with no --fix-cycle-ceiling and assert no default sidecar is created under <runDir>/optimize.
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-run-'));
+    const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-stage-'));
+    await fs.mkdir(path.join(runDir, 'verify'), { recursive: true });
+    await fs.writeFile(path.join(runDir, 'verify', 'report.M2.json'), JSON.stringify({ milestoneId: 'M2', marker: 'VALIDATION_FAILED', passed: false, fixOutcome: 'exhausted' }));
+    const digest: RunDigest = {
+      run: 'tmp', done: true, ok: true, durationMs: 1,
+      totals: { nodes: 1, ok: 1, failed: 0, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
+      nodes: [dnode('w4-execute-m2')], anomalies: [], rootCauses: [],
+    };
+    const tier1ByNode = new Map([['w4-execute-m2', t1('M2', [{ id: 'M2-A3', gate: 'fidelity', passed: false }])]]);
+    const fakeScoreRun = async () => ({ scores: scoreNodes({ digest, tier1ByNode }), digest });
+
+    await runOptimizeFixCli(['--fix', runDir, '--binding', FAKE, '--staging-dir', stagingDir], { scoreRun: fakeScoreRun, print: () => {} });
+
+    expect(existsSyncNode(path.join(runDir, 'optimize', '.fixcycles-w4-execute-m2.json'))).toBe(false);
   });
 
   it('liveRootFor: a binding injecting the liveRootFor stage makes each manifest record carry the non-empty live root (so --adopt can land it)', async () => {

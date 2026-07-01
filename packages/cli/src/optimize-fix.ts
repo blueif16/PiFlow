@@ -10,6 +10,7 @@
 // binding (the browser+build oracle) is validated by a real run, not CI.
 
 import path from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { scoreRun as coreScoreRun, triage, deriveRecurrence, memorize, distillLesson, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
 import type { ReplayOracle, CopyScope, Fixer, LiveRootFor, LessonDistiller, MemorizeLesson, FixGateRecord, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect, FixGateResult } from '@piflow/core';
@@ -205,6 +206,40 @@ export async function distillAppendedLessons(
   return filled;
 }
 
+/**
+ * The DEFAULT, file-backed per-node fix-cycle counter — the CLI-seam provider that makes `--fix-cycle-ceiling`
+ * work out-of-the-box for a binding that does NOT hand-roll its own port. It fills in the driver's OPTIONAL
+ * `readFixCycles`/`bumpFixCycles` stages (@piflow/core persists NOTHING — boundary law: this per-run PRODUCT
+ * bookkeeping lives at the CLI/product seam, never in the SDK). One sidecar per node under `<runDir>/optimize/`
+ * — the already-established optimizer-data location (co-located with the staging manifest), so it's disposable
+ * with the run. Shape (`{ node, cycles, updatedAt }`) + corrupt→0 tolerance MIRROR game-omni's proven port
+ * (scope.mjs makeFixCyclesPort) so a product can drop in its own with no behavior surprise; a binding that DOES
+ * export its own port transparently overrides this (see makeFixGateRunner). The counter is pure deterministic
+ * bookkeeping (integer read/increment on disk) — no model, no network; it is the bound, not the intelligence.
+ */
+export function makeDefaultFixCyclesPort(runDir: string): { readFixCycles: (node: string) => number; bumpFixCycles: (node: string) => void } {
+  const sidecar = (node: string): string =>
+    path.join(runDir, 'optimize', `.fixcycles-${node.replace(/[^\w.-]/g, '_')}.json`);
+  const readCount = (p: string): number => {
+    if (!existsSync(p)) return 0;
+    try {
+      const data = JSON.parse(readFileSync(p, 'utf8')) as { cycles?: unknown };
+      return Number.isInteger(data.cycles) && (data.cycles as number) >= 0 ? (data.cycles as number) : 0;
+    } catch {
+      return 0; // corrupt → fresh start (never throws); matches game-omni's corrupt-tolerant read.
+    }
+  };
+  return {
+    readFixCycles: (node) => readCount(sidecar(node)),
+    bumpFixCycles: (node) => {
+      const p = sidecar(node);
+      const cycles = readCount(p);
+      mkdirSync(path.dirname(p), { recursive: true });
+      writeFileSync(p, JSON.stringify({ node, cycles: cycles + 1, updatedAt: new Date().toISOString() }, null, 2) + '\n', 'utf8');
+    },
+  };
+}
+
 /** The FIX→GATE bounds/policy shared by the single-shot and the multi-round paths (autoAdopt + the budgets). */
 export interface FixGatePolicy {
   autoAdopt: boolean;
@@ -228,12 +263,19 @@ export function makeFixGateRunner(
 ): (defects: Defect[], rejectedBuffer: Set<string>) => Promise<FixGateResult> {
   const mineTask = mineTaskFromTrace(runDir, binding.mineOpts);
   const stages = makeReplayStages({ oracle: binding.oracle, mineTask, copyScope: binding.copyScope });
+  // Resolve the effective fix-cycle counter port: a binding that hand-rolls BOTH hooks WINS (game-omni's own
+  // port is untouched); otherwise, ONLY when the ceiling was actually requested, the CLI supplies the default
+  // file-backed port so `--fix-cycle-ceiling` bounds re-attempts out-of-the-box. No ceiling flag ⇒ no port is
+  // materialized (no stray sidecar files on a run that never asked for the ceiling). A binding that exports
+  // exactly ONE of the two hooks is malformed → we fall back to the default PAIR so the ceiling still works.
+  const counter = binding.readFixCycles && binding.bumpFixCycles
+    ? { readFixCycles: binding.readFixCycles, bumpFixCycles: binding.bumpFixCycles }
+    : (policy.fixCycleCeiling !== undefined ? makeDefaultFixCyclesPort(runDir) : undefined);
   return (defects, rejectedBuffer) =>
     runFixGate(defects, {
       fixer: binding.fixer,
       ...stages,
-      ...(binding.readFixCycles ? { readFixCycles: binding.readFixCycles } : {}),
-      ...(binding.bumpFixCycles ? { bumpFixCycles: binding.bumpFixCycles } : {}),
+      ...(counter ?? {}),
       // the injected reverse-of-copyScope: the driver records each candidate's liveRoot so `--adopt` can land it.
       ...(binding.liveRootFor ? { liveRootFor: binding.liveRootFor } : {}),
     }, {
