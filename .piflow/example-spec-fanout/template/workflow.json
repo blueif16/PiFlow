@@ -1,0 +1,61 @@
+{
+  "id": "spec-fanout-build",
+  "meta": {
+    "name": "Spec fan-out → build",
+    "description": ""
+  },
+  "stages": [
+    [
+      "design"
+    ],
+    [
+      "prod-impl",
+      "prod-tests",
+      "prod-types"
+    ],
+    [
+      "verify-join"
+    ],
+    [
+      "build"
+    ]
+  ],
+  "nodes": {
+    "build": {
+      "phase": "build",
+      "deps": [
+        "verify-join"
+      ]
+    },
+    "design": {
+      "phase": "design",
+      "deps": []
+    },
+    "prod-impl": {
+      "phase": "prod-impl",
+      "deps": [
+        "design"
+      ]
+    },
+    "prod-tests": {
+      "phase": "prod-tests",
+      "deps": [
+        "design"
+      ]
+    },
+    "prod-types": {
+      "phase": "prod-types",
+      "deps": [
+        "design"
+      ]
+    },
+    "verify-join": {
+      "phase": "verify-join",
+      "deps": [
+        "prod-types",
+        "prod-impl",
+        "prod-tests"
+      ]
+    }
+  }
+}

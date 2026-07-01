@@ -1,0 +1,41 @@
+{
+  "id": "verify",
+  "phase": "verify",
+  "deps": [
+    "produce"
+  ],
+  "prompt": {
+    "file": "prompt.md",
+    "skill": "receiving-code-review"
+  },
+  "agentType": "verify",
+  "tools": {
+    "allow": [
+      "read",
+      "submit_result"
+    ]
+  },
+  "contract": {
+    "artifacts": [],
+    "owns": [
+      "verify/**"
+    ],
+    "readScope": [
+      "{{RUN}}/out"
+    ],
+    "returnMode": "required"
+  },
+  "op": [
+    {
+      "when": "on-failure",
+      "action": {
+        "kind": "rerouteTo",
+        "node": "produce",
+        "max": 3
+      }
+    }
+  ],
+  "policy": {
+    "fail": "block"
+  }
+}

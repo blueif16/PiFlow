@@ -1,0 +1,35 @@
+{
+  "id": "prod-tests",
+  "phase": "prod-tests",
+  "deps": [
+    "design"
+  ],
+  "prompt": {
+    "file": "prompt.md",
+    "skill": "test-discipline"
+  },
+  "agentType": "coder",
+  "tools": {
+    "allow": [
+      "read",
+      "write",
+      "edit",
+      "bash",
+      "submit_result"
+    ]
+  },
+  "contract": {
+    "artifacts": [
+      "frag/tests/tests.md"
+    ],
+    "owns": [
+      "frag/tests/**"
+    ],
+    "readScope": [
+      "{{RUN}}/spec"
+    ]
+  },
+  "policy": {
+    "fail": "block"
+  }
+}

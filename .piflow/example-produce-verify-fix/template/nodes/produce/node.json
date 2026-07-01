@@ -1,0 +1,35 @@
+{
+  "id": "produce",
+  "phase": "produce",
+  "deps": [
+    "plan"
+  ],
+  "prompt": {
+    "file": "prompt.md",
+    "skill": "test-discipline"
+  },
+  "agentType": "coder",
+  "tools": {
+    "allow": [
+      "read",
+      "write",
+      "edit",
+      "bash",
+      "submit_result"
+    ]
+  },
+  "contract": {
+    "artifacts": [
+      "out/result.md"
+    ],
+    "owns": [
+      "out/**"
+    ],
+    "readScope": [
+      "{{RUN}}/plan"
+    ]
+  },
+  "policy": {
+    "fail": "block"
+  }
+}

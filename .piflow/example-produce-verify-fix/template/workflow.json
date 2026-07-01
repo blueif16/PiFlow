@@ -1,0 +1,36 @@
+{
+  "id": "produce-verify-fix",
+  "meta": {
+    "name": "Produce → Verify → Fix (self-correcting pipeline)",
+    "description": ""
+  },
+  "stages": [
+    [
+      "plan"
+    ],
+    [
+      "produce"
+    ],
+    [
+      "verify"
+    ]
+  ],
+  "nodes": {
+    "plan": {
+      "phase": "plan",
+      "deps": []
+    },
+    "produce": {
+      "phase": "produce",
+      "deps": [
+        "plan"
+      ]
+    },
+    "verify": {
+      "phase": "verify",
+      "deps": [
+        "produce"
+      ]
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "id": "verify",
+  "meta": {
+    "name": "verify",
+    "description": "Quality sub-DAG (G3): N independent skeptical reviewers judge a subject in parallel, then a consensus adjudicator reconciles them into one evidenced verdict. Reference it from a parent node via `node.subworkflow` (G9). The parent stages the subject at {{RUN}}/verify/subject.md (and optional criteria.md); the verdict lands at {{RUN}}/verify/verdict.json."
+  },
+  "stages": [
+    [
+      "review-a",
+      "review-b"
+    ],
+    [
+      "consensus"
+    ]
+  ],
+  "nodes": {
+    "consensus": {
+      "phase": "consensus",
+      "deps": [
+        "review-a",
+        "review-b"
+      ]
+    },
+    "review-a": {
+      "phase": "review",
+      "deps": []
+    },
+    "review-b": {
+      "phase": "review",
+      "deps": []
+    }
+  }
+}

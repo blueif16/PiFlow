@@ -1,0 +1,30 @@
+{
+  "id": "plan",
+  "phase": "plan",
+  "deps": [],
+  "prompt": {
+    "file": "prompt.md"
+  },
+  "agentType": "plan",
+  "tools": {
+    "allow": [
+      "read",
+      "submit_result",
+      "write"
+    ]
+  },
+  "contract": {
+    "artifacts": [
+      "plan/plan.md"
+    ],
+    "owns": [
+      "plan/**"
+    ],
+    "readScope": [
+      "{{RUN}}"
+    ]
+  },
+  "policy": {
+    "fail": "block"
+  }
+}

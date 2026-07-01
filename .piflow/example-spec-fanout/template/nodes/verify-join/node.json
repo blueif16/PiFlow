@@ -1,0 +1,34 @@
+{
+  "id": "verify-join",
+  "phase": "verify-join",
+  "deps": [
+    "prod-types",
+    "prod-impl",
+    "prod-tests"
+  ],
+  "prompt": {
+    "file": "prompt.md",
+    "skill": "receiving-code-review"
+  },
+  "agentType": "verify",
+  "tools": {
+    "allow": [
+      "read",
+      "submit_result"
+    ]
+  },
+  "contract": {
+    "artifacts": [],
+    "owns": [
+      "verify/**"
+    ],
+    "readScope": [
+      "{{RUN}}/frag",
+      "{{RUN}}/spec"
+    ],
+    "returnMode": "required"
+  },
+  "policy": {
+    "fail": "block"
+  }
+}
