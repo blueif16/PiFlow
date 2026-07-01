@@ -308,6 +308,21 @@ describe('loadTemplate — §8 STATIC CHECKS (each goes RED when violated)', () 
     expect(e.message).toContain('no-such-prompt.md');
   });
 
+  it('(9) op[]/alias conflict: a node authoring op[] ALONGSIDE inject → REJECT (the silent-drop guard)', async () => {
+    dir = await cloneFixture();
+    // Add a DIRECT op[] and an inject to w2b-assets. Because def.op is now present, lowerToOps
+    // short-circuits (lower.ts) and inject/hooks would be SILENTLY dropped (DRIVER-INJECT vanishes with no
+    // error). The loader must instead REJECT and name the dropped alias so the author hand-lowers it.
+    const w2b = await readJson(nodeJson(dir, 'w2b-assets'));
+    w2b.op = [{ when: 'pre', reads: ['ignored.md'] }];
+    w2b.inject = ['visual-design.md'];
+    await writeJson(nodeJson(dir, 'w2b-assets'), w2b);
+    const e = await expectReject(dir);
+    expect(e.message).toMatch(/op\[\]\/alias conflict|IGNORED/);
+    expect(e.message).toContain('w2b-assets');
+    expect(e.message).toContain('inject');
+  });
+
   it('(8) a STALE committed workflow.json is regenerated IN SYNC with the node topology', async () => {
     dir = await cloneFixture();
     // Corrupt the committed lock: wrong stages + a phantom node.

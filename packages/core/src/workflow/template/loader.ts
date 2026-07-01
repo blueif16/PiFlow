@@ -27,6 +27,7 @@ import {
   checkProducers,
   checkRefs,
   checkMcpSecrets,
+  checkOpAliasConflict,
 } from './checks.js';
 import { buildWorkflowJson, writeWorkflowJson } from './workflow-json.js';
 import { materializeJudgeNodes, JudgeConfigError } from '../judge/materialize.js';
@@ -236,6 +237,9 @@ export async function loadTemplate(dir: string, opts: LoadTemplateOpts = {}): Pr
   // (#3) The literal-secret guard reads only `mcp.servers` (no graph dependency) — run it whenever the
   // per-file shape is valid, independent of the topology checks above.
   if (!schemaErrors.length) errors.push(...checkMcpSecrets(loaded));
+  // (A2) The op[]/alias conflict guard reads only per-node shape (op vs inject/hooks) — likewise run it
+  // whenever the per-file shape is valid: an authored op[] SILENTLY drops inject/hooks, so we reject it.
+  if (!schemaErrors.length) errors.push(...checkOpAliasConflict(loaded));
   errors.push(...(await checkRefs(loaded)));
 
   if (errors.length) throw new TemplateError(errors);

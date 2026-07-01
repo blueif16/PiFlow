@@ -14,6 +14,8 @@ export interface TemplateCheck {
 /** The authored `node.json` (template-format.md §3) — what the loader parses off disk. */
 export interface TemplateNode {
   id: string;
+  /** OPTIONAL author rationale (ignored at load) — the one comment slot on a strict node.json. */
+  note?: string;
   phase: string;
   deps: string[];
   /**

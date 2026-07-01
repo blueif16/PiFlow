@@ -124,6 +124,15 @@ describe('scaffold — emit a template the real loadTemplate accepts', () => {
     expect(node.executor).toBe('claude-code');
   });
 
+  // A4 — the flag is `--artifact-schema` (renamed from the ambiguous `--schema`, which read like the
+  // structured-RETURN handshake). It maps to `contract.schema` = per-ARTIFACT output validation.
+  it('the --artifact-schema flag emits contract.schema (per-artifact output validation)', async () => {
+    await runNewCli([DIR, '--name', 'x', '--description', 'd']);
+    await runAddNodeCli([DIR, '--id', 'validated', '--artifact', 'out.json', '--artifact-schema', 'schemas/out.json']);
+    const node = await readJson(path.join(DIR, 'nodes', 'validated', 'node.json'));
+    expect(node.contract.schema).toBe('schemas/out.json');
+  });
+
   it('a node with no --executor flag omits the key (additive ⇒ pi default, byte-identical to today)', async () => {
     await runNewCli([DIR, '--name', 'x', '--description', 'd']);
     await runAddNodeCli([DIR, '--id', 'plain', '--artifact', 'f.md']);

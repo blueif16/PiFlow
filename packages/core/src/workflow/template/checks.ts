@@ -320,6 +320,40 @@ function findLiteralSecrets(v: unknown, pathParts: string[], underSecret: boolea
 }
 
 /**
+ * (9) OP[]/ALIAS CONFLICT: a node that authors `op[]` DIRECTLY short-circuits `lowerToOps` (lower.ts: the
+ * `if (def.op) return def.op` guard), so its `inject`/`hooks.*` aliases are NEVER lowered — they vanish
+ * with NO effect (a silent context-injection loss: e.g. `inject` stops producing `DRIVER-INJECT`, so the
+ * model quietly stops receiving the file). `checks`/`policy`/`return` are EXEMPT: `toNodeIntent`
+ * re-collects them onto the NodeIO independent of `op` (io.checks/io.policy/io.returnSchema), so they
+ * survive alongside an authored `op[]`. So we flag ONLY the truly-dropped set — `inject` + every `hooks.*`
+ * sub-key — and tell the author to hand-lower each into the SAME `op[]` (the hooks→op[] migration table).
+ */
+export function checkOpAliasConflict(nodes: LoadedNode[]): string[] {
+  const errs: string[] = [];
+  for (const n of nodes) {
+    if (!n.def.op) continue; // no directly-authored op[] ⇒ the aliases lower normally (the common path)
+    // The set that lowerToOps SILENTLY drops once def.op is present (inject + every hooks.* sub-key).
+    const dropped: string[] = [];
+    if (n.def.inject?.length) dropped.push('inject');
+    const h = n.def.hooks;
+    if (h?.seed?.length) dropped.push('hooks.seed');
+    if (h?.project?.length) dropped.push('hooks.project');
+    if (h?.merge) dropped.push('hooks.merge');
+    if (h?.promote?.length) dropped.push('hooks.promote');
+    if (h?.registryProject) dropped.push('hooks.registryProject');
+    if (!dropped.length) continue;
+    errs.push(
+      `op[]/alias conflict: node "${n.def.id}" authors op[] together with ${dropped.join(', ')} — ` +
+        `these are SILENTLY IGNORED when op[] is present (only inject/hooks lower into op[]; ` +
+        `checks/policy/return keep their own channels). Hand-lower each into the SAME op[] ` +
+        `(inject:[p] → {"when":"pre","reads":[p]}; hooks.* → its op per the hooks→op[] migration table), ` +
+        `or remove op[] and author via the aliases`,
+    );
+  }
+  return errs;
+}
+
+/**
  * (8) MCP LITERAL-SECRET: every secret-bearing value in a node's `mcp.servers` must be a `$VAR`/`${VAR}`
  * env reference, never a literal. A literal credential committed to a header/token field is rejected
  * (it would leak the secret onto disk). Scans only the secret-bearing keys — a plain `url`/`transport`

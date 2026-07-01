@@ -89,6 +89,22 @@ export const CLI_TOPICS = {
       '  (distinct from the merge-run derive, which runs a command but carries NO verdict.)',
     ],
   },
+  ops: {
+    summary: 'the canonical op[] envelope — how inject/hooks/checks lower into it, and its strict shape',
+    lines: [
+      'op[] is the ONE canonical action envelope. inject / hooks / checks / policy are soft-DEPRECATED',
+      'node.json aliases the LOADER lowers into op[] at load; add-node still emits them as sugar.',
+      'ALL-OR-NOTHING: authoring a node.json op[] DIRECTLY makes the loader keep it verbatim and lower',
+      'NOTHING else — a coexisting inject/hooks would be SILENTLY dropped, so loadTemplate now REJECTS that',
+      'combo. Hand-lower each alias into the SAME op[] (the hooks→op[] mapping table lives in the piflow-init',
+      'enrich-contract skill reference).',
+      'SURVIVORS: checks / policy / return keep their OWN channels (io.checks / io.policy / io.returnSchema),',
+      'so they DO coexist with an authored op[] — only inject/hooks must be hand-lowered.',
+      'STRICT SHAPE: every node.json object is additionalProperties:false (an unknown key is rejected).',
+      'Author rationale goes in the optional `note` field — on the node top-level AND on each op[] entry',
+      '(ignored at load; the one comment slot). Nothing else freeform.',
+    ],
+  },
   control: {
     summary: 'failure control flow — escalate to a stronger model, or reroute upstream',
     lines: [
@@ -135,7 +151,10 @@ export const CLI_TOPICS = {
     lines: [
       '--full-access             per-node jail OFF (LOCAL sandbox only; agent reads the whole filesystem).',
       '--fill-sentinel <s>       the sentinel the node writes when it has nothing to emit.',
-      '--schema <p>              a JSON Schema the node\'s structured output is validated against.',
+      '--artifact-schema <p>     per-ARTIFACT output validation → contract.schema (emits DRIVER-SCHEMA; checks',
+      '                          a declared artifact FILE against a JSON Schema on disk). This is NOT the',
+      '                          structured-RETURN handshake — that is the separate node.json top-level `return`',
+      '                          field (+ contract.returnMode), which is first-class and NOT deprecated.',
     ],
   },
   commands: {

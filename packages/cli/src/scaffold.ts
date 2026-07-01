@@ -686,7 +686,7 @@ const ADD_USAGE =
   '[--gate-run <cmd[:args][@cwd]>]... [--escalate <tier|model>] [--reroute <node[:max]>] ' +
   '[--mcp <name=url>]... [--check <kind[:path[:severity[:param]]]>]... [--check-pre <kind[:path[:severity[:param]]]>]... ' +
   '[--agent-type <id>] [--executor pi|claude-code] [--model <m>] [--provider <g>] [--tier <t>] ' +
-  '[--timeout <ms>] [--retries <n>] [--return-mode optional|required] [--schema <p>] [--skill <p>] ' +
+  '[--timeout <ms>] [--retries <n>] [--return-mode optional|required] [--artifact-schema <p>] [--skill <p>] ' +
   '[--prompt-file <f>] [--on-fail block|warn|stop] [--on-warn block|warn|stop] ' +
   '[--judge <judgeTier[:threshold]>] [--judge-on-fail block|warn|stop|retry|escalate] [--judge-retry-max <n>] [--judge-retry-scope feedback|fix] ' +
   '[--checkpoint <confirm|input|select:prompt>] [--checkpoint-choice <v>]... [--checkpoint-default <v>] [--checkpoint-headless default|abort] [--checkpoint-timeout <ms>] ' +
@@ -774,7 +774,7 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
     timeoutMs: num(flags.timeout?.[0]),
     retries: num(flags.retries?.[0]),
     returnMode: flags['return-mode']?.[0] as NodeOpts['returnMode'],
-    schema: flags.schema?.[0],
+    schema: flags['artifact-schema']?.[0], // per-ARTIFACT output validation → contract.schema (NOT the return handshake)
     skill: flags.skill?.[0],
     agentType: flags['agent-type']?.[0],
     promptFile: flags['prompt-file']?.[0],

@@ -3,8 +3,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseInspectArgs, inspectTemplate, type InspectDeps } from '../src/inspect.js';
-import { loadTemplate } from '@piflow/core';
+import { parseInspectArgs, inspectTemplate, renderNodeInspect, type InspectDeps } from '../src/inspect.js';
+import { loadTemplate, DefaultToolRegistry, type NodeSpec } from '@piflow/core';
 
 // loadTemplate (re)writes the template's generated workflow.json lock, so we run over a CLONE in a tmp
 // dir (the run.test convention) — the source fixture stays pristine.
@@ -122,5 +122,49 @@ describe('inspectTemplate — all nodes + unknown id', () => {
     const out = await inspectTemplate({ templateDir: TEMPLATE_MIN, nodeId: 'w0-classify', full: false }, deps);
     expect(loaded).toBe(true);
     expect(out).toContain('w0-classify');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (D) A5 — run-family ops + programmatic nodes are no longer FALSE "not wired" signals.
+//   • a run op (e.g. a migrated op:[{run}]) must appear in the `ops:` line, not `ops: (none)`.
+//   • a programmatic node (no prompt) must print its resolved op[] instead of an EMPTY prompt block
+//     that reads as "0 markers → not wired".
+// renderNodeInspect is PURE — we hand-build a NodeSpec (no fixture needed for these node shapes).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('renderNodeInspect — A5 run/gate ops + programmatic op[]', () => {
+  const REG = new DefaultToolRegistry();
+  const base = {
+    sandbox: { provider: 'inmemory', workspace: '/w', output: 'out', read: [], write: ['out/**'] },
+    tools: {},
+    io: { artifacts: [{ path: 'out/video.mp4' }] },
+  };
+
+  it('a PROGRAMMATIC node with a run op shows the run cmd in `ops:` (NOT "(none)") and prints its op[]', () => {
+    const node = {
+      id: 'render',
+      label: 'render',
+      programmatic: true,
+      op: [{ when: 'post', run: { cmd: 'npm', args: ['run', 'render'], cwd: '{{WORKSPACE}}' }, onFailure: 'block' }],
+      ...base,
+    } as unknown as NodeSpec;
+    const out = renderNodeInspect(node, REG, true);
+    expect(out).not.toContain('ops:   (none)'); // the run op MUST be counted
+    expect(out).toContain('npm'); // the run cmd is shown in the ops summary
+    expect(out).toContain('run'); // the run-family label
+    expect(out).toMatch(/programmatic/i); // the no-prompt node prints its op[] block, not an empty prompt
+  });
+
+  it('a POST gate op appears in the `ops:` line (gate-family, not just derive transforms)', () => {
+    const node = {
+      id: 'verify',
+      label: 'verify',
+      prompt: 'do the thing',
+      op: [{ when: 'post', gate: { kind: 'non-empty', path: 'out/report.md' }, onFailure: 'block' }],
+      ...base,
+    } as unknown as NodeSpec;
+    const out = renderNodeInspect(node, REG, true);
+    expect(out).not.toContain('ops:   (none)');
+    expect(out).toContain('non-empty'); // the gate kind is shown
   });
 });

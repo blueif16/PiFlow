@@ -133,6 +133,9 @@ export interface OpSpec {
   onFailure?: OnFailure;
   /** Skip when outputs fresh. Default true (carried from `Hook.idempotent`). */
   idempotent?: boolean;
+  /** OPTIONAL author rationale for this op — IGNORED at load (rides verbatim, never rendered). The one place
+   * to record WHY a gate/run exists, since node.json is otherwise strict (additionalProperties:false). */
+  note?: string;
 
   // EXACTLY ONE body (the discriminator; the loader rejects a multi-body op — the `mergeHook` oneOf precedent):
   /** DERIVE — declarative data transform (seed/project/merge/promote/projectRegistry). */

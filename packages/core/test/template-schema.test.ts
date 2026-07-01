@@ -58,6 +58,24 @@ describe('template-format schemas — the fixture VALIDATES (accept the real sha
     });
   }
 
+  // A3 — the `note` affordance: a strict node.json now has ONE comment slot at the node top-level AND on
+  // each op[] entry, so authoring rationale has a home. These ACCEPT cases go RED if `note` is dropped from
+  // the schema (additionalProperties:false rejects an unknown key) — the mutation this pins.
+  it('a top-level `note` (author rationale) validates', async () => {
+    const node = { ...((await readJson(nodePath('w0-classify'))) as Record<string, unknown>), note: 'why this node exists' };
+    const r = validate(nodeSchema as object, node);
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('an op[] entry carrying a `note` validates', async () => {
+    const node = { ...((await readJson(nodePath('w0-classify'))) as Record<string, unknown>) };
+    node.op = [{ when: 'post', gate: { kind: 'non-empty', path: 'out.md' }, note: 'runs lesson-measured.mjs, not lesson:check' }];
+    const r = validate(nodeSchema as object, node);
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
   it('the parallel lane is write-disjoint (the §5 invariant the fixture must encode)', async () => {
     const a = (await readJson(nodePath('w2a-levels'))) as { deps: string[]; contract: { owns: string[] } };
     const b = (await readJson(nodePath('w2b-assets'))) as { deps: string[]; contract: { owns: string[] } };

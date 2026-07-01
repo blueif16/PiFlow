@@ -19,8 +19,11 @@ import {
   seededRegistry,
   SUBMIT_RESULT_TOOL,
   derivesFromOp,
+  runOpsFromOp,
+  gatesFromOp,
   type WorkflowSpec,
   type NodeSpec,
+  type OpSpec,
 } from '@piflow/core';
 
 /** Default head-slice length for the realized prompt (overridden by `--full`). */
@@ -63,6 +66,22 @@ function indent(s: string, pad = '    '): string {
     .join('\n');
 }
 
+/** One-line summary of an op[] entry — its lane + whichever body it carries (run/gate/transform/action). */
+function fmtOp(o: OpSpec): string {
+  const parts: string[] = [o.when ?? 'post'];
+  if (o.reads?.length) parts.push(`reads ${o.reads.join(',')}`);
+  if (o.writes?.length) parts.push(`writes ${o.writes.join(',')}`);
+  if (o.run)
+    parts.push(
+      'cmd' in o.run ? `run ${o.run.cmd}${o.run.args?.length ? ` ${o.run.args.join(' ')}` : ''}` : `run fn:${o.run.fn}`,
+    );
+  if (o.gate) parts.push(`gate ${o.gate.kind}${o.gate.path ? ` ${o.gate.path}` : ''}`);
+  if (o.transform) parts.push(`transform ${o.transform.kind}`);
+  if (o.action) parts.push(`action ${(o.action as { kind?: string }).kind ?? '?'}`);
+  if (o.onFailure) parts.push(`[${o.onFailure}]`);
+  return parts.join(' · ');
+}
+
 /**
  * Render ONE compiled node's resolved view. PURE: resolves tools via the shared registry but spawns
  * nothing; a catalog miss is NOTED, never thrown. `full` shows the whole prompt, else a head slice.
@@ -96,9 +115,14 @@ export function renderNodeInspect(node: NodeSpec, registry: DefaultToolRegistry,
   // ── 3. OPS — the declarative seed/project/merge/promote plumbing, read from the canonical `op[]` (the
   // SOLE derive rep; the legacy `node.ops` was retired in U6). `derivesFromOp` reconstructs the per-family
   // executor inputs the run loop consumes — the same view the old `node.ops` field carried. ──
+  // ALL THREE op families so a migrated `op:[{run}]` or a gate op is VISIBLE, not a false `ops: (none)`:
+  // derive transforms (seed/project/merge/promote), run-family ops, and gate ops (pre/post).
   const d = derivesFromOp(node.op);
   const mergeOpCount = d.merges.reduce((n, m) => n + (m.ops?.length ?? 0), 0);
-  if (d.seeds.length || d.projects.length || mergeOpCount || d.promotes.length) {
+  const runOps = runOpsFromOp(node.op).runnable;
+  const gates = gatesFromOp(node.op);
+  const fmtGate = (c: { kind: string; path?: string }): string => `${c.kind}${c.path ? ` ${c.path}` : ''}`;
+  if (d.seeds.length || d.projects.length || mergeOpCount || d.promotes.length || runOps.length || gates.pre.length || gates.post.length) {
     lines.push('  ops:');
     if (d.seeds.length) lines.push(`    seed:    ${d.seeds.map((s) => `${s.from} → ${s.to}`).join('; ')}`);
     if (d.projects.length)
@@ -108,6 +132,12 @@ export function renderNodeInspect(node: NodeSpec, registry: DefaultToolRegistry,
     if (mergeOpCount) lines.push(`    merge:   ${mergeOpCount} op(s)`);
     if (d.promotes.length)
       lines.push(`    promote: ${d.promotes.map((p) => `${p.from} → ${p.to} (${p.merge ?? 'set'})`).join('; ')}`);
+    if (runOps.length)
+      lines.push(
+        `    run:     ${runOps.map((r) => `${r.body.cmd}${r.body.args?.length ? ` ${r.body.args.join(' ')}` : ''} [${r.onFailure ?? 'block'}]`).join('; ')}`,
+      );
+    if (gates.pre.length) lines.push(`    gate.pre:  ${gates.pre.map(fmtGate).join('; ')}`);
+    if (gates.post.length) lines.push(`    gate.post: ${gates.post.map(fmtGate).join('; ')}`);
   } else {
     lines.push('  ops:   (none)');
   }
@@ -116,11 +146,20 @@ export function renderNodeInspect(node: NodeSpec, registry: DefaultToolRegistry,
   const arts = node.io?.artifacts ?? [];
   lines.push(`  io.artifacts: ${arts.map((a) => a.path).join(', ') || '(none)'}`);
 
-  // ── 5. PROMPT — the realized prompt (full or a head slice). ──
-  const prompt = node.prompt ?? '';
-  const shown = full || prompt.length <= PROMPT_SLICE ? prompt : `${prompt.slice(0, PROMPT_SLICE)}\n  … (${prompt.length - PROMPT_SLICE} more chars; --full for all)`;
-  lines.push('  prompt:');
-  lines.push(indent(shown, '    '));
+  // ── 5. PROMPT — the realized prompt (full or a head slice). A PROGRAMMATIC node spawns no pi, so it has
+  // NO prompt (and thus no DRIVER-* marker tail); printing an empty `prompt:` block reads as "0 markers →
+  // not wired". Instead print its resolved `op[]` directly — that IS its declared work. ──
+  if (node.programmatic || !node.prompt) {
+    const ops = node.op ?? [];
+    lines.push(`  op[] (programmatic — no prompt, ${ops.length} op(s)):`);
+    if (!ops.length) lines.push('    (no op[] declared)');
+    for (const o of ops) lines.push(indent(fmtOp(o), '    '));
+  } else {
+    const prompt = node.prompt;
+    const shown = full || prompt.length <= PROMPT_SLICE ? prompt : `${prompt.slice(0, PROMPT_SLICE)}\n  … (${prompt.length - PROMPT_SLICE} more chars; --full for all)`;
+    lines.push('  prompt:');
+    lines.push(indent(shown, '    '));
+  }
 
   return lines.join('\n');
 }

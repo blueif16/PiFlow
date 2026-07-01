@@ -32,6 +32,7 @@ export const nodeSchema = {
   ],
   properties: {
     id: { type: 'string', minLength: 1, description: 'Stable node id (slug). Unique within the template.' },
+    note: { type: 'string', description: 'OPTIONAL author rationale (ignored at load) — the one comment slot on a strict node.json.' },
     phase: {
       type: 'string',
       minLength: 1,
@@ -317,6 +318,7 @@ export const nodeSchema = {
         writes: { type: 'array', items: { type: 'string', minLength: 1 }, description: 'Files WRITTEN — the produced set.' },
         onFailure: { $ref: '#/$defs/policyAction', description: 'Consequence of THIS op failing. Default block.' },
         idempotent: { type: 'boolean', description: 'Skip when outputs fresh. Default true.' },
+        note: { type: 'string', description: 'OPTIONAL author rationale (ignored at load) — records WHY this op exists.' },
         // The four bodies stay permissive (the loader/runner read body-specific params). EXACTLY ONE present.
         transform: { type: 'object', description: 'DERIVE — seed/project/merge/promote/projectRegistry (discriminated by kind).' },
         run: { type: 'object', description: 'ACT — a deterministic shell/fn side-effect. Never an LLM.' },

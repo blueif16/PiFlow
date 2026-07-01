@@ -57,7 +57,7 @@ const CANONICAL_FLAGS = [
   // topology
   '--fusion', '--fusion-n', '--fusion-panel', '--fusion-judge', '--fusion-obligations', '--fusion-no-verify', '--subworkflow',
   // contract
-  '--full-access', '--fill-sentinel', '--schema',
+  '--full-access', '--fill-sentinel', '--artifact-schema',
 ] as const;
 
 afterEach(() => {
@@ -90,6 +90,26 @@ describe('piflowctl schema — topic-segmented CLI-syntax reference', () => {
     expect(stdout.toLowerCase()).toMatch(/judgetier.*differ|differ.*--tier/);
     // A topic page is the slice ONLY — it must NOT dump an unrelated topic's flag.
     expect(stdout).not.toContain('--fusion');
+  });
+
+  it('`schema ops` teaches op[] as canonical, the coexistence REJECT rule, and the strict-shape/note slot', () => {
+    const { stdout, exitCode } = capture(['ops']);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('op[]'); // op[] is the surface
+    expect(stdout.toLowerCase()).toMatch(/reject/); // op[] + inject/hooks on one node is rejected
+    expect(stdout.toLowerCase()).toMatch(/additionalproperties:false/); // strict-shape stated
+    expect(stdout).toContain('note'); // the one comment slot (A3)
+    // A topic page is the slice ONLY — it must not leak an unrelated topic's flag.
+    expect(stdout).not.toContain('--fusion');
+  });
+
+  it('`schema contract` disambiguates --artifact-schema from the structured-RETURN handshake', () => {
+    const { stdout, exitCode } = capture(['contract']);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('--artifact-schema');
+    expect(stdout).toContain('DRIVER-SCHEMA'); // the per-artifact feature
+    expect(stdout).toContain('return'); // contrasted with the return handshake
+    expect(stdout).not.toContain('--schema '); // the ambiguous old flag name is gone
   });
 
   it('an unknown topic exits non-zero and lists the valid topics on stderr', () => {
