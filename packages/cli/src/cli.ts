@@ -80,13 +80,16 @@ USAGE
                                             (local ⇄ cloud \`serve\`), stored in ~/.piflow/contexts.json.
                                             Active-context ladder: --context flag > PIFLOW_CONTEXT env >
                                             the \`use\` pointer > the implicit \`local\` (${'http://127.0.0.1:5273'}).
-  piflowctl cloud   up [--app <n>] [--provider <gw>] [--execute] | down [--execute]  stand up (or tear
-                                            down) the SAME control plane on a durable Fly.io VM. Bare \`up\`
-                                            = a PLAN (mint the bearer token, register a \`cloud\` context,
-                                            print the fly runbook — spends nothing). \`--execute\` runs it
-                                            (secrets set → deploy → smoke) + switches context on a green
-                                            smoke. Projects the pi gateway (models.json entry + cred vars)
-                                            + Claude OAuth as Fly secrets, the same way a node sandbox does.
+  piflowctl cloud   up [--host <fly|railway|selfhost|docker>] [--app <n>] [--public-url <url>] [--provider <gw>]
+                    [--execute] | down [--host <...>] [--execute]  stand up (or tear down) the SAME control
+                                            plane over any host pathway (default \`fly\`; the others land as
+                                            follow-ups). Bare \`up\` = a PLAN (mint the bearer token, register
+                                            a \`cloud\` context, print the runbook — spends nothing).
+                                            \`--execute\` runs it (secrets set → deploy → smoke) + switches
+                                            context on a green smoke. Host-derived origins (fly) are automatic;
+                                            docker/selfhost need \`--public-url\` before \`--execute\`. Projects
+                                            the pi gateway (models.json entry + cred vars) + Claude OAuth as
+                                            host secrets, the same way a node sandbox does.
   piflowctl tui     [<rundir>] [--every <s>]  launch the terminal run viewer, scoped to the project at cwd
   piflowctl skills  install [targetDir] [--force] [--with <id>|--all|--wizard]  install the authoring skills (+ add-ons) into a repo
   piflowctl understand [subsystem] [--check|--rebuild]  how a subsystem works / where to change it (code slices)
