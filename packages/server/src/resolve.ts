@@ -62,9 +62,10 @@ export const readBody = (req: IncomingMessage, cap = 1_000_000): Promise<string>
     req.on("error", reject);
   });
 
-/** Resolve a run id → its run dir + the owning product's workspace root, from the LIVE index (so a run
- *  added since launch resolves). Shared by the stream/run-view/file endpoints' lookups. */
-export async function resolveRunDir(run: string): Promise<{ runDir: string; workspaceRoot: string | null } | null> {
+/** Resolve a run id → its run dir + the owning product's workspace root + the sibling runs of the SAME
+ *  workflow (the `historyDirs` baseline for expectedMs / slow-anomaly detection), from the LIVE index (so a
+ *  run added since launch resolves). Shared by the stream/run-view/run-digest/file endpoints' lookups. */
+export async function resolveRunDir(run: string): Promise<{ runDir: string; workspaceRoot: string | null; historyDirs: string[] } | null> {
   const lib = findLib("index-snapshot.mjs");
   if (!lib) return null;
   try {
@@ -73,7 +74,10 @@ export async function resolveRunDir(run: string): Promise<{ runDir: string; work
     for (const p of ix.products ?? [])
       for (const ns of p.namespaces ?? []) {
         const hit = (ns.threads ?? []).find((t: { run?: string; runDir?: string }) => t.run === run && t.runDir);
-        if (hit) return { runDir: hit.runDir, workspaceRoot: p.root ?? null };
+        if (hit) {
+          const historyDirs = (ns.threads ?? []).flatMap((t: { runDir?: string }) => (t.runDir ? [t.runDir] : []));
+          return { runDir: hit.runDir, workspaceRoot: p.root ?? null, historyDirs };
+        }
       }
   } catch { /* fall through */ }
   return null;

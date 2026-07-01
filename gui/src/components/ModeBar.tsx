@@ -14,9 +14,9 @@ import { GlassSurface } from "./GlassSurface";
 import { useViewMode, VIEW_MODES } from "./ViewModeContext";
 import "../styles/modes.css";
 
-/** Press P to launch the bottom-right pi chat (the companion). Owned here with the
- *  view-mode keys so the whole bottom-left key cluster lives in one handler. */
-export function ModeBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggleChat: () => void }) {
+/** Press P to launch the bottom-right pi chat (the companion), D for the left-edge run digest. Owned here
+ *  with the view-mode keys so the whole bottom-left key cluster lives in one handler. */
+export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest }: { chatOpen: boolean; onToggleChat: () => void; digestOpen: boolean; onToggleDigest: () => void }) {
   const { mode, toggle } = useViewMode();
 
   useEffect(() => {
@@ -26,6 +26,7 @@ export function ModeBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggl
       if (el && (el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName))) return;
       const k = e.key.toLowerCase();
       if (k === "p") { e.preventDefault(); onToggleChat(); return; }
+      if (k === "d") { e.preventDefault(); onToggleDigest(); return; }
       const hit = VIEW_MODES.find((m) => m.key === k);
       if (!hit) return;
       e.preventDefault();
@@ -33,7 +34,7 @@ export function ModeBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggl
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, onToggleChat]);
+  }, [toggle, onToggleChat, onToggleDigest]);
 
   return createPortal(
     <div className="ds-modebar-layer">
@@ -52,6 +53,16 @@ export function ModeBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggl
           </button>
         ))}
         <span className="ds-modebar__sep" aria-hidden="true" />
+        <button
+          type="button"
+          className={`ds-mode-btn${digestOpen ? " is-active" : ""}`}
+          aria-pressed={digestOpen}
+          title="Run digest — press D"
+          onClick={onToggleDigest}
+        >
+          <span className="ds-mode-btn__cap" aria-hidden="true">D</span>
+          <span className="ds-mode-btn__label">Digest</span>
+        </button>
         <button
           type="button"
           className={`ds-mode-btn${chatOpen ? " is-active" : ""}`}

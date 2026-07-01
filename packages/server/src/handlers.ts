@@ -129,6 +129,29 @@ export const piflowRunView: Middleware = async (req, res, next) => {
   }
 };
 
+/** `GET /__piflow/run-digest/<run>` — the run-view route's twin: distill the run, then PROJECT it to the
+ *  agent-facing RunDigest (per-node verdicts + cost spine + the ranked anomaly worklist + failure-onset
+ *  localization). This is the run-LEVEL observation lens; run-view stays the wide per-node human view. */
+export const piflowRunDigest: Middleware = async (req, res, next) => {
+  const m = req.url?.match(/^\/__piflow\/run-digest\/([^/?]+)/);
+  if (!m) return next();
+  const run = decodeURIComponent(m[1]);
+
+  const resolved = await resolveRunDir(run);
+  if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered? (piflowctl gui / npm run data:index)` });
+  const { runDir, workspaceRoot, historyDirs } = resolved;
+
+  const obs = findCore("observe/index.js");
+  if (!obs) return sendJson(res, 500, { error: "@piflow/core observe dist not found — run: npm run build (at repo root)" });
+  try {
+    const { buildRunView, projectRunDigest } = await import(pathToFileURL(obs).href);
+    const { view } = buildRunView(runDir, { historyDirs, workspaceRoot });
+    sendJson(res, 200, projectRunDigest(view));
+  } catch (e) {
+    sendJson(res, 500, { error: `run-digest build failed for "${run}" (${String(e)})` });
+  }
+};
+
 // A moa panel is REQUIRED; when neither the node nor ~/.piflow/fusion.json supplies one, the preview/save
 // falls back to these tiers so the toggle is demoable with zero config.
 const DEMO_PANEL = ["fast", "balanced", "deep"];
@@ -596,6 +619,7 @@ export const apiHandlers: Middleware[] = [
   piflowGlobalIndex,
   piflowRunStream,
   piflowRunView,
+  piflowRunDigest,
   piflowPreview,
   piflowSaveRun,
   piflowFile,
