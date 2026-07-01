@@ -12,6 +12,7 @@ import { join, isAbsolute, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, sendJson, type Middleware, type Next } from "./resolve.js";
 import { piflowStartRun, makePiflowStartRun } from "./start-run.js";
+import { piflowMigrate, makePiflowMigrate } from "./migrate.js";
 
 /** `GET /__piflow/{index,products}.json` — LIVE scoped snapshot (recomputed per request). */
 export const piflowGlobalIndex: Middleware = async (req, res, next) => {
@@ -588,6 +589,7 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
  *  path is matched first; the rest are the read/observe/control surface lifted from the Vite middleware. */
 export const apiHandlers: Middleware[] = [
   piflowStartRun,
+  piflowMigrate,
   piflowGlobalIndex,
   piflowRunStream,
   piflowRunView,
@@ -621,7 +623,11 @@ export function chain(handlers: Middleware[]): Middleware {
  *  `piflowStartRun` from `apiHandlers`, preserving today's local behavior for the GUI's Vite middleware. */
 export function createApiMiddleware(extra: Middleware[] = [], allowedTemplates?: string[] | null): Middleware {
   const handlers = allowedTemplates?.length
-    ? apiHandlers.map((h) => (h === piflowStartRun ? makePiflowStartRun(allowedTemplates) : h))
+    ? apiHandlers.map((h) =>
+        h === piflowStartRun ? makePiflowStartRun(allowedTemplates)
+        : h === piflowMigrate ? makePiflowMigrate(allowedTemplates) // adopt spawns a runner — same allow-list
+        : h,
+      )
     : apiHandlers;
   return chain([...extra, ...handlers]);
 }

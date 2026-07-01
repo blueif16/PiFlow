@@ -32,7 +32,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Resolve a request body to an absolute template dir (either `templateDir` directly, or `product`[+`workflow`]
  *  looked up in the LIVE index → its namespace's `templatePath` → the containing template dir). */
-async function resolveTemplateDir(body: StartBody): Promise<{ ok: true; templateDir: string; productRoot: string | null } | { ok: false; error: string }> {
+export async function resolveTemplateDir(body: StartBody): Promise<{ ok: true; templateDir: string; productRoot: string | null } | { ok: false; error: string }> {
   if (body.templateDir) {
     const dir = path.resolve(body.templateDir);
     if (!existsSync(path.join(dir, "meta.json"))) return { ok: false, error: `templateDir "${dir}" has no meta.json — not a piflow template dir` };
@@ -69,7 +69,7 @@ export function isTemplateAllowed(templateDir: string, allowlist: string[] | und
 }
 
 /** The canonical runs home for a template dir (`.piflow/<wf>/template` ⇒ `.piflow/<wf>/runs`), else null. */
-function runsHomeFor(templateDir: string): string | null {
+export function runsHomeFor(templateDir: string): string | null {
   return path.basename(templateDir) === "template" ? path.join(path.dirname(templateDir), "runs") : null;
 }
 
