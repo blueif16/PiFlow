@@ -35,7 +35,7 @@ line, never a fixed number. Enumerate the independent units FIRST, then map each
 
 | role | base agent (`--agent-type`) | extra tools (`--tool …`) | skill |
 |---|---|---|---|
-| each worker (skeptical reviewer / facet judge) | **reviewer** | — (preset carries `read write submit_result`) | — |
+| each worker (skeptical reviewer / facet judge) | **reviewer** | `--tool write` (add persist) | — |
 | each worker (open-web fact/market shard) | **market-research** | — (preset carries its four fs/search tools) | preset's `multi-source-research` |
 | each worker (generic bounded task shard) | **general-purpose** | — (preset carries `read write edit bash submit_result`) | — |
 | reduce — mode `merge` | **synthesizer** | — | — |
@@ -45,6 +45,12 @@ Pick ONE worker row per stamp (all N workers share one preset — same kind of w
 node with `--agent-type <id>` — one flag folds the preset's tools + skill + the `agentType` label via `mergePreset`;
 the role-prompt is inherited BY REFERENCE at render, so you do NOT prepend it. Each node's `prompt.md` holds ONLY the
 shard/mode task (which shard this worker owns; which reduce mode + tie-break rule).
+
+The `reviewer` preset carries `read submit_result` (read-only — it reports, it does not edit), so a reviewer worker
+ADDS `--tool write` to persist its verdict JSON (`<ns>/<worker>.json`) — exactly the pattern
+`research-synthesize-author` uses to bind its read-only `plan` lane (`plan` is read-only by default — ADD `--tool
+write` so synthesize can persist). A worker that omits `--tool write` stamps a read-only node that cannot emit its
+required artifact.
 
 ## Per-node I/O seam (read-this → write-that; shape = match the CONSUMER)
 
@@ -79,8 +85,12 @@ end-to-end.
 
 `templates/quality/verify/` — the G3 quality sub-DAG (`adjudicate` mode, N=2), realizing every rule above:
 - **workers** `review-a` + `review-b` — `deps: []`, disjoint `owns` `verify/review-a.json` / `verify/review-b.json`,
-  reviewer tools `read write submit_result` (no bash), each emits strict JSON `{ verdict, confidence, issues[],
-  strengths[], summary }`. Neither reads the other.
+  each emits strict JSON `{ verdict, confidence, issues[], strengths[], summary }`. Neither reads the other. These
+  golden nodes PREDATE the presets: `agentType` is `null` and their tools are HAND-WIRED
+  `tools.allow: [read, write, submit_result]` (deny `bash`). Binding `--agent-type reviewer --tool write` yields the
+  SAME tool set (`reviewer` carries `read submit_result`, `--tool write` adds the persist), so a fresh stamp is
+  functionally equivalent to this golden; only the `agentType` label differs — the future `blueprint` verb will
+  align it.
 - **reduce** `consensus` — `deps: [review-a, review-b]`, `readScope {{RUN}}`, owns `verify/verdict.json`, emits
   `{ verdict, agreement, blocking_issues[], dissent, summary }` by a named majority/corroborated-blocking rule.
 - Boundary input `{{RUN}}/verify/subject.md` (+ optional `criteria.md`); boundary output `{{RUN}}/verify/verdict.json`.
