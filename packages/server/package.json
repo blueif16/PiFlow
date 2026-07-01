@@ -1,6 +1,6 @@
 {
   "name": "@piflow/server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "Pi Flow control server — the hostable control plane over the .pi/ run layout. Serves the GUI (gui/dist) + the control API (live run status via SSE, run-view/file/tree read-back, checkpoint reply, node write-back, the two-way `pi --mode rpc` console, and POST /api/runs/start to launch a run). The SAME handlers back the Vite dev middleware and `piflowctl serve` (one implementation, no fork), so the control plane behaves identically on a laptop or a cloud VM.",
   "license": "MIT",

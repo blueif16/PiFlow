@@ -1,16 +1,20 @@
 {
   "name": "@piflow/tui",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "Pi Flow terminal monitor — the ink DAG/per-node run viewer, reading the .pi/ run layout.",
   "license": "MIT",
-  "bin": { "piflow-tui": "./pi-tui.mjs" },
+  "bin": {
+    "piflow-tui": "./pi-tui.mjs"
+  },
   "scripts": {
     "start": "node pi-tui.mjs",
     "demo:build": "vite build --config vite.config.demo.ts"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@piflow/core": "workspace:*",
     "htm": "^3.1.1",
