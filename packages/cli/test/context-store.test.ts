@@ -172,12 +172,13 @@ describe('host/worker cascade (pure)', () => {
     expect(defaultWorkerFor('railway', new Set())).toBe('e2b');
   });
 
-  it('isCloudEntry: explicit host wins; else loopback→local, remote→cloud, unparseable→local', () => {
-    expect(isCloudEntry({ baseUrl: 'http://127.0.0.1:5273' })).toBe(false);
-    expect(isCloudEntry({ baseUrl: 'http://localhost:9000' })).toBe(false);
+  it('isCloudEntry: baseUrl is authoritative (== the local serve ⇒ local); the host label is ignored', () => {
+    // baseUrl IS the local serve → local, no matter the host LABEL (which is display/provisioning only).
+    expect(isCloudEntry({ baseUrl: LOCAL_BASE_URL })).toBe(false);
+    expect(isCloudEntry({ baseUrl: LOCAL_BASE_URL, host: 'railway' })).toBe(false); // host label does NOT flip cloud-ness
+    // Any baseUrl that is NOT the exact local serve is a remote control plane.
     expect(isCloudEntry({ baseUrl: 'https://app.up.railway.app' })).toBe(true);
-    expect(isCloudEntry({ baseUrl: 'http://127.0.0.1:5273', host: 'railway' })).toBe(true); // explicit host overrides a loopback url
-    expect(isCloudEntry({ baseUrl: 'not a url' })).toBe(false);
+    expect(isCloudEntry({ baseUrl: 'http://localhost:9000' })).toBe(true); // different host:port than the local serve
   });
 
   it('resolveWorker: an explicit COMPATIBLE worker is kept (no promotion)', () => {

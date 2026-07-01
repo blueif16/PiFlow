@@ -29,7 +29,6 @@ import {
   useContext,
   resolveWorker,
   isCloudEntry,
-  isWorkerCompatible,
   configuredWorkers,
   HOST_KINDS,
   WORKER_KINDS,
@@ -45,11 +44,6 @@ import {
 function fail(msg: string): void {
   process.stderr.write(`piflowctl context: ${msg}\n`);
   process.exitCode = 1;
-}
-
-/** The effective host kind for a context: the explicit `host`, else a cloud/local label inferred from baseUrl. */
-function effectiveHost(entry: ContextEntry): HostKind {
-  return entry.host ?? (isCloudEntry(entry) ? 'selfhost' : LOCAL_CONTEXT);
 }
 
 /** How to PROVISION a control plane of this kind — the setup-on-miss guidance the CLI prints (never a bare error). */
@@ -81,10 +75,12 @@ function workerSetupHint(kind: WorkerKind): string {
   }
 }
 
-/** The `[host · worker]` tag for a context row (worker RESOLVED through the cascade against the current env). */
+/** The `[host · worker]` tag for a context row (worker RESOLVED through the cascade). The host is the explicit
+ *  `host` label, else a NEUTRAL cloud/local derived from the baseUrl (never a bogus specific kind). */
 function hostWorkerTag(entry: ContextEntry): string {
   const { worker } = resolveWorker(entry, configuredWorkers(process.env));
-  return `[${effectiveHost(entry)} · ${worker}]`;
+  const host = entry.host ?? (isCloudEntry(entry) ? 'cloud' : LOCAL_CONTEXT);
+  return `[${host} · ${worker}]`;
 }
 
 /** Render the `ls` table: each name + baseUrl, the resolved-active one marked `*`. */
@@ -168,14 +164,20 @@ export async function runContextCli(argv: string[]): Promise<void> {
       const active = resolveActive({ flagContext });
       const entry = file.contexts[active];
       if (!entry) return fail(`active context "${active}" is not defined (add it: piflowctl context add ${active} --url <baseUrl>)`);
+      // A context that ALREADY runs a remote plane (baseUrl is truth) can't be relabelled `local` — that would
+      // make the display/cascade say local while every run still HTTP-hops to the remote serve. Reject it.
+      if (kind === LOCAL_CONTEXT && isCloudEntry(entry)) {
+        return fail(`context "${active}" points at a remote serve (${entry.baseUrl}) — it can't be relabelled local; use \`piflowctl context use local\` or \`context rm ${active}\`.`);
+      }
+      // `host` is a LABEL; it does NOT change cloud-ness (that's the baseUrl). A cloud label on the loopback
+      // `local` context is a provisioning INTENT — the run stays local until `cloud up` gives it a real baseUrl,
+      // so the cascade won't wrongly promote to a cloud worker. resolveWorker re-derives off the (unchanged) baseUrl.
       entry.host = kind as HostKind;
-      // If the stored worker is now incompatible (a local worker under a cloud plane), drop it → cascade re-derives.
-      if (entry.worker && !isWorkerCompatible(kind as HostKind, entry.worker)) delete entry.worker;
       await writeContexts(file);
-      const { worker, promoted } = resolveWorker(entry, configuredWorkers(process.env));
-      let msg = `context "${active}" host → ${kind}; workers → ${worker}${promoted ? " (promoted from local)" : ''}`;
-      // SETUP-ON-MISS: a cloud host whose endpoint isn't provisioned yet (baseUrl still local/placeholder).
-      if (kind !== LOCAL_CONTEXT && !isCloudEntry({ baseUrl: entry.baseUrl })) msg += `\n  set it up: ${hostSetupHint(kind as HostKind)}`;
+      const { worker } = resolveWorker(entry, configuredWorkers(process.env));
+      let msg = `context "${active}" host → ${kind}; workers → ${worker}`;
+      // SETUP-ON-MISS: a cloud host label whose endpoint isn't provisioned yet (baseUrl still the local placeholder).
+      if (kind !== LOCAL_CONTEXT && !isCloudEntry(entry)) msg += ` (not provisioned)\n  set it up: ${hostSetupHint(kind as HostKind)}`;
       process.stdout.write(msg + '\n');
       return;
     }
@@ -189,9 +191,11 @@ export async function runContextCli(argv: string[]): Promise<void> {
       const active = resolveActive({ flagContext });
       const entry = file.contexts[active];
       if (!entry) return fail(`active context "${active}" is not defined (add it: piflowctl context add ${active} --url <baseUrl>)`);
-      // COMPAT: reject an explicit local worker under a cloud plane (the cascade auto-promotes; an explicit ask errors).
-      if (!isWorkerCompatible(effectiveHost(entry), kind as WorkerKind)) {
-        return fail(`context "${active}" runs a cloud control plane, which can't reach a "${kind}" worker — pick a cloud worker (${CLOUD_WORKERS.join(' or ')}).`);
+      // COMPAT: a context that ACTUALLY runs a remote plane (baseUrl) can't reach a `local` worker — reject the
+      // explicit ask (the cascade auto-promotes; an explicit pick errors). Keyed on `isCloudEntry` (baseUrl) — the
+      // SAME predicate as run-routing — so it can never disagree with where the run goes.
+      if (isCloudEntry(entry) && kind === LOCAL_CONTEXT) {
+        return fail(`context "${active}" runs a remote control plane, which can't reach a "local" worker — pick a cloud worker (${CLOUD_WORKERS.join(' or ')}).`);
       }
       entry.worker = kind as WorkerKind;
       await writeContexts(file);

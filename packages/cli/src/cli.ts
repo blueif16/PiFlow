@@ -75,9 +75,12 @@ USAGE
                                             built GUI) on THIS machine — the \`local\` context's server, the SAME
                                             binary a cloud control VM runs. Long-lived; Ctrl-C stops. Serves gui/dist
                                             (build it: cd gui && npm run build) + POST /api/runs/start.
-  piflowctl context [use <name> | ls | add <name> --url <baseUrl> [--token <t>] | rm <name> | current]
+  piflowctl context [use <name> | host use <kind> | worker use <kind> | ls | add <name> --url <baseUrl>
+                    [--token <t>] | rm <name> | current]
                                             switch the CLI/GUI between named control-plane endpoints
-                                            (local ⇄ cloud \`serve\`), stored in ~/.piflow/contexts.json.
+                                            (local ⇄ cloud \`serve\`), stored in ~/.piflow/contexts.json. Two
+                                            axes: \`host\` (where the plane runs) + \`worker\` (where nodes run =
+                                            the sandbox); \`worker use <local|e2b|daytona>\` replaces \`--sandbox\`.
                                             Active-context ladder: --context flag > PIFLOW_CONTEXT env >
                                             the \`use\` pointer > the implicit \`local\` (${'http://127.0.0.1:5273'}).
   piflowctl cloud   up [--host <railway|fly|selfhost|docker>] [--app <n>] [--public-url <url>] [--provider <gw>]

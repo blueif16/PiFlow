@@ -184,15 +184,16 @@ export function isCloudHost(host: HostKind): boolean {
   return host !== LOCAL_CONTEXT;
 }
 
-/** True when a context runs a remote control plane. Explicit `host` wins; else a non-loopback baseUrl ⇒ cloud. */
+/**
+ * True when a context runs a REMOTE control plane. `baseUrl` is AUTHORITATIVE — this is the SAME notion the run
+ * router (`resolveRemote`) and `migrate` (`isLocalEntry`) key on, so the worker cascade can NEVER disagree with
+ * where the run actually goes (the bug a divergent predicate would cause: a cloud worker cascaded onto a run
+ * that then executes on the local path). `host` is a display/provisioning LABEL only (kept consistent by
+ * `cloud up`, which sets both); it does NOT independently flip cloud-ness — a not-yet-provisioned
+ * `context host use railway` on the loopback `local` context STAYS local until `cloud up` gives it a real baseUrl.
+ */
 export function isCloudEntry(entry: ContextEntry): boolean {
-  if (entry.host) return isCloudHost(entry.host);
-  try {
-    const h = new URL(entry.baseUrl).hostname;
-    return !(h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '0.0.0.0');
-  } catch {
-    return false; // an unparseable baseUrl is treated as local (the safe, no-remote default).
-  }
+  return entry.baseUrl !== LOCAL_BASE_URL;
 }
 
 /** The low-level compat rule keyed on cloud-ness: a cloud plane can't drive the `local` worker; local drives any. */

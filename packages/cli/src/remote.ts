@@ -11,7 +11,7 @@
 // drive a fake stream body with NO real network.
 
 import type { RunModel, RunUpdate } from '@piflow/core';
-import { readContexts, resolveActive, LOCAL_CONTEXT, LOCAL_BASE_URL, type ContextEntry } from './context-store.js';
+import { readContexts, resolveActive, LOCAL_CONTEXT, isCloudEntry, type ContextEntry } from './context-store.js';
 
 /**
  * Resolve the active context (the `--context` flag > `PIFLOW_CONTEXT` > persisted `current` > `local` ladder)
@@ -29,8 +29,9 @@ export function resolveRemote(flagContext?: string): { name: string; entry: Cont
       `piflowctl: unknown context "${name}" (set it with: piflowctl context add ${name} --url <baseUrl>). Known: ${Object.keys(readContexts().contexts).sort().join(', ')}`,
     );
   }
-  // A named context that still points at the local serve is treated as local (no HTTP hop needed).
-  if (entry.baseUrl === LOCAL_BASE_URL) return null;
+  // A named context that still points at the local serve is treated as local (no HTTP hop needed). Uses the
+  // SHARED `isCloudEntry` predicate so run-routing and the worker cascade can never disagree (see context-store).
+  if (!isCloudEntry(entry)) return null;
   return { name, entry };
 }
 

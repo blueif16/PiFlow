@@ -17,10 +17,13 @@ its `baseUrl`/`token`) and WHERE the workers run (`worker` = each node's `pi`). 
 **one canonical noun (`context`) with two fields**, not three peer nouns — you live in `context use
 <name>` and the fields are the escape hatch. The axes are correlated but not identical, which is WHY they
 can't collapse to one provider list: a CLOUD control plane physically can't reach your laptop's local
-sandbox, so the worker CASCADES off the host. The cascade is pure: `isCloudEntry` (explicit `host` wins,
-else a non-loopback baseUrl ⇒ cloud) → `isWorkerCompatible` (a cloud plane rejects the `local` worker) →
+sandbox, so the worker CASCADES off the host. The cascade is pure: `isCloudEntry` (baseUrl is
+AUTHORITATIVE — `baseUrl === the local serve ⇒ local`, else remote; `host` is a display/provisioning label
+that does NOT flip cloud-ness) → `isWorkerCompatible` (a cloud plane rejects the `local` worker) →
 `defaultWorkerFor` (the top-PRECEDENCE cloud worker that is CONFIGURED, `e2b > daytona`; `local` for a
-local host) → `resolveWorker` (an explicit compatible worker is kept, else PROMOTED). `docker` is
+local host) → `resolveWorker` (an explicit compatible worker is kept, else PROMOTED). `isCloudEntry` is
+the SAME predicate `resolveRemote` (run routing) and `isLocalEntry` (migrate) key on — ONE source of truth
+for remote-ness, so the cascade can never disagree with where the run actually goes. `docker` is
 DEFERRED from the cascade (its name is ambiguous — local container vs docker-hosted plane) though
 `--sandbox docker` still works per-run. The CLI (`runContextCli`) makes `use` print the cascaded worker
 + any promotion + SETUP-ON-MISS guidance (a not-yet-provisioned host or an unconfigured cloud worker
@@ -38,7 +41,7 @@ DECLARE (the two-axis schema + cascade constants)
 - `packages/cli/src/context-store.ts:62` — `ContextEntry` — the persisted context: `baseUrl`/`token` + optional `host` + `worker` (two axes, back-compat optional)
 - `packages/cli/src/context-store.ts:40` — `CLOUD_WORKERS` / `:42` `WORKER_PRECEDENCE` — cascade order `e2b > daytona > local` (docker deferred); ORDER is the contract
 CASCADE (pure rules — the load-bearing logic)
-- `packages/cli/src/context-store.ts:188` — `isCloudEntry()` — explicit `host` wins; else a non-loopback baseUrl ⇒ cloud
+- `packages/cli/src/context-store.ts:195` — `isCloudEntry()` — baseUrl-authoritative: `!== LOCAL_BASE_URL` ⇒ remote; `host` is a label, ignored — the SHARED predicate resolveRemote/isLocalEntry route on
 - `packages/cli/src/context-store.ts:211` — `isWorkerCompatible()` — a cloud plane can't drive the `local` worker; local drives any
 - `packages/cli/src/context-store.ts:220` — `defaultWorkerFor()` — top-precedence CONFIGURED cloud worker (or top as a setup-on-miss signal)
 - `packages/cli/src/context-store.ts:229` — `resolveWorker()` — explicit-compatible kept, else promoted; returns `{worker, promoted, cloud}`
@@ -59,7 +62,10 @@ TERMINAL (the merge — context worker IS the sandbox)
 anchors ✓ (opened + verified) · scope = the seeds above · pure cascade + the merge are unit-tested
 (`packages/cli/test/context-store.test.ts`, `context.test.ts`, `run.test.ts` `resolveRunSandbox`) and
 mutation-verified (compat flip, precedence flip, cascade-branch flip all go RED). re-derive when the
-seeds change. DRIFT NOTE: `docker` is intentionally OUT of `WORKER_PRECEDENCE`/`WorkerKind` (ambiguous
+seeds change. ONE-PREDICATE NOTE: the run-routing gate (`remote.ts:resolveRemote`) and
+`migrate.ts:isLocalEntry` now DELEGATE to `isCloudEntry`, so there is a SINGLE remote-ness predicate — a
+divergence here previously routed a cloud-worker cascade onto a run that then executed on the local path.
+DRIFT NOTE: `docker` is intentionally OUT of `WORKER_PRECEDENCE`/`WorkerKind` (ambiguous
 local-vs-cloud) though `--sandbox docker` remains a valid per-run override. The `local` worker's actual
 OS jail is owned by [[sandbox]]; the `e2b`/`daytona` cloud workers a cascade selects are owned by
 [[cloud-backends]]; the `--host` provisioning pathways are [[cloud-backends]] + `packages/cli/src/hosts/`.

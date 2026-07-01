@@ -32,7 +32,7 @@ import {
   resolveActive,
   writeContexts,
   useContext,
-  LOCAL_BASE_URL,
+  isCloudEntry,
   type ContextEntry,
 } from './context-store.js';
 
@@ -47,9 +47,10 @@ export function planMigration(sourceLocal: boolean, targetLocal: boolean): Migra
   return sourceLocal ? 'local-to-local' : 'remote-to-remote';
 }
 
-/** A context entry points at the local serve (or is the implicit `local`) ⇒ operate on the filesystem, not HTTP. */
+/** A context entry points at the local serve (or is the implicit `local`) ⇒ operate on the filesystem, not HTTP.
+ *  Uses the SHARED `isCloudEntry` predicate so migrate, run-routing, and the worker cascade never disagree. */
 export function isLocalEntry(entry: ContextEntry | undefined): boolean {
-  return !entry || entry.baseUrl === LOCAL_BASE_URL;
+  return !entry || !isCloudEntry(entry);
 }
 
 // ── local fleet lookups (resolve a run id / a template on THIS host) ────────────────────────────────

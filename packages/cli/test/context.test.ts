@@ -70,6 +70,15 @@ describe('piflowctl context worker use', () => {
     expect(out).toMatch(/set it up/);
     expect(out).toMatch(/E2B_API_KEY/);
   });
+
+  it('worker use local on a remote-baseUrl context is rejected (compat keys on baseUrl, not the host label)', async () => {
+    // No `host` field: compat is keyed on isCloudEntry (baseUrl), NOT the label — a remote baseUrl still rejects `local`.
+    await writeContexts(useContext(addContext(readContexts(), 'cloud', { baseUrl: 'https://x.up.railway.app' }), 'cloud'));
+    process.exitCode = 0;
+    await runContextCli(['worker', 'use', 'local']);
+    expect(process.exitCode).toBe(1); // rejected on baseUrl alone
+    expect(readContexts().contexts.cloud.worker).toBeUndefined(); // NOT persisted
+  });
 });
 
 describe('piflowctl context use (the cascade)', () => {
@@ -97,13 +106,25 @@ describe('piflowctl context use (the cascade)', () => {
 });
 
 describe('piflowctl context host use', () => {
-  it('sets the host on the active context and drops a now-incompatible stored worker', async () => {
-    // local context with a local worker; move it to a cloud host → the local worker must be dropped/promoted.
+  it('records a cloud host LABEL on the loopback local context but STAYS local (not provisioned)', async () => {
+    // A cloud host LABEL on the loopback `local` context is a provisioning INTENT, not a cloud switch: baseUrl
+    // is authoritative, so the context stays LOCAL — the worker is NOT dropped and the CLI prints a setup hint.
     await writeContexts(addContext(readContexts(), 'local', { baseUrl: 'http://127.0.0.1:5273', worker: 'local' }));
     const out = await capture(['host', 'use', 'railway']);
     const local = readContexts().contexts.local;
-    expect(local.host).toBe('railway');
-    expect(local.worker).toBeUndefined(); // incompatible local worker dropped → cascade re-derives
-    expect(out).toMatch(/workers → e2b/);
+    expect(local.host).toBe('railway'); // the LABEL is recorded
+    expect(local.worker).toBe('local'); // baseUrl unchanged (still local) → the local worker is KEPT, not dropped
+    expect(out).toMatch(/workers → local/); // cascade re-derives off the unchanged local baseUrl
+    expect(out).toMatch(/not provisioned/); // setup-on-miss: the cloud label has no real baseUrl yet
+  });
+
+  it('REJECTS relabelling a REMOTE context as local (baseUrl is authoritative)', async () => {
+    // A context that ACTUALLY runs a remote plane (remote baseUrl) can't be relabelled `local` — that would make
+    // the display/cascade say local while every run still HTTP-hops to the remote serve. Must fail, host unchanged.
+    await writeContexts(useContext(addContext(readContexts(), 'cloud', { baseUrl: 'https://x.up.railway.app' }), 'cloud'));
+    process.exitCode = 0;
+    await runContextCli(['host', 'use', 'local']);
+    expect(process.exitCode).toBe(1); // rejected
+    expect(readContexts().contexts.cloud.host).not.toBe('local'); // host NOT changed to local (unchanged/undefined)
   });
 });
