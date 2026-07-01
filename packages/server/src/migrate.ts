@@ -15,7 +15,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { requestFreeze, packRunDir, unpackRunDir } from "@piflow/core";
+import { requestFreeze, packRunDir, unpackRunDir, readRunJson } from "@piflow/core";
 import { findUp, resolveRunDir, sendJson, type Middleware } from "./resolve.js";
 import { resolveTemplateDir, runsHomeFor, isTemplateAllowed, buildStartRunArgv, type StartBody } from "./start-run.js";
 
@@ -82,6 +82,10 @@ export function makePiflowMigrate(allowedTemplates?: string[] | null): Middlewar
         workflow: url.searchParams.get("workflow") ?? undefined,
         // Resume LOCAL-in-this-host by default — the point of migrating is to run on the target host.
         sandbox: url.searchParams.get("sandbox") ?? "local",
+        // The source run's launch config rides the query when the CLI orchestrates the migration (recovered
+        // from the source RunModel); a bare HTTP adopt omits them — recovered from the unpacked run.json below.
+        provider: url.searchParams.get("provider") ?? undefined,
+        model: url.searchParams.get("model") ?? undefined,
       };
       const tpl = await resolveTemplateDir(body);
       if (!tpl.ok) return sendJson(res, 400, { error: tpl.error });
@@ -93,6 +97,14 @@ export function makePiflowMigrate(allowedTemplates?: string[] | null): Middlewar
       let bundle: Buffer;
       try { bundle = await readBodyBuffer(req); } catch (e) { return sendJson(res, 400, { error: `bundle read failed (${String(e)})` }); }
       try { await unpackRunDir(bundle, destRunDir); } catch (e) { return sendJson(res, 400, { error: `bundle unpack failed (${String(e)})` }); }
+
+      // PRESERVE the source run's launch config: recover provider/model from the just-unpacked `.pi/run.json`
+      // (RunStatus.provider/.model) for any the query didn't carry — so the migrated tail keeps the source's
+      // model gateway + model instead of resuming on the runner defaults ("cp"). Only these are persisted at
+      // run start; --thinking and per-node --executor are NOT, so they cannot be recovered here.
+      const runJson = await readRunJson(destRunDir);
+      if (!body.provider && runJson?.provider) body.provider = runJson.provider;
+      if (!body.model && runJson?.model) body.model = runJson.model;
 
       // Spawn the detached resume — same argv builder as start-run, keyed to the SAME run id so its journal
       // (just unpacked) drives reuse of the completed nodes and runs only the tail. No --from needed.

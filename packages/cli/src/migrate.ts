@@ -90,6 +90,14 @@ async function resolveLocalTemplateDefault(product: string, workflow?: string): 
 
 // ── injectable seams (real by default; a test swaps them for fakes — no network / spawn) ───────────
 
+/** The source run's RECOVERABLE launch config, read from its RunModel (`.pi/run.json`). Only what the run
+ *  persists is recoverable: provider (the model gateway) + model. `--thinking` and the per-node `--executor`
+ *  override are NOT persisted at run start, so they CANNOT be recovered here (see the resume-config gap). */
+export interface ResumeLaunch {
+  provider?: string;
+  model?: string | null;
+}
+
 export interface MigrateDeps {
   fetchImpl?: typeof fetch;
   requestFreeze?: (runDir: string) => Promise<void>;
@@ -100,8 +108,10 @@ export interface MigrateDeps {
   resolveLocalTemplate?: (product: string, workflow?: string) => Promise<{ templateDir: string; productRoot: string | null } | null>;
   /** Fetch a remote source run's model (the SSE snapshot). Default: remote.js `remoteRunModel`. */
   remoteRunModelFn?: (entry: ContextEntry, run: string, opts: { fetchImpl?: typeof fetch }) => Promise<RunModel>;
-  /** Spawn the detached local resume runner. Default: `piflowctl run <tpl> --run <id> --sandbox <s>`. */
-  spawnResume?: (templateDir: string, run: string, sandbox: string, cwd: string) => void;
+  /** Spawn the detached local resume runner. Default: `piflowctl run <tpl> --run <id> --sandbox <s>`.
+   *  `launch` carries the source run's recovered launch config (provider/model, from its RunModel) so the
+   *  migrated tail keeps the source's model gateway + model instead of falling back to the runner defaults. */
+  spawnResume?: (templateDir: string, run: string, sandbox: string, cwd: string, launch?: ResumeLaunch) => void;
   useContextFn?: (target: string) => Promise<void>;
   print?: (s: string) => void;
   sleep?: (ms: number) => Promise<void>;
@@ -111,8 +121,11 @@ const authHeaders = (token?: string): Record<string, string> => (token ? { Autho
 const base = (entry: ContextEntry): string => entry.baseUrl.replace(/\/$/, '');
 
 /** The default detached local resume — mirrors the server's adopt spawn (crash-durable via the journal). */
-function spawnResumeDefault(templateDir: string, run: string, sandbox: string, cwd: string): void {
+function spawnResumeDefault(templateDir: string, run: string, sandbox: string, cwd: string, launch?: ResumeLaunch): void {
   const argv = ['run', templateDir, '--run', run, '--sandbox', sandbox];
+  // Preserve the source run's launch config (only provider/model are persisted, so only those are recoverable).
+  if (launch?.provider) argv.push('--provider', launch.provider);
+  if (launch?.model) argv.push('--model', launch.model);
   // PIN the resume to the LOCAL context so it runs HERE and never redirects: `piflowctl run` redirects to a
   // REMOTE active context (P7), and at this point in a DOWNLOAD the persisted `current` is still the remote
   // source (the `context use <target>` switch runs AFTER this spawn) — so an unpinned resume would bounce the
@@ -191,9 +204,11 @@ export async function migrateRun(opts: MigrateOpts, deps: MigrateDeps = {}): Pro
   const modelOf = async (): Promise<RunModel> =>
     sourceLocal ? readRunModel(localRef!.runDir) : remoteRunModelFn(sourceEntry!, opts.run, { fetchImpl });
   print('  waiting for the source to park at a node boundary…');
+  // Capture the frozen source model so the resume can recover its persisted launch config (provider/model).
+  let frozenModel: RunModel | null = null;
   for (;;) {
     const m = await modelOf();
-    if (m.frozen) break;
+    if (m.frozen) { frozenModel = m; break; }
     if (m.done) {
       print(`  the run already finished on ${sourceName} (ok=${m.ok}) — nothing to migrate.`);
       return direction;
@@ -218,6 +233,9 @@ export async function migrateRun(opts: MigrateOpts, deps: MigrateDeps = {}): Pro
   const product = opts.product ?? localRef?.product ?? opts.workflow ?? opts.run;
   const workflow = opts.workflow ?? localRef?.workflow;
 
+  // The source run's recoverable launch config — only provider/model are persisted in its RunModel.
+  const launch: ResumeLaunch = { provider: frozenModel?.provider, model: frozenModel?.model ?? null };
+
   // ── 3. adopt on the target + resume via the journal ────────────────────────────────────────────
   if (targetLocal) {
     const tpl = await resolveLocalTemplate(product, workflow);
@@ -225,11 +243,15 @@ export async function migrateRun(opts: MigrateOpts, deps: MigrateDeps = {}): Pro
     // `.piflow/<wf>/template` ⇒ runs live at the sibling `.piflow/<wf>/runs/<id>` (the D9 layout the runner resolves).
     const destRunDir = path.join(path.dirname(tpl.templateDir), 'runs', opts.run);
     await unpackRunDir(bundle, destRunDir);
-    spawnResume(tpl.templateDir, opts.run, sandbox, tpl.productRoot ?? process.cwd());
+    spawnResume(tpl.templateDir, opts.run, sandbox, tpl.productRoot ?? process.cwd(), launch);
   } else {
     const qs = new URLSearchParams({ sandbox });
     if (opts.product ?? localRef?.product) qs.set('product', product);
     if (workflow) qs.set('workflow', workflow);
+    // Ride the source run's launch config on the query so the target's adopt threads it onto the resume flags
+    // (the body is the raw gzip bundle). The server also recovers these from the unpacked run.json as a fallback.
+    if (launch.provider) qs.set('provider', launch.provider);
+    if (launch.model) qs.set('model', launch.model);
     const r = await fetchImpl(`${base(targetEntry)}/__piflow/migrate/${encodeURIComponent(opts.run)}/adopt?${qs.toString()}`, {
       method: 'POST', headers: { 'Content-Type': 'application/gzip', ...authHeaders(targetEntry.token) }, body: bundle,
     });

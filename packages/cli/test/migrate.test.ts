@@ -99,6 +99,34 @@ describe('migrateRun — the freeze → bundle → adopt → use orchestration',
     ]);
   });
 
+  it('DOWNLOAD: threads the source run\'s launch config (provider + model) into the resume so the migrated tail keeps them', async () => {
+    await writeContexts(addContext(readContexts(), 'cloud', { baseUrl: 'https://cloud.example', token: 'tok' }));
+    await writeContexts(useContext(readContexts(), 'cloud')); // source = cloud (remote)
+
+    let launch: { provider?: string; model?: string | null } | undefined;
+    let frozenYet = false;
+    const deps: MigrateDeps = {
+      fetchImpl: (async (url: string) => {
+        const u = String(url);
+        if (u.includes('/freeze')) { frozenYet = true; return { ok: true, status: 202 } as Response; }
+        if (u.includes('/bundle')) { return { ok: true, status: 200, async arrayBuffer() { return new Uint8Array([1, 2, 3]).buffer; } } as unknown as Response; }
+        throw new Error(`unexpected fetch ${u}`);
+      }) as unknown as typeof fetch,
+      // The source run model carries its persisted launch config (provider/model) — recovered on freeze-wait.
+      remoteRunModelFn: async () => ({ run: 'r1', done: false, ok: null, frozen: frozenYet, durationMs: null, provider: 'mmgw', model: 'deepseek', stage: null, totals: null, nodes: [], stages: [], edges: [] }),
+      resolveLocalTemplate: async () => ({ templateDir: '/p/.piflow/greet/template', productRoot: '/p' }),
+      unpackRunDir: async () => [],
+      spawnResume: (_tpl, _run, _sandbox, _cwd, l) => { launch = l; },
+      useContextFn: async () => {},
+      print: () => {},
+      sleep: async () => {},
+    };
+
+    await migrateRun({ target: 'local', run: 'r1', product: 'greet' }, deps);
+    expect(launch?.provider).toBe('mmgw'); // the source provider is preserved (regression: resumed on "cp")
+    expect(launch?.model).toBe('deepseek');
+  });
+
   it('if the source already FINISHED before it could freeze, it does not bundle or adopt (nothing to move)', async () => {
     await writeContexts(addContext(readContexts(), 'cloud', { baseUrl: 'https://cloud.example' }));
     const packSpy = vi.fn(async () => Buffer.from('x'));
