@@ -24,7 +24,15 @@ _status: new — no runs recorded yet_
 <!-- what ${id} reliably does now (1–3 lines), updated from traces. -->
 
 ## Known failure modes
-<!-- the generalized LESSON + WHY (not the diff). Reflect on failures, not successes. -->
+<!-- the generalized LESSON + WHY (not the diff). Reflect on failures, not successes.
+     Write each recurring failure as a lesson block in THIS exact shape (the recurrence reader parses it, and
+     the machine \`sig:\` is what flips a residual LAPSE→SKILL once it recurs; a block with no \`sig:\` is skipped):
+       ### <symptom signature>
+       sig: ${id}::<key>          (the machine key = signatureOf output; node::sorted-anomalies|reason)
+       recurrence: <N>            (cross-run count)
+       [[<okf-slice-key>]]        (the code-map slice the fixer reads)
+       **Root:** <why it happens>
+       **Prevention:** <the generalized guard> -->
 
 ## Active invariants
 <!-- hard rules ${id} must keep (e.g. writes only within its owns/readScope). -->

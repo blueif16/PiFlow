@@ -79,6 +79,43 @@ describe('triage — the four-way projector', () => {
     expect(d.needsSignal).toBeTruthy(); // names cross-run recurrence / prose-judge, never mis-attributes SKILL
   });
 
+  it('a RECURRING signature flips LAPSE→SKILL (the recurrence signal is now present)', () => {
+    const scores: NodeScore[] = [{
+      node: 'flaky', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    const recurrence = new Map([
+      ['flaky::failed', { count: 1, lesson: { prevention: 'guard the null case', okfSlice: 'runner' } }],
+    ]);
+    const [d] = triage(
+      scores,
+      digestWith([{ failed: 'flaky', earliestUpstream: 'flaky', viaPath: '', chain: ['flaky'] }]),
+      { recurrence },
+    );
+    expect(d.bucket).toBe('SKILL');
+    expect(d.confidence).toBe('medium');
+    const ev = d.evidence.join('\n');
+    expect(ev).toContain('recurrence:1');
+    expect(ev).toContain('guard the null case');
+    expect(ev).toContain('[[runner]]');
+    expect(d.needsSignal).toBeUndefined(); // the signal is present now — no mis-attribution deferral
+  });
+
+  it('a signature BELOW the recurrence threshold stays LAPSE (count:0)', () => {
+    const scores: NodeScore[] = [{
+      node: 'flaky', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    const recurrence = new Map([['flaky::failed', { count: 0 }]]);
+    const [d] = triage(
+      scores,
+      digestWith([{ failed: 'flaky', earliestUpstream: 'flaky', viaPath: '', chain: ['flaky'] }]),
+      { recurrence },
+    );
+    expect(d.bucket).toBe('LAPSE');
+    expect(d.needsSignal).toBeTruthy();
+  });
+
   it('a failure that originated UPSTREAM (cross-node chain) is ARCH (route up to reconcile)', () => {
     const scores: NodeScore[] = [{
       node: 'downstream', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,

@@ -7,6 +7,8 @@ export { scoreNodes, scoreRun } from './score.js';
 export type { ScoreInput, ScoreRunOpts } from './score.js';
 export { triage } from './triage.js';
 export type { TriageOpts } from './triage.js';
+export { deriveRecurrence, signatureOf } from './recurrence.js';
+export type { RecurrenceIndex, RecurrenceHit } from './recurrence.js';
 export { parseCriteria } from './criteria.js';
 export { readVerifyReport } from './tier1.js';
 export { renderRouting } from './render.js';

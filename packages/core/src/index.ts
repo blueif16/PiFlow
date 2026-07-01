@@ -385,11 +385,12 @@ export type { CodeMapSeedResult } from './code-map.js';
 // outcome/checkable signal) → NodeScore[]; triage projects the four-way worklist (LAPSE/SKILL/FUNCTIONALITY/
 // ARCH); renderRouting emits the proven HERMES-ROUTING.md shape. The fixer/gate/land steps build on this.
 export {
-  scoreNodes, scoreRun, triage, parseCriteria, readVerifyReport, renderRouting,
+  scoreNodes, scoreRun, triage, deriveRecurrence, signatureOf, parseCriteria, readVerifyReport, renderRouting,
 } from './optimize/index.js';
 export type {
   NodeScore, Tier0Signal, Tier1Result, Tier1Check, Tier1Gate, Defect, DefectBucket, Confidence,
   CriteriaEntry, CriteriaFixture, ScoreInput, ScoreRunOpts, TriageOpts, RoutingMeta,
+  RecurrenceIndex, RecurrenceHit,
 } from './optimize/index.js';
 // The FIX→GATE→LAND overlord (§6) + the §5.1 replay+scoring harness + its mining half. Lifted to the ROOT so
 // a PRODUCT-side binding (game-omni's live oracle module) can import makeReplayStages + the replay/driver

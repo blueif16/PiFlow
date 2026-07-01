@@ -11,7 +11,7 @@
 
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { scoreRun as coreScoreRun, triage, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
+import { scoreRun as coreScoreRun, triage, deriveRecurrence, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
 import type { ReplayOracle, CopyScope, Fixer, MineOpts, NodeScore, RunDigest, OptimizeEventSink } from '@piflow/core';
 
 /** The product binding the CLI dynamic-imports — the LIVE stages that stay product-side (out of @piflow/core). */
@@ -112,7 +112,11 @@ export async function runOptimizeFixCli(argv: string[], deps: OptimizeFixDeps = 
   // `--node <substr>` scopes the worklist to one node — the live oracle is expensive (build + browser per
   // candidate) and a degenerate incumbent (e.g. a bound-exhausted stub scoring 0) can make any edit look like
   // an improvement, so a targeted first run is both the cost bound and the safety scope.
-  const defects = triage(scores, digest).filter((d) => (args.node ? d.node.includes(args.node) : true));
+  // Leg-A recurrence (the SKILL signal): resolve the product template from the run dir; deriveRecurrence
+  // degrades to an empty index (⇒ pure LAPSE) if the path/memory is absent, so it can never crash the fix run.
+  const templateDir = path.resolve(args.dir, '..', '..', 'template');
+  const recurrence = deriveRecurrence({ templateDir, nodes: scores.map((s) => s.node) });
+  const defects = triage(scores, digest, { recurrence }).filter((d) => (args.node ? d.node.includes(args.node) : true));
 
   // Compose the binding's LIVE stages with the product-agnostic core driver. The driver decides/bounds/stages.
   const binding = await loadBinding(args.binding);

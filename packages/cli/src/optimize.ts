@@ -9,7 +9,8 @@
 //   default   → the rendered routing markdown (the proven hermes-routing.md shape) on stdout.
 //   --json    → the raw { scores, defects } worklist for an agent/driver to consume directly.
 
-import { scoreRun, triage, renderRouting, type NodeScore, type Defect } from '@piflow/core';
+import path from 'node:path';
+import { scoreRun, triage, deriveRecurrence, renderRouting, type NodeScore, type Defect } from '@piflow/core';
 
 export interface ParsedOptimizeArgs {
   dir: string;
@@ -40,7 +41,12 @@ export async function runOptimizeCli(argv: string[]): Promise<void> {
   }
 
   const { scores, digest } = await scoreRun(args.dir);
-  const defects = triage(scores, digest);
+  // Leg-A recurrence (the SKILL signal): resolve the product template from the run dir
+  // (.piflow/<wf>/runs/<id> → …/template) and read its per-node memory.md. deriveRecurrence degrades to an
+  // empty index (⇒ pure LAPSE, today's behavior) if the path/memory is absent, so a non-canonical dir can't crash.
+  const templateDir = path.resolve(args.dir, '..', '..', 'template');
+  const recurrence = deriveRecurrence({ templateDir, nodes: scores.map((s) => s.node) });
+  const defects = triage(scores, digest, { recurrence });
 
   if (args.json) {
     process.stdout.write(JSON.stringify({ run: digest.run, scores, defects } satisfies { run: string; scores: NodeScore[]; defects: Defect[] }, null, 2) + '\n');
