@@ -20,6 +20,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { globalDir } from '@piflow/core';
 import { runBlueprintStamp } from './blueprint-stamp.js';
+import { runBlueprintInsert } from './blueprint-insert.js';
 
 /** The default home of the materialized blueprint catalog — `<PIFLOW_HOME|~/.piflow>/blueprints/`. Parity
  *  with `defaultAgentsDir()` (`~/.piflow/agents/`); honors `PIFLOW_HOME` via the shared `globalDir()`. */
@@ -155,12 +156,17 @@ export async function runBlueprintCli(argv: string[], deps: BlueprintDeps = {}):
       return runBlueprintStamp(id, flag('plan'), flag('into'), { out, err });
     }
 
-    case 'insert':
-      err(
-        `piflowctl blueprint ${sub}: not yet implemented — see docs/design/blueprint-compose-verb.md.\n` +
-          `  For now, compose by hand following the recipe:  piflowctl blueprint show <id>\n`,
-      );
-      return 1;
+    case 'insert': {
+      // `insert <id> --plan <plan.json> --into <existing-dir> --ns <prefix>` — splice a fragment into an
+      // existing template (stamp ⊆ insert). --ns may be '' (present with an empty value); flag() returns the
+      // value or undefined when the flag is absent, which runBlueprintInsert treats as the empty namespace.
+      const id = rest.find((a) => !a.startsWith('-'));
+      const flag = (name: string): string | undefined => {
+        const i = rest.indexOf(`--${name}`);
+        return i >= 0 ? rest[i + 1] : undefined;
+      };
+      return runBlueprintInsert(id, flag('plan'), flag('into'), flag('ns'), { out, err });
+    }
 
     default:
       err(
