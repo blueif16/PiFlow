@@ -1,0 +1,55 @@
+# Fly.io app config for the piflow cloud control plane (P5).
+#
+# ONE machine runs `piflowctl serve` (see the Dockerfile CMD). Fly terminates TLS and routes
+# https://<app>.fly.dev → the machine's internal_port. The GUI + control API + SSE are all on this
+# one origin, so a piflow `cloud` context points at exactly `https://<app>.fly.dev`.
+#
+# Set `app` to your Fly app name before `fly deploy` (or pass `fly deploy -a <name>`).
+app = "piflow-control-plane"
+primary_region = "iad"   # pick a region near you: fly platform regions
+
+[build]
+  dockerfile = "Dockerfile"
+
+# NON-SECRET config only. These duplicate the image ENV defaults so they're visible/overridable in
+# the Fly dashboard without a rebuild. NEVER put a secret here (it lands in the app manifest, in git,
+# and in `fly config show`). Secrets go through `fly secrets set` (encrypted, injected as env):
+#
+#   REQUIRED SECRETS (set BEFORE first deploy — the server refuses to start without the token):
+#     fly secrets set PIFLOW_TOKEN="$(openssl rand -hex 32)"        # the bearer token the GUI/CLI present
+#     fly secrets set NEBIUS_API_KEY=...          # (or your pi gateway/provider key) — for `executor: pi` nodes
+#     fly secrets set CLAUDE_CODE_OAUTH_TOKEN=...  # for `executor: claude-code` nodes (subscription, NOT an API key)
+#
+#   Generate the Claude OAuth token once on your laptop with:  claude setup-token
+#   NEVER set ANTHROPIC_API_KEY here — a non-empty API key silently outranks the OAuth token in
+#   `claude -p` (per-token API billing); the executor strips it in-jail, but don't hand it in at all.
+[env]
+  PIFLOW_HOST = "0.0.0.0"
+  PIFLOW_PORT = "8080"
+  PIFLOW_SCOPE_ROOTS = "/home/piflow/demo"
+  PIFLOW_ALLOWED_TEMPLATES = "/home/piflow/demo/.piflow/greet/template"
+  PIFLOW_STATIC = "/home/piflow/app/gui/dist"
+
+# The public HTTPS service. internal_port MUST match the serve --port (8080). force_https upgrades
+# every http request to https so the bearer token is never sent in cleartext.
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # A control plane is long-lived + stateful (in-flight runs, SSE streams, on-disk journals). Keep
+  # one machine always up rather than scaling to zero — a stopped machine kills live runs/streams.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    # SSE holds a connection open per watcher; allow plenty of concurrent streams before a second
+    # machine would be considered (we pin min=1/off, so this is just the soft/hard load signal).
+    soft_limit = 200
+    hard_limit = 250
+
+# Size the VM for real work: the node agents (pi / claude -p) run IN this VM under the bwrap jail,
+# so give it more than a toy control plane needs. Bump if runs are heavy.
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2gb"

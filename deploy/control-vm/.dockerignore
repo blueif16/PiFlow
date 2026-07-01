@@ -1,0 +1,43 @@
+# Keep the Docker build context lean. The Dockerfile `COPY . .` ships the whole workspace (it needs
+# gui/scripts/lib + packages/*/src to build), so prune everything the build re-creates or never uses.
+#
+# NOTE: paths are relative to the BUILD CONTEXT root. Run the build with the repo root as context and
+# this file as -f deploy/control-vm/Dockerfile … (or copy this .dockerignore to the repo root as
+# .dockerignore for the build — see README.md).
+
+# VCS + editor
+.git
+.gitignore
+**/.DS_Store
+
+# All node_modules (pnpm reinstalls in the build stage from the lockfile)
+node_modules
+**/node_modules
+
+# Build outputs (the build stage regenerates dist + gui/dist)
+**/dist
+**/build
+gui/dist
+**/*.tsbuildinfo
+
+# Worktrees + other deploy trees (the e2b/daytona images, this dir's own git noise)
+.claude/worktrees
+deploy/e2b/node_modules
+deploy/daytona/node_modules
+
+# Test/coverage/log noise
+**/coverage
+**/.vitest
+**/*.log
+npm-debug.log*
+
+# Local env / secrets — NEVER ship these into an image
+.env
+.env.*
+**/.env
+**/.env.*
+**/.credentials.json
+
+# Runs + collected data (never bake a product's data; see CLAUDE.md data boundaries)
+**/.pi
+**/.piflow/*/runs

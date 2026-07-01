@@ -1,0 +1,6 @@
+{
+  "id": "greet",
+  "name": "greet",
+  "description": "Minimal 1-node template for the LIVE control-VM smoke: launched via POST /api/runs/start, one pi (or claude-code) node writes a single artifact (out/greet/greeting.txt) under --sandbox local (bwrap jail), and the host asserts the run reaches done over SSE and the artifact appears in the run-view. Proves the full serve → start-run → in-VM local-jailed agent → observe path on ONE public HTTPS origin.",
+  "phases": ["compute"]
+}
