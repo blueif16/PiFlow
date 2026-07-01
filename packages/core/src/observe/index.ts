@@ -14,6 +14,10 @@ export { createNodeAccumulator } from './distill.js';
 export type { RichNode, RichTokens, NodeAccumulator } from './distill.js';
 export { buildRunView, previewView } from './runView.js';
 export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens, ScopeBucket, ReadRef, WriteRef, ArtifactRef, NodeAudit, PreviewViewOpts } from './runView.js';
+// The pure per-node DISPLAY derivation (zones/rankings/unified outputs) `buildRunView` stamps on each node
+// as `derived` — the ONE compute site so the GUI + TUI render identical numbers and re-derive nothing.
+export { deriveNode, cacheTone, toolErrorTone, contextTone, timeTone, retriesTone } from './derive.js';
+export type { NodeDerived, DeriveInput, Tone, RankedTool, DerivedOutput } from './derive.js';
 export { loadModelCatalog, contextWindowFor, DEFAULT_CONTEXT_WINDOW } from './models.js';
 export type { ModelCaps, ModelCatalog } from './models.js';
 

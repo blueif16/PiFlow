@@ -15,6 +15,7 @@
 import fssync from 'node:fs';
 import path from 'node:path';
 import { createNodeAccumulator } from './distill.js';
+import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
 import type { NodeConfig, NodeUsage } from '../runner/status.js';
@@ -71,6 +72,9 @@ export interface RunViewNode {
   maxToolRepeat: number;
   /** the tool behind `maxToolRepeat` (null when none). */
   repeatedTool: string | null;
+  /** the per-node DISPLAY projection (zones/rankings/unified outputs), computed ONCE here so the GUI +
+   *  TUI render `derived.*` verbatim and never re-derive a threshold. See ./derive.ts. */
+  derived?: NodeDerived;
   summary?: string;
   issues?: string[];
   stageIndex?: number;
@@ -314,7 +318,7 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
     const checkpoint = checkpointViewFrom(readMarkerSync(id), ckJournal[id]) ?? undefined;
     const status = checkpoint && checkpoint.status === 'pending' ? 'awaiting-input' : rec.status;
 
-    nodes.push({
+    const node: RunViewNode = {
       id, label: rec.label || id, phase, status,
       ...(rec.agentType ? { agentType: rec.agentType } : {}), // (G6) verbatim passthrough → GUI icon
       ...(rec.config ? { config: rec.config } : {}), // (SKIN) curated config slice → GUI cloud skin
@@ -328,7 +332,11 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       modelCalls: spineModelCalls, maxToolRepeat: rich.maxToolRepeat, repeatedTool: rich.repeatedTool,
       summary: rec.summary, issues: rec.issues || [],
       ...(checkpoint ? { checkpoint } : {}),
-    });
+    };
+    // Compute the DISPLAY zones ONCE, from the assembled node's own fields (tokens/tools/timeline/context/
+    // duration) — every view renders `node.derived.*` and re-derives nothing.
+    node.derived = deriveNode(node);
+    nodes.push(node);
   }
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
@@ -493,7 +501,7 @@ export function previewView(wf: Workflow, opts: PreviewViewOpts = {}): RunView {
 
   const nodes: RunViewNode[] = Object.values(wf.nodes).map((n) => {
     const p = place.get(n.id);
-    return {
+    const node: RunViewNode = {
       id: n.id,
       label: n.label ?? n.id,
       phase: n.phase ?? null,
@@ -520,6 +528,9 @@ export function previewView(wf: Workflow, opts: PreviewViewOpts = {}): RunView {
       repeatedTool: null,
       ...(p ? { stageIndex: p.stageIndex, lane: p.lane } : {}),
     };
+    // A never-ran node still carries the derived shape (all-neutral zones) so the GUI stays render-only.
+    node.derived = deriveNode(node);
+    return node;
   });
 
   return {

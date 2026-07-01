@@ -14,6 +14,7 @@ import type { NodeIo } from '../src/types.js';
 import type { PiEvent } from '../src/runner/events.js';
 import { readRunModel } from '../src/observe/read.js';
 import { buildRunView } from '../src/observe/runView.js';
+import { DEFAULT_CONTEXT_WINDOW } from '../src/observe/models.js';
 import { watchRun } from '../src/observe/watch.js';
 import { projectRunDigest } from '../src/observe/telemetry.js';
 import type { RunUpdate } from '../src/observe/types.js';
@@ -395,6 +396,68 @@ describe('buildRunView — prefers rec.usage for the token/cost/context spine (C
     const digest = projectRunDigest(view);
     const nd = digest.nodes.find((n) => n.id === 'cut')!;
     expect(nd.anomalies).toContain('truncated');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// (2d) buildRunView — stamps the per-node DERIVED display projection (deriveNode wiring)
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe('buildRunView — stamps node.derived (the shared display zones every view renders)', () => {
+  const rec = (id: string, label: string, status: NodeStatusRecord['status'], extra: Partial<NodeStatusRecord> = {}): NodeStatusRecord => ({
+    id, label, status, artifacts: [], issues: [], ...extra,
+  });
+
+  // The derivation itself is unit-tested in derive.test.ts; this proves the WIRING — buildRunView stamps
+  // `node.derived` from the SAME distilled fields the GUI reads, so a view never re-derives a zone. Drop the
+  // stamping and this reads undefined and goes RED.
+  it('derives topTools / toolError / dominance / cacheHit / context / time / outputs from the node stream', async () => {
+    const runDir = mkRunDir();
+    const status: RunStatus = {
+      run: 'derv1', startedAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:05.000Z',
+      done: true, ok: true, durationMs: 5000, stage: null, totals: null,
+      nodes: { tn: rec('tn', 'Tool Node', 'ok', { durationMs: 4000, model: 'm1', artifacts: [{ path: 'out/a.txt', exists: true, bytes: 10 }] }) },
+    };
+    // 3 reads (ok) + 1 bash (error) → toolBreakdown {read:3, bash:1}, 1 failed timeline span; one usage rollup.
+    const events: PiEvent[] = [
+      { type: 'message_start', message: { role: 'assistant', model: 'm1', provider: 'cp' } },
+      { type: 'tool_execution_start', toolCallId: '1', toolName: 'read', args: { path: 'spec/a' }, _t: 0 },
+      { type: 'tool_execution_end', toolCallId: '1', isError: false, _t: 10 },
+      { type: 'tool_execution_start', toolCallId: '2', toolName: 'read', args: { path: 'spec/b' }, _t: 20 },
+      { type: 'tool_execution_end', toolCallId: '2', isError: false, _t: 30 },
+      { type: 'tool_execution_start', toolCallId: '3', toolName: 'read', args: { path: 'spec/c' }, _t: 40 },
+      { type: 'tool_execution_end', toolCallId: '3', isError: false, _t: 50 },
+      { type: 'tool_execution_start', toolCallId: '4', toolName: 'bash', args: { command: 'ls' }, _t: 60 },
+      { type: 'tool_execution_end', toolCallId: '4', isError: true, _t: 70 },
+      { type: 'message_end', message: { role: 'assistant', usage: { input: 100, cacheRead: 900, output: 20, totalTokens: 1000 } } },
+    ] as unknown as PiEvent[];
+    const nodes: Record<string, FixtureNode> = {
+      tn: {
+        rec: status.nodes.tn,
+        io: { id: 'tn', label: 'Tool Node', phase: null, reads: [], writes: [{ path: 'out/a.txt', verified: true, bytes: 10 }], promotes: [], status: 'ok' },
+        filesOnDisk: [{ rel: 'out/a.txt', body: 'ten-bytes!' }],
+        events,
+      },
+    };
+    await writeFixture(runDir, status, nodes);
+
+    const { view } = buildRunView(runDir);
+    const tn = view.nodes.find((n) => n.id === 'tn')!;
+    expect(tn.derived).toBeDefined();
+    const d = tn.derived!;
+    // ranked tools + shares
+    expect(d.topTools).toEqual([{ name: 'read', count: 3, pct: 0.75 }, { name: 'bash', count: 1, pct: 0.25 }]);
+    // 1 failed span / 4 calls = 0.25 → high
+    expect(d.toolError).toEqual({ errors: 1, rate: 0.25, tone: 'high' });
+    // one tool at 75% but only 4 calls (needs >5) ⇒ not a stuck-loop flag
+    expect(d.dominance.dominant).toBe(false);
+    // cache-hit 900/(100+900)
+    expect(d.cacheHit!.ratio).toBeCloseTo(0.9, 10);
+    // context peak 1000 over the default window (m1 not in the catalog ⇒ contextWindow null ⇒ default)
+    expect(d.context.frac).toBeCloseTo(1000 / DEFAULT_CONTEXT_WINDOW, 10);
+    // settled: no history ⇒ expectedMs falls back to own duration ⇒ ratio 1 ⇒ ok
+    expect(d.time).toEqual({ ratio: 1, tone: 'ok' });
+    // unified outputs from the declared, on-disk artifact
+    expect(d.outputs).toEqual([{ path: 'out/a.txt', bytes: 10, ok: true }]);
   });
 });
 
