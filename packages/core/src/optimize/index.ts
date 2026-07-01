@@ -11,6 +11,10 @@ export { deriveRecurrence, signatureOf } from './recurrence.js';
 export type { RecurrenceIndex, RecurrenceHit } from './recurrence.js';
 export { memorize } from './memorize.js';
 export type { MemorizeOpts, MemorizeResult, MemorizeLesson } from './memorize.js';
+// The cap/retire COMPACTION pass (v1.5 §5.3; memory-slices MODE B) — the out-of-band counterpart of MEMORIZE's
+// per-round append/update that keeps memory.md bounded by RETIRING discrete lowest-value blocks (never re-summarizes).
+export { compactMemory, DEFAULT_MAX_LESSONS } from './compact.js';
+export type { CompactOpts, CompactResult, RetiredLesson, RetireReason } from './compact.js';
 export { parseCriteria } from './criteria.js';
 export { readVerifyReport } from './tier1.js';
 export { renderRouting } from './render.js';
