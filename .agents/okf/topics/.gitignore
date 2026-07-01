@@ -1,0 +1,2 @@
+# Derived local freshness cache for the incremental --check/--write gate (regenerable, not shared).
+.gen-cache.json

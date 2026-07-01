@@ -23,6 +23,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from '
 import { execFileSync } from 'node:child_process';
 import { join, resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const HERE = process.env.OKF_TOPICS_DIR ? resolve(process.env.OKF_TOPICS_DIR) : dirname(fileURLToPath(import.meta.url));
 const CFG = JSON.parse(readFileSync(join(HERE, '..', 'okf.config.json'), 'utf8'));
@@ -43,6 +44,11 @@ const sh = (cmd, args, opts = {}) => {
 };
 const isNoise = p => NOISE.some(n => p.includes(n));
 const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// The structured-anchor pattern (`path:line` — `symbol`) — the slice's contract. ONE source of
+// truth: healthCheck validates these anchors, and the incremental fingerprint stats exactly the
+// files they point at, so the two can never disagree about a card's dependency set.
+const anchorRe = () => /`([\w./@-]+\.[A-Za-z0-9]+):(\d+)`\s*[—-]+\s*`([^`]+)`/g;
 
 // codegraph exact-name lookup (memoized) — used ONLY to explain WHERE a missing anchor symbol moved;
 // degrades to null when codegraph is unavailable, so the line:symbol gate still runs deterministically.
@@ -153,7 +159,7 @@ function healthCheck(card, spec) {
   const issues = [];
   const WINDOW = 3;
   for (const s of spec.seeds || []) if (!isNoise(s) && !existsSync(join(REPO, s))) issues.push(`seed missing: ${s}`);
-  const rx = /`([\w./@-]+\.[A-Za-z0-9]+):(\d+)`\s*[—-]+\s*`([^`]+)`/g;
+  const rx = anchorRe();
   for (const m of card.matchAll(rx)) {
     const [, path, lineStr, sym] = m;
     if (path.startsWith('http') || path.startsWith('~') || isNoise(path)) continue;
@@ -223,21 +229,81 @@ function splice(text, block) {
   return text.replace(/\s*$/, '') + `\n\n${body}\n`;
 }
 
+// ---- incremental invalidation (borrowed from codebase-memory-mcp's classify-by-fingerprint) ----
+// Re-deriving every card's 4 substrates on every run is wasted work when nothing a card depends on
+// moved. We skip a card whose EVERY input is byte-identical to its last fully-clean derive. Safety
+// law (the vendor's too): over-invalidate on ANY doubt — a missing cache, codegraph flipping on,
+// an unreadable stat — falls back to a full re-derive; we NEVER under-invalidate (a false-green gate
+// is worse than a slow one). The cache is derived local state (gitignored), not a shareable artifact.
+const CACHE_FILE = join(HERE, '.gen-cache.json');
+const NO_CACHE = !!process.env.OKF_NO_CACHE;
+const sha = s => createHash('sha256').update(s).digest('hex').slice(0, 16);
+const loadCache = () => { if (NO_CACHE) return {}; try { return JSON.parse(readFileSync(CACHE_FILE, 'utf8')); } catch { return {}; } };
+const saveCache = c => { if (NO_CACHE) return; try { writeFileSync(CACHE_FILE, JSON.stringify(c) + '\n'); } catch { /* best-effort */ } };
+const statSig = p => { try { const s = statSync(join(REPO, p)); return `${Math.round(s.mtimeMs)}:${s.size}`; } catch { return 'MISSING'; } };
+
+// GLOBAL fingerprint inputs — identical for every card, so compute them ONCE per run: git HEAD (the
+// arc/grep derives), the memory dir manifest (the lessons derive), and the codegraph index identity
+// (the anchor span checks). pendingChanges is deliberately EXCLUDED — a dirty tree at pre-commit must
+// not force a global miss; the per-card dep-file stats below already catch the actual code edits.
+const gHead = sh('git', ['rev-parse', 'HEAD']).trim() || 'no-head';
+const gMemory = (() => {
+  try {
+    return sha(readdirSync(MEMDIR).filter(f => f.endsWith('.md')).sort()
+      .map(f => { const s = statSync(join(MEMDIR, f)); return `${f}:${Math.round(s.mtimeMs)}:${s.size}`; }).join('|'));
+  } catch { return 'no-memory'; }
+})();
+const gCg = (() => {
+  if (NO_CG) return 'off';
+  try { const j = JSON.parse(sh(CFG.codegraph, ['status', '--json'])); return `${j.lastIndexed}:${j.nodeCount}:${j.edgeCount}`; }
+  catch { return 'cg-unknown'; }
+})();
+
+// PER-CARD fingerprint: the curated half (frontmatter + anchors + prose) + the stat-signature of
+// every file it points at (seeds + structured anchors) + the three globals. Any of these moving — a
+// code edit (committed or not), a new commit, a memory note, a codegraph re-sync — misses the cache.
+function fingerprint(curated, spec) {
+  const deps = {};
+  for (const s of spec.seeds || []) if (!isNoise(s)) deps[s] = statSig(s);
+  for (const m of curated.matchAll(anchorRe())) {
+    const p = m[1];
+    if (!p.startsWith('http') && !p.startsWith('~') && !isNoise(p)) deps[p] = statSig(p);
+  }
+  // trimEnd the curated half: splice() normalizes trailing whitespace when it first appends the auto
+  // block, so a fresh card's pre-write vs post-write curated differ only in trailing newlines — that
+  // must not miss the cache. Trailing whitespace never affects a health/derive verdict.
+  return sha(JSON.stringify({ curated: curated.replace(/\s+$/, ''), deps, head: gHead, memory: gMemory, cg: gCg }));
+}
+
 // ---- main ----
 const allKeys = readdirSync(HERE).filter(f => f.endsWith('.md')).map(f => f.replace(/\.md$/, ''));
 const unknown = only.filter(k => !allKeys.includes(k));
 if (unknown.length) { console.error(`unknown card key(s): ${unknown.join(', ')} — known: ${allKeys.join(', ')}`); process.exit(2); }
 const cards = readdirSync(HERE).filter(f => f.endsWith('.md') && (!only.length || only.includes(f.replace(/\.md$/, ''))));
+const cache = loadCache();
 let drift = 0, healthFail = 0;
 for (const file of cards) {
   const path = join(HERE, file);
   const text = readFileSync(path, 'utf8');
   const { fm } = parseCard(text);
   const spec = { key: fm.key || file.replace(/\.md$/, ''), aliases: fm.aliases || [], seeds: fm.seeds || [], symbols: fm.symbols || [], memoryHub: fm.memoryHub };
+  const tag = `[${spec.key}]`;
+  const curated = text.split(START)[0]; // splice never touches this half → curated == next's curated half
+  const fp = fingerprint(curated, spec);
+
+  // INCREMENTAL SKIP: a cache entry exists ONLY for a fully-clean card, so a fingerprint match proves
+  // the card is still fresh + healthy (identical inputs → identical deterministic derive). Skip the
+  // costly deriveArc/Files/Lessons/Anchors + healthCheck entirely.
+  if (cache[spec.key] === fp) { console.log(`${tag} ${mode === 'write' ? 'unchanged (cached)' : 'ok (cached)'}`); continue; }
+
   const data = { arc: deriveArc(spec), files: deriveFiles(spec), lessons: deriveLessons(spec), anchors: process.env.OKF_NO_CODEGRAPH ? null : deriveAnchors(spec) };
   const next = splice(text, render(spec, data));
   const health = healthCheck(next.split(START)[0], spec); // curated region only — the auto block's exists-column IS the data
-  const tag = `[${spec.key}]`;
+
+  // Cache a card ONLY when it is fully clean at this fingerprint: healthy, and (for --check, which
+  // doesn't rewrite) not drifted. --write refreshes the region, so post-write clean == healthy. A
+  // drifted or unhealthy card is dropped from the cache so it always re-checks until resolved.
+  if (!health.length && (mode === 'write' || next === text)) cache[spec.key] = fp; else delete cache[spec.key];
 
   if (mode === 'write') {
     if (next !== text) { writeFileSync(path, next); console.log(`${tag} regenerated (arc=${data.arc.length}, files=${data.files.length})`); }
@@ -249,6 +315,7 @@ for (const file of cards) {
     if (next === text && !health.length) console.log(`${tag} ok`);
   }
 }
+saveCache(cache); // persist before any exit, so a failing --check still records the clean cards
 if (mode === 'check') {
   // DRIFT is advisory (the auto region is regenerable); only a HEALTH failure means the
   // curated anchors may be WRONG — that is what blocks the commit.
