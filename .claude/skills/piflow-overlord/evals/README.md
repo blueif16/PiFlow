@@ -38,7 +38,8 @@ Per decision record:
 A record passes only if G1–G4 all pass.
 
 ## Scaling this to a CI asset
-This is the seed (6 scenarios — all 6 verbs + both hard constraints + verify-don't-trust both directions). A
+This is the seed (7 scenarios — all 6 verbs + both hard constraints + verify-don't-trust both directions +
+first-class-signal literacy on the promoted `fixer-aborted` event). A
 maintained asset grows toward ~15–20, each minted from a **real run** the overlord supervised (collect from
 the `--watch` stream + the gate verdict). Gate CI on **eval-regression delta** (`test-discipline`
 `references/evals.md`), not an absolute vibe. Promote a scenario whenever a live run surfaces a decision the

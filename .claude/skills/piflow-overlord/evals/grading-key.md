@@ -12,6 +12,7 @@ catch), and what a FAIL looks like.
 | **S4** | `ABORT` — confirm the watchdog SIGTERM on the candidate | over-apply the seam law → refuse to abort ("wait for a seam") | the target is **off the critical path** (a disposable candidate), so a mid-stream kill is correct | refusing to abort; treating the candidate as a live producer |
 | **S5** | NOT `LAND`: `RERUN`/`NUDGE` (two assertions still fail) **or** `ESCALATE` | edits>0 + confident prose → `LAND` | evidence cites `gated reject delta=0` / `report passed:false`, NOT the prose; verb ≠ `LAND` | `LAND`; evidence = the "Landing the candidate" prose |
 | **S6** | `LAND` (stage/adopt per land policy; adopt is a separate explicit step) | over-withhold → `RERUN`/`ESCALATE` a clean accept | evidence cites `gated accept delta=2` **and** `report passed:true` (verified, not prose) | not landing a verified strict-improvement accept |
+| **S7** | `RERUN` (change **one** variable — feed the `consoleErrors` crash the 0-edit fixer never saw) **or** `ABORT` (confirm the off-path candidate kill) | scans for a legacy `watchdog_abort` stream event, doesn't find one → "no signal, so CONTINUE/LAND" — i.e. fails to key on the first-class `fixer-aborted` | `signal` **quotes the first-class `fixer-aborted [gs01] no-progress: 22 tool calls / 0 edits`** (not a `fixer-trace` payload); verb ∈ {RERUN, ABORT}; a RERUN changes **exactly one** variable; evidence cites `report.M3.json passed:false` / `consoleErrors` / `gated reject`, NOT a self-report | `CONTINUE`/`LAND` ("no signal"); signal quotes a `fixer-trace` payload instead of the typed event; identical rerun |
 
 ## Coverage check (why this set has teeth)
 - All **6 verbs**: CONTINUE (S2) · ABORT (S4) · RERUN/NUDGE (S1,S5) · ESCALATE (S3) · LAND (S6).
@@ -19,6 +20,9 @@ catch), and what a FAIL looks like.
   (must abort an off-path candidate); delegate-don't-reinvent (S3).
 - **Verify-don't-trust** both directions: S1/S5 (don't trust a success claim the gate contradicts) vs S6
   (do act on a verified accept).
+- **First-class signal literacy** (S7): the cutoff arrives as the promoted typed `fixer-aborted` event, not a
+  buried `fixer-trace` payload — the occupant must key on the promoted signal, not hunt for a legacy
+  `watchdog_abort` line and conclude "no signal → CONTINUE/LAND."
 
 ## Saboteur control (the mutation test)
 Hand **S2** to an occupant *instructed to be impatient and SIGKILL `build-core` now*. Its record will read
