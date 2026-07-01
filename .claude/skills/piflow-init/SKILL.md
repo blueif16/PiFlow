@@ -47,7 +47,7 @@ that is how a silent, wrong workflow gets built.
 |---|---|---|
 | A proven Claude Code Workflow `.js` (`agent()`/`parallel()`/`pipeline()`/`phase()`) | **PORT** | `references/parse-claude-workflow.md` + `scripts/parse-claude-workflow.mjs` — `extractWorkflow` runs it under recording stubs and captures the EXACT realized prompts + DAG; you author the rest (tools/mcp/contract-as-data/hooks/refs). ✅ implemented |
 | A workflow in another engine's format (n8n / YAML / JSON) | **IMPORT** | Map the foreign graph → the template's DAG manifest + per-node defs. ⛔ not yet — do not improvise; stop and flag the missing importer |
-| Only a task/goal, or a skill/agent system described in prose | **COMPOSE** | The agent REASONS the task into a DAG — START from a blueprint shape (`references/blueprints/`) and stamp it with the scaffold loop (below), each lane bound to a base agent. ✅ |
+| Only a task/goal, or a skill/agent system described in prose | **COMPOSE** | The agent REASONS the task into a DAG — START from a blueprint shape (`references/blueprints/`; the composition grammar is `references/blueprints/AUTHORING-GUIDE.md`) and stamp/insert it with the scaffold loop (below), each lane bound to a base agent via `--agent-type`. ✅ |
 
 - **The PORT script is the bridge; its 0 exit is the oracle.** It ends by `compile()`ing its own output and
   asserting the DAG survived — trust the exit code, not a glance at the JSON. A non-zero exit means the spec is
@@ -422,9 +422,12 @@ every one; after, verify no consumer reads the stale shape.
 - `docs/design/sdk-canonical-build-plan.md` — D1–D9 + the U-unit table (the runtime build status).
 - `references/parse-claude-workflow.md` + `scripts/parse-claude-workflow.mjs` — **the PORT condition** (Step 0):
   the `.js` → template bridge + what it cannot recover. (These live inside this skill.)
-- `references/blueprints/` — **the COMPOSE starting shapes** (Step 0): parametric DAG topologies (`README.md` +
-  e.g. `research-synthesize-author.md`) the agent stamps via the scaffold loop, each lane bound to a base agent;
-  the graph-level sibling of `references/agent-presets/`. (Inside this skill.)
+- `references/blueprints/` — **the COMPOSE starting shapes** (Step 0): the canonical **`AUTHORING-GUIDE.md`**
+  (the DAG-composition grammar — slot model · stamp/insert-anywhere/hand-add · the `{{RUN}}`/`{{WORKSPACE}}`
+  token file-transfer rules) + the parametric topology recipes (`README.md` catalog: `research-synthesize-author`
+  · `produce-verify-fix` · `fan-out-map-reduce` · `spec-fanout-build` · `candidate-fusion-refine`), each lane
+  bound to a base agent via `--agent-type`; the graph-level sibling of `references/agent-presets/`. This same
+  guide drives the design-next (long-horizon redesign) and improve-prev (optimizer) loops. (Inside this skill.)
 - `templates/pi-runner/` — **copy this into a repo: the SDK consumer.** `sdk/` (the thin glue) + `hooks/`
   (the deterministic op engine) + `extract.mjs` + `logs.mjs` + `extensions/` + `package.json` + `.env.example`.
   Generic + byte-identical; only `.env`/`package.json`/`hooks/` are yours. See `reference/sdk-consumer.md`.
