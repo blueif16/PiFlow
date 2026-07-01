@@ -14,6 +14,9 @@ import {
 } from '../src/cloud.js';
 import type { HostAdapter, HostPlanContext } from '../src/hosts/adapter.js';
 import { flyAdapter } from '../src/hosts/fly.js';
+import { railwayAdapter } from '../src/hosts/railway.js';
+import { selfhostAdapter } from '../src/hosts/selfhost.js';
+import { dockerAdapter } from '../src/hosts/docker.js';
 import { resolveAdapter, ADAPTERS } from '../src/hosts/registry.js';
 
 // A fixed resolver set so no test mints a real token, reads ~/.pi, shells out, or writes ~/.piflow.
@@ -351,12 +354,15 @@ describe('flyAdapter.appUrl', () => {
 });
 
 describe('resolveAdapter (the registry gate)', () => {
-  it('resolves the registered fly host', () => {
+  it('resolves every registered host to its adapter', () => {
     expect(resolveAdapter('fly')).toBe(flyAdapter);
+    expect(resolveAdapter('railway')).toBe(railwayAdapter);
+    expect(resolveAdapter('selfhost')).toBe(selfhostAdapter);
+    expect(resolveAdapter('docker')).toBe(dockerAdapter);
   });
-  it('throws on an unknown host, naming the known set', () => {
+  it('throws on an unknown host, naming the full known set', () => {
     expect(() => resolveAdapter('bogus')).toThrow(/unknown --host "bogus"/);
-    expect(() => resolveAdapter('bogus')).toThrow(/known: fly/);
+    expect(() => resolveAdapter('bogus')).toThrow(/known: docker, fly, railway, selfhost/);
   });
 });
 
