@@ -9,13 +9,13 @@
 // running the `extract` oracle and fails non-zero if the derived DAG is not green (necessary, not sufficient
 // — the deep-equal round-trip test is the real gate).
 //
-// Scope (this task): the 2 canonical linear/fan-out shapes. fusion/quality-verify (the full lane-plan field
-// set) + `insert` (the namespacing seam) are LATER tasks — a lane's fusion/checks/inject are accepted by the
-// loader but only the fields the 2 goldens use (agentType/extraTools/denyTools/tier/skill) are wired here.
+// Scope: the 4 goldens — the 2 canonical linear/fan-out shapes PLUS candidate-fusion-refine and
+// fan-out-map-reduce, which exercise the FULL lane-plan field set (fusion mode/panel/judge/n, checks.post,
+// shape-inherent deny, no-preset lanes). `insert` (the namespacing seam) is a LATER task.
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { scaffoldNew, scaffoldAddNode, type NodeOpts } from './scaffold.js';
+import { scaffoldNew, scaffoldAddNode, type NodeOpts, type CheckOpt } from './scaffold.js';
 import { extractTemplate } from './extract.js';
 import { parseLanePlan, LanePlanError, type Lane, type LanePlan } from './blueprint-plan.js';
 import { wiringRuleFor, facetOf, WIRING_RULES, type WiringRule, type RoleSkeleton } from './blueprint-wiring.js';
@@ -26,9 +26,12 @@ export interface StampDeps {
   err?: (s: string) => void;
 }
 
-/** Fill a path template's `{facet}` with the lane's facet (the parallel producer's disjoint sub-namespace). */
-function fillFacet(tpl: string, facet: string): string {
-  return tpl.replaceAll('{facet}', facet);
+/**
+ * Fill a path template's holes: `{facet}` ⇒ the lane's `-`-tail facet (spec-fanout's `frag/impl/**`) and
+ * `{id}` ⇒ the lane's FULL id (map-reduce's `verify/review-a.json`). PURE.
+ */
+function fillTpl(tpl: string, id: string, facet: string): string {
+  return tpl.replaceAll('{facet}', facet).replaceAll('{id}', id);
 }
 
 /**
@@ -43,17 +46,21 @@ export function laneToNodeOpts(
   K: number,
 ): NodeOpts {
   const facet = facetOf(lane.id);
+  const fill = (s: string): string => fillTpl(s, lane.id, facet);
   const deps = skeleton.deps.flatMap(roleIds);
+  const artifacts = skeleton.artifacts.map(fill);
   const opts: NodeOpts = {
     id: lane.id,
+    ...(skeleton.phase ? { phase: skeleton.phase } : {}),
     deps,
-    owns: skeleton.owns.map((g) => fillFacet(g, facet)),
-    artifacts: skeleton.artifacts.map((a) => fillFacet(a, facet)),
-    readScope: skeleton.reads.map((r) => fillFacet(r, facet)),
+    owns: skeleton.owns.map(fill),
+    artifacts,
+    readScope: skeleton.reads.map(fill),
     // Every producing/gating node in these blueprints is required to complete → policy.fail: block (default,
     // but stated so a skeleton with a different on-fail flows through unchanged).
     onFail: skeleton.onFail ?? 'block',
   };
+  if (skeleton.onWarn) opts.onWarn = skeleton.onWarn;
   if (skeleton.returnMode) opts.returnMode = skeleton.returnMode;
   if (skeleton.reroute) {
     const [target] = roleIds({ role: skeleton.reroute.toRole });
@@ -63,10 +70,26 @@ export function laneToNodeOpts(
   // extraTools/denyTools union/deny on top; an explicit skill/tier wins.
   if (typeof lane.agentType === 'string') opts.agentType = lane.agentType;
   if (lane.extraTools?.length) opts.tools = lane.extraTools;
-  if (lane.denyTools?.length) opts.deny = lane.denyTools;
+  // DENY = the shape-inherent deny (skeleton, e.g. `bash` on every fusion/map-reduce lane) ∪ the lane's own.
+  // For a preset lane buildNode routes it into mergePreset's deny; for a no-preset lane it becomes tools.deny.
+  const deny = [...(skeleton.deny ?? []), ...(lane.denyTools ?? [])].filter((d, i, a) => a.indexOf(d) === i);
+  if (deny.length) opts.deny = deny;
   if (lane.tier) opts.tier = lane.tier;
   if (lane.skill) opts.skill = lane.skill;
   if (lane.inject?.length) opts.inject = lane.inject;
+  // FUSION (moa panel / best-of-n) — a per-lane hole; buildNode carries it verbatim + validates the mode enum.
+  if (lane.fusion) opts.fusion = lane.fusion as NodeOpts['fusion'];
+  // POST-CHECKS = the shape-fixed checks (skeleton, `{artifact}` → this lane's first artifact) UNION any the
+  // lane adds. A skeleton check with no lane checks reproduces the fusion `non-empty` / map-reduce json-gates.
+  const skeletonChecks: CheckOpt[] = (skeleton.checks ?? []).map((c) => ({
+    kind: c.kind,
+    ...(c.path !== undefined ? { path: c.path === '{artifact}' ? artifacts[0] : fill(c.path) } : {}),
+    ...(c.severity !== undefined ? { severity: c.severity } : {}),
+    ...(c.param !== undefined ? { param: c.param } : {}),
+  }));
+  const laneChecks = (lane.checks?.post ?? []) as CheckOpt[];
+  const checks = [...skeletonChecks, ...laneChecks];
+  if (checks.length) opts.checks = checks;
   return opts;
 }
 
@@ -170,6 +193,7 @@ export async function runBlueprintStamp(
     id: plan.meta?.id,
     name: plan.meta?.name,
     description: plan.meta?.description,
+    phases: plan.meta?.phases,
   });
   for (const lane of plan.lanes) {
     const opts = laneToNodeOpts(lane, rule.roles[lane.role], roleIds, K);

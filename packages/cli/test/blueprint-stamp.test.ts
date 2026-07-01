@@ -146,6 +146,133 @@ describe('blueprint stamp — spec-fanout-build round-trips the golden deep-equa
   });
 });
 
+describe('blueprint stamp — fan-out-map-reduce round-trips the golden deep-equal', () => {
+  // templates/quality/verify — N=2 adjudicate. review-a + review-b are NO-preset lanes (agentType: null),
+  // hand-wired tools.allow [read, write, submit_result] + deny [bash], and post-checks [json-parses,
+  // field-present:verdict:fail]; consensus is the reduce (deps on both workers). Worker id → owns
+  // verify/<id>.json (the FULL id, not the `-`-tail facet). Worker order [review-a, review-b] matches the
+  // golden's consensus.deps. The two post-checks + deny + policy{fail,warn} are FIXED by the shape (the
+  // wiring rule), so the lane-plan only carries the hand-wired tool allow-list + the null preset.
+  const plan = {
+    blueprint: 'fan-out-map-reduce',
+    params: {},
+    lanes: [
+      { role: 'worker', id: 'review-a', agentType: null, extraTools: ['read', 'write', 'submit_result'] },
+      { role: 'worker', id: 'review-b', agentType: null, extraTools: ['read', 'write', 'submit_result'] },
+      { role: 'reduce', id: 'consensus', agentType: null, extraTools: ['read', 'write', 'submit_result'] },
+    ],
+    meta: {
+      id: 'verify',
+      name: 'verify',
+      description:
+        'Quality sub-DAG (G3): N independent skeptical reviewers judge a subject in parallel, then a consensus adjudicator reconciles them into one evidenced verdict. Reference it from a parent node via `node.subworkflow` (G9). The parent stages the subject at {{RUN}}/verify/subject.md (and optional criteria.md); the verdict lands at {{RUN}}/verify/verdict.json.',
+      phases: ['review', 'consensus'],
+    },
+  };
+
+  it('stamps 3 nodes + meta identical to the golden', async () => {
+    const planPath = await writePlan(plan);
+    const { code, err } = await run('stamp', 'fan-out-map-reduce', '--plan', planPath, '--into', DIR);
+    expect(err, 'stamp should not error').toBe('');
+    expect(code).toBe(0);
+    await assertRoundTrip(path.join(REPO_ROOT, 'templates/quality/verify'), ['review-a', 'review-b', 'consensus']);
+  });
+});
+
+describe('blueprint stamp — candidate-fusion-refine round-trips the golden deep-equal', () => {
+  // .piflow/example-fusion — linear plan → draft → harden → publish. draft carries fusion.mode=moa +
+  // panel[fast,balanced,deep] + judge=deep; harden carries fusion.mode=best-of-n + n=3 + tier=deep. draft/
+  // harden are NO-preset lanes (agentType null) that inject the prior stage's artifact and hand-wire their
+  // tools. Every lane denies bash (shape) + carries a non-empty post-check over its artifact (shape) +
+  // returnMode optional (shape). fusion + inject are per-lane holes.
+  //
+  // plan/publish are encoded as NO-preset lanes hand-wiring tools.allow [read, write, submit_result] — the
+  // EXACT golden tool set — which reproduces their tools deep-equal. Their ONLY irreproducible field is the
+  // `agentType: "general-purpose"` LABEL (see the it.fails finding below): buildNode cannot emit a bare
+  // agentType label without running mergePreset, and the general-purpose seed folds `edit`+`bash` into allow,
+  // so `--agent-type general-purpose` yields `allow:[read,write,edit,submit_result]` — a mismatch. So the
+  // fully-round-trippable subset (draft·harden·meta + the two hand-wired producers' MECHANICAL wiring) is the
+  // green gate, and the full-golden deep-equal (with the label) is pinned as a known finding via it.fails.
+  const draftHardenPlan = {
+    blueprint: 'candidate-fusion-refine',
+    params: {},
+    lanes: [
+      // plan/publish hand-wired (agentType null) so their tools + wiring round-trip; the missing label is
+      // the it.fails finding. draft/harden inherit the default agent (agentType null) as the golden does.
+      { role: 'plan', id: 'plan', agentType: null, extraTools: ['read', 'write', 'submit_result'] },
+      {
+        role: 'draft',
+        id: 'draft',
+        agentType: null,
+        extraTools: ['read', 'write', 'submit_result'],
+        inject: ['{{RUN}}/plan/outline.md'],
+        fusion: { mode: 'moa', panel: ['fast', 'balanced', 'deep'], judge: 'deep' },
+      },
+      {
+        role: 'harden',
+        id: 'harden',
+        agentType: null,
+        tier: 'deep',
+        extraTools: ['read', 'write', 'submit_result'],
+        inject: ['{{RUN}}/draft/draft.md'],
+        fusion: { mode: 'best-of-n', n: 3 },
+      },
+      {
+        role: 'publish',
+        id: 'publish',
+        agentType: null,
+        extraTools: ['read', 'write', 'submit_result'],
+        inject: ['{{RUN}}/harden/hardened.md'],
+      },
+    ],
+    meta: {
+      id: 'example-fusion',
+      name: 'example-fusion',
+      description:
+        'Fusion showcase — a short-explainer pipeline (plan → draft → harden → publish) that demonstrates BOTH fusion modes side by side: `draft` is a MoA panel (one sibling per model tier → a judge SYNTHESIZES across them) and `harden` is best-of-n (one model sampled N times → a judge SELECTS + repairs the strongest), each feeding the next, then a plain `publish` consumer. Dry-run it (`piflowctl run .piflow/example-fusion/template --dry-run`) to see the siblings+judge expansion, or open the GUI, press F for Fusion mode, and toggle any node between moa / best-of-n to watch the DAG re-expand live.',
+      phases: ['plan', 'draft', 'harden', 'publish'],
+    },
+  };
+
+  // The two FUSION lanes (draft·harden) — where the full lane-plan field set lives (fusion mode/panel/judge/n,
+  // inject, deny, checks, returnMode, no-preset tools) — plus meta, round-trip the golden deep-equal.
+  it('stamps draft·harden (the fusion lanes) + meta identical to the golden', async () => {
+    const planPath = await writePlan(draftHardenPlan);
+    const { code, err } = await run('stamp', 'candidate-fusion-refine', '--plan', planPath, '--into', DIR);
+    expect(err, 'stamp should not error').toBe('');
+    expect(code).toBe(0);
+    await assertRoundTrip(path.join(REPO_ROOT, '.piflow/example-fusion/template'), ['draft', 'harden']);
+  });
+
+  // FINDING (pinned, not swept): binding plan/publish with `--agent-type general-purpose` — the golden's
+  // agentType label — cannot reproduce their `tools.allow: [read, write, submit_result]`. mergePreset folds
+  // the general-purpose seed's `allow:[read,write,edit,bash,submit_result]`; denying only `bash` (the golden's
+  // deny) leaves `edit` in allow (→ [read,write,EDIT,submit_result]); also denying `edit` reproduces allow but
+  // then deny becomes [bash, EDIT] ≠ the golden's [bash]. buildNode has NO path to emit a bare agentType label
+  // with hand-wired tools that differ from the preset merge, so the golden's plan/publish are irreproducible
+  // as-authored. This it.fails PINS that: it is green while the diff exists and REDDENS the moment buildNode
+  // (or the golden) changes so the full 4-node deep-equal WITH the label passes — the signal to un-pin it.
+  it.fails(
+    'FINDING: plan/publish agentType:general-purpose label is irreproducible (preset folds edit/bash into allow)',
+    async () => {
+      const labelledPlan = {
+        ...draftHardenPlan,
+        lanes: draftHardenPlan.lanes.map((l) =>
+          l.id === 'plan' || l.id === 'publish' ? { ...l, agentType: 'general-purpose' } : l,
+        ),
+      };
+      const planPath = await writePlan(labelledPlan);
+      const { code } = await run('stamp', 'candidate-fusion-refine', '--plan', planPath, '--into', DIR);
+      expect(code).toBe(0);
+      // The full 4-node deep-equal WITH the general-purpose label — fails on plan/publish tools.allow today.
+      await assertRoundTrip(
+        path.join(REPO_ROOT, '.piflow/example-fusion/template'),
+        ['plan', 'draft', 'harden', 'publish'],
+      );
+    },
+  );
+});
+
 describe('blueprint stamp — guard rails', () => {
   it('an unknown/no-rule blueprint id exits non-zero and says compose by hand', async () => {
     const planPath = await writePlan({ blueprint: 'no-such', lanes: [] });

@@ -5,9 +5,8 @@
 // This loader validates the plan on load (docs/design/blueprint-compose-verb.md, "The lane-plan"): a
 // malformed plan ⇒ HALT with the error, never a half-stamped template. The full per-lane field set from the
 // design is accepted (role · id · agentType|null · extraTools · denyTools · tier · skill · fusion · inject ·
-// checks · facet). For THIS task only the fields the 2 canonical goldens use are WIRED end-to-end through
-// buildNode (role · id · agentType · extraTools · denyTools · tier · skill); fusion/inject/checks are
-// accepted-but-deferred (the fusion/quality-verify task exercises them).
+// checks · facet). ALL of these are now WIRED end-to-end through buildNode by `laneToNodeOpts`: the fusion
+// goldens (candidate-fusion-refine, fan-out-map-reduce) exercise fusion · inject · checks · deny · no-preset.
 
 /** One lane — the intelligent hole for a blueprint slot. All optional except `role` + `id`. */
 export interface Lane {
@@ -41,8 +40,9 @@ export interface LanePlan {
   params?: { K?: number; [k: string]: unknown };
   /** The lanes filling the blueprint's slots. */
   lanes: Lane[];
-  /** meta.json fields (id/name/description) — the stamped template's identity. */
-  meta?: { id?: string; name?: string; description?: string };
+  /** meta.json fields (id/name/description/phases) — the stamped template's identity. `phases` is the
+   *  decorative phase DISPLAY order the two fusion goldens carry (`["plan","draft",…]`). */
+  meta?: { id?: string; name?: string; description?: string; phases?: string[] };
   /** Boundary seam bindings (used by `insert` — accepted here, unused by `stamp`). */
   seams?: Record<string, string>;
 }

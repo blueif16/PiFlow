@@ -11,8 +11,9 @@
 // how many producer lanes, the ids) come from the agent-authored lane-plan; this map is the fixed function
 // of those choices.
 //
-// This task covers ONLY the 2 canonical linear/fan-out shapes (produce-verify-fix, spec-fanout-build).
-// Fusion + quality/verify (the full lane-plan field set) and `insert` are LATER tasks.
+// This map now covers 4 shapes: the 2 canonical linear/fan-out (produce-verify-fix, spec-fanout-build) and
+// the 2 that exercise the FULL lane-plan field set (candidate-fusion-refine, fan-out-map-reduce). `insert`
+// remains a LATER task.
 
 /**
  * A dep reference: the ROLE(s) whose lane id(s) become this role's `deps`. Resolved against the lane-plan at
@@ -29,6 +30,10 @@ export interface DepRef {
  * filled from the lane (the parallel producer's disjoint sub-namespace; see `facetOf`).
  */
 export interface RoleSkeleton {
+  /** The decorative `phase` label for lanes in this role, when the shape pins one that DIFFERS from the lane
+   *  id (map-reduce workers are `phase: "review"` though their ids are `review-a`/`review-b`). Omit ⇒
+   *  buildNode's default (phase = the lane id — correct for the linear fusion spine). */
+  phase?: string;
   /** Upstream role references → this node's `deps` (resolved to lane ids, in listed order). */
   deps: DepRef[];
   /** Write-authority glob(s); `{facet}` ⇒ the lane's facet (disjoint parallel lane). */
@@ -37,12 +42,30 @@ export interface RoleSkeleton {
   artifacts: string[];
   /** Exposed read dirs (`{{RUN}}`-relative) — the OS allow-list + the seam this role consumes. */
   reads: string[];
-  /** `required` ⇒ a return-mode gate (verify): the verdict IS the output, no artifact. Omit ⇒ default. */
-  returnMode?: 'required';
+  /** The contract's returnMode when the shape pins one (`required` = a verdict-only gate; `optional` = the
+   *  fusion goldens' explicit optional). Omit ⇒ buildNode's default (no returnMode key emitted). */
+  returnMode?: 'required' | 'optional';
   /** A bounded reroute back to the `toRole` lane on failure (verify's self-fix loop). `max` = lane-plan K. */
   reroute?: { toRole: string };
   /** policy.fail (default 'block' — every producing/gating node must complete or block). */
   onFail?: 'block' | 'warn' | 'stop';
+  /** policy.warn — set only where the golden pins it (the fan-out-map-reduce workers carry `warn: warn`). */
+  onWarn?: 'block' | 'warn' | 'stop';
+  /** Tools DENIED for every lane in this role — shape-inherent (both fusion goldens deny `bash` everywhere).
+   *  For a preset lane it flows into `mergePreset` deny; for a no-preset lane it becomes tools.deny directly. */
+  deny?: string[];
+  /** Post-check templates the shape fixes (fusion: `non-empty` over the artifact; map-reduce: `json-parses` +
+   *  `field-present:verdict`). `{artifact}` ⇒ the lane's (facet-filled) FIRST artifact path. */
+  checks?: SkeletonCheck[];
+}
+
+/** A post-check the wiring rule fixes for a role — the `$defs/check` shape with a `path` template. */
+export interface SkeletonCheck {
+  kind: string;
+  /** Literal, or `{artifact}` → the lane's first (facet-filled) artifact path. */
+  path?: string;
+  severity?: 'fail' | 'warn';
+  param?: unknown;
 }
 
 /** A blueprint's full wiring rule: the per-role skeletons + which role fans out into parallel lanes. */
@@ -113,6 +136,99 @@ export const WIRING_RULES: Record<string, WiringRule> = {
       },
       // Assembles the verified fragments into the final module.
       build: { deps: [{ role: 'verify-join' }], owns: ['out/**'], artifacts: ['out/module.md'], reads: ['{{RUN}}/frag'] },
+    },
+  },
+  // candidate-fusion-refine (`.piflow/example-fusion/template/`): a LINEAR spine plan → draft → harden →
+  // publish where `draft`/`harden` are FUSION nodes (moa panel · best-of-n). The shape fixes the mechanical
+  // skeleton (deps chain · disjoint owns · single artifact · full-run readScope · optional returnMode · a
+  // `non-empty` post-check over the artifact · deny bash · block). What VARIES per stamp — the preset each
+  // lane binds, the fusion mode/panel/judge/n, which stage(s) fuse, and the injected upstream artifact —
+  // stays in the lane-plan. Every lane reads `{{RUN}}` (the golden's readScope is the full run, not the
+  // upstream stage), so `reads` is `{{RUN}}` for all four.
+  'candidate-fusion-refine': {
+    roles: {
+      // FIXED head — freezes the outline the draft must honor. Root (no dep).
+      plan: {
+        deps: [],
+        owns: ['plan/**'],
+        artifacts: ['plan/outline.md'],
+        reads: ['{{RUN}}'],
+        returnMode: 'optional',
+        deny: ['bash'],
+        checks: [{ kind: 'non-empty', path: '{artifact}' }],
+      },
+      // The MoA-panel drafter (fusion from the lane-plan) — injects the outline, writes the merged draft.
+      draft: {
+        deps: [{ role: 'plan' }],
+        owns: ['draft/**'],
+        artifacts: ['draft/draft.md'],
+        reads: ['{{RUN}}'],
+        returnMode: 'optional',
+        deny: ['bash'],
+        checks: [{ kind: 'non-empty', path: '{artifact}' }],
+      },
+      // The best-of-n hardener (fusion + tier from the lane-plan) — injects the draft, writes the hardened.
+      harden: {
+        deps: [{ role: 'draft' }],
+        owns: ['harden/**'],
+        artifacts: ['harden/hardened.md'],
+        reads: ['{{RUN}}'],
+        returnMode: 'optional',
+        deny: ['bash'],
+        checks: [{ kind: 'non-empty', path: '{artifact}' }],
+      },
+      // The plain consumer — injects the hardened artifact, assembles the final explainer.
+      publish: {
+        deps: [{ role: 'harden' }],
+        owns: ['out/**'],
+        artifacts: ['out/explainer.md'],
+        reads: ['{{RUN}}'],
+        returnMode: 'optional',
+        deny: ['bash'],
+        checks: [{ kind: 'non-empty', path: '{artifact}' }],
+      },
+    },
+  },
+  // fan-out-map-reduce (`templates/quality/verify/`): N PARALLEL workers over the SAME staged subject → one
+  // reduce that folds them. Mirrors spec-fanout's `parallelRole`, but each worker owns a SINGLE JSON file
+  // (not a facet dir) and carries the `adjudicate`-mode post-checks (`json-parses` + `field-present:verdict`
+  // fail). The shape fixes: disjoint per-worker owns (`verify/<id>.json`), full-run readScope, the two
+  // post-checks over each node's OWN artifact, deny bash, and `policy {fail:block, warn:warn}`. The N and the
+  // preset (here `agentType: null`, hand-wired) stay in the lane-plan.
+  'fan-out-map-reduce': {
+    parallelRole: 'worker',
+    roles: {
+      // N PARALLEL reviewers — deps [] (the caller stages the subject), each owns ONE disjoint verdict file
+      // named by the FULL lane id (`{id}`, NOT the `-`-tail facet — the golden owns `verify/review-a.json`),
+      // reads the whole run, emits strict JSON gated by json-parses + a required `verdict` field.
+      worker: {
+        phase: 'review',
+        deps: [],
+        owns: ['verify/{id}.json'],
+        artifacts: ['verify/{id}.json'],
+        reads: ['{{RUN}}'],
+        returnMode: 'optional',
+        deny: ['bash'],
+        onWarn: 'warn',
+        checks: [
+          { kind: 'json-parses', path: '{artifact}' },
+          { kind: 'field-present', path: '{artifact}', param: 'verdict', severity: 'fail' },
+        ],
+      },
+      // The reduce — deps on EVERY worker, reads the whole run, adjudicates one consolidated verdict JSON.
+      reduce: {
+        deps: [{ role: 'worker', all: true }],
+        owns: ['verify/verdict.json'],
+        artifacts: ['verify/verdict.json'],
+        reads: ['{{RUN}}'],
+        returnMode: 'optional',
+        deny: ['bash'],
+        onWarn: 'warn',
+        checks: [
+          { kind: 'json-parses', path: '{artifact}' },
+          { kind: 'field-present', path: '{artifact}', param: 'verdict', severity: 'fail' },
+        ],
+      },
     },
   },
 };
