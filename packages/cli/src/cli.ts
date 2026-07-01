@@ -101,7 +101,11 @@ RUN
   --run <id>    the instance id (keys out/<id>); aliases --id. Required for a live run.
   --arg k=v     a workflow arg → {{arg.k}} (repeatable).
   --workspace <p>  the read-only {{WORKSPACE}} root (skills/templates/registry); default cwd.
-  --sandbox <inmemory|local|danger-full-access|daytona>  exec backend. inmemory (default) = no model;
+  --sandbox <inmemory|local|danger-full-access|daytona|e2b|docker>  exec backend = WHERE nodes run. LEGACY
+                   per-run override of the persistent \`context worker\` (which is the same axis) — set it once
+                   with \`piflowctl context worker use <local|e2b|daytona>\` and omit this flag. When omitted, the
+                   active context's worker drives it (a cloud context ⇒ its cloud sandbox); a plain local
+                   context ⇒ inmemory. inmemory = no model (in-process);
                    local = real in-place pi, read-scope-jailed per node (seatbelt on macOS);
                    danger-full-access = local with the jail OFF (agent reads the whole filesystem);
                    daytona = real pi in a remote CLOUD VM (full isolation). Boots the promoted

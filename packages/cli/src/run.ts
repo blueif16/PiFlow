@@ -51,7 +51,15 @@ import os from 'node:os';
 import { readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { resolveRemote, startRemoteRun, streamUrlFor, type StartRemoteResult, type RemoteOpts } from './remote.js';
-import type { ContextEntry } from './context-store.js';
+import {
+  readContexts,
+  resolveActive,
+  resolveWorker,
+  isCloudEntry,
+  configuredWorkers,
+  type ContextEntry,
+  type WorkerKind,
+} from './context-store.js';
 
 /**
  * List the run-NAME basenames already present under a runs home (the canonical `.piflow/<wf>/runs/`), so
@@ -182,8 +190,14 @@ export interface ParsedRunArgs {
   /** Active run PROFILE name → resolved against the template's declared `profiles` (elides nodes before compile). */
   profile?: string;
   args: Record<string, string>;
-  /** Sandbox backend: `inmemory` (default) · `local` (real in-place, read-scope-jailed) · `danger-full-access`. */
+  /**
+   * Sandbox backend = WHERE each node's `pi` runs. This is the same axis as a context's `worker` (WorkerKind ⊂
+   * SandboxChoice); `--sandbox` is now the LEGACY per-run override of the persistent `context worker` setting.
+   * `inmemory` (default) · `local` (real in-place, read-scope-jailed) · `danger-full-access` · `daytona`/`e2b`/`docker`.
+   */
   sandbox: SandboxChoice;
+  /** True when `--sandbox` was explicitly passed — the legacy override then wins over the active context's worker. */
+  sandboxExplicit?: boolean;
   /** The pi `--provider` gateway → threaded to the runner as `providerName`. */
   provider?: string;
   /**
@@ -236,7 +250,7 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
     else if (k === '--from') out.from = argv[++i];
     else if (k === '--until') out.until = argv[++i];
     else if (k === '--profile') out.profile = argv[++i];
-    else if (k === '--sandbox') out.sandbox = (argv[++i] as SandboxChoice) ?? 'inmemory';
+    else if (k === '--sandbox') { out.sandbox = (argv[++i] as SandboxChoice) ?? 'inmemory'; out.sandboxExplicit = true; }
     else if (k === '--provider') out.provider = argv[++i];
     else if (k === '--cloud-secret') out.cloudSecret = argv[++i];
     else if (k === '--thinking') out.thinking = argv[++i];
@@ -748,6 +762,28 @@ export function runFailureReport(status: RunResult['status'], runDir: string): s
  * (workspace/out/from/until/no-resume/max-concurrent) are NOT — the remote run owns its own layout. Fields
  * are omitted when unset so the JSON stays minimal (and byte-stable across runs with no such flag).
  */
+/**
+ * THE MERGE: a context's `worker` IS the sandbox (WorkerKind ⊂ SandboxChoice), so there is ONE setting, not two.
+ * Resolve the effective sandbox for a run:
+ *   1. an explicit `--sandbox` — the LEGACY per-run override — always wins (even `--sandbox inmemory`);
+ *   2. else the active context's `worker` if explicitly set (`context worker use …`);
+ *   3. else a CLOUD context cascades to its worker (e2b/daytona);
+ *   4. else a plain local context (no worker) keeps the historical `inmemory` default (back-compat — the
+ *      in-process dev/test path; nothing forwarded downstream).
+ * PURE (the active entry + configured set are injected) so it is unit-tested without touching ~/.piflow.
+ */
+export function resolveRunSandbox(
+  parsed: Pick<ParsedRunArgs, 'sandbox' | 'sandboxExplicit'>,
+  entry: ContextEntry | undefined,
+  configured: ReadonlySet<WorkerKind>,
+): SandboxChoice {
+  if (parsed.sandboxExplicit) return parsed.sandbox;
+  if (!entry) return 'inmemory';
+  if (entry.worker) return entry.worker;
+  if (isCloudEntry(entry)) return resolveWorker(entry, configured).worker;
+  return 'inmemory';
+}
+
 export function remoteStartBody(parsed: ParsedRunArgs): Record<string, unknown> {
   return {
     templateDir: path.resolve(parsed.templateDir),
@@ -803,6 +839,14 @@ export async function runRunCli(argv: string[]): Promise<void> {
     process.stderr.write('piflowctl run: a template directory is required (piflowctl run <templateDir>)\n');
     process.exitCode = 1;
     return;
+  }
+  // THE MERGE (context worker IS the sandbox): unless `--sandbox` was passed (the legacy override), the active
+  // context's worker drives the sandbox — so `context worker use e2b` / a cloud context need no `--sandbox`. A
+  // plain local context stays `inmemory` (back-compat). Both the remote (remoteStartBody) and local (runTemplate)
+  // paths below then see the resolved value.
+  {
+    const activeEntry = readContexts().contexts[resolveActive({ flagContext: parsed.context })];
+    parsed.sandbox = resolveRunSandbox(parsed, activeEntry, configuredWorkers(process.env));
   }
   // (P7) REMOTE context ⇒ launch on that serve (POST /api/runs/start) and surface the returned run id — NOT a
   // local run. LOCAL/unset ⇒ the unchanged in-process path below. An unknown --context surfaces loudly.
