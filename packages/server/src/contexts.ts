@@ -67,6 +67,30 @@ interface MigrateBody {
   target?: string;
 }
 
+/** The last-known outcome of a server-orchestrated migrate, keyed by run. `ok:true` on a clean exit (code 0);
+ *  `ok:false` with the child's exit `code` + captured `stderr` on any post-spawn failure (the freeze never
+ *  lands, adopt 403s, or the spawn itself errors). Absence ⇒ "pending" (still in flight, or none ever run). */
+interface MigrateOutcome {
+  run: string;
+  ok: boolean;
+  code: number | null;
+  stderr: string;
+  at: number;
+}
+/** In-memory, process-scoped: the fire-and-forget migrate returns 202 immediately, so its exit is observed
+ *  out-of-band by the GUI polling GET /api/migrate/status?run=<run>. Bounded to the last N runs (a migrate is
+ *  rare + user-initiated); NOT persisted — a serve restart clears it, which is correct (the child died too). */
+const migrateOutcomes = new Map<string, MigrateOutcome>();
+const MIGRATE_OUTCOME_CAP = 50;
+function recordMigrateOutcome(o: MigrateOutcome): void {
+  migrateOutcomes.set(o.run, o);
+  while (migrateOutcomes.size > MIGRATE_OUTCOME_CAP) {
+    const oldest = migrateOutcomes.keys().next().value;
+    if (oldest === undefined) break;
+    migrateOutcomes.delete(oldest);
+  }
+}
+
 /**
  * POST /api/migrate `{ run, target }` → move `run` from THIS serve to the `target` context. Spawns
  * `piflowctl context migrate <target> <run>` (detached, like start-run) and returns 202 with the target's
@@ -104,10 +128,24 @@ export const piflowMigrateRun: Middleware = async (req, res, next) => {
   // fire-and-forget 202 would silently swallow. PIFLOW_CONTEXT out-ranks `current` in the resolve ladder.
   const env = { ...process.env, PIFLOW_CONTEXT: "local" };
   try {
+    // Capture the child's stderr + exit so a POST-SPAWN failure (the freeze never lands, adopt 403s, the
+    // migrate CLI throws) is no longer SWALLOWED behind the fire-and-forget 202 — it lands in a pollable
+    // outcome the GUI reads via GET /api/migrate/status?run=<run>. stderr is piped (not "ignore"); stdin/stdout
+    // stay ignored. detached+unref still lets the migration outlive the request; the still-alive serve observes
+    // the child's `close`/`error`/stderr while it runs (the point of detach is surviving the serve's DEATH).
     const child = cliBin
-      ? spawn(process.execPath, [cliBin, ...argv], { cwd, detached: true, stdio: "ignore", env })
-      : spawn("piflowctl", argv, { cwd, detached: true, stdio: "ignore", env });
-    child.on("error", (e) => process.stderr.write(`migrate: failed to spawn the migration (${String(e)})\n`));
+      ? spawn(process.execPath, [cliBin, ...argv], { cwd, detached: true, stdio: ["ignore", "ignore", "pipe"], env })
+      : spawn("piflowctl", argv, { cwd, detached: true, stdio: ["ignore", "ignore", "pipe"], env });
+    let stderr = "";
+    child.stderr?.on("data", (c: Buffer) => { stderr = (stderr + c.toString()).slice(-4000); });
+    child.on("error", (e) => {
+      const msg = `migrate: failed to spawn the migration (${String(e)})`;
+      process.stderr.write(`${msg}\n`);
+      recordMigrateOutcome({ run, ok: false, code: null, stderr: (stderr + msg).trim(), at: Date.now() });
+    });
+    child.on("close", (code) => {
+      recordMigrateOutcome({ run, ok: code === 0, code, stderr: stderr.trim(), at: Date.now() });
+    });
     child.unref();
   } catch (e) {
     return sendJson(res, 500, { error: `failed to launch the migration (${String(e)})` });
@@ -119,4 +157,22 @@ export const piflowMigrateRun: Middleware = async (req, res, next) => {
     target: { name: target, baseUrl: entry.baseUrl, token: entry.token ?? "" },
     migrating: true,
   });
+};
+
+/**
+ * GET /api/migrate/status?run=<run> → the last-known outcome of a server-orchestrated migrate for `run`. The
+ * POST returns 202 the moment it spawns; this is how the GUI learns whether the spawned migration then FAILED
+ * (rather than only ever seeing "the run never appeared on the target"). Shapes:
+ *   - recorded  → `{ run, ok, code, stderr, at }` (ok:false carries the child's exit code + captured stderr)
+ *   - none yet  → `{ run, status: "pending" }` (still in flight, or no migrate has run for this run id)
+ * Bearer-gated by createServer like every other route.
+ */
+export const piflowMigrateStatus: Middleware = async (req, res, next) => {
+  if (!req.url?.match(/^\/api\/migrate\/status(?:\?.*)?$/)) return next();
+  if (req.method !== "GET") return sendJson(res, 405, { error: "use GET to read migrate status" });
+  const run = new URL(req.url, "http://localhost").searchParams.get("run")?.trim() ?? "";
+  if (!run) return sendJson(res, 400, { error: "run is required" });
+  const o = migrateOutcomes.get(run);
+  if (!o) return sendJson(res, 200, { run, status: "pending" });
+  return sendJson(res, 200, o);
 };
