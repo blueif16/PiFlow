@@ -69,6 +69,15 @@ describe('runFixGate — OptimizeEventSink wiring', () => {
     expect(withSink).toEqual(without);
   });
 
+  it('BACKWARD-COMPAT: with no ceiling stages/opt, the fix-cycle surface is inert (skipped is always [])', async () => {
+    // The additive fix-cycle ceiling must not perturb the default path: absent the stages + opts.fixCycleCeiling,
+    // every run reports an EMPTY skipped[] and never emits a fix-cycle-ceiling event.
+    const events: OptimizeEvent[] = [];
+    const r = await runFixGate([defect('a'), defect('b'), defect('c')], stages(score(0)), { onEvent: (e) => events.push(e) });
+    expect(r.skipped).toEqual([]);
+    expect(events.some((e) => e.type === 'fix-cycle-ceiling')).toBe(false);
+  });
+
   it('ROBUSTNESS: an onEvent that THROWS does not break the loop', async () => {
     const r = await runFixGate([defect('w4-execute-m2')], stages(score(1)), {
       onEvent: () => { throw new Error('sink blew up'); },

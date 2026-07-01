@@ -20,7 +20,7 @@ export type { GateInput, GateVerdict, LandPolicy } from './gate.js';
 export { runFixGate } from './driver.js';
 export type {
   Fixer, ReplayScore, PrepareCandidate, BaseScore, CandidateEdit,
-  FixGateStages, FixGateOpts, FixGateRecord, FixGateResult,
+  FixGateStages, FixGateOpts, FixGateRecord, FixGateResult, FixCycleSkip,
 } from './driver.js';
 export { writeStagingManifest, adoptFile } from './land.js';
 export type { StageOpts } from './land.js';

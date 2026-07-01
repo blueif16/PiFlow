@@ -395,7 +395,7 @@ export {
 } from './optimize/index.js';
 export type {
   GateInput, GateVerdict, LandPolicy, Fixer, ReplayScore, PrepareCandidate, BaseScore, CandidateEdit,
-  FixGateStages, FixGateOpts, FixGateRecord, FixGateResult, StageOpts,
+  FixGateStages, FixGateOpts, FixGateRecord, FixGateResult, FixCycleSkip, StageOpts,
   CheckableTask, ReplayOracle, MineTask, CopyScope, ReplayDeps, ReplayStages, MineOpts,
   OptimizeEvent, OptimizeEventSink,
 } from './optimize/index.js';

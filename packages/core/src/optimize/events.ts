@@ -19,6 +19,7 @@ export type OptimizeEvent =
   | { type: 'scored'; node: string; baseScore: number | null; candidateScore: number | null }
   | { type: 'gated'; node: string; verdict: GateVerdict }
   | { type: 'landed'; node: string; decision: 'adopted' | 'staged' | 'discarded' }
+  | { type: 'fix-cycle-ceiling'; node: string; cycles: number; ceiling: number } // node hit the per-node re-attempt bound → skipped, escalate to a human
   | { type: 'stopped'; reason: FixGateResult['stoppedReason'] };
 
 export type OptimizeEventSink = (event: OptimizeEvent) => void;
@@ -51,6 +52,8 @@ export function renderOptimizeEvent(e: OptimizeEvent): string {
     }
     case 'landed':
       return `landed [${e.node}] ${e.decision}`;
+    case 'fix-cycle-ceiling':
+      return `fix-cycle-ceiling [${e.node}] ${e.cycles}/${e.ceiling} — escalate`;
     case 'stopped':
       return `stopped: ${e.reason}`;
   }

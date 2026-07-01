@@ -49,6 +49,18 @@ export interface FixGateStages {
   replayScore: ReplayScore;
   prepareCandidate: PrepareCandidate;
   baseScore: BaseScore;
+  /**
+   * OPTIONAL, product-side counter reads — how many failed fix cycles this node has ALREADY consumed (across
+   * `optimize --fix` invocations). Backs the deterministic fix-cycle CEILING. @piflow/core NEVER persists this
+   * (boundary law: the SDK is logic only) — the product injects a file-backed reader. The ceiling activates
+   * ONLY when this + bumpFixCycles + opts.fixCycleCeiling are ALL present, so a binding without them is 100%
+   * backward-compatible.
+   */
+  readFixCycles?: (node: string) => number;
+  /** OPTIONAL, product-side counter writer — increment this node's failed-fix-cycle count. Called by the driver
+   * ONLY after a REAL failed fix (a rejected verdict with >=1 edit applied); an accept / 0-edit / aborted
+   * proposal does NOT consume budget. Core mutates NO file — this injected fn is the ONLY writer. */
+  bumpFixCycles?: (node: string) => void;
 }
 
 export interface FixGateOpts {
@@ -60,6 +72,13 @@ export interface FixGateOpts {
   autoAdopt?: boolean;
   /** dead-edit keys — skipped (never re-proposed) and added to on reject. Mutated in place. */
   rejectedBuffer?: Set<string>;
+  /**
+   * OPTIONAL per-node re-attempt CEILING (v1.5 deferred-driver bound): once a node has consumed this many
+   * failed fix cycles it is SKIPPED (not re-attempted) and surfaced on result.skipped + a fix-cycle-ceiling
+   * event, so a structurally-unfixable node ESCALATES instead of looping across invocations. Active ONLY when
+   * this AND stages.readFixCycles AND stages.bumpFixCycles are all set (else a no-op — fully back-compat).
+   */
+  fixCycleCeiling?: number;
   /** optional LIVE progress sink — fire-and-forget; a throwing sink is swallowed so it never breaks the loop. */
   onEvent?: OptimizeEventSink;
 }
@@ -76,8 +95,20 @@ export interface FixGateRecord {
   tokensSpent: number;
 }
 
+/** A node the driver DID NOT attempt because it hit the per-node fix-cycle ceiling — an escalation, not a
+ * candidate (so it rides its own array, never a fake FixGateRecord with no candidateRef/verdict). */
+export interface FixCycleSkip {
+  node: string;
+  /** the failed cycles already consumed (readFixCycles(node) at skip time). */
+  cycles: number;
+  /** the ceiling that was hit. */
+  ceiling: number;
+}
+
 export interface FixGateResult {
   records: FixGateRecord[];
+  /** nodes skipped at the fix-cycle ceiling (empty unless the ceiling was active AND hit). */
+  skipped: FixCycleSkip[];
   attempted: number;
   accepted: number;
   stoppedReason: 'complete' | 'edit-budget' | 'token-budget';
@@ -94,6 +125,11 @@ export async function runFixGate(defects: Defect[], stages: FixGateStages, opts:
   const editBudget = opts.editBudget ?? 4;
   const buffer = opts.rejectedBuffer ?? new Set<string>();
   const records: FixGateRecord[] = [];
+  const skipped: FixCycleSkip[] = [];
+  // The per-node fix-cycle ceiling activates ONLY with the ceiling AND both counter stages — else a no-op
+  // (fully backward-compatible: no stages, no behavior change). Core reads/bumps through the injected stages;
+  // it persists NOTHING (boundary law: the SDK is logic only).
+  const ceilingActive = opts.fixCycleCeiling != null && !!stages.readFixCycles && !!stages.bumpFixCycles;
   let attempted = 0;
   let accepted = 0;
   let tokens = 0;
@@ -110,6 +146,19 @@ export async function runFixGate(defects: Defect[], stages: FixGateStages, opts:
 
   for (const d of defects) {
     if (buffer.has(defectKey(d))) continue; // dead edit — don't re-propose
+
+    // PER-NODE FIX-CYCLE CEILING: a node that has consumed >= the ceiling of failed cycles is ESCALATED, not
+    // re-attempted — skip WITHOUT calling the fixer (no fixer-started, no attempted/token spend), surface it on
+    // result.skipped, and emit a portable fix-cycle-ceiling event so the control plane routes it to a human.
+    if (ceilingActive) {
+      const cycles = stages.readFixCycles!(d.node);
+      if (cycles >= opts.fixCycleCeiling!) {
+        skipped.push({ node: d.node, cycles, ceiling: opts.fixCycleCeiling! });
+        safeEmit({ type: 'fix-cycle-ceiling', node: d.node, cycles, ceiling: opts.fixCycleCeiling! });
+        continue;
+      }
+    }
+
     if (attempted >= editBudget) { stoppedReason = 'edit-budget'; break; }
     if (opts.tokenBudget != null && tokens >= opts.tokenBudget) { stoppedReason = 'token-budget'; break; }
 
@@ -143,6 +192,9 @@ export async function runFixGate(defects: Defect[], stages: FixGateStages, opts:
     if (!verdict.accept) {
       landed = 'discarded';
       buffer.add(defectKey(d)); // remember the dead edit
+      // A REAL failed fix consumes a fix cycle (bounds the deferred re-attempt loop): a rejected verdict with
+      // >=1 applied edit. An ACCEPT, a 0-edit, or an aborted (0-edit) proposal does NOT consume budget.
+      if (ceilingActive && edit.editsApplied >= 1) stages.bumpFixCycles!(d.node);
     } else if (verdict.landPolicy === 'auto-adopt-eligible' && opts.autoAdopt) {
       landed = 'adopted';
       accepted++;
@@ -156,5 +208,5 @@ export async function runFixGate(defects: Defect[], stages: FixGateStages, opts:
   }
 
   safeEmit({ type: 'stopped', reason: stoppedReason });
-  return { records, attempted, accepted, stoppedReason };
+  return { records, skipped, attempted, accepted, stoppedReason };
 }

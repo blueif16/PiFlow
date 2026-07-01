@@ -42,6 +42,13 @@ describe('parseOptimizeFixArgs', () => {
     expect(a.tokenBudget).toBeUndefined();
   });
 
+  it('parses --fix-cycle-ceiling (the per-node re-attempt bound), leaving it unset when absent', () => {
+    const set = parseOptimizeFixArgs(['runs/gs01', '--binding', './b.mjs', '--fix-cycle-ceiling', '3']);
+    expect(set.fixCycleCeiling).toBe(3);
+    const unset = parseOptimizeFixArgs(['runs/gs01', '--binding', './b.mjs']);
+    expect(unset.fixCycleCeiling).toBeUndefined();
+  });
+
   it('parses --node as a worklist filter (target one node; the cost/safety scope)', () => {
     const a = parseOptimizeFixArgs(['runs/gs01', '--binding', './b.mjs', '--node', 'm3']);
     expect(a.node).toBe('m3');
@@ -115,6 +122,31 @@ describe('runOptimizeFixCli — composition smoke (scoreRun injected)', () => {
     expect(manifest.summary.accepted).toBe(1); // base 0 → candidate 1.0 (fake oracle passes) → strict improvement
     expect(manifest.records[0].node).toBe('w4-execute-m2');
     expect(manifest.records[0].landed).toBe('staged'); // auto-adopt OFF → the win stages for the human
+  });
+
+  it('OPTIONALITY: a binding WITHOUT the fix-cycle port still validates and runs with --fix-cycle-ceiling (ceiling inert)', async () => {
+    // The FAKE binding exports NO readFixCycles/bumpFixCycles. With --fix-cycle-ceiling set, the CLI must still
+    // load it and drive FIX→GATE to completion (core no-ops the ceiling when the counter stages are absent).
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-run-'));
+    const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-stage-'));
+    await fs.mkdir(path.join(runDir, 'verify'), { recursive: true });
+    await fs.writeFile(path.join(runDir, 'verify', 'report.M2.json'), JSON.stringify({ milestoneId: 'M2', marker: 'VALIDATION_FAILED', passed: false, fixOutcome: 'exhausted' }));
+    const digest: RunDigest = {
+      run: 'tmp', done: true, ok: true, durationMs: 1,
+      totals: { nodes: 1, ok: 1, failed: 0, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
+      nodes: [dnode('w4-execute-m2')], anomalies: [], rootCauses: [],
+    };
+    const tier1ByNode = new Map([['w4-execute-m2', t1('M2', [{ id: 'M2-A3', gate: 'fidelity', passed: false }])]]);
+    const fakeScoreRun = async () => ({ scores: scoreNodes({ digest, tier1ByNode }), digest });
+
+    await runOptimizeFixCli(
+      ['--fix', runDir, '--binding', FAKE, '--staging-dir', stagingDir, '--fix-cycle-ceiling', '3'],
+      { scoreRun: fakeScoreRun, print: () => {} },
+    );
+
+    const manifest = JSON.parse(await fs.readFile(path.join(stagingDir, 'manifest.json'), 'utf8'));
+    expect(manifest.summary.accepted).toBe(1);          // the inert ceiling didn't block the accepted edit
+    expect(manifest.records[0].node).toBe('w4-execute-m2');
   });
 
   it('with --node, processes ONLY the matching node(s) from the worklist', async () => {

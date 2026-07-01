@@ -22,13 +22,14 @@ const all = (gate: GateVerdict = acceptVerdict): OptimizeEvent[] => [
   { type: 'scored', node: 'w4-execute-m2', baseScore: 0, candidateScore: 1 },
   { type: 'gated', node: 'w4-execute-m2', verdict: gate },
   { type: 'landed', node: 'w4-execute-m2', decision: 'staged' },
+  { type: 'fix-cycle-ceiling', node: 'w4-execute-m2', cycles: 3, ceiling: 3 },
   { type: 'stopped', reason: 'complete' },
 ];
 
 describe('renderOptimizeEvent — one distinct non-empty line per variant', () => {
-  it('renders all 10 variants', () => {
+  it('renders all 11 variants', () => {
     const lines = all().map(renderOptimizeEvent);
-    expect(lines).toHaveLength(10);
+    expect(lines).toHaveLength(11);
     for (const l of lines) {
       expect(typeof l).toBe('string');
       expect(l.trim().length).toBeGreaterThan(0);
@@ -67,5 +68,13 @@ describe('renderOptimizeEvent — one distinct non-empty line per variant', () =
     expect(line).toContain('fixer-aborted');
     expect(line).toContain('w4-execute-m2');
     expect(line).toContain('no-progress: 22 tool calls / 0 edits');
+  });
+
+  it("the 'fix-cycle-ceiling' line carries the node id, the cycles/ceiling, and an escalate signal", () => {
+    const line = renderOptimizeEvent({ type: 'fix-cycle-ceiling', node: 'w4-execute-m2', cycles: 3, ceiling: 3 });
+    expect(line).toContain('fix-cycle-ceiling');
+    expect(line).toContain('w4-execute-m2');
+    expect(line).toMatch(/3\/3/);
+    expect(line).toMatch(/escalate/i);
   });
 });

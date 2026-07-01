@@ -1,4 +1,4 @@
-// `piflowctl optimize --fix --binding <module> [--node <substr>] [--staging-dir <d>] [--auto-adopt] [--edit-budget n] [--token-budget n]`
+// `piflowctl optimize --fix --binding <module> [--node <substr>] [--staging-dir <d>] [--auto-adopt] [--edit-budget n] [--token-budget n] [--fix-cycle-ceiling n]`
 // — the FIX→GATE→LAND driver surfaced on the CLI (piflow-memory-v1.5 §6). It INVENTS the product→optimizer
 // injection convention (none existed): a PRODUCT binding module supplies the LIVE stages that cannot live in
 // @piflow/core — `oracle` (the product's runMilestoneVerify2 + build), `copyScope`, `fixer` — and the CLI
@@ -24,6 +24,11 @@ export interface OptimizeBinding {
   fixer: Fixer;
   /** optional: customize the default trace miner (node→milestone map, val/train split). */
   mineOpts?: MineOpts;
+  /** OPTIONAL per-node fix-cycle counter (backs `--fix-cycle-ceiling`): reads how many failed cycles a node
+   * has consumed across invocations. Persisted PRODUCT-side (boundary law); a binding WITHOUT it still validates. */
+  readFixCycles?: (node: string) => number;
+  /** OPTIONAL per-node fix-cycle counter writer — the driver bumps it after a real failed fix. Product-side. */
+  bumpFixCycles?: (node: string) => void;
 }
 
 export interface ParsedOptimizeFixArgs {
@@ -33,6 +38,9 @@ export interface ParsedOptimizeFixArgs {
   autoAdopt: boolean;
   editBudget?: number;
   tokenBudget?: number;
+  /** per-node fix-cycle CEILING — skip (escalate) a node that has consumed this many failed cycles across
+   * invocations. Active only when the binding also exports readFixCycles/bumpFixCycles. */
+  fixCycleCeiling?: number;
   /** substring filter on the worklist — process ONLY defects whose node id contains it (cost/safety scope). */
   node?: string;
   /** stream the live FIX→GATE progress (one OptimizeEvent line per phase) as the loop runs. */
@@ -58,6 +66,7 @@ export function parseOptimizeFixArgs(argv: string[]): ParsedOptimizeFixArgs {
     else if (k === '--auto-adopt') out.autoAdopt = true;
     else if (k === '--edit-budget') out.editBudget = Number(argv[++i]);
     else if (k === '--token-budget') out.tokenBudget = Number(argv[++i]);
+    else if (k === '--fix-cycle-ceiling') out.fixCycleCeiling = Number(argv[++i]);
     else if (k === '--node') out.node = argv[++i];
     else if (k === '--watch') out.watch = true;
     else if (k === '--watch-json') { out.watch = true; out.watchJson = true; } // --watch-json implies --watch
@@ -114,15 +123,24 @@ export async function runOptimizeFixCli(argv: string[], deps: OptimizeFixDeps = 
   const onEvent: OptimizeEventSink | undefined = args.watch
     ? (e) => print(args.watchJson ? JSON.stringify(e) : renderOptimizeEvent(e))
     : undefined;
-  const result = await runFixGate(defects, { fixer: binding.fixer, ...stages }, {
+  // The per-node fix-cycle ceiling is opt-in on BOTH sides: the flag AND a binding that exports the counter
+  // stages. If the binding lacks them, the ceiling is inert (core no-ops it) — an unported binding still runs.
+  const result = await runFixGate(defects, {
+    fixer: binding.fixer,
+    ...stages,
+    ...(binding.readFixCycles ? { readFixCycles: binding.readFixCycles } : {}),
+    ...(binding.bumpFixCycles ? { bumpFixCycles: binding.bumpFixCycles } : {}),
+  }, {
     autoAdopt: args.autoAdopt,
     ...(args.editBudget !== undefined ? { editBudget: args.editBudget } : {}),
     ...(args.tokenBudget !== undefined ? { tokenBudget: args.tokenBudget } : {}),
+    ...(args.fixCycleCeiling !== undefined ? { fixCycleCeiling: args.fixCycleCeiling } : {}),
     ...(onEvent ? { onEvent } : {}),
   });
 
   const stagingDir = args.stagingDir ?? path.join(args.dir, 'optimize', 'staging');
   const manifestPath = await writeStagingManifest(result, { stagingDir });
-  print(`optimize --fix: ${result.accepted}/${result.attempted} edit(s) accepted (${result.stoppedReason}); manifest → ${manifestPath}`);
+  const escalated = result.skipped.length ? `; ${result.skipped.length} node(s) escalated at the fix-cycle ceiling` : '';
+  print(`optimize --fix: ${result.accepted}/${result.attempted} edit(s) accepted (${result.stoppedReason})${escalated}; manifest → ${manifestPath}`);
   process.stderr.write(`\noptimize --fix: staged ${result.accepted} accepted edit(s) across ${defects.length} defect(s) in ${digest.run || args.dir}; nothing landed live (adopt is a separate step).\n`);
 }
