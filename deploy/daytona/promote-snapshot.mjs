@@ -18,24 +18,19 @@
 //      SMOKE=1 → after promoting, boot ONE VM from the snapshot, prove `pi`+`rg`, tear down.
 
 import { Daytona, Image } from '@daytona/sdk';
+import { baseImage, runCommand, backends, piVersion, snapshotName } from '../pi-runtime/runtime.mjs';
 
-const PI_VERSION = process.env.PI_VERSION ?? '0.80.2';
-// MUST match packages/cli/src/run.ts DEFAULT_DAYTONA_SNAPSHOT so `--sandbox daytona` finds it.
-// Daytona snapshot names are safest dot-free → sanitize the version's dots to dashes (0.80.2 → 0-80-2).
-const SNAPSHOT = process.env.SNAPSHOT ?? `piflow-node-runtime-${PI_VERSION.replace(/\./g, '-')}`;
+const PI_VERSION = process.env.PI_VERSION ?? piVersion;
+// snapshotName() MUST match packages/cli/src/run.ts DEFAULT_DAYTONA_SNAPSHOT so `--sandbox daytona`
+// finds it (Daytona names are dot-free → the spec sanitizes 0.80.2 → 0-80-2).
+const SNAPSHOT = process.env.SNAPSHOT ?? snapshotName(PI_VERSION);
 const SMOKE = process.env.SMOKE === '1';
 
-// The piflow node-runtime image — byte-equivalent to deploy/daytona/Dockerfile (MINIMAL+ tier:
-// node + pi + git + ca-certificates + ripgrep, the last because pi's grep/find shell out to `rg`).
-const image = Image.base('node:22-trixie-slim')
-  .runCommands(
-    'apt-get update' +
-      ' && apt-get install -y --no-install-recommends git ca-certificates ripgrep' +
-      ' && rm -rf /var/lib/apt/lists/*' +
-      ` && npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}` +
-      ' && pi --version',
-  )
-  .workdir('/home/daytona');
+// The piflow node-runtime image, built from the SHARED spec (deploy/pi-runtime/runtime.mjs) —
+// same recipe the E2B + local-Docker Dockerfiles render from. Only the workdir is Daytona-specific.
+const image = Image.base(baseImage)
+  .runCommands(runCommand(PI_VERSION))
+  .workdir(backends.daytona.workdir);
 
 const daytona = new Daytona(); // reads DAYTONA_API_KEY / DAYTONA_API_URL from env
 

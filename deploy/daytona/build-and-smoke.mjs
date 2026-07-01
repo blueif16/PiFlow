@@ -12,21 +12,16 @@
 // Optional: PI_VERSION (default 0.80.2), KEEP=1 to skip teardown (debug only — bills).
 
 import { Daytona, Image } from '@daytona/sdk';
+import { baseImage, runCommand, backends, piVersion } from '../pi-runtime/runtime.mjs';
 
-const PI_VERSION = process.env.PI_VERSION ?? '0.80.2';
+const PI_VERSION = process.env.PI_VERSION ?? piVersion;
 const KEEP = process.env.KEEP === '1';
 
-// The piflow node-runtime image — MINIMAL+ tier (see Dockerfile header for the rationale).
-const image = Image.base('node:22-trixie-slim')
-  .runCommands(
-    // one chained RUN so the apt cache is never persisted in a layer
-    'apt-get update' +
-      ' && apt-get install -y --no-install-recommends git ca-certificates ripgrep' +
-      ' && rm -rf /var/lib/apt/lists/*' +
-      ` && npm install -g --ignore-scripts @earendil-works/pi-coding-agent@${PI_VERSION}` +
-      ' && pi --version',
-  )
-  .workdir('/home/daytona');
+// The piflow node-runtime image, built from the SHARED spec (deploy/pi-runtime/runtime.mjs) —
+// same recipe the E2B + local-Docker Dockerfiles render from. Only the workdir is Daytona-specific.
+const image = Image.base(baseImage)
+  .runCommands(runCommand(PI_VERSION))
+  .workdir(backends.daytona.workdir);
 
 const daytona = new Daytona(); // reads DAYTONA_API_KEY / DAYTONA_API_URL from env
 

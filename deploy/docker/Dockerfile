@@ -3,9 +3,8 @@
 #
 # piflow "pi node-runtime" image — bakes the RUNTIME (one `pi` process per node), NOT the
 # per-node files (the host runner stages those in at run time). Full rationale: runtime.mjs.
-# Daytona's runtime user is `daytona` (uid 1001). NOTE: the ACTUAL Daytona build is the declarative
-# `Image` in deploy/daytona/*.mjs (which import runtime.mjs); this Dockerfile is the human-readable
-# parity copy, generated from the same spec.
+# Local Docker backend (future): `docker build` this image, `docker run` it per run. Same recipe as
+# the cloud images — the whole point of the shared spec.
 
 FROM node:22-trixie-slim
 
@@ -17,7 +16,4 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}" \
  && pi --version
-
-# Match the platform's runtime user + home so the runner's in-VM paths resolve identically.
-RUN id daytona >/dev/null 2>&1 || useradd -m -u 1001 daytona
-WORKDIR /home/daytona
+WORKDIR /home/user
