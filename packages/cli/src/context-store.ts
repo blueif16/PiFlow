@@ -22,10 +22,37 @@ import path from 'node:path';
 import os from 'node:os';
 import { globalDir } from '@piflow/core';
 
-/** One named control-plane endpoint: where a `serve` lives + an optional bearer token for a cloud one. */
+/**
+ * The control-plane hosting pathway a context runs on — the `--host` kinds plus the implicit `local` serve.
+ * `local` is the laptop; everything else is a remote (cloud) control plane.
+ */
+export type HostKind = 'local' | 'fly' | 'railway' | 'selfhost' | 'docker';
+
+/**
+ * Where a context's WORKERS (each node's `pi`) execute — the persistent default for `--sandbox`. `local` runs
+ * on the same machine as the control plane; `e2b`/`daytona` are cloud sandboxes. (`docker` is deferred: its
+ * name is ambiguous between a local container and a docker-hosted plane, so it is NOT in the worker cascade —
+ * `--sandbox docker` still works as a per-run override.)
+ */
+export type WorkerKind = 'local' | 'daytona' | 'e2b';
+
+/** Cloud workers in preference order — a cloud host cascades to the first of these that is set up. */
+export const CLOUD_WORKERS: readonly WorkerKind[] = ['e2b', 'daytona'];
+/** Full worker precedence (cloud-first, then local) — the ORDER is the contract (a mutation test flips it). */
+export const WORKER_PRECEDENCE: readonly WorkerKind[] = ['e2b', 'daytona', 'local'];
+
+/**
+ * One named context — the two axes we switch between: WHERE the control plane runs (`baseUrl`/`token` +
+ * `host`) and WHERE its workers run (`worker`). `host`/`worker` are optional for back-compat: a legacy entry
+ * with neither resolves via the cascade (loopback baseUrl ⇒ local; a remote baseUrl ⇒ a cloud plane).
+ */
 export interface ContextEntry {
   baseUrl: string;
   token?: string;
+  /** The control-plane pathway (`context host use`); inferred from baseUrl when absent. */
+  host?: HostKind;
+  /** The persistent worker default (`context worker use`); cascade-derived when absent or host-incompatible. */
+  worker?: WorkerKind;
 }
 
 /** The `contexts.json` body: the active-context pointer + the name→endpoint map. */
@@ -98,9 +125,14 @@ export function resolveActive(opts: { flagContext?: string } = {}): string {
   return flag ?? env ?? current ?? LOCAL_CONTEXT;
 }
 
-/** Upsert a named endpoint (create or replace baseUrl/token). Returns the mutated file for chaining. */
+/** Upsert a named endpoint (create or replace baseUrl/token/host/worker). Returns the mutated file for chaining. */
 export function addContext(file: ContextsFile, name: string, entry: ContextEntry): ContextsFile {
-  file.contexts[name] = { baseUrl: entry.baseUrl, ...(entry.token ? { token: entry.token } : {}) };
+  file.contexts[name] = {
+    baseUrl: entry.baseUrl,
+    ...(entry.token ? { token: entry.token } : {}),
+    ...(entry.host ? { host: entry.host } : {}),
+    ...(entry.worker ? { worker: entry.worker } : {}),
+  };
   return file;
 }
 
@@ -125,4 +157,68 @@ export function useContext(file: ContextsFile, name: string): ContextsFile {
   }
   file.current = name;
   return file;
+}
+
+// ── the host/worker cascade (PURE) ─────────────────────────────────────────────────────────────────
+//
+// Two axes: the control-plane host (where the orchestrator serves) and the worker (where each node's `pi`
+// runs). They are correlated but not identical — a CLOUD control plane physically can't reach your laptop's
+// local sandbox, so switching the host cascades a worker default. These are the deterministic rules the CLI
+// (`context use`/`host use`/`worker use`) and the run path (`--sandbox` default) both consult.
+
+/** `local` is the laptop; every other host kind is a remote (cloud) control plane. */
+export function isCloudHost(host: HostKind): boolean {
+  return host !== LOCAL_CONTEXT;
+}
+
+/** True when a context runs a remote control plane. Explicit `host` wins; else a non-loopback baseUrl ⇒ cloud. */
+export function isCloudEntry(entry: ContextEntry): boolean {
+  if (entry.host) return isCloudHost(entry.host);
+  try {
+    const h = new URL(entry.baseUrl).hostname;
+    return !(h === '127.0.0.1' || h === 'localhost' || h === '::1' || h === '0.0.0.0');
+  } catch {
+    return false; // an unparseable baseUrl is treated as local (the safe, no-remote default).
+  }
+}
+
+/** The low-level compat rule keyed on cloud-ness: a cloud plane can't drive the `local` worker; local drives any. */
+function workerOkForCloud(cloud: boolean, worker: WorkerKind): boolean {
+  return cloud ? worker !== LOCAL_CONTEXT : true;
+}
+
+/** The low-level default keyed on cloud-ness: local ⇒ `local`; cloud ⇒ the top CONFIGURED cloud worker (or the
+ *  top cloud worker overall as a setup-on-miss signal the caller surfaces). */
+function defaultWorkerForCloud(cloud: boolean, configured: ReadonlySet<WorkerKind>): WorkerKind {
+  if (!cloud) return LOCAL_CONTEXT;
+  return CLOUD_WORKERS.find((w) => configured.has(w)) ?? CLOUD_WORKERS[0];
+}
+
+/** Can this control-plane host drive this worker? (For `context worker use` validation, where the host is known.) */
+export function isWorkerCompatible(host: HostKind, worker: WorkerKind): boolean {
+  return workerOkForCloud(isCloudHost(host), worker);
+}
+
+/**
+ * The worker a host cascades to, given which cloud workers are CONFIGURED (creds present). Local host → `local`;
+ * cloud host → the highest-PRECEDENCE configured cloud worker, or the top cloud worker if none is set up yet
+ * (the caller prompts to set it up). `configured` is injected so this stays pure (the CLI reads env for it).
+ */
+export function defaultWorkerFor(host: HostKind, configured: ReadonlySet<WorkerKind>): WorkerKind {
+  return defaultWorkerForCloud(isCloudHost(host), configured);
+}
+
+/**
+ * Resolve a context's EFFECTIVE worker: an explicit, still-compatible `worker` is kept as-is; a missing or
+ * host-incompatible one is promoted to the cascade default. `promoted` is true only when an explicit worker was
+ * overridden (a cloud plane rejecting a stored `local` worker) — so the CLI can print `workers → e2b`.
+ */
+export function resolveWorker(
+  entry: ContextEntry,
+  configured: ReadonlySet<WorkerKind>,
+): { worker: WorkerKind; promoted: boolean; cloud: boolean } {
+  const cloud = isCloudEntry(entry);
+  const stored = entry.worker;
+  if (stored && workerOkForCloud(cloud, stored)) return { worker: stored, promoted: false, cloud };
+  return { worker: defaultWorkerForCloud(cloud, configured), promoted: stored != null, cloud };
 }
