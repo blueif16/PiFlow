@@ -16,9 +16,9 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseOptimizeFixArgs, loadBinding, runOptimizeFixCli } from '../src/optimize-fix.js';
+import { parseOptimizeFixArgs, loadBinding, runOptimizeFixCli, enrichCodeMap } from '../src/optimize-fix.js';
 import { scoreNodes } from '@piflow/core';
-import type { RunDigest, NodeDigest, Tier1Result, Tier1Check } from '@piflow/core';
+import type { RunDigest, NodeDigest, Tier1Result, Tier1Check, Defect } from '@piflow/core';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, 'fixtures', 'fake-binding.mjs');
@@ -69,6 +69,33 @@ describe('parseOptimizeFixArgs', () => {
     const json = parseOptimizeFixArgs(['runs/gs01', '--binding', './b.mjs', '--watch', '--watch-json']);
     expect(json.watch).toBe(true);
     expect(json.watchJson).toBe(true);
+  });
+});
+
+describe('enrichCodeMap — resolve each SKILL lesson\'s [[okf-slice]] pointer to the code-map body (resolve-at-read)', () => {
+  const skillDefect = (okfSlice?: string): Defect => ({
+    node: 'flaky', bucket: 'SKILL', symptom: 'recurred', evidence: [], confidence: 'medium',
+    scope: { recurrence: 2, ...(okfSlice ? { okfSlice } : {}) },
+  });
+
+  it('inlines the resolved body into scope.codeMap for a defect that links a slice', () => {
+    const defects = [skillDefect('runner')];
+    enrichCodeMap(defects, (k) => (k === 'runner' ? 'HOW THE RUNNER WORKS' : null));
+    expect(defects[0].scope?.codeMap).toEqual([{ slice: 'runner', body: 'HOW THE RUNNER WORKS' }]);
+  });
+
+  it('leaves codeMap unset when the pointer is dangling (slice resolves to null — root/prevention still flow)', () => {
+    const defects = [skillDefect('gone')];
+    enrichCodeMap(defects, () => null);
+    expect(defects[0].scope?.codeMap).toBeUndefined();
+  });
+
+  it('skips defects with no okfSlice pointer entirely (never calls the resolver for LAPSE/FUNCTIONALITY/ARCH)', () => {
+    const lapse: Defect = { node: 'x', bucket: 'LAPSE', symptom: '', evidence: [], confidence: 'low' };
+    let calls = 0;
+    enrichCodeMap([lapse], () => { calls++; return 'X'; });
+    expect(lapse.scope).toBeUndefined();
+    expect(calls).toBe(0);
   });
 });
 

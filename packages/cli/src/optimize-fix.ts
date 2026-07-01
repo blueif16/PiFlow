@@ -12,7 +12,8 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { scoreRun as coreScoreRun, triage, deriveRecurrence, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
-import type { ReplayOracle, CopyScope, Fixer, MineOpts, NodeScore, RunDigest, OptimizeEventSink } from '@piflow/core';
+import type { ReplayOracle, CopyScope, Fixer, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect } from '@piflow/core';
+import { resolveTopicsDir, resolveSlice } from './understand.js';
 
 /** The product binding the CLI dynamic-imports — the LIVE stages that stay product-side (out of @piflow/core). */
 export interface OptimizeBinding {
@@ -93,6 +94,22 @@ export async function loadBinding(spec: string): Promise<OptimizeBinding> {
   return b as OptimizeBinding;
 }
 
+/**
+ * Dereference each SKILL defect's `[[okf-slice]]` pointer to the linked slice's code-map body and inline it
+ * into `scope.codeMap` — the Leg-A → Leg-B cross-reference, resolved AT FIX TIME (piflow-memory-v1.5 §6/§8;
+ * pointer + resolve, never a stored copy). `resolve` returns the slice's curated body or `null`; a dangling
+ * pointer leaves `codeMap` unset so the lesson's root/prevention still reach the fixer. Mutates in place;
+ * defects without a pointer are untouched (the resolver is never called for them). Pure but for `resolve`.
+ */
+export function enrichCodeMap(defects: Defect[], resolve: (key: string) => string | null): void {
+  for (const d of defects) {
+    const key = d.scope?.okfSlice;
+    if (!key) continue;
+    const body = resolve(key);
+    if (body) d.scope!.codeMap = [{ slice: key, body }];
+  }
+}
+
 export async function runOptimizeFixCli(argv: string[], deps: OptimizeFixDeps = {}): Promise<void> {
   const args = parseOptimizeFixArgs(argv);
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
@@ -117,6 +134,13 @@ export async function runOptimizeFixCli(argv: string[], deps: OptimizeFixDeps = 
   const templateDir = path.resolve(args.dir, '..', '..', 'template');
   const recurrence = deriveRecurrence({ templateDir, nodes: scores.map((s) => s.node) });
   const defects = triage(scores, digest, { recurrence }).filter((d) => (args.node ? d.node.includes(args.node) : true));
+
+  // Leg-A ↔ Leg-B cross-reference (piflow-memory-v1.5 §6/§8): dereference each SKILL lesson's `[[okf-slice]]`
+  // link to the slice's curated code-map and inline it into the fixer's scope-context — resolve-at-read, never
+  // a stored copy (so it reads the CURRENT drift-gated slice). Degrades silently if the repo has no `.agents/
+  // okf/` or the linked slice is absent; the pointer + root/prevention still reach the fixer.
+  const topicsDir = resolveTopicsDir(args.dir);
+  if (topicsDir) enrichCodeMap(defects, (key) => resolveSlice(topicsDir, key));
 
   // Compose the binding's LIVE stages with the product-agnostic core driver. The driver decides/bounds/stages.
   const binding = await loadBinding(args.binding);

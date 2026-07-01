@@ -126,6 +126,19 @@ export function resolveTopicsDir(startDir: string): string | null {
   }
 }
 
+/**
+ * Resolve one slice KEY to its curated "how it works" body — the read-at-fix-time dereference of a memory
+ * lesson's `[[okf-slice]]` link (piflow-memory-v1.5 §6/§8; pointer + resolve, NEVER a stored copy). Returns the
+ * curated body ABOVE the codegraph auto-region (the condensed, hand-authored semantics), or `null` when the
+ * repo has no such slice (a dangling pointer). Reuses `parseCard`, so it strips frontmatter + the auto region
+ * exactly like the reader — the optimizer inlines this fresh at fix time, so the code-map can never rot.
+ */
+export function resolveSlice(topicsDir: string, key: string): string | null {
+  const p = path.join(topicsDir, `${key}.md`);
+  if (!existsSync(p)) return null;
+  return parseCard(key, readFileSync(p, 'utf8')).curated || null;
+}
+
 /** Load every slice card in `topicsDir` — the `*.md` files, EXCLUDING `_`-prefixed engine files. */
 function loadCards(topicsDir: string): Card[] {
   return readdirSync(topicsDir)
