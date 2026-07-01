@@ -122,6 +122,17 @@ function baseFixture(): { status: RunStatus; nodes: Record<string, FixtureNode> 
   return { status, nodes };
 }
 
+// Write the run-local RESOLVED DAG (`.pi/workflow.json`) — the runner persists it with the active profile
+// already applied. It is the AUTHORITATIVE structure both readers now prefer over io/phase reconstruction.
+async function writeWorkflowJson(
+  runDir: string,
+  dag: { stages: { index?: number; phase?: string | null; parallel?: boolean; nodeIds: string[] }[]; edges: { from: string; to: string; files?: string[] }[] },
+): Promise<void> {
+  const f = path.join(runDir, '.pi', 'workflow.json');
+  await fs.mkdir(path.dirname(f), { recursive: true });
+  await fs.writeFile(f, JSON.stringify({ meta: { name: 'fix', description: '' }, profile: null, ...dag }, null, 2) + '\n');
+}
+
 const mkRunDir = (): string => mkdtempSync(path.join(tmpdir(), 'piflow-observe-'));
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -178,13 +189,15 @@ describe('readRunModel — the shared one-shot snapshot over a .pi/ run dir', ()
     // b2: running passes through (makes no artifact claim yet).
     expect(byId.b2.status).toBe('running');
 
-    // Parallel lane: b1 and b2 share the published barrier stage → same stageIndex, distinct lanes.
+    // Parallel lane (NO workflow.json ⇒ the tier-3 phase-grouping fallback): w0 is phase `design`, b1‖b2 are
+    // both phase `build` → they share the build stage. Same stageIndex, distinct lanes.
     expect(byId.b1.stageIndex).toBe(byId.b2.stageIndex);
     expect(new Set([byId.b1.lane, byId.b2.lane])).toEqual(new Set([0, 1]));
     const parallel = model.stages.find((s) => s.parallel);
     expect(parallel?.nodeIds.sort()).toEqual(['b1', 'b2']);
 
-    // Edge: w0 wrote spec/cls.json which b1 read back → w0→b1 (b2 reads it too → w0→b2).
+    // Edge (fallback): w0 wrote spec/cls.json which b1 read back → w0→b1 (b2 reads it too → w0→b2). The path is
+    // display-normalized against the run dir (P0b), the SAME as buildRunView.
     const edge = model.edges.find((e) => e.from === 'w0' && e.to === 'b1');
     expect(edge).toBeTruthy();
     expect(edge?.path).toBe('spec/cls.json');
@@ -193,6 +206,85 @@ describe('readRunModel — the shared one-shot snapshot over a .pi/ run dir', ()
   it('throws a clear error when the run dir has no readable .pi/run.json', async () => {
     const runDir = mkRunDir();
     await expect(readRunModel(runDir)).rejects.toThrow(/run\.json/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// (2a) STRUCTURE PARITY (P0b) — readRunModel + buildRunView resolve edges+stages the SAME way, and both
+// PREFER the run-local resolved DAG (`.pi/workflow.json`) when present. Before P0b the lean snapshot
+// reconstructed edges purely from the io ledgers and grouped stages off the barrier, so the live graph
+// and the loaded run-view could diverge. This pins the closed gap.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe('readRunModel + buildRunView agree on edges/stages (structure parity, P0b)', () => {
+  // Normalize a stage list from EITHER reader to a comparable shape (phase `null`↔`—` collapsed, since the
+  // lean StageView allows null while the RunViewStage stamps `—`; the placement is what must match).
+  const normStages = (stages: { index: number; phase: string | null; parallel: boolean; nodeIds: string[] }[]) =>
+    stages.map((s) => ({ index: s.index, phase: s.phase ?? '—', parallel: s.parallel, nodeIds: [...s.nodeIds].sort() }))
+      .sort((a, b) => a.index - b.index);
+  const normEdges = (edges: { from: string; to: string; path: string }[]) =>
+    [...edges].map((e) => ({ from: e.from, to: e.to, path: e.path })).sort((a, b) => `${a.from}|${a.to}|${a.path}`.localeCompare(`${b.from}|${b.to}|${b.path}`));
+  const placement = (nodes: { id: string; stageIndex?: number | null; lane?: number | null }[]) =>
+    Object.fromEntries(nodes.map((n) => [n.id, { stageIndex: n.stageIndex, lane: n.lane }]));
+
+  it('WITHOUT .pi/workflow.json: both readers agree on edges + stages via the shared fallback', async () => {
+    const runDir = mkRunDir();
+    const { status, nodes } = baseFixture();
+    await writeFixture(runDir, status, nodes); // NO workflow.json
+
+    const model = await readRunModel(runDir);
+    const { view } = buildRunView(runDir);
+
+    expect(normEdges(model.edges)).toEqual(normEdges(view.edges));
+    expect(normStages(model.stages)).toEqual(normStages(view.stages));
+    // and the io-derived w0→{b1,b2} data-flow edges are what both produced.
+    expect(normEdges(model.edges)).toEqual([
+      { from: 'w0', to: 'b1', path: 'spec/cls.json' },
+      { from: 'w0', to: 'b2', path: 'spec/cls.json' },
+    ]);
+    // node placement matches too (same stageIndex/lane per node id).
+    expect(placement(model.nodes)).toEqual(placement(view.nodes));
+  });
+
+  it('WITH .pi/workflow.json: readRunModel now PREFERS the resolved DAG — a DIFFERENT graph than io reconstruction, and it matches buildRunView', async () => {
+    const runDir = mkRunDir();
+    const { status, nodes } = baseFixture();
+    await writeFixture(runDir, status, nodes);
+    // The resolved DAG declares a graph the io/phase reconstruction would NOT produce:
+    //  • stages: w0‖b1 run together (stage 1), b2 alone (stage 2) — the OPPOSITE of the phase grouping
+    //    (which puts w0 alone, then b1‖b2). A reader ignoring workflow.json cannot produce this.
+    //  • edges: an explicit b1→b2 contract edge (`gen/plan.json`) that NO io ledger read/write implies.
+    await writeWorkflowJson(runDir, {
+      stages: [
+        { index: 1, phase: 'design', parallel: true, nodeIds: ['w0', 'b1'] },
+        { index: 2, phase: 'build', parallel: false, nodeIds: ['b2'] },
+      ],
+      edges: [
+        { from: 'w0', to: 'b1', files: ['spec/cls.json'] },
+        { from: 'b1', to: 'b2', files: ['gen/plan.json'] },
+      ],
+    });
+
+    const model = await readRunModel(runDir);
+    const { view } = buildRunView(runDir);
+
+    // (1) The two readers AGREE — the whole point of P0b.
+    expect(normEdges(model.edges)).toEqual(normEdges(view.edges));
+    expect(normStages(model.stages)).toEqual(normStages(view.stages));
+    expect(placement(model.nodes)).toEqual(placement(view.nodes));
+
+    // (2) readRunModel took the DAG, NOT the io reconstruction — the concrete new values (teeth: reverting
+    // readRunModel to io-edge/barrier reconstruction makes BOTH of these fail).
+    expect(normEdges(model.edges)).toEqual([
+      { from: 'b1', to: 'b2', path: 'gen/plan.json' }, // the declared contract edge io could never yield
+      { from: 'w0', to: 'b1', path: 'spec/cls.json' },
+    ]);
+    // the b1→b2 edge is present (io reconstruction would MISS it — b1 never wrote gen/plan.json on disk).
+    expect(model.edges.some((e) => e.from === 'b1' && e.to === 'b2')).toBe(true);
+    // stages follow the DAG: w0 and b1 share stage 1 (io/phase grouping would split them).
+    const byId = Object.fromEntries(model.nodes.map((n) => [n.id, n]));
+    expect(byId.w0.stageIndex).toBe(byId.b1.stageIndex);
+    expect(byId.b2.stageIndex).not.toBe(byId.w0.stageIndex);
+    expect(model.stages.find((s) => s.parallel)?.nodeIds.sort()).toEqual(['b1', 'w0']);
   });
 });
 

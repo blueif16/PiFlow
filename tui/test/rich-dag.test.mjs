@@ -1,9 +1,10 @@
 // ── tui/test/rich-dag.test.mjs ─────────────────────────────────────────
 // The REAL-RUN oracle: a run that records itself the way `piflowctl run` does — a run-local resolved DAG
 // in `.pi/workflow.json` but an EMPTY io.json ledger — must still render the connected graph the GUI
-// draws. `readRunModel` (the lean snapshot) finds ZERO data-flow edges from such a run, so the TUI MUST
-// adopt the RICH view's resolved-DAG edges + per-node files (`buildRunView`, the SAME source the GUI
-// reads). This REDDENS on the pre-fix adapter, which derived the DAG from the empty io ledger and drew
+// draws. Since P0b, `readRunModel` (the lean snapshot) ALSO reads `.pi/workflow.json`, so it now surfaces
+// the resolved-DAG EDGES; but it still carries NO per-node output FILES, so the TUI MUST adopt the RICH
+// view (`buildRunView`, the SAME source the GUI reads) for the produced files + their producer→consumer
+// wiring. This REDDENS on the pre-fix adapter, which derived the DAG from the empty io ledger and drew
 // disconnected boxes with no inputs/outputs (mutation-proven: drop the rich-io overlay and every edge
 // assertion + the rendered-connector assertion fail).
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -26,11 +27,14 @@ beforeAll(async () => {
 });
 
 describe('rich resolved-DAG topology drives the TUI graph (real-run shape)', () => {
-  it('PRECONDITION: the lean readRunModel snapshot has ZERO edges for this run', async () => {
-    // This is what makes the test meaningful — the edges below can ONLY come from the rich resolved DAG,
-    // never from readRunModel. If a future change teaches readRunModel to read workflow.json, update this.
+  it('readRunModel surfaces the resolved-DAG edges (P0b: the lean snapshot now reads .pi/workflow.json)', async () => {
+    // P0b unified the structure resolver: readRunModel prefers the run-local resolved DAG, so the lean
+    // snapshot now draws the SAME edges as the rich buildRunView view (parity). (Before P0b it reconstructed
+    // edges from the empty io ledger and found ZERO.) The per-node FILES the tests below assert still come
+    // ONLY from the rich view — readRunModel carries no produced-file telemetry.
     const lean = await readRunModel(runDir);
-    expect(lean.edges).toHaveLength(0);
+    const pairs = [...new Set(lean.edges.map((e) => `${e.from}->${e.to}`))].sort();
+    expect(pairs).toEqual(['classify->design', 'design->build-a', 'design->build-b']);
   });
 
   it('buildModel adopts the resolved-DAG stages: 3 stages, the build stage parallel (2 lanes)', async () => {

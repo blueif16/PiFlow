@@ -18,7 +18,8 @@ import { artifactState } from '../runner/status.js';
 import type { NodeStatus, NodeStatusRecord, RunStatus } from '../runner/status.js';
 import { readMarker, readCheckpointJournal, checkpointViewFrom } from '../runner/checkpoint.js';
 import type { NodeIo } from '../types.js';
-import type { CheckpointView, EdgeView, NodeView, RunModel, StageView } from './types.js';
+import { resolveStructure } from './structure.js';
+import type { CheckpointView, NodeView, RunModel } from './types.js';
 
 /** Read `.pi/run.json` → a RunStatus, or null when absent/unparseable. */
 export async function readRunJson(runDir: string): Promise<RunStatus | null> {
@@ -68,36 +69,6 @@ export function deriveStatus(reported: NodeStatus, missing: string[], checkpoint
 }
 
 /**
- * Reconstruct the stage spine + parallel lanes from the run dir alone. Singletons each form a stage in
- * file order; the engine's last-published barrier (`stage.nodeIds`) groups its concurrent siblings into
- * ONE parallel stage. Returns the stages AND stamps {stageIndex, lane} into a placement map.
- */
-function buildStages(
-  status: RunStatus,
-): { stages: StageView[]; placement: Record<string, { stageIndex: number; lane: number }> } {
-  const order = Object.keys(status.nodes);
-  const barrier = (status.stage?.nodeIds ?? []).filter((id) => id in status.nodes);
-  const barrierSet = new Set(barrier);
-
-  const stages: StageView[] = [];
-  for (const id of order) {
-    if (barrierSet.has(id)) continue; // barrier nodes group together below, in barrier order
-    stages.push({ index: stages.length + 1, phase: null, parallel: false, nodeIds: [id] });
-  }
-  if (barrier.length) {
-    stages.push({ index: stages.length + 1, phase: null, parallel: barrier.length > 1, nodeIds: barrier });
-  }
-  // re-index + record placement.
-  const placement: Record<string, { stageIndex: number; lane: number }> = {};
-  stages.forEach((st, i) => {
-    st.index = i + 1;
-    st.parallel = st.nodeIds.length > 1;
-    st.nodeIds.forEach((id, lane) => { placement[id] = { stageIndex: st.index, lane }; });
-  });
-  return { stages, placement };
-}
-
-/**
  * Read a run dir → the shared `RunModel`. Throws (rather than returning a half model) when there is no
  * readable `.pi/run.json` — a watcher/CLI surfaces that as "no run here".
  */
@@ -111,7 +82,27 @@ export async function readRunModel(runDir: string): Promise<RunModel> {
   const ioById: Record<string, NodeIo | null> = {};
   for (const id of Object.keys(status.nodes)) ioById[id] = await readNodeIo(runDir, id);
 
-  const { stages, placement } = buildStages(status);
+  // STRUCTURE — stages + edges via the ONE shared resolver (structure.ts), the SAME priority ladder
+  // buildRunView uses: run-local resolved DAG (`.pi/workflow.json`) → declared template → phase grouping in
+  // execution order (io-ledger file-flow edges). This is the P0b behavior change: when a run carries
+  // `.pi/workflow.json`, this lean snapshot now draws the SAME edges/stages as the enriched run-view (before,
+  // it reconstructed edges purely from the io ledgers). The declared io reads/writes are the only file-flow
+  // signal the lean reader has (no event replay), so absolutize them against the run dir the same way
+  // buildRunView does, so a run WITHOUT workflow.json still agrees on the fallback edges.
+  const runResolved = path.resolve(runDir);
+  const toAbs = (p: string): string => (path.isAbsolute(p) ? p : path.join(runResolved, p));
+  const displayPath = (abs: string): string => (abs.startsWith(runResolved + path.sep) ? abs.slice(runResolved.length + 1) : abs);
+  const { stages, edges, placement } = resolveStructure(
+    runDir,
+    Object.values(status.nodes).map((rec) => ({
+      id: rec.id,
+      phase: ioById[rec.id]?.phase ?? null,
+      startedAt: rec.startedAt,
+      ioReads: (ioById[rec.id]?.reads ?? []).map((r) => r.path).filter((p): p is string => typeof p === 'string'),
+      ioWrites: (ioById[rec.id]?.writes ?? []).map((w) => w.path).filter((p): p is string => typeof p === 'string'),
+    })),
+    { toAbs, displayPath },
+  );
 
   // (G5) The `__checkpoints__` resolution journal (read ONCE off `.pi/state.json`) cross-checks each
   // node's marker so a resolved checkpoint shows `resolved` + `reply`, a pending one drives `awaiting-input`.
@@ -144,30 +135,6 @@ export async function readRunModel(runDir: string): Promise<RunModel> {
       ...(checkpoint ? { checkpoint } : {}),
     });
   }
-  // stamp the real phase (from io) onto the stages (buildStages can't see io).
-  for (const st of stages) {
-    const firstIo = ioById[st.nodeIds[0]];
-    st.phase = firstIo?.phase ?? null;
-  }
-
-  // ── io-derived edges: a write of node A that node B READS back is the edge A→B (first writer wins) ──
-  const writerOf: Record<string, string> = {};
-  for (const id of Object.keys(status.nodes)) {
-    for (const w of ioById[id]?.writes ?? []) if (w?.path && !(w.path in writerOf)) writerOf[w.path] = id;
-  }
-  const edges: EdgeView[] = [];
-  const seen = new Set<string>();
-  for (const id of Object.keys(status.nodes)) {
-    for (const r of ioById[id]?.reads ?? []) {
-      const from = r?.path ? writerOf[r.path] : undefined;
-      if (!from || from === id) continue;
-      const key = `${from}->${id}:${r.path}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      edges.push({ from, to: id, path: r.path });
-    }
-  }
-
   return {
     run: status.run,
     done: status.done,

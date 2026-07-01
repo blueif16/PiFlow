@@ -15,6 +15,7 @@
 import fssync from 'node:fs';
 import path from 'node:path';
 import { createNodeAccumulator, type RichNode } from './distill.js';
+import { resolveStructure } from './structure.js';
 import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
@@ -413,107 +414,25 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
 
-  // The run-local RESOLVED DAG (`.pi/workflow.json`, written by the runner with the active profile already
-  // applied — elided nodes dropped, deps rewired) is the AUTHORITATIVE structure: the deck of nodes, their
-  // topological stages, and their DECLARED data-flow edges. It makes the run self-describing, so the graph
-  // is the workflow the run actually executed — never reconstructed from runtime io/events traces.
-  let resolvedDag: { stages?: { index: number; phase?: string | null; parallel?: boolean; nodeIds: string[] }[]; edges?: { from: string; to: string; files?: string[] }[] } | null = null;
-  try {
-    const f = path.join(runDir, '.pi', 'workflow.json');
-    if (fssync.existsSync(f)) resolvedDag = JSON.parse(fssync.readFileSync(f, 'utf8'));
-  } catch { resolvedDag = null; }
-
-  // STAGES — columns = stages, rows = parallel lanes. Priority: the run-local resolved DAG → the declared
-  // template (opts.workflow) when it covers every run node → phase grouping in execution order. One
-  // {stageIndex, lane} assignment whichever wins.
-  const tStages = (opts.workflow?.stages ?? [])
-    .map((ids) => ids.filter((id) => nodeById.has(id)))
-    .filter((ids) => ids.length > 0);
-  let stages: RunViewStage[];
-  if (resolvedDag?.stages?.length) {
-    stages = resolvedDag.stages
-      .map((st) => ({ phase: st.phase ?? '—', parallel: !!st.parallel, nodeIds: (st.nodeIds || []).filter((id) => nodeById.has(id)) }))
-      .filter((st) => st.nodeIds.length > 0)
-      .map((st, i) => ({ index: i + 1, phase: st.phase, parallel: st.parallel, nodeIds: st.nodeIds }));
-  } else if (tStages.length && new Set(tStages.flat()).size === nodeById.size) {
-    stages = tStages.map((ids, i) => ({ index: i + 1, phase: nodeById.get(ids[0])?.phase ?? '—', parallel: ids.length > 1, nodeIds: ids }));
-  } else {
-    const ordered = [...nodes].sort((a, b) => String(a.startedAt || '').localeCompare(String(b.startedAt || '')));
-    const phaseOrder: string[] = [];
-    for (const n of ordered) { const ph = n.phase || '—'; if (!phaseOrder.includes(ph)) phaseOrder.push(ph); }
-    stages = phaseOrder.map((ph, i) => {
-      const ids = ordered.filter((n) => (n.phase || '—') === ph).map((n) => n.id);
-      return { index: i + 1, phase: ph, parallel: ids.length > 1, nodeIds: ids };
-    });
-  }
-  for (const st of stages) st.nodeIds.forEach((id, lane) => { const n = nodeById.get(id); if (n) { n.stageIndex = st.index; n.lane = lane; } });
-
-  // EDGES — same priority as stages. The run-local resolved DAG's DECLARED data-flow edges are authoritative
-  // (one RunViewEdge per contract file; a declared edge with no files still draws the connection). Runtime
-  // io/events are then NOT consulted for topology — only for per-node telemetry. Without a resolved DAG we
-  // fall back to the declared template (opts.workflow) UNION the runtime file-flow edges.
-  let edges: RunViewEdge[];
-  if (resolvedDag?.edges) {
-    edges = [];
-    const seen = new Set<string>();
-    for (const e of resolvedDag.edges) {
-      if (!nodeById.has(e.from) || !nodeById.has(e.to) || e.from === e.to) continue;
-      const files = e.files && e.files.length ? e.files : [''];
-      for (const f of files) {
-        const p = f ? displayPath(f) : '';
-        const key = `${e.from}|${e.to}|${p}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        edges.push({ from: e.from, to: e.to, path: p });
-      }
-    }
-  } else {
-    // FALLBACK (no run-local DAG): the DECLARED io.json ledger UNION the events-observed I/O, keyed on the
-    // ABSOLUTE path so a shared edge dedupes to one and basenames never collide. First writer of a path wins
-    // (declared io.json before events-observed); a well-formed workflow has one producer per path.
-    const writerOf = new Map<string, string>();
-    const claim = (nodeId: string, abs: string) => { if (abs && !writerOf.has(abs)) writerOf.set(abs, nodeId); };
-    for (const n of nodes) for (const p of ioByNode.get(n.id)?.writes ?? []) claim(n.id, p);   // declared first…
-    for (const n of nodes) for (const w of n.writes) claim(n.id, w.path);                       // …then observed
-    const readsOf = (n: RunViewNode): string[] => [
-      ...(ioByNode.get(n.id)?.reads ?? []),
-      ...n.reads.map((r) => r.path),
-    ];
-    const seen = new Set<string>();
-    edges = [];
-    for (const n of nodes) {
-      for (const abs of readsOf(n)) {
-        const from = writerOf.get(abs);
-        if (!from || from === n.id) continue;
-        const key = `${from}|${n.id}|${abs}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        edges.push({ from, to: n.id, path: displayPath(abs) });
-      }
-    }
-    // Fill any connection the runtime traces missed from the declared template deps, bridging THROUGH
-    // profile-elided nodes to their nearest present ancestors so the downstream node stays connected.
-    const wfNodes = opts.workflow?.nodes ?? {};
-    const presentDeps = (id: string, seenIds = new Set<string>()): string[] => {
-      const out: string[] = [];
-      for (const d of wfNodes[id]?.deps ?? []) {
-        if (seenIds.has(d)) continue;
-        seenIds.add(d);
-        if (nodeById.has(d)) out.push(d);
-        else out.push(...presentDeps(d, seenIds));
-      }
-      return out;
-    };
-    const pairLinked = new Set(edges.map((e) => `${e.from}|${e.to}`));
-    for (const to of Object.keys(wfNodes)) {
-      if (!nodeById.has(to)) continue;
-      for (const from of presentDeps(to)) {
-        if (from === to || pairLinked.has(`${from}|${to}`)) continue;
-        pairLinked.add(`${from}|${to}`);
-        edges.push({ from, to, path: '' });
-      }
-    }
-  }
+  // STRUCTURE — the run's stage spine + data-flow edges via the ONE shared resolver (structure.ts). Priority:
+  // the run-local resolved DAG (`.pi/workflow.json`) → the declared template (opts.workflow) → phase grouping
+  // in execution order (with runtime file-flow edges). `readRunModel` uses the SAME resolver, so the live
+  // snapshot and this enriched view draw the SAME graph. buildRunView feeds it the declared io ledger PLUS the
+  // events-observed I/O (already absolute) — the extra tier-3 signal the lean reader lacks.
+  const { stages, edges, placement } = resolveStructure(
+    runDir,
+    nodes.map((n) => ({
+      id: n.id,
+      phase: n.phase,
+      startedAt: n.startedAt,
+      ioReads: ioByNode.get(n.id)?.reads ?? [],
+      ioWrites: ioByNode.get(n.id)?.writes ?? [],
+      observedReads: n.reads.map((r) => r.path),
+      observedWrites: n.writes.map((w) => w.path),
+    })),
+    { workflow: opts.workflow, toAbs, displayPath },
+  );
+  for (const [id, place] of Object.entries(placement)) { const n = nodeById.get(id); if (n) { n.stageIndex = place.stageIndex; n.lane = place.lane; } }
 
   const tokenTotal: RunTokens = nodes.reduce((acc, n) => {
     const t = n.tokens || ({} as RunTokens);
@@ -523,12 +442,16 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
     return acc;
   }, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, billable: 0, contextPeak: 0 });
 
+  // The resolver returns a nullable phase (it also serves the lean StageView); every buildRunView tier yields
+  // a non-null phase at runtime (`?? '—'`), so coerce to the RunViewStage contract without changing values.
+  const viewStages: RunViewStage[] = stages.map((st) => ({ index: st.index, phase: st.phase ?? '—', parallel: st.parallel, nodeIds: st.nodeIds }));
+
   const view: RunView = {
     run: rj.run, source: rj.source, provider: rj.provider, model: rj.model,
     ...(rj.sandbox ? { sandbox: rj.sandbox } : {}), // (SKIN) the run's effective backend → GUI node skin
     startedAt: rj.startedAt, updatedAt: rj.updatedAt, durationMs: rj.durationMs,
     done: rj.done, ok: rj.ok, totals: rj.totals, tokenTotal,
-    stages, edges, nodes,
+    stages: viewStages, edges, nodes,
   };
   return { view, audit };
 }
