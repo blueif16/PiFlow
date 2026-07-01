@@ -92,12 +92,15 @@ Use when adding/updating slices, after a merge, before a commit that touches anc
 stale / what's the blast scope." **Three cadences (only the first is wired today):**
 
 - **Pre-commit (blocking) — the gate.** `cd .agents/okf/topics && node _generate.mjs --check`. It emits TWO signal
-  kinds, fix them differently: `HEALTH:` = a seed/anchor file or symbol/line moved → a REAL fix (reconcile the anchor);
-  `DRIFT: auto region is stale` = only the machine-derived region is out of date → just `node _generate.mjs --write`.
-  (DRIFT fires when the code OR the substrate it derives from changed — e.g. a new git commit or a new memory note —
-  so expect it routinely; HEALTH should be rare and is the one that matters.) The anchor check resolves definition
-  anchors as cited line ∈ the symbol's codegraph span, call-site/field anchors as symbol-present-in-file. Always
-  `--write` then re-`--check` until clean before committing.
+  kinds and BLOCKS (exit 1) on only ONE: `HEALTH:` = a seed/anchor file or symbol/line moved → the anchors may be
+  WRONG, a REAL fix (reconcile the anchor) — THIS is what fails the commit; `DRIFT: auto region is stale` = only the
+  machine-derived region is out of date → ADVISORY (exit 0), refresh with `node _generate.mjs --write` at your leisure.
+  (DRIFT fires whenever the code or a derived substrate changed — a new commit or memory note — so expect it routinely;
+  HEALTH should be rare and is the one that matters.) The anchor check resolves definition anchors as cited line ∈ the
+  symbol's codegraph span, call-site/field anchors as symbol-present-in-file. The gate is INCREMENTAL — it skips any
+  card whose inputs are byte-identical to its last clean derive (a gitignored `.gen-cache.json` fingerprint; skipped
+  cards print `ok (cached)`), so repeat runs are cheap; `OKF_NO_CACHE=1` forces a full re-derive. Run `--write` then
+  re-`--check` to refresh drifted regions before committing.
 - **Post-merge (advisory).** Make the index current FIRST (`codegraph sync -q`). Then re-derive ONLY the cards the
   merge touched, not all of them: intersect the changed files (`git diff --name-only <base>`) with each card's
   `seeds:` (the file-level rung), and for the dependency rung run `codegraph impact <anchorSymbol> --json` — a card
@@ -154,6 +157,8 @@ relative fragments.
 - Design + rationale: `docs/research/memory/code-understanding-and-anti-drift.md` (§2 discovery · §4.1 blast ladder · §5 backlog E0–E8).
 - External SOTA verification: `docs/research/memory/sota-verification-2026-06-30.md`.
 - The generator: `.agents/okf/topics/_generate.mjs` (`--write` / `--check [key]`); config: `.agents/okf/okf.config.json`.
+  Incremental via a per-card input fingerprint (gitignored `.gen-cache.json`); `OKF_NO_CACHE=1` forces a full pass,
+  `OKF_NO_CODEGRAPH=1` runs the deterministic line-check without the index.
 - Codegraph fullest-use (escalate with `explore` · `impact` for blast · `status`→`sync` hygiene): the tool's own
   canonical guidance in `src/mcp/server-instructions.ts` / https://colbymchenry.github.io/codegraph/.
 - Promotion path (Stage 2): port FIND/CHECK into a deterministic `piflowctl okf find|check|build` verb, gate on the
