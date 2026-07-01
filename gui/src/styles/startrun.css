@@ -1,0 +1,245 @@
+/* ============================================================================
+   StartRunPanel — the "launch a run" modal. A centered glass window over a light
+   frosted scrim (same focus material as the node overlay). The launcher button
+   lives in the MenuBar; opening the panel deploys this dialog. On Start it POSTs
+   /api/runs/start and hands the returned run id to the canvas' run-select seam.
+
+   Reuses the shell's token vocabulary — glass surface, hairline fields, the
+   accent action voice, mono for machine values — so it reads as native chrome,
+   not a bolt-on form.
+   ========================================================================== */
+
+/* the launcher — a bare ghost icon inside the MenuBar, matching .ds-menubar__icon
+   but tinted with the accent so "start a run" reads as the one action there. */
+.ds-menubar__start {
+  color: var(--ds-accent);
+}
+.ds-menubar__start:hover {
+  background: var(--ds-accent-subtle);
+  color: var(--ds-accent-hover);
+}
+
+/* context reflector — a small, unobtrusive chip in the MenuBar naming the active
+   control endpoint (dim mono, a hairline divider like the status chip). */
+.ds-menubar__endpoint {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  padding: 0 var(--ds-space-2);
+  border-left: 1px solid var(--ds-border-hairline);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* frosted focus layer — the SAME light scrim the node overlay uses, so the modal
+   calms the busy canvas beneath it while the glass card pops as the focus. */
+.ds-startrun-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ds-space-6);
+  background: var(--ds-scrim-bg);
+  backdrop-filter: blur(var(--ds-scrim-blur));
+  -webkit-backdrop-filter: blur(var(--ds-scrim-blur));
+}
+
+.ds-startrun {
+  width: min(92vw, 460px);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--ds-radius-xl);
+  padding: var(--ds-space-5);
+  gap: var(--ds-space-4);
+  overflow: auto;
+}
+
+.ds-startrun__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+}
+.ds-startrun__title {
+  margin: 0;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-lg);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: var(--ds-tracking-tight);
+  color: var(--ds-text-primary);
+}
+.ds-startrun__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-tertiary);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+}
+.ds-startrun__close:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-startrun__close:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* a labelled field group */
+.ds-startrun__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
+}
+.ds-startrun__label {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-text-tertiary);
+}
+
+/* the shared control skin — one hairline field for every select/input, echoing
+   the companion's single-bordered-container rule. */
+.ds-startrun__control {
+  height: 34px;
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-primary);
+  outline: none;
+  transition: border-color var(--ds-dur-fast) var(--ds-ease-standard), box-shadow var(--ds-dur-fast);
+}
+select.ds-startrun__control { cursor: pointer; }
+.ds-startrun__control:focus-visible { border-color: var(--ds-accent); box-shadow: 0 0 0 2px var(--ds-accent-ring); }
+
+/* two side-by-side fields (sandbox · executor) */
+.ds-startrun__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ds-space-3);
+}
+
+/* executor = a two-cell segmented toggle (pi | claude-code) */
+.ds-startrun__seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-sunken);
+}
+.ds-startrun__seg-btn {
+  height: 28px;
+  border: none;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast);
+}
+.ds-startrun__seg-btn:hover { color: var(--ds-text-primary); }
+.ds-startrun__seg-btn[aria-pressed="true"] {
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-primary);
+  box-shadow: var(--ds-shadow-xs);
+}
+
+/* the args key/value editor — a stack of add/removable rows */
+.ds-startrun__args {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+}
+.ds-startrun__arg-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 28px;
+  gap: var(--ds-space-2);
+  align-items: center;
+}
+.ds-startrun__arg-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-tertiary);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+}
+.ds-startrun__arg-del:hover { color: var(--ds-error-fg); background: var(--ds-bg-hover); }
+.ds-startrun__arg-add {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-accent);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-sm);
+  cursor: pointer;
+  padding: var(--ds-space-1) 0;
+}
+.ds-startrun__arg-add:hover { color: var(--ds-accent-hover); }
+
+/* dry-run checkbox line */
+.ds-startrun__check {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-base);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+}
+.ds-startrun__check input { accent-color: var(--ds-accent); cursor: pointer; }
+
+/* inline error (a 400 from the server, or a client-side gate) */
+.ds-startrun__error {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-error-fg);
+  line-height: var(--ds-leading-snug);
+}
+
+/* footer — cancel (ghost) + start (accent action) */
+.ds-startrun__foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ds-space-2);
+  margin-top: var(--ds-space-1);
+}
+.ds-startrun__btn {
+  height: 34px;
+  padding: 0 var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-base);
+  font-weight: var(--ds-weight-medium);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-startrun__btn--ghost {
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-secondary);
+}
+.ds-startrun__btn--ghost:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-startrun__btn--go {
+  border: 1px solid var(--ds-accent);
+  background: var(--ds-accent);
+  color: var(--ds-text-inverse);
+}
+.ds-startrun__btn--go:not(:disabled):hover { background: var(--ds-accent-hover); border-color: var(--ds-accent-hover); }
+.ds-startrun__btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.ds-startrun__btn:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }

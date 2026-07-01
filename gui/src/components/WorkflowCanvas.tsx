@@ -50,6 +50,7 @@ import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
 import { MenuBar } from "./MenuBar";
 import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
+import { StartRunPanel } from "./StartRunPanel";
 import { ExpandContext } from "./ExpandContext";
 import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { FusionContext, type FusionMode } from "./FusionContext";
@@ -85,6 +86,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // lazily when Compose mode opens; refreshed for a single node after a chip drops.
   const [nodeConfigs, setNodeConfigs] = useState<Record<string, AuthoredNodeConfig>>({});
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
+  const [startOpen, setStartOpen] = useState(false); // the "Start a run" launcher modal (from the MenuBar)
 
   const [ix, setIx] = useState<GlobalIndex | null>(null);
   const [activeRun, setActiveRun] = useState<string>("");
@@ -338,11 +340,13 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             onOpenNode={(nodeId) => { setOpenFile(null); setExpandedId(nodeId); }}
             onClose={() => setOpenFile(null)}
           />
-          <MenuBar activeRun={activeRun} onSelectRun={selectRun} ix={ix} />
+          <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => setStartOpen(true)} ix={ix} />
           <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} />
           <FusionSaveBar active={mode === "fusion"} />
           <ChipPalette active={mode === "compose"} />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
+          {/* Launch a run → on the 202, select it via `selectRun` so the live views observe the new run. */}
+          <StartRunPanel open={startOpen} onClose={() => setStartOpen(false)} onStarted={selectRun} />
         </div>
       </LayoutGroup>
       </RunStreamContext.Provider>
