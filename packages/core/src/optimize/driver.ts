@@ -23,6 +23,13 @@ export interface CandidateEdit {
   tokensSpent?: number;
   summary?: string;
   /**
+   * The fixer's traced ROOT CAUSE — a passive string the driver copies edit→record with ZERO interpretation
+   * (core never reads or parses it). It feeds the DISTILLER at the CLI seam (distillLesson): the raw material the
+   * model condenses into a lesson's Root/Prevention prose. Optional — a fixer that traces none omits it, and the
+   * driver leaves the record's `foundRoot` key absent (records stay byte-identical when unused).
+   */
+  foundRoot?: string;
+  /**
    * Set when the fixer was CUT SHORT (a watchdog trip or a wall-clock timeout) rather than finishing on its own.
    * Product-agnostic SHAPE, product-specific `reason` STRING — the driver surfaces it as a first-class
    * `fixer-aborted` OptimizeEvent so the control plane keys on the cutoff PORTABLY (it reads this TYPED return,
@@ -93,6 +100,11 @@ export interface FixGateRecord {
   /** the DECISION (land.ts applies it): adopt the copy, stage it for the human, or discard it. */
   landed: 'adopted' | 'staged' | 'discarded';
   tokensSpent: number;
+  /**
+   * The fixer's traced root cause, copied through from `CandidateEdit.foundRoot` (absent when the fixer traced
+   * none). The CLI seam reads it to feed the distiller; core never interprets it. See {@link CandidateEdit.foundRoot}.
+   */
+  foundRoot?: string;
 }
 
 /** A node the driver DID NOT attempt because it hit the per-node fix-cycle ceiling — an escalation, not a
@@ -203,7 +215,9 @@ export async function runFixGate(defects: Defect[], stages: FixGateStages, opts:
       accepted++;
     }
 
-    records.push({ node: d.node, bucket: d.bucket, candidateRef, editsApplied: edit.editsApplied, verdict, landed, tokensSpent: edit.tokensSpent ?? 0 });
+    // Conditional-spread foundRoot: absent when the fixer traced none, so records stay byte-identical when unused
+    // (and the "absent key" contract holds). A passive copy — core never interprets it; the CLI seam feeds it to the distiller.
+    records.push({ node: d.node, bucket: d.bucket, candidateRef, editsApplied: edit.editsApplied, verdict, landed, tokensSpent: edit.tokensSpent ?? 0, ...(edit.foundRoot ? { foundRoot: edit.foundRoot } : {}) });
     safeEmit({ type: 'landed', node: d.node, decision: landed });
   }
 

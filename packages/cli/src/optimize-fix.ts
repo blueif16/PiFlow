@@ -11,8 +11,8 @@
 
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { scoreRun as coreScoreRun, triage, deriveRecurrence, memorize, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
-import type { ReplayOracle, CopyScope, Fixer, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect, FixGateResult } from '@piflow/core';
+import { scoreRun as coreScoreRun, triage, deriveRecurrence, memorize, distillLesson, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
+import type { ReplayOracle, CopyScope, Fixer, LessonDistiller, MemorizeLesson, FixGateRecord, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect, FixGateResult } from '@piflow/core';
 import { resolveTopicsDir, resolveSlice } from './understand.js';
 
 /** The product binding the CLI dynamic-imports — the LIVE stages that stay product-side (out of @piflow/core). */
@@ -23,6 +23,14 @@ export interface OptimizeBinding {
   copyScope: CopyScope;
   /** the context-isolated fixer that edits the candidate copy per defect bucket. */
   fixer: Fixer;
+  /**
+   * OPTIONAL: the product's `claude -p` DISTILLER — turns a confirmed defect (+ the fixer's traced foundRoot) into
+   * a lesson's Root/Prevention prose, filling MEMORIZE's `(pending — …)` placeholders. INJECTED (boundary law:
+   * @piflow/core holds no model/network/prompt; core exposes only the deterministic write + the degrade-graceful
+   * orchestrator). ABSENT ⇒ the placeholders remain (today's exact behavior — a later `--fix` with a distiller
+   * fills them). It is NOT in loadBinding's required-export check, so every existing binding stays valid.
+   */
+  distill?: LessonDistiller;
   /** OPTIONAL: run the product's workflow for a round and return its finished run dir — the `run` stage of the
    * multi-round `--rounds N` loop. Product-side (boundary law: @piflow/core cannot know how to run the workflow).
    * REQUIRED only for `--rounds > 1`; the single-shot `--fix` path (an already-finished run) never calls it. */
@@ -151,6 +159,45 @@ export async function scoreTriageEnrich(
   return { scores, digest, defects, templateDir };
 }
 
+/**
+ * Fill MEMORIZE's `(pending — …)` Root/Prevention placeholders with real prose: for each NEWLY-APPENDED lesson,
+ * call the injected distiller (via core's `distillLesson`), passing the fixer's traced `foundRoot` from the matching
+ * FixGateRecord. Returns the count filled (for the one-line summary).
+ *
+ * Why only `action === 'append'`: an `update` row means the block already exists — its Root/Prevention are already
+ * curated/distilled, and the recurrence flip is materialize-only by design (memorize.ts), so re-distilling would
+ * churn curated prose. LAPSE/SKILL are the only RECORDABLE buckets, so every appended lesson is already LAPSE/SKILL —
+ * "per newly-appended LAPSE/SKILL lesson" is exactly the append set.
+ *
+ * The join is by `node`: triage emits EXACTLY ONE defect per node (one loop iteration per NodeScore), so `node` is an
+ * unambiguous key between a FixGateRecord and a MemorizeLesson. If a future change made triage emit multiple defects
+ * per node, these maps would collapse them — this assumption is the correctness linchpin.
+ *
+ * OFF the critical path: `distillLesson` never throws on a bad distiller (it degrades to 'skipped'), but the whole
+ * loop is guarded so one filling can never sink an already-staged fix or a round.
+ */
+export async function distillAppendedLessons(
+  lessons: MemorizeLesson[],
+  records: FixGateRecord[],
+  defects: Defect[],
+  distill: LessonDistiller,
+): Promise<number> {
+  const rootByNode = new Map(records.map((r) => [r.node, r.foundRoot]));
+  const defectByNode = new Map(defects.map((d) => [d.node, d]));
+  let filled = 0;
+  for (const lesson of lessons) {
+    if (lesson.action !== 'append') continue; // updates are materialize-only — never re-distill curated prose.
+    const defect = defectByNode.get(lesson.node);
+    if (!defect) continue; // an appended lesson with no matching defect can't distill (defensive; shouldn't happen).
+    const foundRoot = rootByNode.get(lesson.node);
+    try {
+      const outcome = await distillLesson(lesson.file, lesson.sig, defect, distill, foundRoot ? { foundRoot } : {});
+      if (outcome === 'filled') filled++;
+    } catch { /* a distiller failure is swallowed — memory is advisory; never sink a staged fix. */ }
+  }
+  return filled;
+}
+
 /** The FIX→GATE bounds/policy shared by the single-shot and the multi-round paths (autoAdopt + the budgets). */
 export interface FixGatePolicy {
   autoAdopt: boolean;
@@ -242,6 +289,13 @@ export async function runOptimizeFixCli(argv: string[], deps: OptimizeFixDeps = 
     const updated = lessons.filter((l) => l.action === 'update').length;
     // to stderr (mirrors the read-only `optimize --memorize` path) so the primary stdout summary stays one line.
     process.stderr.write(`optimize --fix: memorized ${lessons.length} lesson(s) — ${appended} appended, ${updated} updated\n`);
+    // DISTILL (Leg-A): if the binding injects a distiller, fill each newly-appended lesson's `(pending)` Root/
+    // Prevention with real prose, keyed off the fixer's traced foundRoot. Absent a distiller ⇒ placeholders stay
+    // (today's behavior). Inside the SAME off-critical-path try/catch — a distiller failure never sinks the staged fix.
+    if (binding.distill) {
+      const filled = await distillAppendedLessons(lessons, result.records, defects, binding.distill);
+      process.stderr.write(`optimize --fix: distilled ${filled} of ${appended} appended lesson(s)\n`);
+    }
   } catch (e) {
     process.stderr.write(`optimize --fix: MEMORIZE skipped (${(e as Error).message}); the staged fix is unaffected.\n`);
   }

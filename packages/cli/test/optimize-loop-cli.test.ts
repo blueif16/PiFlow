@@ -17,12 +17,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseOptimizeLoopArgs, runOptimizeLoopCli } from '../src/optimize-loop.js';
-import { scoreNodes } from '@piflow/core';
+import { scoreNodes, deriveRecurrence } from '@piflow/core';
 import type { RunDigest, NodeDigest, Tier1Result, Tier1Check } from '@piflow/core';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, 'fixtures', 'fake-binding.mjs');       // exports { oracle, copyScope, fixer } — NO `run`
 const FAKE_RUN = path.join(HERE, 'fixtures', 'fake-loop-binding.mjs'); // ALSO exports `run(round)` → a fresh run dir
+// A2: a `--rounds` binding with a `distill` stage + the canonical <base>/runs/<id> + <base>/template layout.
+const DISTILL_LOOP = path.join(HERE, 'fixtures', 'distill-loop-binding.mjs');
 
 const dnode = (id: string): NodeDigest => ({
   id, label: id, phase: null, outcome: 'ok', model: null, provider: null,
@@ -127,5 +129,36 @@ describe('runOptimizeLoopCli — composes runOptimizeLoop over a fully-FAKE bind
     expect(types.has('round-started')).toBe(true);
     expect(types.has('round-complete')).toBe(true);
     expect(types.has('loop-stopped')).toBe(true);
+  });
+
+  // ── (A2) the LOOP's memorize stage distills too — the round's appended lesson gets real prose ────────────────
+  it('the loop\'s memorize stage fills each round\'s appended lesson with the injected distiller\'s prose (keyed off foundRoot)', async () => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'optloop-distill-'));
+    process.env.PIFLOW_DISTILL_LOOP_BASE = base; // the fake binding lays out <base>/runs/<id> + <base>/template
+    const NODE = 'w4-execute-m2';
+
+    // a LAPSE-shaped run (anomaly `failed`, no tier1) → MEMORIZE APPENDS a lesson with (pending) placeholders.
+    const lapseDigest: RunDigest = {
+      run: 'r', done: true, ok: false, durationMs: 1,
+      totals: { nodes: 1, ok: 0, failed: 1, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
+      nodes: [{ ...dnode(NODE), outcome: 'error', anomalies: ['failed'] }], anomalies: [], rootCauses: [],
+    };
+    const scoreRun = async () => ({ scores: scoreNodes({ digest: lapseDigest, tier1ByNode: new Map() }), digest: lapseDigest });
+
+    const orig = process.stderr.write.bind(process.stderr);
+    (process.stderr as unknown as { write: (s: string) => boolean }).write = () => true;
+    try {
+      await runOptimizeLoopCli(
+        ['--binding', DISTILL_LOOP, '--rounds', '1', '--staging-dir', path.join(base, 'stage')],
+        { scoreRun, print: () => {} },
+      );
+    } finally {
+      (process.stderr as unknown as { write: typeof orig }).write = orig;
+    }
+
+    // the ORACLE: the template's memory.md carries the DISTILLED prose (Root echoes the fixer's foundRoot), not the placeholder.
+    const hit = deriveRecurrence({ templateDir: path.join(base, 'template'), nodes: [NODE] }).get(`${NODE}::failed`);
+    expect(hit?.lesson?.root).toBe('R:traced: loop root cause');
+    expect(hit?.lesson?.prevention).toBe('P');
   });
 });

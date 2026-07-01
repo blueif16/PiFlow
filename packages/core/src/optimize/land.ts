@@ -31,6 +31,8 @@ interface ManifestRecord {
   reason: string;
   delta: number | null;
   landPolicy: string;
+  /** the fixer's traced root cause, when it reported one — a durable, human-readable record even absent a distiller. */
+  foundRoot?: string;
 }
 
 /** Write `<stagingDir>/manifest.json` capturing the round's summary + per-record decisions. Returns its path. */
@@ -47,6 +49,8 @@ export async function writeStagingManifest(result: FixGateResult, opts: StageOpt
     reason: r.verdict.reason,
     delta: r.verdict.delta,
     landPolicy: r.verdict.landPolicy,
+    // durable record of what the fixer traced (conditional so the manifest stays byte-identical when unset).
+    ...(r.foundRoot ? { foundRoot: r.foundRoot } : {}),
   }));
 
   const manifest = {

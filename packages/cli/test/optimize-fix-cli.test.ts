@@ -23,6 +23,10 @@ import type { RunDigest, NodeDigest, Tier1Result, Tier1Check, Defect } from '@pi
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FAKE = path.join(HERE, 'fixtures', 'fake-binding.mjs');
 const BAD = path.join(HERE, 'fixtures', 'bad-binding.mjs');
+// A2: a binding whose fixer reports a traced foundRoot AND exports the optional `distill` stage.
+const DISTILL = path.join(HERE, 'fixtures', 'distill-binding.mjs');
+// A2: same, but the injected distiller THROWS (proves the CLI wrapper swallows it, off-critical-path).
+const DISTILL_THROWS = path.join(HERE, 'fixtures', 'distill-throws-binding.mjs');
 
 describe('parseOptimizeFixArgs', () => {
   it('parses the run dir, the required --binding, and the bound/policy flags', () => {
@@ -317,5 +321,93 @@ describe('runOptimizeFixCli — MEMORIZE closes the cross-run recurrence loop', 
     const recurrence2 = deriveRecurrence({ templateDir, nodes: [NODE] });
     const defects2 = triage(scores2, lapseDigest(NODE), { recurrence: recurrence2 });
     expect(defects2[0].bucket).toBe('SKILL'); // ← the cross-invocation recurrence loop closed
+  });
+});
+
+// ── (A2) DISTILLER wired into MEMORIZE: the appended lesson's (pending) Root/Prevention become real prose ─────
+// The v1.5 §6 distillation seam, surfaced on the `--fix` CLI. MEMORIZE appends a LAPSE lesson with honest
+// `(pending — the fixer fills…)` Root/Prevention placeholders; A2 threads the fixer's traced `foundRoot` onto the
+// FixGateRecord and — when the binding supplies a `distill` stage — calls distillLesson per appended lesson so the
+// placeholders become real prose. Driven THROUGH runOptimizeFixCli with a fake distiller (core holds no model);
+// the ORACLE is the round-trip reader (deriveRecurrence) seeing the distilled root/prevention at the lesson's sig.
+describe('runOptimizeFixCli — the injected distiller fills MEMORIZE\'s (pending) placeholders', () => {
+  // a self-originating structural failure → tier0.disqualified → a LAPSE defect MEMORIZE APPENDS. sig = `<node>::failed`.
+  const lapseDigest = (node: string): RunDigest => ({
+    run: 'r', done: true, ok: false, durationMs: 1,
+    totals: { nodes: 1, ok: 0, failed: 1, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
+    nodes: [{ ...dnode(node), outcome: 'error', anomalies: ['failed'] }], anomalies: [], rootCauses: [],
+  });
+
+  // Lay out the canonical <base>/runs/<id> + <base>/template; return the pieces the assertions need.
+  const seedRun = async (node: string) => {
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-distill-'));
+    const templateDir = path.join(base, 'template');
+    const runDir = path.join(base, 'runs', 'run-1');
+    await fs.mkdir(runDir, { recursive: true });
+    await fs.mkdir(templateDir, { recursive: true });
+    const scoreRun = async () => ({ scores: scoreNodes({ digest: lapseDigest(node), tier1ByNode: new Map() }), digest: lapseDigest(node) });
+    return { base, templateDir, runDir, scoreRun };
+  };
+
+  // silence the MEMORIZE/distill stderr summary while a test runs.
+  const quietStderr = async (fn: () => Promise<void>): Promise<void> => {
+    const orig = process.stderr.write.bind(process.stderr);
+    (process.stderr as unknown as { write: (s: string) => boolean }).write = () => true;
+    try { await fn(); } finally { (process.stderr as unknown as { write: typeof orig }).write = orig; }
+  };
+
+  it('(load-bearing) a --fix run whose binding supplies a distiller fills the appended LAPSE lesson with the distiller\'s prose, keyed off the fixer\'s foundRoot', async () => {
+    const NODE = 'w4-execute-m2';
+    const { templateDir, runDir, scoreRun } = await seedRun(NODE);
+
+    // the DISTILL binding's fixer reports foundRoot='traced: empty artifact before write barrier'; its distiller
+    // echoes it into Root as `R:<foundRoot>` + Prevention 'P'. If the thread breaks anywhere, the oracle below misses.
+    await quietStderr(() =>
+      runOptimizeFixCli(['--fix', runDir, '--binding', DISTILL, '--staging-dir', path.join(runDir, 'stage')], { scoreRun, print: () => {} }),
+    );
+
+    // the ORACLE (single assertion covering the whole thread): the shipped reader resolves the DISTILLED prose,
+    // and Root carries the fixer's foundRoot — proving (i) foundRoot threaded fixer→record, (ii) distillAppendedLessons
+    // matched by node, (iii) distillLesson filled the block, (iv) the round-trip reader sees it. Not the placeholder.
+    const sig = `${NODE}::failed`;
+    const hit = deriveRecurrence({ templateDir, nodes: [NODE] }).get(sig);
+    expect(hit?.lesson?.root).toBe('R:traced: empty artifact before write barrier');
+    expect(hit?.lesson?.prevention).toBe('P');
+  });
+
+  it('(graceful no-op) a binding WITHOUT a distiller leaves the appended (pending) placeholders intact and does not throw', async () => {
+    const NODE = 'w4-execute-m2';
+    const { templateDir, runDir, scoreRun } = await seedRun(NODE);
+
+    // FAKE binding exports NO `distill` — MEMORIZE still appends the block, but its placeholders stay honest.
+    await quietStderr(() =>
+      runOptimizeFixCli(['--fix', runDir, '--binding', FAKE, '--staging-dir', path.join(runDir, 'stage')], { scoreRun, print: () => {} }),
+    );
+
+    const memory = await fs.readFile(path.join(templateDir, 'nodes', NODE, 'memory.md'), 'utf8');
+    expect(memory).toContain('**Root:** (pending');
+    expect(memory).toContain('**Prevention:** (pending');
+    // and the reader still resolves the block (the lesson exists; its prose is just the honest placeholder).
+    const hit = deriveRecurrence({ templateDir, nodes: [NODE] }).get(`${NODE}::failed`);
+    expect(hit?.count).toBe(1);
+  });
+
+  it('(failure swallowed) a distiller that THROWS never sinks the --fix run: the manifest is written and placeholders survive', async () => {
+    const NODE = 'w4-execute-m2';
+    const { templateDir, runDir, scoreRun } = await seedRun(NODE);
+    const stagingDir = path.join(runDir, 'stage');
+
+    // DISTILL_THROWS's injected distiller throws. distillLesson degrades to 'skipped'; the CLI wrapper must not
+    // re-throw — the already-staged fix is unaffected and the honest placeholders survive.
+    await quietStderr(() =>
+      runOptimizeFixCli(['--fix', runDir, '--binding', DISTILL_THROWS, '--staging-dir', stagingDir], { scoreRun, print: () => {} }),
+    );
+
+    // the staged manifest was written (the run completed end-to-end despite the distiller throwing off-critical-path).
+    const manifest = JSON.parse(await fs.readFile(path.join(stagingDir, 'manifest.json'), 'utf8'));
+    expect(manifest.records.length).toBeGreaterThan(0);
+    // the placeholders survive a bad distiller (the lesson stays honest — same degrade as core's unit test).
+    const memory = await fs.readFile(path.join(templateDir, 'nodes', NODE, 'memory.md'), 'utf8');
+    expect(memory).toContain('**Root:** (pending');
   });
 });
