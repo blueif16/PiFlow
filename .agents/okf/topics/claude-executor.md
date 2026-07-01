@@ -92,6 +92,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `4415ae9` 2026-06-29 — feat(core): per-node fullAccess flag — open the fs jail for one node
 - `b4152e9` 2026-06-29 — fix(executor): a successful claude-code node reports `ok`, not a spurious `gap`
 - `a935280` 2026-06-29 — merge: claude-code 2nd node executor + interactive piflowctl init wizard
+- `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
 
 ### Lessons — memory cluster
 
@@ -102,6 +103,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[expert-representations]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[gui-live-viewer-scope]]
 - [[mastra-competitive-analysis]]
 - [[optimize-loop-native-not-adhoc]]
 - [[piflow-ci-cd-pipeline]]
@@ -121,5 +123,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `parseClaudeResult` (packages/core/src/runner/claude-result.ts:21) — 3 callers in `packages/core/src/runner/node-lifecycle.ts`; tests: `packages/core/test/claude-result.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 2 callers in `packages/core/src/runner/claude-executor.ts`; tests: `packages/core/test/claude-executor.test.ts`
 
-<sub>derived 2026-07-01 · arc=19 commits · files=5 · lessons=16</sub>
+<sub>derived 2026-07-01 · arc=20 commits · files=5 · lessons=17</sub>
 <!-- okf:auto-end -->

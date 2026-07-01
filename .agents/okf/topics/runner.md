@@ -162,6 +162,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `4415ae9` 2026-06-29 — feat(core): per-node fullAccess flag — open the fs jail for one node
 - `b4152e9` 2026-06-29 — fix(executor): a successful claude-code node reports `ok`, not a spurious `gap`
 - `a935280` 2026-06-29 — merge: claude-code 2nd node executor + interactive piflowctl init wizard
+- `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
+- `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
 
 ### Lessons — memory cluster
 
@@ -174,11 +176,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `runNode` (packages/core/src/runner/node-lifecycle.ts:82) — 1 caller in `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
+- `runNode` (packages/core/src/runner/node-lifecycle.ts:82) — 3 callers in `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 - `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 6 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
-- `RunContext` (packages/core/src/runner/run-context.ts:31) — 17 callers in `packages/core/src/runner/resume.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts` +2 more; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:619) — 7 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/sandbox/local.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
+- `RunContext` (packages/core/src/runner/run-context.ts:31) — 17 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/retry.ts` +2 more; ⚠ no covering tests found
+- `RunScope` (packages/core/src/types.ts:641) — 17 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts` +5 more; ⚠ no covering tests found
 
-<sub>derived 2026-07-01 · arc=107 commits · files=7 · lessons=5</sub>
+<sub>derived 2026-07-01 · arc=109 commits · files=7 · lessons=5</sub>
 <!-- okf:auto-end -->

@@ -38,7 +38,7 @@ EXECUTE
 - `packages/core/src/runner/env-staging.ts:18` — `CLOUD_KINDS` — `{daytona,e2b}`: the no-host-trust gate
 - `packages/core/src/runner/env-staging.ts:45` — `effectiveSandboxLocation` — per-node workdir/output by kind (isolated for cloud)
 SECRETS
-- `packages/core/src/types.ts:658` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
+- `packages/core/src/types.ts:680` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
 - `packages/core/src/runner/env-staging.ts:141` — `cloudCredEnvAdditions` — resolve the DECLARED cred allowlist into the VM (cloud-only)
 
 # Freshness (anti-drift)
@@ -133,6 +133,8 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `44b4310` 2026-06-29 — feat(executor): carry `executor` through compile + offline end-to-end dispatch test
 - `4415ae9` 2026-06-29 — feat(core): per-node fullAccess flag — open the fs jail for one node
 - `a935280` 2026-06-29 — merge: claude-code 2nd node executor + interactive piflowctl init wizard
+- `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
+- `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
 
 ### Lessons — memory cluster
 
@@ -141,12 +143,14 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
 - [[cloud-sandbox-portability]]
+- [[codebase-memory-mcp-analysis]]
 - [[competitive-gaps-pdw]]
 - [[daytona-cloud-path]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[mastra-competitive-analysis]]
 - [[no-demo-html-wire-into-screen]]
@@ -171,5 +175,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:18) — 2 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-01 · arc=71 commits · files=8 · lessons=25</sub>
+<sub>derived 2026-07-01 · arc=73 commits · files=8 · lessons=27</sub>
 <!-- okf:auto-end -->

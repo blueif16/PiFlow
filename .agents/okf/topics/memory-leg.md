@@ -163,10 +163,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `ee12eee` 2026-06-30 — refactor(cli): make `piflowctl schema` a topic-segmented authoring reference
 - `e63fc09` 2026-06-30 — Merge feat/cli-schema-command: self-describing topic-segmented `piflowctl schema`
 - `dcf97ae` 2026-06-30 — Merge branch 'main' into feat/optimize-prove-landing
+- `991cb7f` 2026-06-30 — feat(optimize): SDK-level fix-cycle ceiling (portable per-node re-attempt bound + fix-cycle-ceiling event)
+- `8ab0a7c` 2026-06-30 — refactor(cli)!: op[]-canonical `schema ops` topic + rename --schema→--artifact-schema (A1/A4)
+- `47ddf72` 2026-06-30 — Merge fix/op-authoring-surface: robust A-series authoring-surface fixes
+- `859c767` 2026-06-30 — feat(cli): skills install add-ons + wizard + per-project manifest
+- `cc65e95` 2026-06-30 — refactor(core): lift project-scope resolution into @piflow/core (shared)
+- `ed90d7c` 2026-06-30 — feat(tui): scope the terminal fleet view to the launched project + add `piflowctl tui`
+- `240da26` 2026-06-30 — feat(optimize): Leg-A recurrence reader — fills the deferred SKILL bucket in triage
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[codebase-memory-mcp-analysis]]
 - [[expert-representations]]
 - [[game-omni-reference-product]]
 - [[node-illustration-pipeline]]
@@ -176,11 +184,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
+- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
-- `buildNodeMemory` (packages/core/src/memory/skeleton.ts:15) — 5 callers in `packages/core/src/memory/seed.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `scaffoldMemory` (packages/cli/src/scaffold.ts:440) — 1 caller in `packages/cli/src/scaffold.ts`; ⚠ no covering tests found
+- `buildNodeMemory` (packages/core/src/memory/skeleton.ts:15) — 5 callers in `packages/core/src/memory/seed.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
+- `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
+- `scaffoldMemory` (packages/cli/src/scaffold.ts:440) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold-memory.test.ts`
 
-<sub>derived 2026-07-01 · arc=106 commits · files=7 · lessons=6</sub>
+<sub>derived 2026-07-01 · arc=113 commits · files=7 · lessons=7</sub>
 <!-- okf:auto-end -->

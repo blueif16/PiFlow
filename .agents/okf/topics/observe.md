@@ -101,6 +101,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `cbecd7b` 2026-06-28 — feat(gui): drag-to-compose write-back — config as source of truth (SA-E)
 - `22523e9` 2026-06-29 — Merge branch 'main' into worktree-feat+expert-representations
 - `48b32d6` 2026-06-29 — refactor(tui): extract pure view adapters into adapt.mjs + adaptRunView
+- `c7f15f7` 2026-06-30 — fix(gui): scope `piflowctl gui` to the launched project, not the global registry
+- `cc65e95` 2026-06-30 — refactor(core): lift project-scope resolution into @piflow/core (shared)
 
 ### Lessons — memory cluster
 
@@ -108,6 +110,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
 - [[cloud-sandbox-portability]]
+- [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
@@ -116,6 +119,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[mastra-competitive-analysis]]
 - [[no-demo-html-wire-into-screen]]
@@ -136,11 +140,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `RunView` (packages/core/src/observe/runView.ts:97) — 9 callers in `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
-- `RunView` (gui/src/data/runView.ts:85) — 6 callers in `gui/src/data/runView.ts`; tests: `gui/src/data/runView.test.ts`
+- `RunView` (packages/core/src/observe/runView.ts:97) — 9 callers in `packages/core/src/index.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
+- `RunView` (gui/src/data/runView.ts:85) — 9 callers in `gui/src/data/zones.ts`, `gui/src/data/runView.ts`; tests: `gui/src/data/runView.test.ts`
 - `buildRunView` (packages/core/src/observe/runView.ts:212) — 12 callers in `gui/scripts/build-demo-data.mjs`, `gui/vite.config.ts`, `packages/cli/src/telemetry.ts`, `packages/core/src/observe/discover.ts` +3 more; tests: `packages/core/test/checkpoint.test.ts`, `packages/core/test/observe.test.ts`
 - `watchRun` (packages/cli/src/watch.ts:60) — 14 callers in `gui/vite.config.ts`, `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/langgraph/src/stream.ts` +4 more; tests: `packages/cli/test/watch.test.ts`, `packages/core/test/observe.test.ts`
-- `readRunModel` (packages/core/src/observe/read.ts:104) — 16 callers in `packages/cli/src/status.ts`, `packages/core/src/observe/discover.ts`, `packages/core/src/observe/watch.ts`, `packages/langgraph/src/stream.ts` +3 more; tests: `packages/cli/test/status.test.ts`, `packages/core/test/checkpoint.test.ts`, `tui/test/rich-dag.test.mjs`, `packages/core/test/observe.test.ts`
+- `readRunModel` (packages/core/src/observe/read.ts:104) — 16 callers in `packages/cli/src/status.ts`, `packages/core/src/observe/discover.ts`, `packages/core/src/observe/watch.ts`, `packages/langgraph/src/stream.ts` +3 more; tests: `packages/cli/test/status.test.ts`, `packages/core/test/checkpoint.test.ts`, `packages/core/test/observe.test.ts`, `tui/test/rich-dag.test.mjs`
 
-<sub>derived 2026-07-01 · arc=35 commits · files=10 · lessons=28</sub>
+<sub>derived 2026-07-01 · arc=37 commits · files=10 · lessons=30</sub>
 <!-- okf:auto-end -->

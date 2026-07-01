@@ -147,9 +147,9 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 
 - `judgePresetId` (packages/core/src/workflow/fusion/presets.ts:43) — 3 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `expandNode` (packages/core/src/workflow/fusion/expand.ts:69) — 1 caller in `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
-- `loadModelTiers` (packages/core/src/runner/model-routing.ts:171) — 11 callers in `packages/cli/src/init/steps/claude-code.ts`, `packages/cli/src/init/steps/model-tiers.ts`, `packages/cli/src/model.ts`, `packages/core/src/runner/runner.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
-- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `loadModelsIndex` (packages/core/src/runner/model-routing.ts:272) — 5 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/model-routing.test.ts`
+- `loadModelTiers` (packages/core/src/runner/model-routing.ts:171) — 20 callers in `gui/vite.config.ts`, `packages/cli/src/init/steps/claude-code.ts`, `packages/cli/src/init/steps/model-tiers.ts`, `packages/cli/src/model.ts` +5 more; tests: `packages/core/test/agent-base.test.ts`, `packages/core/test/model-routing.test.ts`, `packages/core/test/piflow-home.test.ts`
+- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
+- `loadModelsIndex` (packages/core/src/runner/model-routing.ts:272) — 7 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/model-routing.test.ts`
 
 <sub>derived 2026-07-01 · arc=41 commits · files=10 · lessons=24</sub>
 <!-- okf:auto-end -->

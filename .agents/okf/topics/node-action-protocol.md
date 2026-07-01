@@ -126,6 +126,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `b4152e9` 2026-06-29 — fix(executor): a successful claude-code node reports `ok`, not a spurious `gap`
 - `a935280` 2026-06-29 — merge: claude-code 2nd node executor + interactive piflowctl init wizard
 - `d71e46c` 2026-06-29 — feat(core): inherit agentType preset role-prompt at render time
+- `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
+- `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
 
 ### Lessons — memory cluster
 
@@ -134,6 +136,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
 - [[cloud-sandbox-portability]]
+- [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
@@ -143,6 +146,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[mastra-competitive-analysis]]
 - [[node-illustration-pipeline]]
@@ -171,5 +175,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-01 · arc=63 commits · files=8 · lessons=33</sub>
+<sub>derived 2026-07-01 · arc=65 commits · files=8 · lessons=35</sub>
 <!-- okf:auto-end -->

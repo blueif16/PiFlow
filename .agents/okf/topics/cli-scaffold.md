@@ -151,6 +151,12 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `ee12eee` 2026-06-30 — refactor(cli): make `piflowctl schema` a topic-segmented authoring reference
 - `e63fc09` 2026-06-30 — Merge feat/cli-schema-command: self-describing topic-segmented `piflowctl schema`
 - `dcf97ae` 2026-06-30 — Merge branch 'main' into feat/optimize-prove-landing
+- `04072fe` 2026-06-30 — fix(core): reject op[] authored alongside inject/hooks (A2 silent-drop guard)
+- `8ab0a7c` 2026-06-30 — refactor(cli)!: op[]-canonical `schema ops` topic + rename --schema→--artifact-schema (A1/A4)
+- `47ddf72` 2026-06-30 — Merge fix/op-authoring-surface: robust A-series authoring-surface fixes
+- `859c767` 2026-06-30 — feat(cli): skills install add-ons + wizard + per-project manifest
+- `ed90d7c` 2026-06-30 — feat(tui): scope the terminal fleet view to the launched project + add `piflowctl tui`
+- `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
 
 ### Lessons — memory cluster
 
@@ -159,6 +165,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
 - [[cloud-sandbox-portability]]
+- [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
@@ -167,6 +174,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[mastra-competitive-analysis]]
 - [[no-demo-html-wire-into-screen]]
@@ -192,11 +200,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 
 ### Code anchors / blast radius (codegraph)
 
-- `buildNode` (packages/cli/src/scaffold.ts:196) — 1 caller in `packages/cli/src/scaffold.ts`; ⚠ no covering tests found
+- `buildNode` (packages/cli/src/scaffold.ts:196) — 2 callers in `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
-- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `runNewCli` (packages/cli/src/scaffold.ts:697) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
-- `scaffoldNew` (packages/cli/src/scaffold.ts:391) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
+- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
+- `runNewCli` (packages/cli/src/scaffold.ts:697) — 4 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; tests: `packages/cli/test/scaffold.test.ts`
+- `scaffoldNew` (packages/cli/src/scaffold.ts:391) — 4 callers in `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; tests: `packages/cli/test/scaffold-memory.test.ts`, `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-01 · arc=91 commits · files=8 · lessons=34</sub>
+<sub>derived 2026-07-01 · arc=97 commits · files=8 · lessons=36</sub>
 <!-- okf:auto-end -->

@@ -101,6 +101,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
 - [[cloud-sandbox-portability]]
+- [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[daytona-cloud-path]]
@@ -108,6 +109,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[mastra-competitive-analysis]]
 - [[node-illustration-pipeline]]
@@ -128,8 +130,8 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `resolveRunTools` (packages/core/src/runner/entry.ts:38) — 3 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`
 - `listServerTools` (packages/tool-bridge/src/index.ts:105) — 2 callers in `packages/core/src/catalog/introspect.ts`; tests: `packages/tool-bridge/test/list-server-tools.test.ts`
 - `seededRegistry` (packages/core/src/tools/catalog.ts:58) — 8 callers in `packages/cli/src/inspect.ts`, `packages/cli/src/run.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog.test.ts`
-- `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/catalog/introspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`, `packages/core/test/runner.test.ts`
-- `loadMcpCatalog` (packages/core/src/catalog/client.ts:60) — 5 callers in `packages/core/src/catalog/client.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/catalog-sync.test.ts`
+- `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/catalog/introspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/runner.test.ts`, `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`
+- `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/tool-config.test.ts`
 
-<sub>derived 2026-07-01 · arc=27 commits · files=9 · lessons=25</sub>
+<sub>derived 2026-07-01 · arc=27 commits · files=9 · lessons=27</sub>
 <!-- okf:auto-end -->

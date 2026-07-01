@@ -128,6 +128,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `b4152e9` 2026-06-29 — fix(executor): a successful claude-code node reports `ok`, not a spurious `gap`
 - `a935280` 2026-06-29 — merge: claude-code 2nd node executor + interactive piflowctl init wizard
 - `62326b7` 2026-06-30 — fix(core): resolve the agents catalog under PIFLOW_HOME (hermetic agentType tests)
+- `04072fe` 2026-06-30 — fix(core): reject op[] authored alongside inject/hooks (A2 silent-drop guard)
+- `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
+- `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
 
 ### Lessons — memory cluster
 
@@ -145,11 +148,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`
-- `PresetMergeable` (packages/core/src/workflow/agent-preset.ts:37) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`
-- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 8 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/workflow/template/render.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`
-- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 5 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`
+- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
+- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 7 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `PresetMergeable` (packages/core/src/workflow/agent-preset.ts:37) — 8 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `gui/vite.config.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/workflow/template/render.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
 
-<sub>derived 2026-07-01 · arc=68 commits · files=8 · lessons=10</sub>
+<sub>derived 2026-07-01 · arc=71 commits · files=8 · lessons=10</sub>
 <!-- okf:auto-end -->

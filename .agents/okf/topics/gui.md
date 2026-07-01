@@ -105,11 +105,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `10722b4` 2026-06-29 — feat(observe-views): render the live ThreadRow fields in the GUI + TUI
 - `e1371b1` 2026-06-29 — feat(gui): 3-mode node skin — neutral 'unlocked' from node config
 - `85d4205` 2026-06-29 — Merge per-node fullAccess: open the fs jail for one node (config-is-truth, skin is projection)
+- `c7f15f7` 2026-06-30 — fix(gui): scope `piflowctl gui` to the launched project, not the global registry
+- `cc65e95` 2026-06-30 — refactor(core): lift project-scope resolution into @piflow/core (shared)
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[claude-code-executor]]
+- [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
@@ -117,6 +120,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[expert-representations]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[observe-single-data-path]]
 - [[optimize-loop-native-not-adhoc]]
@@ -136,9 +140,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
+- `toFlowGraph` (gui/src/data/runView.ts:383) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `NodeHud` (gui/src/components/NodeHud.tsx:92) — 2 callers in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
 - `loadIndex` (gui/src/data/runIndex.ts:60) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `loadRunView` (gui/src/data/runView.ts:108) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:60) — 14 callers in `gui/vite.config.ts`, `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/langgraph/src/stream.ts` +4 more; tests: `packages/cli/test/watch.test.ts`, `packages/core/test/observe.test.ts`
 
-<sub>derived 2026-07-01 · arc=45 commits · files=8 · lessons=24</sub>
+<sub>derived 2026-07-01 · arc=47 commits · files=8 · lessons=26</sub>
 <!-- okf:auto-end -->

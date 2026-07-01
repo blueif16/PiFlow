@@ -37,16 +37,16 @@ PLAN (shared policy + dispatch)
 - `packages/core/src/sandbox/jail.ts:54` — `localJailPlan()` — OS dispatcher: darwin→seatbelt, linux→bwrap, else warn+bare
 - `packages/core/src/sandbox/local.ts:125` — `LocalSandbox.exec` wraps the command in the jail plan (default); `null` ⇒ bare
 ENFORCE (macOS)
-- `packages/core/src/sandbox/seatbelt.ts:203` — `seatbeltExecPlan()` — writes a per-exec `.sb`, returns `sandbox-exec -f <p> sh -c <cmd>`
+- `packages/core/src/sandbox/seatbelt.ts:217` — `seatbeltExecPlan()` — writes a per-exec `.sb`, returns `sandbox-exec -f <p> sh -c <cmd>`
 - `packages/core/src/sandbox/seatbelt.ts:154` — `buildSeatbeltProfile()` — renders read/write roots as SBPL `(subpath …)` allows
 - `packages/core/src/sandbox/read-scope.sb:46` — `(deny file-read*)` … `@SCOPE_ALLOWS@` — the deny-all-then-reallow template
 ENFORCE (linux)
-- `packages/core/src/sandbox/bwrap.ts:283` — `bwrapExecPlan()` — null off-linux or no-bwrap (warns once), else bwrap argv
+- `packages/core/src/sandbox/bwrap.ts:293` — `bwrapExecPlan()` — null off-linux or no-bwrap (warns once), else bwrap argv
 - `packages/core/src/sandbox/bwrap.ts:216` — `buildBwrapArgs()` — renders roots as `--ro-bind`/`--bind` mount-namespace argv
 BYPASS
 - `packages/cli/src/run.ts:504` — `--sandbox danger-full-access` → `makeLocalProvider({dangerous:true})` (enforceReadScope:false) — RUN-level bypass
 - `packages/core/src/workflow/template/schema/node.schema.ts:155` — `fullAccess` field — PER-NODE jail-off (`node.sandbox.fullAccess`): this ONE node runs outside the fs jail even under `--sandbox local`
-- `packages/core/src/sandbox/local.ts:68` — `enforceReadScope` — LocalSandbox constructor param; `false` (per-node fullAccess or `danger-full-access`) short-circuits the jail plan (bare exec)
+- `packages/core/src/sandbox/local.ts:72` — `enforceReadScope` — LocalSandbox constructor param; `false` (per-node fullAccess or `danger-full-access`) short-circuits the jail plan (bare exec)
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `cli/src/run.ts:502` prints "Linux bwrap backend unwired … UNSANDBOXED" but `jail.ts:57` DOES route linux→`bwrapExecPlan` and `local.ts` calls it — the backend IS wired; only kernel EPERM is unverified-in-CI (bwrap absent on the macOS dev host). · `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts) accepts CreateOpts but does NOT enforce readScope/owns in the cloud VM (no jail) — scope enforcement is local/seatbelt/bwrap only.
@@ -122,6 +122,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `e13f1ee` 2026-06-30 — fix(core): treat bwrap as available only if it can build a namespace
 - `75a3336` 2026-06-30 — fix(core): bwrap capability probe + private-/tmp ordering (Findings A+B)
 - `c81c11f` 2026-06-30 — feat(core)!: fail-closed local sandbox — refuse rather than run unsandboxed
+- `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
+- `383dabb` 2026-06-30 — fix(core): normalize `owns` glob write-roots to recursive create-grants (E11a)
+- `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
+- `d68b47f` 2026-06-30 — fix(core): SeatbeltSandbox carries execCwd/execReads (parity with LocalSandbox, E10)
 
 ### Lessons — memory cluster
 
@@ -129,12 +133,15 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
 - [[cloud-sandbox-portability]]
+- [[codebase-memory-mcp-analysis]]
+- [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[game-omni-reference-product]]
+- [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[mastra-competitive-analysis]]
 - [[no-demo-html-wire-into-screen]]
@@ -151,11 +158,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:283) — 4 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:267) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
+- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:293) — 4 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:277) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
 - `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:203) — 3 callers in `packages/core/src/sandbox/seatbelt.ts`, `packages/core/src/sandbox/jail.ts`; ⚠ no covering tests found
+- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:216) — 5 callers in `deploy/e2b/bwrap-proof-driver.mjs`, `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-01 · arc=53 commits · files=8 · lessons=22</sub>
+<sub>derived 2026-07-01 · arc=57 commits · files=8 · lessons=25</sub>
 <!-- okf:auto-end -->
