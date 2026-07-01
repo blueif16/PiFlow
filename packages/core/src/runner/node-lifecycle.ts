@@ -190,6 +190,18 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     return finishNode(ctx, srcNode, rec, t0, 'error', `io token resolution failed: ${(e as Error).message}`, [], [(e as Error).message]);
   }
 
+  // (E10 prompt-staging) A node whose build runs from an `execCwd` OUTSIDE the run dir has its process cwd
+  // set to execCwd — so the command's `@<prompt>` / `-e <ext>` / `< <prompt>` refs (which pi/claude resolve
+  // against the cwd) would look under execCwd, but `writeFile` stages those files under the WORKDIR
+  // (`_pi/<id>/…`). When execCwd is set we therefore hand the command builder the WORKDIR-ABSOLUTE path — the
+  // SAME `stageRoot`(+workspace) base the mcp/skill refs already use — and the jail grants the workdir a
+  // recursive read, so an absolute ref there is readable from execCwd. Absent execCwd the cwd IS the workdir,
+  // so the relative `_pi/<id>/…` ref resolves correctly and every existing run stays BYTE-IDENTICAL. posix
+  // join stays valid in a cloud VM. (skillPath/PIFLOW_MCP_CONFIG are already absolute — this closes the
+  // remaining prompt + extension gap, incl. the G8 repair prompt.)
+  const stageRef = (rel: string): string =>
+    node.sandbox.execCwd ? path.posix.join(stageRoot, node.sandbox.workspace || '.', rel) : rel;
+
   // Resolve the node's hard wall-clock cap ONCE — explicit node timeout else the run watchdog default
   // (30 min). The runner watchdog enforces it locally; the CLOUD backends (e2b/daytona) ALSO take it as the
   // per-command exec `timeoutMs`. E2B's `commands.run` defaults to 60_000ms when unset (verified against the
@@ -346,6 +358,9 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       extensionFile = path.posix.join(nodeStage, 'tools.ts');
       await sandbox.writeFile(extensionFile, resolved.extension);
     }
+    // (E10 prompt-staging) The workdir-absolute `-e` ref handed to the builder when execCwd is set (else the
+    // relative path, byte-identical). Computed ONCE — reused by the first exec AND the G8 repair re-exec.
+    const extensionRef = extensionFile ? stageRef(extensionFile) : undefined;
 
     // Stage the node's MCP server map VERBATIM (only for MCP-tool nodes with a run-level mcpConfig). It
     // carries `$VAR` refs, never literal secrets — the bridge expands them in-child against PIFLOW_MCP_CONFIG
@@ -403,7 +418,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     rec.model = effModel ?? null; // record the effective model (null ⇒ pi's provider default)
     // (warm-resume) Merge the per-node `session` into the builder opts (DROPs `--no-session`, emits
     // `--session-dir` + `--session-id`/`--session`). `undefined` ⇒ no merge ⇒ today's `--no-session` default.
-    const cmd = ctx.buildCommand(node, resolved, { promptFile, model: effModel, provider: effProvider, extensionFile, skillPath }, session ? { ...ctx.commandOpts, session } : ctx.commandOpts);
+    const cmd = ctx.buildCommand(node, resolved, { promptFile: stageRef(promptFile), model: effModel, provider: effProvider, extensionFile: extensionRef, skillPath }, session ? { ...ctx.commandOpts, session } : ctx.commandOpts);
     rec.command = cmd;
 
     // `nodeTimeoutMs` is resolved ONCE above (shared with the cloud per-command cap at scope.create).
@@ -641,7 +656,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         ].join('\n');
         const repairFile = path.posix.join(nodeStage, `repair-${repairs}.md`);
         await sandbox.writeFile(repairFile, repairPrompt);
-        const repairCmd = ctx.buildCommand(node, resolved, { promptFile: repairFile, model: effModel, provider: effProvider, extensionFile, skillPath }, ctx.commandOpts);
+        const repairCmd = ctx.buildCommand(node, resolved, { promptFile: stageRef(repairFile), model: effModel, provider: effProvider, extensionFile: extensionRef, skillPath }, ctx.commandOpts);
         const repairExec = await ctx.execRunner(execSandbox, repairCmd, { ...ctx.watchdog, nodeTimeoutMs, onSpawn });
         result = repairExec.result;
         // Re-collect (a fresh artifact may have been rewritten) under the same serialized collect mutex.
