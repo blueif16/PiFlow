@@ -1,0 +1,50 @@
+{
+  "name": "@piflow/docker",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Pi Flow ↔ local Docker connector — the LOCAL container sandbox backend for @piflow/core's sandbox seam, packaged as a CHOOSE-TO-INSTALL extension. `npm i @piflow/docker` and `piflowctl run --sandbox docker` boots one local Docker container per run (per-node workdir subtrees) from the SAME pi node-runtime image the cloud backends use — the offline, free mirror of the Daytona/E2B path (same image, same credential injection, same tool binding; no cloud account). Talks to the `docker` CLI only — no daemon-client dependency.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "docker",
+    "sandbox",
+    "container",
+    "local",
+    "workflow",
+    "orchestration",
+    "pi",
+    "agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/blueif16/PiFlow.git",
+    "directory": "packages/docker"
+  },
+  "homepage": "https://github.com/blueif16/PiFlow/tree/main/packages/docker#readme",
+  "bugs": "https://github.com/blueif16/PiFlow/issues",
+  "author": "blueif16",
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@piflow/core": "workspace:*"
+  }
+}

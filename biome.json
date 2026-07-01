@@ -22,7 +22,8 @@
       "!**/*.min.js",
       "!**/test/fixtures/**",
       "!**/fixtures/**",
-      "!**/*.css"
+      "!**/*.css",
+      "!**/*.generated.ts"
     ]
   },
   "formatter": {

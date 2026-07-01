@@ -14,8 +14,13 @@
 import type { SandboxProvider, NodeSpec, SecretResolver } from '../types.js';
 import { defaultSecretResolver } from '../types.js';
 
-/** Provider kinds with no host trust boundary — the host env must NOT be spread into the VM (allowlist only). */
-export const CLOUD_KINDS = new Set<SandboxProvider['kind']>(['daytona', 'e2b']);
+/**
+ * Provider kinds with no host trust boundary — the host env must NOT be spread into the VM/container
+ * (allowlist only). `docker` is included even though it runs LOCALLY: a container inherits no host env, so
+ * a node's declared creds must cross via the allowlist and the provider config is staged into its home,
+ * exactly like the cloud VMs (it is the local mirror of the cloud path, not an in-place backend).
+ */
+export const CLOUD_KINDS = new Set<SandboxProvider['kind']>(['daytona', 'e2b', 'docker']);
 
 /**
  * IN-PLACE provider kinds — the node runs DIRECTLY in the real workspace (no throwaway copy), so its

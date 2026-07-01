@@ -52,6 +52,7 @@
   },
   "optionalDependencies": {
     "@piflow/daytona": "workspace:*",
-    "@piflow/e2b": "workspace:*"
+    "@piflow/e2b": "workspace:*",
+    "@piflow/docker": "workspace:*"
   }
 }

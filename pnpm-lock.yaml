@@ -88,6 +88,9 @@ importers:
       '@piflow/daytona':
         specifier: workspace:*
         version: link:../daytona
+      '@piflow/docker':
+        specifier: workspace:*
+        version: link:../docker
       '@piflow/e2b':
         specifier: workspace:*
         version: link:../e2b
@@ -123,6 +126,12 @@ importers:
       '@daytona/sdk':
         specifier: ^0.185.0
         version: 0.185.0(ws@8.21.0)
+
+  packages/docker:
+    dependencies:
+      '@piflow/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/e2b:
     dependencies:

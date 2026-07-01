@@ -216,7 +216,7 @@ export interface CheckpointSpec {
 // 1 ── SANDBOX ────────────────────────────────────────────────────────────────
 
 /** Which execution backend a node runs in. New backends extend this union + add a SandboxProvider. */
-export type SandboxProviderKind = 'inmemory' | 'local' | 'seatbelt' | 'worktree' | 'daytona' | 'e2b';
+export type SandboxProviderKind = 'inmemory' | 'local' | 'seatbelt' | 'worktree' | 'daytona' | 'e2b' | 'docker';
 
 /**
  * Where a node runs. `read` is OS-enforced locally (Seatbelt: deny-all-then-allow) and a *staging
