@@ -69,6 +69,31 @@ describe('runWorkflow freeze-at-node-boundary', () => {
     expect(existsSync(path.join(outDir, 'b.txt'))).toBe(true);
   });
 
+  it('resumes a frozen run at a DIFFERENT run-dir path (cross-host migration): a {{RUN}}-token node is REUSED, not re-run', async () => {
+    // A node whose prompt embeds {{RUN}} — after migrating to another host the token resolves to a NEW
+    // absolute path, but the node's IDENTITY is unchanged, so the journal must STILL drive REUSE. This is
+    // the freeze→bundle→adopt promise ("done nodes reused, the tail runs") in the REAL cloud condition
+    // (the target run-dir path always differs from the source). A same-run-dir resume can't catch this.
+    const spec = () =>
+      compile(wf([n('A', [], ['a.txt'], { prompt: 'do A reading {{RUN}}/spec/req.json' }), n('B', ['a.txt'], ['b.txt'])]));
+    const src = await tmpOut();
+    // 1) run + freeze after stage 1 at the SOURCE path (the "laptop").
+    await runWorkflow(spec(), { outDir: src, buildCommand: stubBuilder() as never, freezeSignal: () => true, lease: false });
+
+    // 2) migrate = bundle→adopt: replicate the frozen run-dir at a DIFFERENT physical path (the "cloud host").
+    const dst = `${src}-cloud`;
+    await fs.cp(src, dst, { recursive: true });
+
+    // 3) resume at the NEW path: A must be REUSED even though {{RUN}} now resolves to `dst`, not `src`.
+    const res = await runWorkflow(spec(), { outDir: dst, buildCommand: stubBuilder() as never, freezeSignal: () => false, lease: false });
+
+    expect(res.status.done).toBe(true);
+    expect(res.status.ok).toBe(true);
+    expect(res.status.nodes['a'].status).toBe('reused'); // path changed, identity did NOT ⇒ REUSE (bug re-ran it)
+    expect(res.status.nodes['b'].status).toBe('ok');
+    expect(existsSync(path.join(dst, 'b.txt'))).toBe(true);
+  });
+
   it('the default freeze seam watches the .pi/freeze file: writing it parks the run', async () => {
     const outDir = await tmpOut();
     await fs.mkdir(path.join(outDir, '.pi'), { recursive: true });

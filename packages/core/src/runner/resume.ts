@@ -57,7 +57,12 @@ function envelopeHashOf(ctx: RunContext, node: NodeSpec): string {
   } catch {
     resolved = { piTools: [] };
   }
-  const resolveCtx: ResolveCtx = { run: ctx.outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
+  // Path-INVARIANT identity: keep {{RUN}}/{{WORKSPACE}} as tokens (resolve them to themselves) so a run's
+  // physical LOCATION never enters the envelope hash. A cross-host migration always lands the run-dir at a
+  // DIFFERENT absolute path; resolving {{RUN}} to it would flip every done node's hash → the journal reuse
+  // ("done nodes reused, the tail runs") breaks and the whole prefix re-runs on the target. Only
+  // identity-bearing content ({{state}}/{{arg}}) resolves — an edited arg/state SHOULD still re-run the node.
+  const resolveCtx: ResolveCtx = { run: '{{RUN}}', workspace: '{{WORKSPACE}}', state: ctx.runState, args: ctx.args };
   // A programmatic node carries no prompt — `?? ''` gives a stable empty-prompt hash (its identity is its
   // ops/contract, not a prompt); every other node realizes its prompt + marker tail exactly as before.
   let realizedPrompt = node.prompt ?? '';
