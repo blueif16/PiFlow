@@ -92,6 +92,10 @@ export interface RunModel {
   run: string;
   done: boolean;
   ok: boolean | null;
+  /** (P6) The run was PARKED at a node boundary by a freeze (a pending migration), not run to completion.
+   *  Surfaced so a `context migrate` freeze-wait detects it identically local (readRunModel) and remote
+   *  (the SSE snapshot). Absent/false on a normal run. */
+  frozen?: boolean;
   /** Run wall-clock start / last-write (ISO). Carried so a LIVE view can show elapsed-so-far
    *  (now − startedAt) while `durationMs` is still null (it is only stamped at completion). */
   startedAt?: string;

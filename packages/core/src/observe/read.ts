@@ -172,6 +172,9 @@ export async function readRunModel(runDir: string): Promise<RunModel> {
     run: status.run,
     done: status.done,
     ok: status.ok,
+    // (P6) Surface the parked-for-migration flag so a `context migrate` freeze-wait can detect it uniformly
+    // (this local reader AND the SSE snapshot/run-view both carry it). Absent on a normal run ⇒ false.
+    frozen: status.frozen ?? false,
     startedAt: status.startedAt,
     updatedAt: status.updatedAt,
     durationMs: status.durationMs,

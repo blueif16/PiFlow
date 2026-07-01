@@ -114,7 +114,14 @@ export async function runContextCli(argv: string[]): Promise<void> {
       return;
     }
 
+    case 'migrate': {
+      // (P6) one-click UPLOAD/DOWNLOAD: move a RUN between contexts (freeze → bundle → adopt → use).
+      const { runMigrateCli } = await import('./migrate.js');
+      await runMigrateCli(rest);
+      return;
+    }
+
     default:
-      return fail(`unknown verb "${verb}". Use: use | ls | add | rm | current`);
+      return fail(`unknown verb "${verb}". Use: use | ls | add | rm | current | migrate`);
   }
 }
