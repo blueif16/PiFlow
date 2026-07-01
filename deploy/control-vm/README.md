@@ -127,12 +127,14 @@ The GUI's API-base + the CLI then talk to the cloud origin (see `~/.piflow/conte
 `--execute` when ready to spend):
 
 ```bash
-piflowctl cloud up                       # PLAN: mint the token, register a `cloud` context, PRINT the
+# NOTE: bare `cloud up` now defaults to `--host railway`; this control-VM doc is the `--host fly` runbook,
+# so its examples pin `--host fly`. (Every host shares the same image, mint, and smoke — only the CLI differs.)
+piflowctl cloud up --host fly            # PLAN: mint the token, register a `cloud` context, PRINT the
                                          #       fly runbook (secrets redacted). Touches fly NEVER, spends $0.
-piflowctl cloud up --provider mmgw       # …resolving your pi gateway from ~/.pi/agent/models.json (below)
-piflowctl cloud up --execute             # RUN it: secrets set → deploy → smoke, then `context use cloud`
+piflowctl cloud up --host fly --provider mmgw   # …resolving your pi gateway from ~/.pi/agent/models.json (below)
+piflowctl cloud up --host fly --execute  # RUN it: secrets set → deploy → smoke, then `context use cloud`
                                          #         on a green smoke. `--execute` IS the "spend money" opt-in.
-piflowctl cloud down                     # PLAN the teardown; `--execute` destroys the app + drops the context
+piflowctl cloud down --host fly          # PLAN the teardown; `--execute` destroys the app + drops the context
 ```
 
 Flags: `--app <name>` (default `piflow-control-plane`, stamped as `-a` on every fly command) · `--provider
