@@ -55,6 +55,26 @@ export const discoverNamespaces = core.discoverNamespaces;
 export const discoverRunDirs = core.discoverRunDirs;
 
 /**
+ * The registry the GUI should SERVE. `piflowctl gui` sets `PIFLOW_GUI_ROOTS` (a `path.delimiter`-joined list of
+ * absolute roots) to SCOPE the viewer to the launched project(s): we build an EPHEMERAL registry from EXACTLY
+ * those roots and NEVER touch the on-disk global registry (`~/.piflow/products.json`) — so the GUI shows only
+ * the project it was launched in and never accumulates cross-project entries. Unset/empty ⇒ the global registry
+ * (the prior fleet-wide fallback). This is the ONE registry choke point every `/__piflow/*` middleware reads.
+ */
+export function loadScopedRegistry() {
+  const scope = process.env.PIFLOW_GUI_ROOTS;
+  if (scope && scope.trim()) {
+    const registry = { products: [] };
+    for (const r of scope.split(path.delimiter)) {
+      const root = r.trim();
+      if (root) upsertRoot(registry, root);
+    }
+    return registry;
+  }
+  return loadRegistry();
+}
+
+/**
  * Build the unified snapshot from a registry, then post-map EVERY thread to add the two GUI-ONLY pointer
  * fields core omits — keeping the `IndexThread` shape src/data/runIndex.ts consumes unchanged:
  *   • viewable: always false — committed `gui/public/runs` is deprecated by the live `/__piflow/run-view`

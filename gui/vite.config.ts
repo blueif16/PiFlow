@@ -41,8 +41,8 @@ async function resolveRunDir(run: string): Promise<{ runDir: string; workspaceRo
   const lib = findUp("scripts/lib/index-snapshot.mjs");
   if (!lib) return null;
   try {
-    const { loadRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
-    const ix = await buildSnapshot(loadRegistry());
+    const { loadScopedRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
+    const ix = await buildSnapshot(loadScopedRegistry());
     for (const p of ix.products ?? [])
       for (const ns of p.namespaces ?? []) {
         const hit = (ns.threads ?? []).find((t: { run?: string; runDir?: string }) => t.run === run && t.runDir);
@@ -53,11 +53,12 @@ async function resolveRunDir(run: string): Promise<{ runDir: string; workspaceRo
 }
 
 /**
- * Serve the GLOBAL piflow index/products to the static GUI — WITHOUT copying collected data into the repo
- * (the data/SDK boundary rule: no index.json under gui/public). `/__piflow/index.json` is LIVE: it
- * recomputes the snapshot from the registry (~/.piflow/products.json) on EVERY request via the shared
- * builder (gui/scripts/lib/index-snapshot.mjs), so a run that starts or progresses after the server
- * launched shows up without a manual `npm run data:index`. `/__piflow/products.json` returns the registry.
+ * Serve the piflow index/products to the GUI — WITHOUT copying collected data into the repo (the data/SDK
+ * boundary rule: no index.json under gui/public). `/__piflow/index.json` is LIVE: it recomputes the snapshot
+ * on EVERY request via the shared builder (gui/scripts/lib/index-snapshot.mjs) from the SCOPED registry
+ * (`loadScopedRegistry` — the `PIFLOW_GUI_ROOTS` set `piflowctl gui` passes for the launched project, else the
+ * global `~/.piflow/products.json`), so a run that starts or progresses after the server launched shows up
+ * without a manual `npm run data:index`. `/__piflow/products.json` returns that same scoped registry.
  */
 function piflowGlobalIndex(): Plugin {
   const handler = async (req: IncomingMessage, res: ServerResponse, next: () => void) => {
@@ -66,8 +67,8 @@ function piflowGlobalIndex(): Plugin {
     const lib = findUp("scripts/lib/index-snapshot.mjs");
     if (!lib) return sendJson(res, 500, { error: "index-snapshot lib not found — is this the piflow gui?" });
     try {
-      const { loadRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
-      const registry = loadRegistry();
+      const { loadScopedRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
+      const registry = loadScopedRegistry();
       const body = m[1] === "products" ? registry : await buildSnapshot(registry);
       sendJson(res, 200, body);
     } catch (e) {
@@ -98,8 +99,8 @@ function piflowRunStream(): Plugin {
     const lib = findUp("scripts/lib/index-snapshot.mjs");
     if (lib) {
       try {
-        const { loadRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
-        const ix = await buildSnapshot(loadRegistry());
+        const { loadScopedRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
+        const ix = await buildSnapshot(loadScopedRegistry());
         for (const p of ix.products ?? [])
           for (const ns of p.namespaces ?? [])
             for (const t of ns.threads ?? [])
@@ -174,8 +175,8 @@ function piflowRunView(): Plugin {
     const lib = findUp("scripts/lib/index-snapshot.mjs");
     if (lib) {
       try {
-        const { loadRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
-        const ix = await buildSnapshot(loadRegistry());
+        const { loadScopedRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
+        const ix = await buildSnapshot(loadScopedRegistry());
         for (const p of ix.products ?? [])
           for (const ns of p.namespaces ?? []) {
             const hit = (ns.threads ?? []).find((t: { run?: string; runDir?: string }) => t.run === run && t.runDir);
