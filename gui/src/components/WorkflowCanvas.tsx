@@ -51,6 +51,7 @@ import { MenuBar } from "./MenuBar";
 import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
 import { StartRunPanel } from "./StartRunPanel";
+import { MigrateRunPanel } from "./MigrateRunPanel";
 import { ExpandContext } from "./ExpandContext";
 import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { FusionContext, type FusionMode } from "./FusionContext";
@@ -61,6 +62,7 @@ import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buil
 import { deriveZones, toZoneFlowNode, type ZoneFlowNode } from "../data/zones";
 import { loadIndex, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
 import { useRunStream, RunStreamContext } from "../data/runStream";
+import { setEndpoint, useEndpoint } from "../data/apiBase";
 
 /* defined OUTSIDE the component — prevents node re-mounts on every render */
 const nodeTypes = { flowNode: WorkflowNode, zone: ZoneNode };
@@ -87,6 +89,10 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [nodeConfigs, setNodeConfigs] = useState<Record<string, AuthoredNodeConfig>>({});
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
   const [startOpen, setStartOpen] = useState(false); // the "Start a run" launcher modal (from the MenuBar)
+  const [migrateOpen, setMigrateOpen] = useState(false); // the "Migrate run" modal (from the MenuBar)
+  // The live control-plane endpoint. When a migrate re-points it (setEndpoint), this baseUrl changes and the
+  // index poll + run-view loader below re-run against the new origin (they list it in their deps).
+  const endpointBase = useEndpoint().baseUrl;
 
   const [ix, setIx] = useState<GlobalIndex | null>(null);
   const [activeRun, setActiveRun] = useState<string>("");
@@ -115,7 +121,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     refresh();
     const id = setInterval(refresh, 4000);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [endpointBase]);
 
   // Pick the focused run from the (live) index on first load: the REAL current run (running > newest —
   // no demo default). Once chosen, the user drives it via the switcher.
@@ -166,7 +172,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     };
     load();
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [activeRun, fusionOverrides, setNodes, setEdges]);
+  }, [activeRun, fusionOverrides, setNodes, setEdges, endpointBase]);
 
   // switch the viewed run (from the menu-bar switcher): load it + close any open node / file
   const selectRun = useCallback((run: string) => {
@@ -174,6 +180,14 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     setExpandedId(null);
     setOpenFile(null);
   }, []);
+
+  // migrate done → re-point the whole console to the target serve (baseUrl + token) and follow the run to its
+  // new home. setEndpoint drives the index poll / run-view loader / stream hooks to reconnect (endpointBase deps);
+  // the run-view loader already retries, so it picks the run up once the target has adopted + resumed it.
+  const onMigrated = useCallback((tgt: { baseUrl: string; token: string }, run: string) => {
+    setEndpoint(tgt);
+    selectRun(run);
+  }, [selectRun]);
 
   // refit the viewport once the real nodes land
   useEffect(() => {
@@ -340,13 +354,15 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             onOpenNode={(nodeId) => { setOpenFile(null); setExpandedId(nodeId); }}
             onClose={() => setOpenFile(null)}
           />
-          <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => setStartOpen(true)} ix={ix} />
+          <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => setStartOpen(true)} onMigrateRun={() => setMigrateOpen(true)} ix={ix} />
           <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} />
           <FusionSaveBar active={mode === "fusion"} />
           <ChipPalette active={mode === "compose"} />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
           {/* Launch a run → on the 202, select it via `selectRun` so the live views observe the new run. */}
           <StartRunPanel open={startOpen} onClose={() => setStartOpen(false)} onStarted={selectRun} />
+          {/* Migrate the active run → on the 202, re-point the console to the target serve + follow the run. */}
+          <MigrateRunPanel open={migrateOpen} onClose={() => setMigrateOpen(false)} activeRun={activeRun} onMigrated={onMigrated} />
         </div>
       </LayoutGroup>
       </RunStreamContext.Provider>

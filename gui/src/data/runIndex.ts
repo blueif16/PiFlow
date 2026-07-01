@@ -4,7 +4,7 @@
 // products → namespaces(workspaces) → threads(runs). Thread fields mirror the TUI's
 // `summarizeRun` row so TUI + GUI agree. Real data only; no mock fallback.
 import type { DirEntry } from "../components/DirectoryPanel";
-import { api } from "./apiBase";
+import { apiFetch } from "./apiBase";
 
 /** One run, as summarized into the global index (mirrors summarizeRun + pointer fields). */
 export interface IndexThread {
@@ -59,7 +59,7 @@ export interface GlobalIndex {
 
 /** Fetch the global snapshot from the Vite middleware (source of truth: ~/.piflow/index.json). */
 export async function loadIndex(): Promise<GlobalIndex> {
-  const res = await fetch(api("/__piflow/index.json"));
+  const res = await apiFetch("/__piflow/index.json");
   if (!res.ok) throw new Error(`global index unavailable (${res.status}) — run \`npm run data:index\``);
   return (await res.json()) as GlobalIndex;
 }

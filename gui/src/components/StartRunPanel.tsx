@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
-import { api } from "../data/apiBase";
+import { apiFetch } from "../data/apiBase";
 import { loadIndex, type GlobalIndex } from "../data/runIndex";
 import "../styles/startrun.css";
 
@@ -93,7 +93,7 @@ export function StartRunPanel({ open, onClose, onStarted }: {
       dryRun: dryRun || undefined,
     };
     try {
-      const res = await fetch(api("/api/runs/start"), {
+      const res = await apiFetch("/api/runs/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
