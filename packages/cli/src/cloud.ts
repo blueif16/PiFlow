@@ -4,8 +4,13 @@
 // mint the bearer token, project the pi gateway + Claude-subscription credentials onto the VM, `fly deploy`
 // the control-VM image, smoke it, then switch the console over.
 //
-//   piflowctl cloud up   [--app <name>] [--provider <gw>] [--provider-secret <VAR>] [--context <name>] [--execute]
-//   piflowctl cloud down [--app <name>] [--context <name>] [--execute]
+//   piflowctl cloud up   [--host <fly|railway|selfhost|docker>] [--app <name>] [--public-url <url>]
+//                        [--provider <gw>] [--provider-secret <VAR>] [--context <name>] [--port <n>] [--execute]
+//   piflowctl cloud down [--host <...>] [--app <name>] [--context <name>] [--port <n>] [--execute]
+//
+// The Fly path is now ONE adapter behind the `HostAdapter` seam (packages/cli/src/hosts/): `--host` picks the
+// pathway, `cloud.ts` owns the shared core (mint · plan/render/gate · step factories), the adapter owns only
+// the URL shape + provider-CLI argvs. `--host` defaults to `fly`, so every existing invocation is unchanged.
 //
 // TWO modes, by design (the user law: PAUSE before an outward-facing / paid action):
 //   • DEFAULT = PLAN. Mints the token, registers the `cloud` context row, and PRINTS the exact runbook.
@@ -50,11 +55,18 @@ import {
   removeContext,
   type ContextEntry,
 } from './context-store.js';
+import type { HostAdapter, HostPlanContext } from './hosts/adapter.js';
+import { flyAdapter } from './hosts/fly.js';
+import { resolveAdapter } from './hosts/registry.js';
 
 // ── constants (mirror deploy/control-vm/{fly.toml,README.md}) ──────────────────────────────────────
 
 /** The Fly app name baked into `deploy/control-vm/fly.toml` — the default target (overridable with --app). */
 export const DEFAULT_APP = 'piflow-control-plane';
+/** The default hosting pathway — `fly` keeps every existing invocation byte-for-byte unchanged. */
+export const DEFAULT_HOST = 'fly';
+/** The default host port to publish (docker/selfhost); the control-VM image serves on 8080. */
+export const DEFAULT_PORT = 8080;
 /** The single env key the demo/plain path stages when no `--provider` gateway entry is found. */
 export const DEFAULT_PROVIDER_SECRET = 'NEBIUS_API_KEY';
 /** The context name `cloud up` registers + switches to (a row in ~/.piflow/contexts.json). */
@@ -71,9 +83,12 @@ const FORBIDDEN_SECRETS = new Set(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
 /** The nodeId the mint seam passes to the SecretResolver (so a broker can scope a per-caller token). */
 const MINT_NODE_ID = 'piflowctl-cloud-up';
 
-/** The public HTTPS origin Fly gives an app — the `cloud` context's baseUrl. */
+/**
+ * The public HTTPS origin Fly gives an app — the `cloud` context's baseUrl. The URL shape now LIVES in
+ * `flyAdapter.appUrl`; this is a thin re-export so back-compat callers (and the fly tests) keep one name.
+ */
 export function flyAppUrl(app: string): string {
-  return `https://${app}.fly.dev`;
+  return flyAdapter.appUrl(app, { port: 8080 });
 }
 
 // ── minting the secrets (the values the deploy stages; PURE given injected RNG + resolvers) ─────────
@@ -144,7 +159,7 @@ function resolveProviderDefault(provider: string): ProviderResolution {
  * API-key var — a non-empty API key silently wins in `claude -p` (per-token billing).
  */
 export async function mintCloudSecrets(
-  opts: { app: string; provider?: string; providerSecret: string },
+  opts: { appUrl: string; provider?: string; providerSecret: string },
   deps: MintDeps = {},
 ): Promise<MintedSecrets> {
   const randomToken = deps.randomToken ?? (() => randomBytes(32).toString('hex'));
@@ -154,7 +169,8 @@ export async function mintCloudSecrets(
   const resolveProvider = deps.resolveProvider ?? resolveProviderDefault;
 
   const token = randomToken();
-  const appUrl = flyAppUrl(opts.app);
+  // The adapter now owns the URL shape — mint just carries the origin the caller computed.
+  const appUrl = opts.appUrl;
 
   // The gateway decomposition — the SAME (models.json entry + $VAR cred allowlist) a daytona/e2b node gets.
   // A custom --provider with a real entry → stage the file + use ITS cred vars; otherwise the single env key.
@@ -206,7 +222,10 @@ export async function mintCloudSecrets(
 
 // ── the deploy plan (PURE — the ordered runbook the README documents) ──────────────────────────────
 
-export type StepKind = 'local' | 'fly' | 'smoke';
+// 'host' = any provider-CLI-touching step (fly/railway/docker/cloudflared/serve). 'local' + 'smoke' were
+// never host-specific. The outward/paid/idempotent flags carry the blast semantics, so nothing downstream
+// keys on the literal — the render tag now keys on plan.hostId.
+export type StepKind = 'local' | 'host' | 'smoke';
 
 /** One ordered deploy step: an execute-ready argv + a REDACTED display form + its blast/idempotency flags. */
 export interface DeployStep {
@@ -230,14 +249,128 @@ export interface DeployStep {
 export interface DeployPlan {
   app: string;
   appUrl: string;
+  /** The resolving adapter's id ('fly' | 'railway' | 'selfhost' | 'docker') — the render tag keys on it. */
+  hostId: string;
   steps: DeployStep[];
 }
 
+// ── shared step factories (extracted ONCE from the old buildFlyDeployPlan body; every adapter uses these) ──
+//
+// These are the host-NEUTRAL steps the design (§3.5) lifts out so redaction + the .dockerignore dance + the
+// smoke live in exactly one place. An adapter contributes them from its `upSteps` (fly/railway/docker need the
+// dockerignore copy/rm; selfhost-via-serve doesn't), and `buildDeployPlan` appends only the smoke.
+
 /**
- * Build the ordered Fly deploy plan (the `deploy/control-vm/README.md` runbook, as data). The `secrets`
- * (from `mintCloudSecrets`) are inlined into the `fly secrets set` command (execute form) but rendered as
- * `***`; the SECRET-FREE gateway `modelsJson` rides the same command as a NON-secret env (labeled, not `***`).
- * `-a <app>` is stamped on every `fly` command so the plan overrides the config's app name explicitly.
+ * The `<CLI> secrets set …` step (fly `fly secrets set`, railway `railway variables --set`, …). Builds the
+ * `NAME=VALUE` pairs (incl. the labeled NON-secret gateway `MODELS_JSON_ENV` when present), passes them to the
+ * host's `argv` shaper for the command, and renders each value as `***` — displayValue overrides only the
+ * secret-free gateway config. THE one place redaction of the staged secrets lives.
+ */
+export function secretsSetStep(
+  ctx: HostPlanContext,
+  argv: (pairs: string[]) => string[],
+): DeployStep {
+  const setPairs = [...ctx.secrets];
+  if (ctx.modelsJson)
+    setPairs.push({ name: MODELS_JSON_ENV, value: ctx.modelsJson, displayValue: `<gateway:${ctx.provider ?? 'pi'}>` });
+  const secretArgs = setPairs.map((s) => `${s.name}=${s.value}`);
+  const command = argv(secretArgs);
+  // The display mirrors the command's shape but redacts every value — so `argv` is applied to the redacted pairs
+  // too, keeping display and command structurally identical regardless of the host's flag layout.
+  const display = argv(setPairs.map((s) => `${s.name}=${s.displayValue ?? '***'}`)).join(' ');
+  return {
+    id: 'secrets-set',
+    kind: 'host',
+    command,
+    display,
+    outward: true,
+    note: `encrypted at rest; injected as env at runtime. ${MODELS_JSON_ENV} is secret-free gateway config (the image writes it to ~/.pi/agent/models.json at boot).`,
+  };
+}
+
+/**
+ * A `docker run -e NAME=VALUE` / `--env-file`-style step for docker/selfhost: inlines the REAL values in
+ * `command` but `***` in `display`, via the same redaction the secrets-set step uses. `argv` receives the
+ * per-secret env args (`-e NAME=VALUE`, redacted in the display pass) and returns the full command.
+ */
+export function envRunStep(
+  id: string,
+  ctx: HostPlanContext,
+  argv: (envArgs: string[]) => string[],
+  opts: { outward?: boolean; paid?: boolean; idempotent?: boolean; note?: string } = {},
+): DeployStep {
+  const envArg = (name: string, value: string): string[] => ['-e', `${name}=${value}`];
+  const command = argv(ctx.secrets.flatMap((s) => envArg(s.name, s.value)));
+  const display = argv(ctx.secrets.flatMap((s) => envArg(s.name, '***'))).join(' ');
+  return {
+    id,
+    kind: 'host',
+    command,
+    display,
+    outward: opts.outward ?? true,
+    ...(opts.paid !== undefined ? { paid: opts.paid } : {}),
+    ...(opts.idempotent !== undefined ? { idempotent: opts.idempotent } : {}),
+    ...(opts.note !== undefined ? { note: opts.note } : {}),
+  };
+}
+
+/** Copy the control-vm .dockerignore to the build-context root (fly/railway/docker read only a root one). */
+export function copyDockerignoreStep(): DeployStep {
+  return {
+    id: 'copy-dockerignore',
+    kind: 'local',
+    command: ['cp', 'deploy/control-vm/.dockerignore', '.dockerignore'],
+    display: 'cp deploy/control-vm/.dockerignore .dockerignore',
+    outward: false,
+    note: 'the builder reads ONLY a context-root .dockerignore; without this copy, COPY . . ships secrets/junk.',
+  };
+}
+
+/** Remove the temporary context-root .dockerignore copy (paired with copyDockerignoreStep). */
+export function rmDockerignoreStep(): DeployStep {
+  return {
+    id: 'rm-dockerignore',
+    kind: 'local',
+    command: ['rm', '.dockerignore'],
+    display: 'rm .dockerignore',
+    outward: false,
+    idempotent: true,
+    note: 'clean up the temporary context-root copy.',
+  };
+}
+
+/** The invariant smoke gate — identical for every host; keys only on the origin + the minted token. */
+export function smokeStep(appUrl: string, token: string): DeployStep {
+  return {
+    id: 'smoke',
+    kind: 'smoke',
+    command: ['node', 'deploy/control-vm/smoke-live.mjs'],
+    env: { PIFLOW_CLOUD_URL: appUrl, PIFLOW_TOKEN: token },
+    display: `PIFLOW_CLOUD_URL=${appUrl} PIFLOW_TOKEN=*** node deploy/control-vm/smoke-live.mjs`,
+    outward: true,
+    note: 'the P5 gate: A(auth)→B(start)→C(SSE done)→D(run-view)→E(in-VM bwrap/OAuth invariants).',
+  };
+}
+
+/**
+ * The GENERIC deploy-plan builder — an adapter's full `up` runbook + the invariant smoke. Every host's plan is
+ * `[...adapter.upSteps(ctx), smokeStep(...)]`; the adapter owns the provider-CLI steps + the .dockerignore
+ * dance, this owns only the smoke. `hostId` = the render tag.
+ */
+export function buildDeployPlan(adapter: HostAdapter, ctx: HostPlanContext): DeployPlan {
+  return {
+    app: ctx.app,
+    appUrl: ctx.appUrl,
+    hostId: adapter.id,
+    steps: [...adapter.upSteps(ctx), smokeStep(ctx.appUrl, ctx.token)],
+  };
+}
+
+/**
+ * Back-compat: the ORIGINAL Fly runbook builder, now a 1-line wrapper over `buildDeployPlan(flyAdapter, …)`.
+ * The `secrets` are inlined into the `fly secrets set` command (execute form) but rendered as `***`; the
+ * SECRET-FREE gateway `modelsJson` rides the same command as a NON-secret labeled env. `-a <app>` is stamped
+ * on every `fly` command so the plan overrides the config's app name explicitly.
  */
 export function buildFlyDeployPlan(opts: {
   app: string;
@@ -249,67 +382,7 @@ export function buildFlyDeployPlan(opts: {
   modelsJson?: string;
   provider?: string;
 }): DeployPlan {
-  const { app, appUrl, config, dockerfile, secrets, token, modelsJson, provider } = opts;
-  const setPairs = [...secrets];
-  if (modelsJson) setPairs.push({ name: MODELS_JSON_ENV, value: modelsJson, displayValue: `<gateway:${provider ?? 'pi'}>` });
-  const secretArgs = setPairs.map((s) => `${s.name}=${s.value}`);
-  const secretDisplay = setPairs.map((s) => `${s.name}=${s.displayValue ?? '***'}`).join(' ');
-
-  const steps: DeployStep[] = [
-    {
-      id: 'copy-dockerignore',
-      kind: 'local',
-      command: ['cp', 'deploy/control-vm/.dockerignore', '.dockerignore'],
-      display: 'cp deploy/control-vm/.dockerignore .dockerignore',
-      outward: false,
-      note: 'the builder reads ONLY a context-root .dockerignore; without this copy, COPY . . ships secrets/junk.',
-    },
-    {
-      id: 'apps-create',
-      kind: 'fly',
-      command: ['fly', 'apps', 'create', app],
-      display: `fly apps create ${app}`,
-      outward: true,
-      idempotent: true,
-      note: 'first deploy only — skipped (reported, not failed) if the app already exists.',
-    },
-    {
-      id: 'secrets-set',
-      kind: 'fly',
-      command: ['fly', 'secrets', 'set', ...secretArgs, '-a', app],
-      display: `fly secrets set ${secretDisplay} -a ${app}`,
-      outward: true,
-      note: `encrypted at rest; injected as env at runtime. ${MODELS_JSON_ENV} is secret-free gateway config (the image writes it to ~/.pi/agent/models.json at boot).`,
-    },
-    {
-      id: 'deploy',
-      kind: 'fly',
-      command: ['fly', 'deploy', '--config', config, '--dockerfile', dockerfile, '-a', app, '.'],
-      display: `fly deploy --config ${config} --dockerfile ${dockerfile} -a ${app} .`,
-      outward: true,
-      paid: true,
-      note: 'the operator\'s paid step — builds + ships the control-VM image from the repo root.',
-    },
-    {
-      id: 'rm-dockerignore',
-      kind: 'local',
-      command: ['rm', '.dockerignore'],
-      display: 'rm .dockerignore',
-      outward: false,
-      idempotent: true,
-      note: 'clean up the temporary context-root copy.',
-    },
-    {
-      id: 'smoke',
-      kind: 'smoke',
-      command: ['node', 'deploy/control-vm/smoke-live.mjs'],
-      env: { PIFLOW_CLOUD_URL: appUrl, PIFLOW_TOKEN: token },
-      display: `PIFLOW_CLOUD_URL=${appUrl} PIFLOW_TOKEN=*** node deploy/control-vm/smoke-live.mjs`,
-      outward: true,
-      note: 'the P5 gate: A(auth)→B(start)→C(SSE done)→D(run-view)→E(in-VM bwrap/OAuth invariants).',
-    },
-  ];
-  return { app, appUrl, steps };
+  return buildDeployPlan(flyAdapter, { ...opts, port: 8080 });
 }
 
 // ── rendering the plan (the runbook a user reads; secrets redacted) ─────────────────────────────────
@@ -329,7 +402,7 @@ export function renderPlan(plan: DeployPlan, mint: MintedSecrets, opts: { contex
   lines.push('  below yourself, or re-run with --execute to have piflowctl run them (step 4 spends money).');
   lines.push('');
   plan.steps.forEach((s, i) => {
-    const tag = s.paid ? 'fly·$$' : s.kind;
+    const tag = s.paid ? `${plan.hostId}·$$` : s.kind;
     lines.push(`  ${i + 1}. [${tag}] ${s.display}`);
     if (s.note) lines.push(`       — ${s.note}`);
   });
@@ -388,7 +461,13 @@ const removeContextDefault = async (name: string): Promise<void> => {
 };
 
 export interface CloudUpOpts {
+  /** Which hosting pathway (`--host`). Resolved via `resolveAdapter`; defaults to `fly` (back-compat). */
+  host: string;
   app: string;
+  /** The public HTTPS origin for docker/selfhost (`--public-url`); ignored when the host derives its own. */
+  publicUrl?: string;
+  /** Host port to publish (docker/selfhost); 8080 default. */
+  port: number;
   provider?: string;
   providerSecret: string;
   contextName: string;
@@ -408,12 +487,17 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
   const registerContext = deps.registerContext ?? registerContextDefault;
 
-  const mint = await mintCloudSecrets({ app: opts.app, provider: opts.provider, providerSecret: opts.providerSecret }, deps);
-  const plan = buildFlyDeployPlan({
+  // Resolve the pathway, then compute the origin its way (host-derived, or the operator's --public-url).
+  const adapter = resolveAdapter(opts.host);
+  const appUrl = adapter.appUrl(opts.app, { publicUrl: opts.publicUrl, port: opts.port });
+
+  const mint = await mintCloudSecrets({ appUrl, provider: opts.provider, providerSecret: opts.providerSecret }, deps);
+  const plan = buildDeployPlan(adapter, {
     app: opts.app,
     appUrl: mint.appUrl,
     config: opts.config,
     dockerfile: opts.dockerfile,
+    port: opts.port,
     secrets: mint.secrets,
     token: mint.token,
     modelsJson: mint.modelsJson,
@@ -426,6 +510,16 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
   if (!opts.execute) {
     print(renderPlan(plan, mint, { contextName: opts.contextName }));
     return;
+  }
+
+  // FAIL-FAST guard: for a host whose URL the operator must supply (docker/selfhost), refuse `--execute`
+  // without `--public-url` — otherwise the context baseUrl + smoke would point at the 127.0.0.1 placeholder,
+  // not the durable origin. PLAN mode above still prints the runbook with the placeholder + instructions.
+  if (!adapter.urlIsHostDerived && !opts.publicUrl) {
+    throw new Error(
+      `cloud up --host ${adapter.id} --execute requires --public-url (the durable HTTPS origin) — ` +
+        `${adapter.id} can't derive one; the context baseUrl + smoke would otherwise point at ${appUrl}.`,
+    );
   }
 
   // EXECUTE — the one-click. Each outward step runs in order; a hard failure halts before the context switch.
@@ -449,39 +543,53 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
 }
 
 export interface CloudDownOpts {
+  /** Which hosting pathway (`--host`). Resolved via `resolveAdapter`; defaults to `fly` (back-compat). */
+  host: string;
   app: string;
+  /** Host port (for the docker/selfhost teardown display); 8080 default. */
+  port: number;
   contextName: string;
   execute: boolean;
 }
 
-/** `cloud down`. PLAN mode prints the teardown; EXECUTE destroys the Fly app then removes the `cloud` context. */
+/**
+ * `cloud down`. PLAN mode prints the teardown; EXECUTE runs the adapter's teardown step(s) then removes the
+ * context. A host with no teardown step (selfhost) prints a manual-teardown note and just removes the context.
+ */
 export async function runCloudDown(opts: CloudDownOpts, deps: CloudDeps = {}): Promise<void> {
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
-  const destroyStep: DeployStep = {
-    id: 'apps-destroy',
-    kind: 'fly',
-    command: ['fly', 'apps', 'destroy', opts.app, '--yes'],
-    display: `fly apps destroy ${opts.app} --yes`,
-    outward: true,
-    note: 'DESTRUCTIVE — removes the machine + kills any in-flight runs/streams.',
-  };
+  const adapter = resolveAdapter(opts.host);
+  const steps = adapter.downSteps({ app: opts.app, port: opts.port });
+
   if (!opts.execute) {
-    print(`piflowctl cloud down — PLAN for app "${opts.app}"`);
+    print(`piflowctl cloud down — PLAN for app "${opts.app}" (host ${adapter.id})`);
     print('');
-    print(`  1. [fly] ${destroyStep.display}`);
-    print(`       — ${destroyStep.note}`);
-    print(`  2. [local] remove the "${opts.contextName}" context from ~/.piflow/contexts.json`);
+    if (steps.length === 0) {
+      print(`  1. [manual] ${adapter.id} has no remote teardown — stop the supervisor + tunnel yourself.`);
+    } else {
+      steps.forEach((s, i) => {
+        print(`  ${i + 1}. [host] ${s.display}`);
+        if (s.note) print(`       — ${s.note}`);
+      });
+    }
+    print(`  ${steps.length + 1}. [local] remove the "${opts.contextName}" context from ~/.piflow/contexts.json`);
     print('');
-    print('  This is a PLAN — nothing has been destroyed. Re-run with --execute to tear the app down.');
+    print('  This is a PLAN — nothing has been destroyed. Re-run with --execute to tear it down.');
     return;
   }
+
   const runStep = deps.runStep ?? runStepDefault;
   const removeContextFn = deps.removeContextFn ?? removeContextDefault;
-  print(`▸ ${destroyStep.display}`);
-  const res = await runStep(destroyStep);
-  if (!res.ok) throw new Error(`cloud down: '${destroyStep.display}' failed (exit ${res.code ?? '?'})`);
+  if (steps.length === 0) {
+    print(`  (host ${adapter.id} has no remote teardown — stop the supervisor + tunnel yourself.)`);
+  }
+  for (const step of steps) {
+    print(`▸ ${step.display}`);
+    const res = await runStep(step);
+    if (!res.ok) throw new Error(`cloud down: '${step.display}' failed (exit ${res.code ?? '?'})`);
+  }
   await removeContextFn(opts.contextName);
-  print(`✓ destroyed "${opts.app}" and removed the "${opts.contextName}" context.`);
+  print(`✓ tore down "${opts.app}" and removed the "${opts.contextName}" context.`);
 }
 
 // ── arg parsing + dispatch (the thin wrapper; mirrors context.ts) ──────────────────────────────────
@@ -492,16 +600,23 @@ function fail(msg: string): void {
 }
 
 const UP_USAGE =
-  'usage: piflowctl cloud up [--app <name>] [--provider <gw>] [--provider-secret <VAR>] [--context <name>] ' +
-  '[--config <fly.toml>] [--dockerfile <path>] [--execute]';
-const DOWN_USAGE = 'usage: piflowctl cloud down [--app <name>] [--context <name>] [--execute]';
+  'usage: piflowctl cloud up [--host <fly|railway|selfhost|docker>] [--app <name>] [--public-url <https://…>] ' +
+  '[--provider <gw>] [--provider-secret <VAR>] [--context <name>] [--config <fly.toml>] [--dockerfile <path>] ' +
+  '[--port <n>] [--execute]';
+const DOWN_USAGE =
+  'usage: piflowctl cloud down [--host <fly|railway|selfhost|docker>] [--app <name>] [--context <name>] ' +
+  '[--port <n>] [--execute]';
 
 /** `piflowctl cloud <up|down> [...]` — parse flags, dispatch, map errors to stderr + a non-zero exit. */
 export async function runCloudCli(argv: string[]): Promise<void> {
   const [verb, ...rest] = argv;
 
-  // Shared flag parse (both verbs accept --app/--context/--execute; up also takes provider/config/dockerfile).
+  // Shared flag parse (both verbs accept --host/--app/--port/--context/--execute; up also takes
+  // provider/config/dockerfile/public-url).
+  let host = DEFAULT_HOST;
   let app = DEFAULT_APP;
+  let publicUrl: string | undefined;
+  let port = DEFAULT_PORT;
   let provider: string | undefined;
   let providerSecret = DEFAULT_PROVIDER_SECRET;
   let contextName = DEFAULT_CONTEXT_NAME;
@@ -510,7 +625,10 @@ export async function runCloudCli(argv: string[]): Promise<void> {
   let execute = false;
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
-    if (a === '--app') app = rest[++i];
+    if (a === '--host') host = rest[++i];
+    else if (a === '--app') app = rest[++i];
+    else if (a === '--public-url') publicUrl = rest[++i];
+    else if (a === '--port') port = Number(rest[++i]);
     else if (a === '--provider') provider = rest[++i];
     else if (a === '--provider-secret') providerSecret = rest[++i];
     else if (a === '--context') contextName = rest[++i];
@@ -519,13 +637,21 @@ export async function runCloudCli(argv: string[]): Promise<void> {
     else if (a === '--execute' || a === '--yes') execute = true;
     else return fail(`unknown flag "${a}"`);
   }
+  if (!host) return fail('--host requires a value');
   if (!app) return fail('--app requires a value');
   if (!contextName) return fail('--context requires a value');
+  if (!Number.isFinite(port) || port <= 0) return fail('--port requires a positive number');
+  // Validate the pathway up front (a typo never reaches --execute) — same guard for both verbs.
+  try {
+    resolveAdapter(host);
+  } catch (e) {
+    return fail((e as Error).message ?? String(e));
+  }
 
   switch (verb) {
     case 'up':
       try {
-        await runCloudUp({ app, provider, providerSecret, contextName, config, dockerfile, execute });
+        await runCloudUp({ host, app, publicUrl, port, provider, providerSecret, contextName, config, dockerfile, execute });
       } catch (e) {
         return fail((e as Error).message ?? String(e));
       }
@@ -533,7 +659,7 @@ export async function runCloudCli(argv: string[]): Promise<void> {
 
     case 'down':
       try {
-        await runCloudDown({ app, contextName, execute });
+        await runCloudDown({ host, app, port, contextName, execute });
       } catch (e) {
         return fail((e as Error).message ?? String(e));
       }
