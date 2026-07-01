@@ -4,9 +4,9 @@ key: memory-leg
 title: Memory layer (the two legs — Leg A self/history · Leg B world/code)
 description: How each node gets two optimizer-facing markdown surfaces — memory.md (standing behavior + failure lessons) and code-map.md (a Tier-0 OKF slice of its scope) — seeded PURE create-if-absent by the scaffolder, never injected into the node's runtime prompt, intended only for the Hermes optimizer to read and update.
 resource: packages/core/src/memory/skeleton.ts
-aliases: [memory.md, code-map, code-map.md, memory-leg, buildNodeMemory, buildSystemMemory, buildNodeCodeMap, seedNodeMemory, seedNodeCodeMap, Leg A, Leg B, hermes, optimizer-facing, self/history, world/code]
-seeds: [packages/core/src/memory/skeleton.ts, packages/core/src/memory/seed.ts, packages/core/src/memory/index.ts, packages/core/src/code-map.ts, packages/core/src/index.ts, packages/cli/src/scaffold.ts, packages/cli/src/cli.ts]
-symbols: [buildNodeMemory, buildSystemMemory, buildNodeCodeMap, seedNodeMemory, seedSystemMemory, seedNodeCodeMap, writeIfAbsent, scaffoldMemory]
+aliases: [memory.md, code-map, code-map.md, memory-leg, buildNodeMemory, buildSystemMemory, buildNodeCodeMap, seedNodeMemory, seedNodeCodeMap, Leg A, Leg B, hermes, optimizer-facing, self/history, world/code, resolveSlice, DefectScope, cross-reference, pointer-resolve, resolve-at-read, freshness-ride]
+seeds: [packages/core/src/memory/skeleton.ts, packages/core/src/memory/seed.ts, packages/core/src/memory/index.ts, packages/core/src/code-map.ts, packages/core/src/index.ts, packages/cli/src/scaffold.ts, packages/cli/src/cli.ts, packages/cli/src/understand.ts]
+symbols: [buildNodeMemory, buildSystemMemory, buildNodeCodeMap, seedNodeMemory, seedSystemMemory, seedNodeCodeMap, writeIfAbsent, scaffoldMemory, resolveSlice]
 tags: [memory, optimizer, scaffold, core, cli, self-correction]
 timestamp: 2026-06-30
 ---
@@ -22,7 +22,16 @@ accumulates). The CLI scaffolder wires this in: `scaffoldNew` seeds the system `
 seeds the node's `memory.md` + `code-map.md`; `scaffoldMemory` backfills an existing template (the
 `piflowctl memory scaffold` engine). All six builders/seeders are lifted to the `@piflow/core` root. The legs
 are OPTIMIZER-FACING — never injected into a node's runtime prompt (a node must not see its own failure
-history). The intended consumer is the Hermes optimizer; today it is not yet wired (see DRIFT NOTE).
+history). The consumer is the out-of-band Hermes optimizer, and the READERS now exist: Leg A's recurrence
+reader (`optimize/triage.ts`) flips a recurring failure LAPSE→SKILL, and the **two legs are joined by a single
+cross-reference** — a lesson's `[[okf-slice]]` link names the Leg-B slice it concerns; `resolveSlice`
+(`understand.ts`) dereferences that key to the slice's curated code-map; and the optimize CLI seam inlines it
+into the fixer's `DefectScope.codeMap` at fix time, so the fixer reads *what recurred* (Leg A) alongside *how
+the code works* (Leg B). The join is **POINTER + RESOLVE-AT-READ, never an embedded copy** — the "pointers +
+semantics, never a copy" law (v1 §5b), re-confirmed 2026-07-01 by both an external SOTA sweep and our own prior
+research: memory stores only the KEY, the code-map is a fresh read of the drift-gated slice (so it can never
+rot), and a lesson's freshness RIDES that slice's `--check`. An embedded copy was rejected precisely because it
+would have no `--check` to ride (see `docs/research/memory/piflow-memory-v1.5.md`).
 
 # Anchors
 DEFINED
@@ -34,11 +43,13 @@ SEEDED (at scaffold time)
 - `packages/cli/src/scaffold.ts:391` — `scaffoldNew` → `seedSystemMemory` — seeds the template's system `memory.md`
 - `packages/cli/src/scaffold.ts:407` — `scaffoldAddNode` → `seedNodeMemory` + `seedNodeCodeMap` (line 237) — seeds both legs per node
 - `packages/cli/src/scaffold.ts:440` — `scaffoldMemory()` — backfill engine for `piflowctl memory scaffold`
-CONSUMED
-- (none) — no runtime/optimizer reader exists yet; `optimize/triage.ts:14` names Leg-A `memory.md` as a DEFERRED SKILL signal, but reads neither file. Leg B has NO reader at all.
+CONSUMED (the out-of-band optimizer reads the legs; NEVER a worker node)
+- `packages/core/src/optimize/recurrence.ts:49` — `deriveRecurrence` — reads `memory.md` lesson blocks → RecurrenceIndex (the Leg-A reader; `triage` flips LAPSE→SKILL on it)
+- `packages/cli/src/understand.ts:136` — `resolveSlice` — dereference a lesson's `[[okf-slice]]` link to the linked slice's curated body (the Leg-A → Leg-B join)
+- `packages/cli/src/optimize-fix.ts:143` — `enrichCodeMap` — the CLI seam inlines the resolved code-map into `DefectScope.codeMap` at fix time (resolve-at-read)
 
 # Freshness (anti-drift)
-anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the layer is SEED-ONLY today — both legs are written but nothing reads them. Leg A's intended reader (the Hermes optimizer/triage SKILL lane) is explicitly DEFERRED in `optimize/triage.ts`; Leg B has NO reader designed yet (the optimizer is the intended consumer). `index.ts` is currently marked `// STUB — RED phase` though the facade is fully wired and root-exported — verify that label is still accurate.
+anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: no longer seed-only — the READERS shipped. Leg A's recurrence reader (`optimize/triage.ts`) + the cross-reference resolver (`resolveSlice`, `understand.ts`) now feed the optimizer's `DefectScope` (pointer + resolve-at-read; the join lives in `optimize-fix.ts`). What remains DEFERRED: LLM-distilled root/prevention (MEMORIZE writes deterministic placeholders today) and cap/retire compaction of `memory.md`. `index.ts` is marked `// STUB — RED phase` though the facade is wired + root-exported — verify that label.
 
 <!-- okf:auto-start -->
 > _Auto-generated by `_generate.mjs` — do not hand-edit between the markers; re-run `--write`._

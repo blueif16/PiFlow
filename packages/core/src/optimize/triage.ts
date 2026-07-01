@@ -127,5 +127,14 @@ function skillDefect(s: NodeScore, hit: RecurrenceHit): Defect {
       `fix-surface: ${s.node}'s envelope (prompt.md / SKILL.md / node.json)`,
     ],
     confidence: 'medium',
+    // The two-leg scope-context, as STRUCTURED data (the fixer reads this, not the evidence strings above).
+    // Pin the Leg-B link as the KEY only — the CLI seam dereferences it to `codeMap` at fix time (resolve-at-
+    // read); this projector stays pure (no filesystem, no copy of the slice body).
+    scope: {
+      recurrence: hit.count,
+      ...(hit.lesson?.root ? { root: hit.lesson.root } : {}),
+      ...(hit.lesson?.prevention ? { prevention: hit.lesson.prevention } : {}),
+      ...(hit.lesson?.okfSlice ? { okfSlice: hit.lesson.okfSlice } : {}),
+    },
   };
 }

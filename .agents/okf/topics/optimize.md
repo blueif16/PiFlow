@@ -25,6 +25,12 @@ VAL task (`makeReplayStages` + `mineTaskFromTrace`), and `evaluateGate` accepts 
 (FUNCTIONALITY also needs the product build green; ARCH always stages for human). `writeStagingManifest` records
 decisions; `adoptFile` (backup-then-overwrite) is a separate explicit land. The live oracle/fixer stay
 product-side, dynamic-imported via `--binding` (`packages/cli/src/optimize-fix.ts`).
+For a SKILL defect, `triage` also pins a two-leg **scope-context** (`DefectScope`): the cross-run recurrence +
+the lesson's distilled root/prevention (Leg A) + the linked `[[okf-slice]]` KEY (Leg B) — the projector stays
+pure (it pins only the KEY). The CLI seam then dereferences that key to the slice's curated code-map
+(`enrichCodeMap` → `resolveSlice`) and inlines it AT FIX TIME, so the fixer reads *how the code works*
+alongside *what recurred* — POINTER + RESOLVE-AT-READ, never a stored copy (the code-map can't rot; it is a
+fresh read of the drift-gated slice). See `memory-leg` for the two-leg join.
 
 # Anchors
 SCORE
@@ -33,6 +39,7 @@ SCORE
 - `packages/core/src/optimize/tier1.ts:38` — `readVerifyReport` — project a verify-milestone report → Tier1Result (abstain re-tag)
 TRIAGE
 - `packages/core/src/optimize/triage.ts:35` — `triage` — four-way LAPSE/SKILL/FUNCTIONALITY/ARCH projector → Defect[]
+- `packages/core/src/optimize/types.ts:110` — `DefectScope` — the two-leg scope-context a SKILL fixer reads (recurrence + root/prevention + the linked [[okf-slice]] KEY)
 - `packages/core/src/optimize/render.ts:33` — `renderRouting` — Defect[] → the proven HERMES-ROUTING.md worklist
 GATE
 - `packages/core/src/optimize/gate.ts:42` — `evaluateGate` — PURE accept verdict: strict improvement + per-bucket land policy
@@ -45,6 +52,7 @@ REPLAY
 - `packages/core/src/optimize/mine.ts:45` — `mineTaskFromTrace` — the MINING half: read the incumbent's recorded report → a CheckableTask
 CLI SEAM
 - `packages/cli/src/optimize-fix.ts:96` — `runOptimizeFixCli` — dynamic-import the product `--binding` → compose the core pieces → stage a manifest
+- `packages/cli/src/optimize-fix.ts:104` — `enrichCodeMap` — resolve-at-read: dereference each SKILL lesson's [[okf-slice]] → inline the curated code-map into `DefectScope.codeMap`
 STREAM (`--fix --watch`)
 - `packages/core/src/optimize/events.ts:12` — `OptimizeEvent` — the typed event union the driver emits (one per lifecycle step); the stream is a PROJECTION, never load-bearing
 - `packages/core/src/optimize/events.ts:23` — `OptimizeEventSink` — the sink signature `(event: OptimizeEvent) => void`; the `--watch` UI subscribes to it

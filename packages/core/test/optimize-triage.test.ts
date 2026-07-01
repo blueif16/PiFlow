@@ -101,6 +101,31 @@ describe('triage — the four-way projector', () => {
     expect(d.needsSignal).toBeUndefined(); // the signal is present now — no mis-attribution deferral
   });
 
+  it('a SKILL defect carries a STRUCTURED scope — recurrence + lesson + the [[okf-slice]] POINTER (not just evidence strings)', () => {
+    // The fixer reads the lesson as first-class data, not by re-parsing `code-map: [[key]]` out of evidence.
+    // Core PINS the pointer here (the okfSlice KEY, un-bracketed); the CLI resolves it to the code-map body
+    // downstream (resolve-at-read, never a stored copy) — so `codeMap` stays undefined at this boundary.
+    const scores: NodeScore[] = [{
+      node: 'flaky', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    const recurrence = new Map([
+      ['flaky::failed', { count: 3, lesson: { root: 'unguarded null on the destroyed-group read', prevention: 'guard the null case', okfSlice: 'runner' } }],
+    ]);
+    const [d] = triage(
+      scores,
+      digestWith([{ failed: 'flaky', earliestUpstream: 'flaky', viaPath: '', chain: ['flaky'] }]),
+      { recurrence },
+    );
+    expect(d.bucket).toBe('SKILL');
+    expect(d.scope).toBeDefined();
+    expect(d.scope?.recurrence).toBe(3);
+    expect(d.scope?.root).toBe('unguarded null on the destroyed-group read');
+    expect(d.scope?.prevention).toBe('guard the null case');
+    expect(d.scope?.okfSlice).toBe('runner'); // the PINNED pointer — the KEY, no [[ ]] wrapping
+    expect(d.scope?.codeMap).toBeUndefined(); // core pins the pointer; the CLI resolves the body (boundary)
+  });
+
   it('a signature BELOW the recurrence threshold stays LAPSE (count:0)', () => {
     const scores: NodeScore[] = [{
       node: 'flaky', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,

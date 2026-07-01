@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseCard, rankCards, resolveTopicsDir, runUnderstandCli } from '../src/understand.js';
+import { parseCard, rankCards, resolveTopicsDir, resolveSlice, runUnderstandCli } from '../src/understand.js';
 
 // `piflowctl understand` is the user-facing name for the OKF code-understanding slices: FIND the slice that
 // owns a subsystem, and run the drift gate (--check) / regenerate (--rebuild). The RANKER is the heart — a
@@ -110,6 +110,29 @@ describe('resolveTopicsDir — walk up to the .agents/okf/topics engine', () => 
     const bare = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-nosubstrate-'));
     expect(resolveTopicsDir(bare)).toBeNull();
     await fs.rm(bare, { recursive: true, force: true });
+  });
+});
+
+describe('resolveSlice — dereference a slice KEY to its curated body (the Leg-A→Leg-B resolve-at-read)', () => {
+  let topics: string;
+  beforeEach(async () => {
+    topics = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-resolveslice-'));
+    await fs.writeFile(path.join(topics, 'runner.md'), card({ key: 'runner', title: 'Runner spine', prose: 'drives the DAG one pi per node.' }));
+  });
+  afterEach(async () => {
+    await fs.rm(topics, { recursive: true, force: true });
+  });
+
+  it('returns the curated body ONLY — frontmatter and the auto region are stripped (never a copy of the whole card)', () => {
+    const body = resolveSlice(topics, 'runner');
+    expect(body).toBeTruthy();
+    expect(body).toContain('drives the DAG one pi per node'); // the curated "how it works"
+    expect(body).not.toContain('regenerated content'); // the machine auto-region is excluded
+    expect(body).not.toContain('type: subsystem'); // frontmatter is excluded
+  });
+
+  it('returns null when the linked slice is absent (a dangling pointer — the fixer still gets root/prevention)', () => {
+    expect(resolveSlice(topics, 'nonexistent')).toBeNull();
   });
 });
 

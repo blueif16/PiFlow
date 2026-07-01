@@ -10,6 +10,18 @@
 > **Status (2026-06-29):** the four-way triage (§3) and the gate clarification (§2) are FIRM. The scoring
 > design (§4) is now **research-grounded** (three Exa briefs folded into §4d) — the cascade is settled in
 > principle; the held-out replay+scoring HARNESS that feeds it (§5.1) is the remaining critical path to build.
+>
+> **Update (2026-07-01):** the **Leg-A ↔ Leg-B cross-reference is WIRED**. A SKILL defect now carries a two-leg
+> `DefectScope` — cross-run recurrence + the lesson's distilled root/prevention (Leg A) + the lesson's
+> `[[okf-slice]]` link (Leg B) — and the CLI seam dereferences that link to the slice's curated code-map at fix
+> time (`resolveSlice` → `enrichCodeMap`), so the fixer reads *how the code works* beside *what recurred*. The
+> store-side fork (embed a condensed copy vs. keep the legs separate and resolve the link) is **CLOSED for
+> POINTER + RESOLVE-AT-READ — never an embedded copy**: confirmed 2026-07-01 by an external SOTA sweep (cache-
+> coherence / GitOfThoughts fusion-buys-nothing / Memex-RL dereference-on-demand) *and* our own "pointers +
+> semantics, never a copy" law (v1 §5b) — a copy has no `--check` to ride, so a lesson's freshness rides the
+> linked slice's gate instead. Captured in the `memory-leg` + `optimize` OKF slices (the understanding system
+> holds the decision). Still deferred: LLM-distilled root/prevention (deterministic placeholders today) and
+> cap/retire compaction (§5.3).
 
 ---
 

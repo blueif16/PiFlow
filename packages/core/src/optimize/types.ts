@@ -86,6 +86,40 @@ export interface NodeScore {
   abstained: boolean;
 }
 
+// ── the fixer's scope-context — the two memory legs joined for one defect (v1.5 §6/§8) ─────────────────
+/** A resolved code-map slice — the curated "how it works" body of an OKF slice a lesson links (Leg B). */
+export interface ResolvedSlice {
+  /** the OKF slice KEY, e.g. "runner" — the pinned pointer. */
+  slice: string;
+  /** the slice's curated body, inlined at fix time (a fresh read of the drift-gated slice, never a copy). */
+  body: string;
+}
+
+/**
+ * The optimizer-facing scope-context a SKILL fixer reads — the join of the two memory legs (the memory-slices
+ * ↔ okf-slices cross-reference; piflow-memory-v1.5 §6/§8). Leg A (self/history) supplies the cross-run
+ * `recurrence` count + the distilled `root`/`prevention`; Leg B (world/code) is the lesson's `[[okf-slice]]`
+ * link — pinned here as the KEY (`okfSlice`) and dereferenced downstream into `codeMap`.
+ *
+ * POINTER + RESOLVE-AT-READ, never an embedded copy (the "pointers + semantics, never a copy" law): the
+ * projector pins only the KEY (it stays pure — no filesystem); the CLI seam resolves it to `codeMap` at fix
+ * time by reading the current slice, so the code-map can never rot the way a stored copy would. A defect may
+ * carry the pointer with `codeMap` unset (no `.agents/okf/` in the repo, or the linked slice is absent) — the
+ * `root`/`prevention` still reach the fixer.
+ */
+export interface DefectScope {
+  /** cross-run recurrence count (Leg A) — how many runs carried this signature. */
+  recurrence?: number;
+  /** the distilled root cause (Leg A lesson). */
+  root?: string;
+  /** the durable prevention (Leg A lesson). */
+  prevention?: string;
+  /** the linked OKF code-slice KEY (Leg B pointer, pinned by triage; the KEY, not `[[wrapped]]`). */
+  okfSlice?: string;
+  /** the resolved curated bodies of the linked slice(s), inlined at fix time by the CLI (never stored). */
+  codeMap?: ResolvedSlice[];
+}
+
 // ── the triage output — one worklist item per defect (v1.5 §7; the proven HERMES-ROUTING.md shape) ──────
 /**
  * The deterministic projector emits the STRUCTURAL worklist (node · bucket · symptom · evidence ·
@@ -104,6 +138,11 @@ export interface Defect {
   confidence: Confidence;
   /** the missing signal that would sharpen/confirm the bucket (when the projector defaulted). */
   needsSignal?: string;
+  /**
+   * the two-leg scope-context for a SKILL defect — recurrence + the distilled lesson (Leg A) + the linked
+   * code slice (Leg B, resolved at fix time). Set only when a recurrence lesson exists; absent otherwise.
+   */
+  scope?: DefectScope;
 }
 
 // ── the per-node criteria fixture (the product's quality bar; v1.5 §7) ─────────────────────────────────
