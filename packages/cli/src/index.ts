@@ -17,5 +17,15 @@ export {
   runAddNodeCli,
 } from './scaffold.js';
 export type { NewOpts, NodeOpts, CheckOpt, McpServers } from './scaffold.js';
-export { runTemplate, dryRunPlan, parseRunArgs, runRunCli } from './run.js';
-export type { RunDeps, ParsedRunArgs } from './run.js';
+export { runTemplate, dryRunPlan, parseRunArgs, runRunCli, remoteStartBody, runTemplateRemote } from './run.js';
+export type { RunDeps, ParsedRunArgs, RemoteRunDeps } from './run.js';
+export {
+  parseSseFrames,
+  sseEvents,
+  remoteRunModel,
+  remoteUpdates,
+  startRemoteRun,
+  streamUrlFor,
+  resolveRemote,
+} from './remote.js';
+export type { RemoteOpts, StartRemoteResult } from './remote.js';

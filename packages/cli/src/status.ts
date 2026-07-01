@@ -15,6 +15,7 @@
 // verified-artifacts · durationMs · stage · ok/failed rollup) and does NOT fabricate cost numbers.
 
 import { readRunModel, type RunModel, type NodeStatus } from '@piflow/core';
+import { resolveRemote, remoteRunModel } from './remote.js';
 
 const ICON: Record<NodeStatus, string> = {
   ok: '✓',
@@ -53,20 +54,37 @@ export function renderStatus(run: RunModel): string {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-/** `piflowctl status <rundir> [--every <s>]` — one-shot, or a live refresh-in-place loop. */
+/**
+ * `piflowctl status <rundir|runId> [--every <s>] [--context <name>]` — one-shot, or a live refresh-in-place
+ * loop. LOCAL context (default): the positional is a RUN DIR read off disk (`readRunModel`). REMOTE context:
+ * the positional is a RUN ID fetched over SSE from the active serve (`remoteRunModel`); the SAME `renderStatus`
+ * lays it out, so remote status is byte-identical to what local would print for that model.
+ */
 export async function runStatusCli(argv: string[]): Promise<void> {
   let dir: string | undefined;
   let every: number | undefined;
+  let flagContext: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--every') every = Number(argv[++i]);
+    else if (k === '--context') flagContext = argv[++i];
     else if (!k.startsWith('-')) dir = k;
+  }
+  // Is the active context a remote serve? If so, the positional is a run id, fetched over SSE. Resolution
+  // errors (unknown --context) surface loudly rather than silently reading the local filesystem.
+  let remote: ReturnType<typeof resolveRemote>;
+  try {
+    remote = resolveRemote(flagContext);
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`);
+    process.exitCode = 1;
+    return;
   }
   const rundir = dir && dir.trim() ? dir : '.';
   const once = async (): Promise<boolean> => {
     let model: RunModel;
     try {
-      model = await readRunModel(rundir);
+      model = remote ? await remoteRunModel(remote.entry, rundir) : await readRunModel(rundir);
     } catch (e) {
       process.stderr.write(`${(e as Error).message}\n`);
       process.exitCode = 1;

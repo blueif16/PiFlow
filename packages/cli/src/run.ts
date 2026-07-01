@@ -50,6 +50,8 @@ import path from 'node:path';
 import os from 'node:os';
 import { readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
+import { resolveRemote, startRemoteRun, streamUrlFor, type StartRemoteResult, type RemoteOpts } from './remote.js';
+import type { ContextEntry } from './context-store.js';
 
 /**
  * List the run-NAME basenames already present under a runs home (the canonical `.piflow/<wf>/runs/`), so
@@ -196,6 +198,12 @@ export interface ParsedRunArgs {
    * detach the PROCESS. Omit ⇒ ATTENDED: a checkpoint parks for the courier reply.
    */
   detach?: boolean;
+  /**
+   * (P7) `--context <name>` — pick the control plane to run against. Omit/`local` ⇒ run in-process on THIS
+   * host (the unchanged local path). A REMOTE context ⇒ POST `/api/runs/start` to that serve, which launches
+   * the run there; the CLI prints the returned run id + stream URL (observe it via the same remote context).
+   */
+  context?: string;
 }
 
 /** Parse the flat `run` argv → `ParsedRunArgs`. First positional = the template dir. */
@@ -230,6 +238,7 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
       }
     }
     else if (k === '--max-concurrent') out.maxConcurrent = Number(argv[++i]);
+    else if (k === '--context') out.context = argv[++i];
     else if (k === '--detach' || k === '--unattended') out.detach = true;
     else if (k === '--arg') {
       const kv = argv[++i] ?? '';
@@ -670,12 +679,86 @@ export function runFailureReport(status: RunResult['status'], runDir: string): s
   return lines.join('\n');
 }
 
-/** `piflowctl run <templateDir> [--dry-run] [--run <id>] [--arg k=v ...]` — the bin body. */
+/**
+ * (P7) Map the parsed `run` argv → the `POST /api/runs/start` StartBody the remote serve accepts. PURE (no
+ * I/O) so the mapping is unit-tested. The `templateDir` is sent ABSOLUTE (the server resolves it against its
+ * own filesystem / allow-list). Only the flags the server understands are forwarded; local-only concerns
+ * (workspace/out/from/until/no-resume/max-concurrent) are NOT — the remote run owns its own layout. Fields
+ * are omitted when unset so the JSON stays minimal (and byte-stable across runs with no such flag).
+ */
+export function remoteStartBody(parsed: ParsedRunArgs): Record<string, unknown> {
+  return {
+    templateDir: path.resolve(parsed.templateDir),
+    ...(parsed.run ? { run: parsed.run } : {}),
+    ...(Object.keys(parsed.args).length ? { args: parsed.args } : {}),
+    // `inmemory` is the parser default (no `--sandbox`); forward a sandbox only when the user actually chose one.
+    ...(parsed.sandbox !== 'inmemory' ? { sandbox: parsed.sandbox } : {}),
+    ...(parsed.profile ? { profile: parsed.profile } : {}),
+    ...(parsed.provider ? { provider: parsed.provider } : {}),
+    ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
+    ...(parsed.model ? { model: parsed.model } : {}),
+    ...(parsed.dryRun ? { dryRun: true } : {}),
+    ...(parsed.detach ? { detach: true } : {}),
+    ...(parsed.executor ? { executor: parsed.executor } : {}),
+    ...(parsed.executorOverride ? { executorOverride: parsed.executorOverride } : {}),
+  };
+}
+
+/** Injectable seam for the remote-run path (default = the real `startRemoteRun` + stdout), so a test spies it. */
+export interface RemoteRunDeps {
+  startRemoteRun?: (entry: ContextEntry, body: object, opts?: RemoteOpts) => Promise<StartRemoteResult>;
+  print?: (line: string) => void;
+}
+
+/**
+ * (P7) LAUNCH a run on a REMOTE serve: POST the mapped StartBody to the active context's `/api/runs/start`,
+ * then surface the RETURNED run id + how to observe it (via the SAME remote context). The run lives on the
+ * remote host — this never touches the local filesystem. Returns the parsed 202 body (for the caller/tests).
+ */
+export async function runTemplateRemote(
+  entry: ContextEntry,
+  contextName: string,
+  parsed: ParsedRunArgs,
+  deps: RemoteRunDeps = {},
+): Promise<StartRemoteResult> {
+  const start = deps.startRemoteRun ?? startRemoteRun;
+  const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
+  const res = await start(entry, remoteStartBody(parsed));
+  print(`piflowctl run: launched on context "${contextName}" (${entry.baseUrl}) — run "${res.run}".`);
+  // Prefer the server-returned streamUrl (absolute-ized against the base); else derive the canonical one.
+  const streamUrl = res.streamUrl
+    ? `${entry.baseUrl.replace(/\/$/, '')}${res.streamUrl}`
+    : streamUrlFor(entry, res.run);
+  print(`  → observe: piflowctl watch ${res.run} --context ${contextName}   (stream: ${streamUrl})`);
+  print(`  → status:  piflowctl status ${res.run} --context ${contextName}`);
+  return res;
+}
+
+/** `piflowctl run <templateDir> [--dry-run] [--run <id>] [--arg k=v ...] [--context <name>]` — the bin body. */
 export async function runRunCli(argv: string[]): Promise<void> {
   const parsed = parseRunArgs(argv);
   if (!parsed.templateDir) {
     process.stderr.write('piflowctl run: a template directory is required (piflowctl run <templateDir>)\n');
     process.exitCode = 1;
+    return;
+  }
+  // (P7) REMOTE context ⇒ launch on that serve (POST /api/runs/start) and surface the returned run id — NOT a
+  // local run. LOCAL/unset ⇒ the unchanged in-process path below. An unknown --context surfaces loudly.
+  let remote: ReturnType<typeof resolveRemote>;
+  try {
+    remote = resolveRemote(parsed.context);
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  if (remote) {
+    try {
+      await runTemplateRemote(remote.entry, remote.name, parsed);
+    } catch (e) {
+      process.stderr.write(`${(e as Error).message}\n`);
+      process.exitCode = 1;
+    }
     return;
   }
   const result = await runTemplate(parsed);

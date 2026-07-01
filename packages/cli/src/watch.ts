@@ -16,6 +16,7 @@
 // RunModel extension); the hard guard is the driver's own --node-timeout.
 
 import { watchRun as coreWatchRun, type RunUpdate, type NodeStatus } from '@piflow/core';
+import { resolveRemote, remoteUpdates } from './remote.js';
 
 export type WatchReason = 'done' | 'node-failed' | 'aborted';
 
@@ -94,17 +95,34 @@ export async function watchRun(opts: WatchOpts = {}): Promise<WatchResult> {
   return fire('aborted', null, `[watch] stream ended before a terminal event (run=${runName})`);
 }
 
-/** `piflowctl watch <rundir> [--notify] [--poll <s>] [--dead-stall <s>]` — the bin body. */
+/** `piflowctl watch <rundir|runId> [--notify] [--poll <s>] [--dead-stall <s>] [--context <name>]` — the bin body. */
 export async function runWatchCli(argv: string[]): Promise<void> {
   let dir: string | undefined;
   let notify = false;
   let pollMs: number | undefined;
+  let flagContext: string | undefined;
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--notify') notify = true;
     else if (k === '--poll') pollMs = Number(argv[++i]) * 1000;
+    else if (k === '--context') flagContext = argv[++i];
     else if (k === '--dead-stall') i++; // parsed-but-inert: staleness isn't in the shared source (see header)
     else if (!k.startsWith('-')) dir = k;
   }
-  await watchRun({ rundir: dir && dir.trim() ? dir : '.', notify, pollMs });
+  const target = dir && dir.trim() ? dir : '.';
+  // REMOTE context: swap the DEFAULT `watchRun(rundir)` disk source for the serve's SSE `RunUpdate` stream —
+  // the sentinel logic is unchanged, only the source. LOCAL: the positional is a rundir, read off disk.
+  let remote: ReturnType<typeof resolveRemote>;
+  try {
+    remote = resolveRemote(flagContext);
+  } catch (e) {
+    process.stderr.write(`${(e as Error).message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  await watchRun(
+    remote
+      ? { updates: remoteUpdates(remote.entry, target), notify }
+      : { rundir: target, notify, pollMs },
+  );
 }
