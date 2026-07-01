@@ -12,6 +12,25 @@ export type ScopeKind = "run" | "skill" | "template" | "package" | "repo";
 /** (SKIN channel) The sandbox BACKEND kind — mirrors core `SandboxProviderKind` (types.ts). */
 export type SandboxProviderKind = "inmemory" | "local" | "seatbelt" | "worktree" | "daytona" | "e2b";
 
+/** (POLICY channel) One entry in a node's authored post-node consequence chain — mirrors core
+ *  `GateSummaryEntry` (runner/status.ts). A LEGIBLE fold of the node's op[] the GUI renders as "what happens
+ *  after this node", never the raw op envelope. */
+export interface GateSummaryEntry {
+  kind: "exec" | "check" | "judge" | "retry" | "escalate" | "notify" | "reroute" | "human";
+  label: string;
+  when: "pre" | "post" | "on-success" | "on-failure" | "always";
+  onFail?: "block" | "warn" | "stop" | "retry" | "escalate";
+  advisory?: boolean;
+}
+
+/** (POLICY channel) A node's authored gate/policy summary — mirrors core `GateSummary`. Distilled from op[]
+ *  + the G5 checkpoint at run time and carried verbatim on the run-view's `NodeConfig`, so the GUI renders
+ *  the post-node policy legibly WITHOUT the `/__piflow/node-config` template side-channel. */
+export interface GateSummary {
+  entries: GateSummaryEntry[];
+  checkpoint?: "confirm" | "input" | "select";
+}
+
 /** (SKIN channel) The curated per-node config slice — mirrors core `NodeConfig` (runner/status.ts). The
  *  `sandbox` here is per-node SCOPING (workspace/readScope/owns), NOT the backend (that is run-level). */
 export interface NodeConfig {
@@ -27,6 +46,9 @@ export interface NodeConfig {
    *  Drives the `unlocked` node skin; a local-only, loosen-only posture. Mirrors core `NodeConfig`. */
   fullAccess?: boolean;
   sandbox?: { workspace?: string; readScope?: string[]; owns?: string[]; };
+  /** (POLICY channel) The authored post-node consequence chain (gate lane + policy + checkpoint), distilled
+   *  by core's `summarizeGates` and mirrored through observe. The GUI's legible "what happens after" source. */
+  gates?: GateSummary;
 }
 
 export interface ScopeBucket { kind: ScopeKind; label: string; count: number; paths: string[]; }

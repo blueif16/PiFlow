@@ -1,0 +1,61 @@
+/* NodeGates — the POLICY-channel projection of a node's authored post-node consequence chain (config.gates).
+   Card variant = a compact always-on glyph row (the "short symbol"); detail variant = labeled rows in the HUD.
+   Each entry is tinted by its on-fail POLICY, but the glyph is ALSO distinct + titled — never color alone. */
+
+.ds-gates--card {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 5px 2px 1px;
+  pointer-events: none; /* the row is informational; clicks fall through to the card (expand) */
+}
+
+.ds-gate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ds-text-secondary);
+}
+
+/* policy tones (glyph color) — block/warn/retry/escalate/human; muted = advisory/notify */
+.ds-gate[data-tone="block"] { color: var(--ds-error-fg); }
+.ds-gate[data-tone="warn"] { color: var(--ds-warning-fg); }
+.ds-gate[data-tone="retry"] { color: var(--ds-blue-600); }
+.ds-gate[data-tone="escalate"] { color: var(--ds-violet-600); }
+.ds-gate[data-tone="human"] { color: var(--ds-violet-600); }
+.ds-gate[data-tone="muted"] { color: var(--ds-text-disabled); }
+.ds-gate[data-tone="ok"] { color: var(--ds-text-secondary); }
+
+/* detail variant — one labeled row per consequence, in the expanded HUD */
+.ds-gates--detail { display: flex; flex-direction: column; gap: 6px; }
+.ds-gate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+}
+.ds-gate-row .ds-gate { flex: none; }
+.ds-gate-row__label { color: var(--ds-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-gate-row__when {
+  color: var(--ds-text-disabled);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+}
+.ds-gate-row__policy { margin-left: auto; color: var(--ds-text-secondary); white-space: nowrap; }
+.ds-gate-row[data-tone="block"] .ds-gate-row__policy { color: var(--ds-error-fg); }
+.ds-gate-row[data-tone="warn"] .ds-gate-row__policy { color: var(--ds-warning-fg); }
+.ds-gate-row[data-tone="retry"] .ds-gate-row__policy { color: var(--ds-blue-600); }
+.ds-gate-row[data-tone="escalate"] .ds-gate-row__policy { color: var(--ds-violet-600); }
+
+/* the HUD "After this node" policy section wrapping the detail list */
+.ds-hud__policy { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+.ds-hud__policy-title {
+  font-family: var(--ds-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ds-text-tertiary);
+}
