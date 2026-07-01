@@ -65,7 +65,7 @@ USAGE
   piflowctl model   [list | set <tier> <modelId> [--claude] | activate | deactivate]  the model-tier config
   piflowctl claude-code [connect [--token <t>] | status]  OPTIONAL credential for the claude-code executor
   piflowctl gui     [--port <n>] [--no-open]  launch the run viewer; indexes the product at cwd (or global)
-  piflowctl skills  install [targetDir] [--force]  install the workflow-authoring skills into a repo
+  piflowctl skills  install [targetDir] [--force] [--with <id>|--all|--wizard]  install the authoring skills (+ add-ons) into a repo
   piflowctl --version                       print the piflowctl version
 
 RUN
@@ -190,6 +190,12 @@ SKILLS
                             workflows against the SDK. Default targetDir = cwd. An existing skill dir is
                             kept unless --force. (The skills are bundled in the npm tarball; a source checkout
                             falls back to this repo's canonical .claude/skills.)
+      ADD-ONS: the trio always installs; opt in extra skill packs (currently 'okf' = OKF code-slices):
+      --with <id>           add one add-on (repeatable), e.g. --with okf.
+      --all                 add every add-on.
+      --wizard              interactively choose which add-ons to install.
+      A chosen set is remembered in <targetDir>/.piflow/skills.json ({ "addons": [...] }); a later bare
+      install replays it. No flag + no manifest = the trio ONLY.
 
 LOGS (from @piflow/core)
   -f --follow · --node <id> · --summary · --raw · --poll <ms>   (see 'piflowctl logs --help' semantics)

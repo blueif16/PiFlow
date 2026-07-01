@@ -14,13 +14,17 @@ const repoRoot = path.join(pkgRoot, '..', '..'); // repo root
 const canonical = path.join(repoRoot, '.claude', 'skills');
 const dest = path.join(pkgRoot, 'skills');
 
-// Only the workflow-authoring trio travels to a consumer repo — EXCLUDES piflow-release (SDK publishing) and
-// piflow-web-design (marketing-site only).
+// The workflow-authoring trio travels to a consumer repo BY DEFAULT — EXCLUDES piflow-release (SDK
+// publishing) and piflow-web-design (marketing-site only).
 const TRIO = ['piflow-init', 'piflow-start', 'piflow-enhance'];
+// Plus the opt-in ADD-ON skills so `skills install --with/--all` can reach them from the tarball. MIRROR
+// SKILL_ADDONS in src/skills.ts (this plain .mjs can't import the TS catalog) — currently okf → okf-slices.
+const ADDON_SKILLS = ['okf-slices'];
+const BUNDLED = [...TRIO, ...ADDON_SKILLS];
 
 rmSync(dest, { recursive: true, force: true }); // regenerate from scratch — never accrete stale skills
 mkdirSync(dest, { recursive: true });
-for (const name of TRIO) {
+for (const name of BUNDLED) {
   cpSync(path.join(canonical, name), path.join(dest, name), { recursive: true });
 }
-process.stdout.write(`bundle-skills: staged ${TRIO.length} skill(s) into ${path.relative(repoRoot, dest)}\n`);
+process.stdout.write(`bundle-skills: staged ${BUNDLED.length} skill(s) into ${path.relative(repoRoot, dest)}\n`);
