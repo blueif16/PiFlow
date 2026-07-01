@@ -19,7 +19,12 @@ export interface ServeOptions {
   staticDir: string | null;
   roots: string[];
   open: boolean;
+  /** Template allow-list for POST /api/runs/start (empty ⇒ allow all — today's local behavior). */
+  allowedTemplates: string[];
 }
+
+/** Split a `path.delimiter`-separated list of template dirs (from --allow-templates or PIFLOW_ALLOWED_TEMPLATES). */
+const splitTemplates = (v: string | undefined): string[] => v?.split(path.delimiter).filter(Boolean) ?? [];
 
 export function parseServeArgs(argv: string[]): ServeOptions {
   const out: ServeOptions = {
@@ -29,6 +34,7 @@ export function parseServeArgs(argv: string[]): ServeOptions {
     staticDir: null,
     roots: [],
     open: false,
+    allowedTemplates: splitTemplates(process.env.PIFLOW_ALLOWED_TEMPLATES),
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -37,6 +43,7 @@ export function parseServeArgs(argv: string[]): ServeOptions {
     else if (a === "--token") out.token = argv[++i];
     else if (a === "--static") out.staticDir = argv[++i];
     else if (a === "--roots") out.roots.push(...(argv[++i]?.split(path.delimiter).filter(Boolean) ?? []));
+    else if (a === "--allow-templates") out.allowedTemplates = splitTemplates(argv[++i]);
     else if (a === "--open") out.open = true;
     else if (a === "--no-scope") out.roots = ["*none*"]; // sentinel: force the global fleet view
   }
@@ -69,7 +76,11 @@ export async function runServeCli(argv: string[]): Promise<void> {
   if (staticDir && !existsSync(path.join(staticDir, "index.html"))) staticDir = null;
   if (!staticDir) process.stdout.write("piflowctl serve: gui/dist not found — serving the API only (build the GUI: cd gui && npm run build).\n");
 
-  const server = createServer({ staticDir, token: opts.token });
+  if (opts.allowedTemplates.length) {
+    process.stdout.write(`piflowctl serve: start-run restricted to ${opts.allowedTemplates.length} allow-listed template(s).\n`);
+  }
+
+  const server = createServer({ staticDir, token: opts.token, allowedTemplates: opts.allowedTemplates });
   server.on("error", (e) => { process.stderr.write(`piflowctl serve: ${String(e)}\n`); process.exitCode = 1; });
   server.listen(opts.port, opts.host, () => {
     const shown = opts.host === "0.0.0.0" ? "localhost" : opts.host;

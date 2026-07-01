@@ -15,6 +15,9 @@ export interface CreateServerOptions {
   token?: string | null;
   /** Handlers to run BEFORE the built-in API (e.g. the P2b start-run handler). */
   extraApi?: Middleware[];
+  /** Template allow-list for POST /api/runs/start. null/omitted/empty ⇒ allow all (local dev); when set,
+   *  only requests resolving to a listed templateDir may launch a run (403 otherwise) — P5 cloud hardening. */
+  allowedTemplates?: string[] | null;
 }
 
 /** Require the bearer token on every request. EventSource can't set headers, so `?token=` is also accepted. */
@@ -29,7 +32,7 @@ function bearerGate(token: string): Middleware {
 }
 
 export function createServer(opts: CreateServerOptions = {}): http.Server {
-  const api = createApiMiddleware(opts.extraApi ?? []);
+  const api = createApiMiddleware(opts.extraApi ?? [], opts.allowedTemplates);
   const staticMw = opts.staticDir ? serveStatic(opts.staticDir) : null;
   const gate = opts.token ? bearerGate(opts.token) : null;
 

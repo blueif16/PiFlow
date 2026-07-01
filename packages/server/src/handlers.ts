@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { join, isAbsolute, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, sendJson, type Middleware, type Next } from "./resolve.js";
-import { piflowStartRun } from "./start-run.js";
+import { piflowStartRun, makePiflowStartRun } from "./start-run.js";
 
 /** `GET /__piflow/{index,products}.json` — LIVE scoped snapshot (recomputed per request). */
 export const piflowGlobalIndex: Middleware = async (req, res, next) => {
@@ -616,7 +616,12 @@ export function chain(handlers: Middleware[]): Middleware {
   };
 }
 
-/** The composed control-API middleware (all handlers, in order). `extra` handlers run FIRST (e.g. start-run). */
-export function createApiMiddleware(extra: Middleware[] = []): Middleware {
-  return chain([...extra, ...apiHandlers]);
+/** The composed control-API middleware (all handlers, in order). `extra` handlers run FIRST (e.g. start-run).
+ *  `allowedTemplates` (when set) binds the start-run template allow-list; omitted ⇒ the default (allow-all)
+ *  `piflowStartRun` from `apiHandlers`, preserving today's local behavior for the GUI's Vite middleware. */
+export function createApiMiddleware(extra: Middleware[] = [], allowedTemplates?: string[] | null): Middleware {
+  const handlers = allowedTemplates?.length
+    ? apiHandlers.map((h) => (h === piflowStartRun ? makePiflowStartRun(allowedTemplates) : h))
+    : apiHandlers;
+  return chain([...extra, ...handlers]);
 }

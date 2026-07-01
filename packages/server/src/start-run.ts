@@ -55,6 +55,19 @@ async function resolveTemplateDir(body: StartBody): Promise<{ ok: true; template
   }
 }
 
+/**
+ * The template allow-list gate. `POST /api/runs/start` spawns agents with credentials (RCE-by-design), so a
+ * publicly-exposed control plane must restrict WHICH templates it will run. PURE (no I/O) — compares resolved
+ * absolute paths so trailing slashes and relative-vs-absolute forms of the SAME dir are equal.
+ * - allowlist undefined/null/empty ⇒ true (ALLOW ALL — preserves today's local dev behavior).
+ * - otherwise ⇒ true iff `templateDir` (path.resolve'd) equals one of the allowlist entries (each path.resolve'd).
+ */
+export function isTemplateAllowed(templateDir: string, allowlist: string[] | undefined | null): boolean {
+  if (!allowlist || allowlist.length === 0) return true;
+  const target = path.resolve(templateDir);
+  return allowlist.some((entry) => path.resolve(entry) === target);
+}
+
 /** The canonical runs home for a template dir (`.piflow/<wf>/template` ⇒ `.piflow/<wf>/runs`), else null. */
 function runsHomeFor(templateDir: string): string | null {
   return path.basename(templateDir) === "template" ? path.join(path.dirname(templateDir), "runs") : null;
@@ -87,47 +100,59 @@ export function buildStartRunArgv(templateDir: string, runId: string, body: Star
   return argv;
 }
 
-/** POST /api/runs/start */
-export const piflowStartRun: Middleware = async (req, res, next) => {
-  if (!req.url?.match(/^\/api\/runs\/start(?:\?.*)?$/)) return next();
-  if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to start a run" });
+/**
+ * POST /api/runs/start, bound to an optional template allow-list. `allowedTemplates` undefined/null/empty ⇒
+ * ALLOW ALL (today's local behavior); when set, a request resolving to a non-listed templateDir is rejected
+ * with 403 BEFORE the runner is spawned. Factory (not a bare const) so the CLI can thread the allow-list in.
+ */
+export function makePiflowStartRun(allowedTemplates?: string[] | null): Middleware {
+  return async (req, res, next) => {
+    if (!req.url?.match(/^\/api\/runs\/start(?:\?.*)?$/)) return next();
+    if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to start a run" });
 
-  let body: StartBody;
-  try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: "body must be JSON" }); }
+    let body: StartBody;
+    try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: "body must be JSON" }); }
 
-  const tpl = await resolveTemplateDir(body);
-  if (!tpl.ok) return sendJson(res, 400, { error: tpl.error });
+    const tpl = await resolveTemplateDir(body);
+    if (!tpl.ok) return sendJson(res, 400, { error: tpl.error });
 
-  const runsHome = runsHomeFor(tpl.templateDir);
-  const runId = (typeof body.run === "string" && body.run.trim()) ? body.run.trim() : generateRunName(existingRunNames(runsHome));
+    // The credentialed launch is RCE-by-design; on a hardened host only allow-listed templates may run.
+    if (!isTemplateAllowed(tpl.templateDir, allowedTemplates)) return sendJson(res, 403, { error: "template not allowed" });
 
-  // The detached `piflowctl run` argv (PURE builder, unit-tested). The run's canonical home derives from the
-  // templateDir (not cwd), so the run lands under .piflow/<wf>/runs/<runId> regardless of where the server runs.
-  const argv = buildStartRunArgv(tpl.templateDir, runId, body);
+    const runsHome = runsHomeFor(tpl.templateDir);
+    const runId = (typeof body.run === "string" && body.run.trim()) ? body.run.trim() : generateRunName(existingRunNames(runsHome));
 
-  const cliBin = findUp("packages/cli/dist/cli.js");
-  const cwd = tpl.productRoot ?? process.cwd();
-  try {
-    const child = cliBin
-      ? spawn(process.execPath, [cliBin, ...argv], { cwd, detached: true, stdio: "ignore" })
-      : spawn("piflowctl", argv, { cwd, detached: true, stdio: "ignore" });
-    child.on("error", (e) => { process.stderr.write(`start-run: failed to spawn the runner (${String(e)})\n`); });
-    child.unref();
-  } catch (e) {
-    return sendJson(res, 500, { error: `failed to launch the run (${String(e)})` });
-  }
+    // The detached `piflowctl run` argv (PURE builder, unit-tested). The run's canonical home derives from the
+    // templateDir (not cwd), so the run lands under .piflow/<wf>/runs/<runId> regardless of where the server runs.
+    const argv = buildStartRunArgv(tpl.templateDir, runId, body);
 
-  // Return the run id the moment the run is discoverable (so the client's /stream/<run> resolves). The child
-  // instantiates .pi + writes run.json early; poll the SAME resolver /stream uses, then respond best-effort.
-  let runDir: string | null = null;
-  for (let i = 0; i < 20 && !runDir; i++) { const r = await resolveRunDir(runId); if (r) runDir = r.runDir; else await sleep(200); }
+    const cliBin = findUp("packages/cli/dist/cli.js");
+    const cwd = tpl.productRoot ?? process.cwd();
+    try {
+      const child = cliBin
+        ? spawn(process.execPath, [cliBin, ...argv], { cwd, detached: true, stdio: "ignore" })
+        : spawn("piflowctl", argv, { cwd, detached: true, stdio: "ignore" });
+      child.on("error", (e) => { process.stderr.write(`start-run: failed to spawn the runner (${String(e)})\n`); });
+      child.unref();
+    } catch (e) {
+      return sendJson(res, 500, { error: `failed to launch the run (${String(e)})` });
+    }
 
-  return sendJson(res, 202, {
-    run: runId,
-    runDir,
-    streamUrl: `/__piflow/stream/${encodeURIComponent(runId)}`,
-    runViewUrl: `/__piflow/run-view/${encodeURIComponent(runId)}`,
-    started: true,
-    resolved: runDir != null,
-  });
-};
+    // Return the run id the moment the run is discoverable (so the client's /stream/<run> resolves). The child
+    // instantiates .pi + writes run.json early; poll the SAME resolver /stream uses, then respond best-effort.
+    let runDir: string | null = null;
+    for (let i = 0; i < 20 && !runDir; i++) { const r = await resolveRunDir(runId); if (r) runDir = r.runDir; else await sleep(200); }
+
+    return sendJson(res, 202, {
+      run: runId,
+      runDir,
+      streamUrl: `/__piflow/stream/${encodeURIComponent(runId)}`,
+      runViewUrl: `/__piflow/run-view/${encodeURIComponent(runId)}`,
+      started: true,
+      resolved: runDir != null,
+    });
+  };
+}
+
+/** The default POST /api/runs/start middleware — no allow-list (allow all), preserving today's behavior. */
+export const piflowStartRun: Middleware = makePiflowStartRun();
