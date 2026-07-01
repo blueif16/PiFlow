@@ -29,6 +29,18 @@ that *whoever occupies the seat gets the job right*, whether that is you in this
 agent, or an agent in a cloud control-sandbox. Everything below the seat stays the same when the occupant
 changes; that invariance is the whole point.
 
+## Scope — the overlord's active theatre is the OPTIMIZE / DEBUG loop
+A normal workflow run is expected to **run robustly on its own**, governed by the deterministic management
+plane (timeouts, bounded retries, the run-count ceiling, budgets) + the runner's timeout/stall reflex. The
+overlord does NOT babysit or drive a healthy production run: on a **live producer** it is essentially
+**passive** (observe; let the deterministic plane enforce) and acts only at a **definitive error-out seam**
+(the stuck-node governor — skip / re-plan / redesign), never mid-run. Its ACTIVE theatre — where it "not only
+flags but INTERVENES" — is the **optimize / fix loop**, because there the data plane is a **disposable
+candidate off the critical path**, so abort / rerun / nudge / land are SAFE and cheap. This is the positive
+reading of the seam law: you cannot safely enforce mid-run on a live producer, so you don't — you enforce
+where the unit is disposable. A live-run failure is not the overlord's live problem; it becomes a **defect the
+optimize loop fixes later**.
+
 ## Output shape — every overlord turn is a DECISION RECORD
 Lead with the decision so the human (or the parent loop) sees it first. One record per intervention:
 ```
