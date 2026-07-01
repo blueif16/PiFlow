@@ -48,6 +48,13 @@ export type Fixer = (defect: Defect, ctx: { candidateRef: string; emit?: (payloa
 export type ReplayScore = (node: string, candidateRef: string) => Promise<number | null>;
 /** Make a candidate COPY for this defect and return its ref (NEVER the live path). */
 export type PrepareCandidate = (defect: Defect) => Promise<string>;
+/**
+ * OPTIONAL, product-injected reverse of copyScope: the LIVE root the candidate copy mirrors, so the out-of-loop
+ * `--adopt` step can map candidate→live deterministically. Core CANNOT compute this (boundary law: the SDK never
+ * knows a product path) — the binding owns copyScope, so it owns the reverse. Unset ⇒ the driver records `liveRoot:
+ * ''` and the record is not landable deterministically (adopt skips it). Pure sync return (no fs — just the path).
+ */
+export type LiveRootFor = (defect: Defect) => string;
 /** The incumbent score on the held-out VAL slice (null = abstained). */
 export type BaseScore = (node: string) => number | null;
 
@@ -56,6 +63,12 @@ export interface FixGateStages {
   replayScore: ReplayScore;
   prepareCandidate: PrepareCandidate;
   baseScore: BaseScore;
+  /**
+   * OPTIONAL product-injected reverse of copyScope — the LIVE root each candidate mirrors, recorded per record so the
+   * out-of-loop `--adopt` step can map candidate→live. Core stores the returned string only; it computes no product
+   * path (boundary law). Unset ⇒ `liveRoot: ''` (the record is not deterministically landable → adopt skips it).
+   */
+  liveRootFor?: LiveRootFor;
   /**
    * OPTIONAL, product-side counter reads — how many failed fix cycles this node has ALREADY consumed (across
    * `optimize --fix` invocations). Backs the deterministic fix-cycle CEILING. @piflow/core NEVER persists this
@@ -95,6 +108,11 @@ export interface FixGateRecord {
   bucket: DefectBucket;
   /** the candidate copy ref the fixer edited (proof the edit never touched live). */
   candidateRef: string;
+  /**
+   * The LIVE root the candidate mirrors (from the injected `liveRootFor`; '' when unset). The out-of-loop `--adopt`
+   * maps each candidate file onto `<liveRoot>/<relPath>` — the reverse of copyScope. Empty ⇒ not landable → skipped.
+   */
+  liveRoot: string;
   editsApplied: number;
   verdict: GateVerdict;
   /** the DECISION (land.ts applies it): adopt the copy, stage it for the human, or discard it. */
@@ -215,9 +233,11 @@ export async function runFixGate(defects: Defect[], stages: FixGateStages, opts:
       accepted++;
     }
 
+    // liveRoot: the product-injected reverse of copyScope (the live dir this candidate mirrors), '' when unset —
+    // core stores the string only, never computing a product path (boundary law); the out-of-loop `--adopt` reads it.
     // Conditional-spread foundRoot: absent when the fixer traced none, so records stay byte-identical when unused
     // (and the "absent key" contract holds). A passive copy — core never interprets it; the CLI seam feeds it to the distiller.
-    records.push({ node: d.node, bucket: d.bucket, candidateRef, editsApplied: edit.editsApplied, verdict, landed, tokensSpent: edit.tokensSpent ?? 0, ...(edit.foundRoot ? { foundRoot: edit.foundRoot } : {}) });
+    records.push({ node: d.node, bucket: d.bucket, candidateRef, liveRoot: stages.liveRootFor ? stages.liveRootFor(d) : '', editsApplied: edit.editsApplied, verdict, landed, tokensSpent: edit.tokensSpent ?? 0, ...(edit.foundRoot ? { foundRoot: edit.foundRoot } : {}) });
     safeEmit({ type: 'landed', node: d.node, decision: landed });
   }
 

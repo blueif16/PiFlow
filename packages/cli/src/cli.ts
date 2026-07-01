@@ -28,6 +28,7 @@ import { runInspectCli } from './inspect.js';
 import { runTelemetryCli } from './telemetry.js';
 import { runOptimizeCli } from './optimize.js';
 import { runOptimizeFixCli } from './optimize-fix.js';
+import { runOptimizeAdoptCli } from './optimize-adopt.js';
 import { runOptimizeLoopCli } from './optimize-loop.js';
 import { runGuiCli } from './gui.js';
 import { runTuiCli } from './tui.js';
@@ -64,6 +65,10 @@ USAGE
                                             PRODUCT binding (oracle/copyScope/fixer); strict-improvement gate on
                                             a candidate copy → STAGES a manifest. --node scopes the worklist to
                                             one node; --watch streams live progress (--watch-json = JSON lines).
+  piflowctl optimize --adopt <manifest> [--dry-run] [--backup-dir <d>]  physically LAND a staged manifest's
+                                            accepted edits onto the live file(s) — backup-first, the EXPLICIT
+                                            out-of-loop adopt (never a side effect of --fix/--rounds; skips
+                                            symlinks + degrades a stale record). --dry-run reports without writing.
   piflowctl logs    [dir|run] [options]     stream / replay / diagnose per-node event archives
   piflowctl model   [list | set <tier> <modelId> [--claude] | activate | deactivate]  the model-tier config
   piflowctl claude-code [connect [--token <t>] | status]  OPTIONAL credential for the claude-code executor
@@ -265,8 +270,11 @@ async function main(): Promise<void> {
     case 'optimize':
       // `--rounds N` routes to the MULTI-ROUND overlord (autonomous-propose: run→score→fix→memorize per round;
       // the `run` stage is product-side, so N>1 needs a binding that exports `run`). `--fix` routes to the
-      // single-shot FIX→GATE→LAND driver (writes a staging manifest); bare `optimize` is read-only.
+      // single-shot FIX→GATE→LAND driver (writes a staging manifest). `--adopt` routes to the EXPLICIT,
+      // OUT-OF-LOOP physical land (replays a staged manifest onto live files — the ONLY writer of live files;
+      // never a side effect of --fix/--rounds). Bare `optimize` is read-only.
       if (rest.includes('--rounds')) await runOptimizeLoopCli(rest);
+      else if (rest.includes('--adopt')) await runOptimizeAdoptCli(rest);
       else if (rest.includes('--fix')) await runOptimizeFixCli(rest);
       else await runOptimizeCli(rest);
       break;

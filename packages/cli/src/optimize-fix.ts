@@ -12,7 +12,7 @@
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { scoreRun as coreScoreRun, triage, deriveRecurrence, memorize, distillLesson, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
-import type { ReplayOracle, CopyScope, Fixer, LessonDistiller, MemorizeLesson, FixGateRecord, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect, FixGateResult } from '@piflow/core';
+import type { ReplayOracle, CopyScope, Fixer, LiveRootFor, LessonDistiller, MemorizeLesson, FixGateRecord, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect, FixGateResult } from '@piflow/core';
 import { resolveTopicsDir, resolveSlice } from './understand.js';
 
 /** The product binding the CLI dynamic-imports — the LIVE stages that stay product-side (out of @piflow/core). */
@@ -42,6 +42,13 @@ export interface OptimizeBinding {
   readFixCycles?: (node: string) => number;
   /** OPTIONAL per-node fix-cycle counter writer — the driver bumps it after a real failed fix. Product-side. */
   bumpFixCycles?: (node: string) => void;
+  /**
+   * OPTIONAL reverse of copyScope — the LIVE root each candidate mirrors, so the out-of-loop `optimize --adopt`
+   * step can map candidate→live and physically land the fix. INJECTED (boundary law: @piflow/core cannot know a
+   * product path; the binding owns copyScope, so it owns the reverse). ABSENT ⇒ records carry `liveRoot: ''` and
+   * `--adopt` skips them (a fix stages but never lands). NOT in loadBinding's required-export check — back-compat.
+   */
+  liveRootFor?: LiveRootFor;
 }
 
 export interface ParsedOptimizeFixArgs {
@@ -227,6 +234,8 @@ export function makeFixGateRunner(
       ...stages,
       ...(binding.readFixCycles ? { readFixCycles: binding.readFixCycles } : {}),
       ...(binding.bumpFixCycles ? { bumpFixCycles: binding.bumpFixCycles } : {}),
+      // the injected reverse-of-copyScope: the driver records each candidate's liveRoot so `--adopt` can land it.
+      ...(binding.liveRootFor ? { liveRootFor: binding.liveRootFor } : {}),
     }, {
       autoAdopt: policy.autoAdopt,
       rejectedBuffer,

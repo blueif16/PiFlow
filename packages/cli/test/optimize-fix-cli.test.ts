@@ -27,6 +27,8 @@ const BAD = path.join(HERE, 'fixtures', 'bad-binding.mjs');
 const DISTILL = path.join(HERE, 'fixtures', 'distill-binding.mjs');
 // A2: same, but the injected distiller THROWS (proves the CLI wrapper swallows it, off-critical-path).
 const DISTILL_THROWS = path.join(HERE, 'fixtures', 'distill-throws-binding.mjs');
+// A1: a binding that ALSO exports the optional `liveRootFor` stage → records carry a landable liveRoot for `--adopt`.
+const LIVEROOTFOR = path.join(HERE, 'fixtures', 'liverootfor-binding.mjs');
 
 describe('parseOptimizeFixArgs', () => {
   it('parses the run dir, the required --binding, and the bound/policy flags', () => {
@@ -178,6 +180,30 @@ describe('runOptimizeFixCli — composition smoke (scoreRun injected)', () => {
     const manifest = JSON.parse(await fs.readFile(path.join(stagingDir, 'manifest.json'), 'utf8'));
     expect(manifest.summary.accepted).toBe(1);          // the inert ceiling didn't block the accepted edit
     expect(manifest.records[0].node).toBe('w4-execute-m2');
+  });
+
+  it('liveRootFor: a binding injecting the liveRootFor stage makes each manifest record carry the non-empty live root (so --adopt can land it)', async () => {
+    // The A1 CLI-seam wire: makeFixGateRunner passes binding.liveRootFor into the driver's stages, so the driver
+    // records liveRoot = liveRootFor(defect) per record. Without the wire, records carry liveRoot:'' and --adopt
+    // skips them — a fix stages but never lands. The LIVEROOTFOR fixture returns `/live/<node>`.
+    const runDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-run-'));
+    const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'optfix-stage-'));
+    await fs.mkdir(path.join(runDir, 'verify'), { recursive: true });
+    await fs.writeFile(path.join(runDir, 'verify', 'report.M2.json'), JSON.stringify({ milestoneId: 'M2', marker: 'VALIDATION_FAILED', passed: false, fixOutcome: 'exhausted' }));
+    const digest: RunDigest = {
+      run: 'tmp', done: true, ok: true, durationMs: 1,
+      totals: { nodes: 1, ok: 1, failed: 0, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
+      nodes: [dnode('w4-execute-m2')], anomalies: [], rootCauses: [],
+    };
+    const tier1ByNode = new Map([['w4-execute-m2', t1('M2', [{ id: 'M2-A3', gate: 'fidelity', passed: false }])]]);
+    const fakeScoreRun = async () => ({ scores: scoreNodes({ digest, tier1ByNode }), digest });
+
+    await runOptimizeFixCli(['--fix', runDir, '--binding', LIVEROOTFOR, '--staging-dir', stagingDir], { scoreRun: fakeScoreRun, print: () => {} });
+
+    const manifest = JSON.parse(await fs.readFile(path.join(stagingDir, 'manifest.json'), 'utf8'));
+    // the injected liveRootFor threaded fixer-stage → record → manifest; the record is now deterministically landable.
+    expect(manifest.records[0].node).toBe('w4-execute-m2');
+    expect(manifest.records[0].liveRoot).toBe('/live/w4-execute-m2');
   });
 
   it('with --node, processes ONLY the matching node(s) from the worklist', async () => {
