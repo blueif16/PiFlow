@@ -81,3 +81,27 @@ describe('compile — validation (each must reject a broken graph)', () => {
     expect(tryCompile(wf([b])).errors.join('\n')).toMatch(/unknown node.*nope/);
   });
 });
+
+describe('compile — materialize carries the sandbox exec-scope (E10)', () => {
+  // REGRESSION: `materialize` field-copies SandboxSpec; execCwd/execReads were dropped here (survived
+  // load, lost at compile) so the seatbelt profile never granted the getcwd literal / sibling read →
+  // an out-of-tree build EPERM'd on uv_cwd live. This asserts the carry so the drop can't recur.
+  it('carries execCwd/execReads from the authored intent onto the dense NodeSpec', () => {
+    const authored: NodeIntent = {
+      label: 'build',
+      prompt: 'do build',
+      tools: {},
+      io: { reads: [], produces: ['b.txt'], artifacts: [{ path: 'b.txt' }] },
+      sandbox: { read: ['/proj/src'], write: ['/proj/out'], execCwd: '/proj', execReads: ['/sibling-kit'] },
+    };
+    const node = Object.values(compile(wf([authored])).nodes)[0];
+    expect(node.sandbox.execCwd).toBe('/proj');
+    expect(node.sandbox.execReads).toEqual(['/sibling-kit']);
+  });
+
+  it('omits execCwd/execReads when the intent declares none (byte-identical default)', () => {
+    const node = Object.values(compile(wf([n('plain', [], ['p.txt'])])).nodes)[0];
+    expect(node.sandbox.execCwd).toBeUndefined();
+    expect(node.sandbox.execReads).toBeUndefined();
+  });
+});
