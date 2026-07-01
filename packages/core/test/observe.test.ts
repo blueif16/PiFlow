@@ -359,6 +359,43 @@ describe('buildRunView — prefers rec.usage for the token/cost/context spine (C
     expect(p0.tokens.cost).toBeCloseTo(0.5, 6);
     expect(p0.modelCalls).toBe(1);
   });
+
+  // `truncated` is precisely TOKEN-CAP cutoff (stop_reason max_tokens/length) — the case the 'truncated'
+  // anomaly is for (a node that reports success but whose OUTPUT was cut). A Claude run cut at the output
+  // cap carries stop_reason='max_tokens' on its result event, so the spine flags it. A turn-limit run
+  // (subtype error_max_turns) is a DIFFERENT failure mode — it becomes status=error (the 'failed' anomaly),
+  // NOT truncation — so it is intentionally NOT flagged here. This test pins that distinction.
+  it('flags truncated for a Claude run cut at the token cap (stopReason max_tokens), not for a turn-limit error', async () => {
+    const runDir = mkRunDir();
+    const status: RunStatus = {
+      run: 'claude-trunc', startedAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:05.000Z',
+      done: true, ok: true, durationMs: 5000, stage: null, totals: null,
+      nodes: {
+        cut: rec('cut', 'Cut Node', 'ok', {
+          model: 'claude-haiku-4-5-20251001',
+          artifacts: [{ path: 'c.txt', exists: true, bytes: 1 }],
+          usage: { inputTokens: 10, outputTokens: 8000, cost: 0.2, contextWindow: 200000, numTurns: 1, stopReason: 'max_tokens' },
+        }),
+      },
+    };
+    const nodes: Record<string, FixtureNode> = {
+      cut: {
+        rec: status.nodes.cut,
+        io: { id: 'cut', label: 'Cut Node', phase: null, reads: [], writes: [{ path: 'c.txt', verified: true, bytes: 1 }], promotes: [], status: 'ok' },
+        filesOnDisk: [{ rel: 'c.txt', body: 'x' }],
+      },
+    };
+    await writeFixture(runDir, status, nodes);
+
+    const { view } = buildRunView(runDir);
+    const cut = view.nodes.find((n) => n.id === 'cut')!;
+    expect(cut.truncated).toBe(true);
+    expect(cut.stopReason).toBe('max_tokens');
+    // and the digest raises the 'truncated' anomaly for it.
+    const digest = projectRunDigest(view);
+    const nd = digest.nodes.find((n) => n.id === 'cut')!;
+    expect(nd.anomalies).toContain('truncated');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
