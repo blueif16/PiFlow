@@ -1,0 +1,175 @@
+/* ============================================================================
+   RunDigestPanel — the run-LEVEL observation lens. A full-height glass RAIL on
+   the LEFT edge (mirror of the Companion's right rail), layered over the live
+   flowmap with NO backdrop, one tier below the floating MenuBar/ModeBar.
+
+   Same design law as the Companion: flat content on glass, no bubbles. The only
+   accents are the severity tones on the worklist rows — reusing the gate/policy
+   tint vocabulary (block=red · warn=amber · retry=blue · escalate=violet).
+   ========================================================================== */
+.ds-digest-layer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: var(--ds-z-modal);           /* BELOW MenuBar/ModeBar (popover) → they stay on top of the rail */
+  pointer-events: none;
+}
+.ds-digest-layer > * { pointer-events: auto; }
+
+/* the rail — flush left (no rounding there); the right edge carries the rim + glass shadow. One beveled
+   inner top-right corner = the sci-fi-rectangle game silhouette (mirror of the Companion's top-left bevel). */
+.ds-digest {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(42vw, 480px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-5);
+  overflow-y: auto;
+  border-radius: 0;
+  padding: clamp(16px, 2.4vh, 26px) var(--ds-space-7) var(--ds-space-8);
+}
+@supports (corner-shape: bevel) {
+  .ds-digest {
+    border-start-start-radius: 0;
+    border-end-end-radius: 0;
+    border-start-end-radius: 16px;
+    corner-shape: bevel;
+  }
+}
+
+.ds-digest__close {
+  position: absolute;
+  top: clamp(12px, 1.8vh, 20px);
+  right: var(--ds-space-4);
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-tertiary);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast);
+}
+.ds-digest__close:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-digest__close:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* ── header — run id + verdict pill ───────────────────────────────────────── */
+.ds-digest__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  padding-right: 34px; /* clear the close button */
+}
+.ds-digest__run {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-digest__verdict {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  padding: 2px var(--ds-space-2);
+  border-radius: var(--ds-radius-sm);
+}
+.ds-digest__verdict[data-tone="ok"] { color: var(--ds-success-fg); background: rgba(21, 161, 74, 0.1); }
+.ds-digest__verdict[data-tone="block"] { color: var(--ds-error-fg); background: rgba(229, 72, 77, 0.1); }
+.ds-digest__verdict[data-tone="muted"] { color: var(--ds-text-tertiary); background: var(--ds-bg-hover); }
+
+.ds-digest__error {
+  margin: 0;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-error-fg);
+}
+
+/* ── totals — the cost spine, a flat stat grid (no cards) ─────────────────── */
+.ds-digest__totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: var(--ds-space-3) var(--ds-space-4);
+}
+.ds-digest__stat { display: flex; flex-direction: column; gap: 1px; }
+.ds-digest__stat-v { font-family: var(--ds-font-mono); font-size: var(--ds-text-base); color: var(--ds-text-primary); }
+.ds-digest__stat[data-tone="block"] .ds-digest__stat-v { color: var(--ds-error-fg); }
+.ds-digest__stat-l { font-size: var(--ds-text-xs); color: var(--ds-text-tertiary); letter-spacing: var(--ds-tracking-label); }
+.ds-digest__stat-s { font-family: var(--ds-font-mono); font-size: 10px; color: var(--ds-text-disabled); }
+
+/* ── sections — worklist + failure onset ──────────────────────────────────── */
+.ds-digest__section { display: flex; flex-direction: column; gap: var(--ds-space-2); }
+.ds-digest__title {
+  margin: 0;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-text-tertiary);
+}
+.ds-digest__empty { margin: 0; font-size: var(--ds-text-sm); color: var(--ds-text-tertiary); }
+.ds-digest__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ds-space-1); }
+
+/* an anomaly row — a full-width ghost button, tinted by severity, click to focus its node */
+.ds-anom {
+  display: grid;
+  grid-template-columns: 78px auto 1fr;
+  align-items: baseline;
+  gap: var(--ds-space-2);
+  width: 100%;
+  padding: var(--ds-space-2);
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-anom:hover { background: var(--ds-bg-hover); }
+.ds-anom:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.ds-anom__kind { font-family: var(--ds-font-mono); font-size: 10px; letter-spacing: var(--ds-tracking-label); font-weight: var(--ds-weight-semibold); }
+.ds-anom__node { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-primary); white-space: nowrap; }
+.ds-anom__detail { font-size: var(--ds-text-xs); color: var(--ds-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-anom[data-tone="block"] { border-left-color: var(--ds-error-fg); }
+.ds-anom[data-tone="block"] .ds-anom__kind { color: var(--ds-error-fg); }
+.ds-anom[data-tone="warn"] { border-left-color: var(--ds-warning-fg); }
+.ds-anom[data-tone="warn"] .ds-anom__kind { color: var(--ds-warning-fg); }
+.ds-anom[data-tone="retry"] { border-left-color: var(--ds-blue-600); }
+.ds-anom[data-tone="retry"] .ds-anom__kind { color: var(--ds-blue-600); }
+.ds-anom[data-tone="escalate"] { border-left-color: var(--ds-violet-600); }
+.ds-anom[data-tone="escalate"] .ds-anom__kind { color: var(--ds-violet-600); }
+
+/* a failure-onset row — the node chain origin → … → failed, each node a focus button */
+.ds-onset { display: flex; flex-direction: column; gap: 2px; padding: var(--ds-space-1) var(--ds-space-2); }
+.ds-onset__chain { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+.ds-onset__hop { display: inline-flex; align-items: center; gap: 2px; }
+.ds-onset__arrow { color: var(--ds-text-disabled); font-family: var(--ds-font-mono); }
+.ds-onset__node {
+  border: none;
+  background: transparent;
+  padding: 1px var(--ds-space-1);
+  border-radius: var(--ds-radius-sm);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+}
+.ds-onset__node:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-onset__node[data-role="origin"] { color: var(--ds-warning-fg); font-weight: var(--ds-weight-semibold); }
+.ds-onset__node[data-role="failed"] { color: var(--ds-error-fg); font-weight: var(--ds-weight-semibold); }
+.ds-onset__via { font-family: var(--ds-font-mono); font-size: 10px; color: var(--ds-text-disabled); }
