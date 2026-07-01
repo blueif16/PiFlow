@@ -4,6 +4,7 @@
 
 export { createServer, type CreateServerOptions } from "./create-server.js";
 export { createApiMiddleware, apiHandlers, chain, piflowGlobalIndex, piflowRunStream, piflowRunView, piflowPreview, piflowSaveRun, piflowFile, piflowTree, piflowCheckpointReply, piflowAgents, piflowNodeWriteback, piflowControlSession } from "./handlers.js";
+export { piflowStartRun } from "./start-run.js";
 export { serveStatic } from "./static.js";
 export { runServeCli, parseServeArgs, type ServeOptions } from "./serve-cli.js";
 export type { Middleware, Next } from "./resolve.js";

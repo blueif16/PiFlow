@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { join, isAbsolute, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, sendJson, type Middleware, type Next } from "./resolve.js";
+import { piflowStartRun } from "./start-run.js";
 
 /** `GET /__piflow/{index,products}.json` — LIVE scoped snapshot (recomputed per request). */
 export const piflowGlobalIndex: Middleware = async (req, res, next) => {
@@ -583,8 +584,10 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
   return next();
 };
 
-/** Every control-API handler, in match order. The start-run handler (P2b) is appended by the server. */
+/** Every control-API handler, in match order. `piflowStartRun` (POST /api/runs/start) leads so the launch
+ *  path is matched first; the rest are the read/observe/control surface lifted from the Vite middleware. */
 export const apiHandlers: Middleware[] = [
+  piflowStartRun,
   piflowGlobalIndex,
   piflowRunStream,
   piflowRunView,
