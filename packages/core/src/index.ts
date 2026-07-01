@@ -386,11 +386,14 @@ export type { CodeMapSeedResult } from './code-map.js';
 // ARCH); renderRouting emits the proven HERMES-ROUTING.md shape. The fixer/gate/land steps build on this.
 export {
   scoreNodes, scoreRun, triage, deriveRecurrence, signatureOf, memorize, parseCriteria, readVerifyReport, renderRouting,
+  // MEMORIZE maintenance (v1.5 §5.3, §6): cap/retire compaction + the distillation seam (model injected, write deterministic).
+  compactMemory, DEFAULT_MAX_LESSONS, fillLessonProse, distillLesson,
 } from './optimize/index.js';
 export type {
   NodeScore, Tier0Signal, Tier1Result, Tier1Check, Tier1Gate, Defect, DefectBucket, Confidence,
   CriteriaEntry, CriteriaFixture, ScoreInput, ScoreRunOpts, TriageOpts, RoutingMeta,
   RecurrenceIndex, RecurrenceHit, MemorizeOpts, MemorizeResult, MemorizeLesson,
+  CompactOpts, CompactResult, RetiredLesson, RetireReason, LessonProse, LessonDistiller, DistillLessonOpts,
 } from './optimize/index.js';
 // The FIX→GATE→LAND overlord (§6) + the §5.1 replay+scoring harness + its mining half. Lifted to the ROOT so
 // a PRODUCT-side binding (game-omni's live oracle module) can import makeReplayStages + the replay/driver
@@ -399,10 +402,13 @@ export type {
 export {
   evaluateGate, runFixGate, writeStagingManifest, adoptFile, makeReplayStages, mineTaskFromTrace, gameOmniNodeToMilestone,
   renderOptimizeEvent,
+  // The multi-round OVERLORD (§6) — composes the injected round stages over N rounds with early-stop + a breaker.
+  runOptimizeLoop,
 } from './optimize/index.js';
 export type {
   GateInput, GateVerdict, LandPolicy, Fixer, ReplayScore, PrepareCandidate, BaseScore, CandidateEdit,
   FixGateStages, FixGateOpts, FixGateRecord, FixGateResult, FixCycleSkip, StageOpts,
   CheckableTask, ReplayOracle, MineTask, CopyScope, ReplayDeps, ReplayStages, MineOpts,
   OptimizeEvent, OptimizeEventSink,
+  OptimizeLoopStages, OptimizeLoopOpts, OptimizeLoopResult, RoundRecord, LoopStopReason,
 } from './optimize/index.js';
