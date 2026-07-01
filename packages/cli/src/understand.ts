@@ -147,8 +147,10 @@ function loadCards(topicsDir: string): Card[] {
     .map((f) => parseCard(f.replace(/\.md$/, ''), readFileSync(path.join(topicsDir, f), 'utf8')));
 }
 
-/** The default gate runner: shell to the repo-local engine, inheriting stdio, returning its exit code. */
-function defaultRunGate(mode: 'check' | 'write', topicsDir: string, keys: string[]): number {
+/** The default gate runner: shell to the repo-local engine, inheriting stdio, returning its exit code.
+ *  EXPORTED so `memory check` shells to the SAME OKF engine path (no duplicate shell; the two gates can
+ *  never drift). */
+export function defaultRunGate(mode: 'check' | 'write', topicsDir: string, keys: string[]): number {
   const flag = mode === 'check' ? '--check' : '--write';
   try {
     execFileSync('node', [path.join(topicsDir, '_generate.mjs'), flag, ...keys], {

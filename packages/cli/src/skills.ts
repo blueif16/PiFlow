@@ -30,6 +30,10 @@ export const SKILL_ADDONS = {
     skills: ['okf-slices'],
     description: 'code-understanding slices — `piflowctl understand` maps how each subsystem works (Leg B)',
   },
+  memory: {
+    skills: ['memory-slices'],
+    description: 'per-node memory lessons + recurrence — `piflowctl memory find|check` reads them (Leg A)',
+  },
 } as const satisfies Record<string, { skills: readonly string[]; description: string }>;
 export type AddonId = keyof typeof SKILL_ADDONS;
 

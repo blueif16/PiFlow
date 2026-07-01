@@ -19,6 +19,9 @@ import path from 'node:path';
 import { seedSystemMemory, seedNodeMemory, seedNodeCodeMap } from '@piflow/core';
 import { loadAgentPreset, mergePreset } from '@piflow/core';
 import type { PresetMergeable } from '@piflow/core';
+// The read-only Leg-A readers (`memory find|check`) live in their own file (mirroring understand.ts); the
+// dispatcher below routes to them so scaffold.ts stays the scaffolding concern only.
+import { runMemoryFind, runMemoryCheck } from './memory.js';
 
 /** A `--mcp name=url` server entry → the `node.json` `mcp.servers` value (http transport inferred). */
 export type McpServers = Record<string, { transport: string; url: string }>;
@@ -813,22 +816,46 @@ export async function runAddNodeCli(argv: string[]): Promise<void> {
   process.stdout.write(`wrote ${nodeJson}\n${next}${presetNote}\n`);
 }
 
-const MEMORY_USAGE = 'piflowctl memory scaffold <templateDir>';
+const MEMORY_USAGE =
+  'piflowctl memory <scaffold|find|check> <templateDir>  (find/check are read-only Leg-A readers)';
+
+/**
+ * `piflowctl memory <scaffold|find|check> …` — the Leg-A per-node MEMORY verb. `scaffold` backfills the layer;
+ * `find`/`check` are the read-only readers (in ./memory.ts). Dispatches by the first token; `deps` threads the
+ * injectable gate/cwd through to the readers (so tests inject the OKF gate without shelling).
+ */
+export async function runMemoryCli(
+  argv: string[],
+  deps: {
+    cwd?: string;
+    runGate?: (mode: 'check' | 'write', topicsDir: string, keys: string[]) => number;
+  } = {},
+): Promise<void> {
+  const [action, ...rest] = argv;
+  switch (action) {
+    case 'find':
+      return runMemoryFind(rest, deps);
+    case 'check':
+      return runMemoryCheck(rest, deps);
+    case 'scaffold':
+      return runMemoryScaffold(rest);
+    default:
+      process.stderr.write(`piflowctl memory: unknown action '${action ?? ''}'\n  ${MEMORY_USAGE}\n`);
+      process.exitCode = 1;
+      return;
+  }
+}
 
 /**
  * `piflowctl memory scaffold <templateDir>` — backfill the memory layer over an existing template (system
  * `memory.md` + every node's `memory.md` + `code-map.md`), create-if-absent. Reports seeded-vs-kept per file.
  */
-export async function runMemoryCli(argv: string[]): Promise<void> {
-  const [action, ...rest] = argv;
-  if (action !== 'scaffold') {
-    process.stderr.write(`piflowctl memory: unknown action '${action ?? ''}'\n  ${MEMORY_USAGE}\n`);
-    process.exitCode = 1;
-    return;
-  }
+async function runMemoryScaffold(rest: string[]): Promise<void> {
   const dir = rest[0];
   if (!dir) {
-    process.stderr.write(`piflowctl memory scaffold: a template directory is required\n  ${MEMORY_USAGE}\n`);
+    process.stderr.write(
+      `piflowctl memory scaffold: a template directory is required\n  piflowctl memory scaffold <templateDir>\n`,
+    );
     process.exitCode = 1;
     return;
   }

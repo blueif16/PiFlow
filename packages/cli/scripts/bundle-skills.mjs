@@ -18,8 +18,9 @@ const dest = path.join(pkgRoot, 'skills');
 // publishing) and piflow-web-design (marketing-site only).
 const TRIO = ['piflow-init', 'piflow-start', 'piflow-enhance'];
 // Plus the opt-in ADD-ON skills so `skills install --with/--all` can reach them from the tarball. MIRROR
-// SKILL_ADDONS in src/skills.ts (this plain .mjs can't import the TS catalog) — currently understand → okf-slices.
-const ADDON_SKILLS = ['okf-slices'];
+// SKILL_ADDONS in src/skills.ts (this plain .mjs can't import the TS catalog) — understand → okf-slices,
+// memory → memory-slices.
+const ADDON_SKILLS = ['okf-slices', 'memory-slices'];
 const BUNDLED = [...TRIO, ...ADDON_SKILLS];
 
 rmSync(dest, { recursive: true, force: true }); // regenerate from scratch — never accrete stale skills

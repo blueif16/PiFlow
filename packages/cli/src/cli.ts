@@ -46,7 +46,8 @@ USAGE
   piflowctl init                            interactive setup wizard for ~/.piflow (model tiers + optional executors)
   piflowctl new     <templateDir> [flags]   scaffold meta.json + the nodes/ dir (then add-node + Write prose)
   piflowctl add-node <templateDir> --id <id> [flags]  emit one schema-valid node.json (prose is yours)
-  piflowctl memory  scaffold <templateDir>  seed the memory layer (template + per-node memory.md/code-map.md)
+  piflowctl memory  <scaffold|find|check> <templateDir>  the Leg-A memory verb: scaffold the layer · find
+                                            a node's standing lessons + recurrence · check lesson freshness
   piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
   piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--stop too)
   piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
@@ -137,12 +138,18 @@ ${renderAddNodeHelp()}
 
   Emits/overwrites node.json from the flags; NEVER touches nodes/<id>/prompt.md (yours to Write).
 
-MEMORY
+MEMORY  (the Leg-A per-node memory layer — OPTIMIZER-FACING reference, NEVER prompt-injected into a worker)
   scaffold <templateDir>  seed the memory layer — the template's memory.md (system reconcile summary) +
                 each node's memory.md (Leg A: standing behavior + failure lessons) and code-map.md (Leg B:
                 Tier-0 OKF slice of the product code it touches). CREATE-IF-ABSENT — never clobbers curated
                 files. new/add-node seed these automatically; use this to backfill an older template.
                 These files are OPTIMIZER-FACING (the Hermes fixer reads+updates them) — NEVER prompt-injected.
+  find <templateDir> [--node <id>] [symptom…]  READ-ONLY: surface a node's standing lessons + cross-run
+                RECURRENCE count (root/prevention/[[okf-slice]]) — the LAPSE-vs-SKILL signal the triage/fixer
+                reads. --node scopes to one node; a bare <symptom> filters signatures (case-insensitive).
+  check <templateDir> [node…] [--strict]  ADVISORY: ride the OKF --check gate through each lesson's
+                [[okf-slice]] link and flag the code-shifted / dangling ones. Advisory by default (exit 0);
+                --strict makes a code-shifted/dangling lesson a non-zero exit (for a pre-commit hook).
 
 INSPECT
   <templateDir> an authored template/ dir. Compiles it and prints each node's RESOLVED view —
@@ -200,8 +207,9 @@ SKILLS
                             workflows against the SDK. Default targetDir = cwd. An existing skill dir is
                             kept unless --force. (The skills are bundled in the npm tarball; a source checkout
                             falls back to this repo's canonical .claude/skills.)
-      ADD-ONS: the trio always installs; opt in extra skill packs (currently 'understand' = the code slices):
-      --with <id>           add one add-on (repeatable), e.g. --with understand.
+      ADD-ONS: the trio always installs; opt in extra skill packs ('understand' = the code slices (Leg B),
+      'memory' = per-node memory lessons + recurrence (Leg A)):
+      --with <id>           add one add-on (repeatable), e.g. --with understand --with memory.
       --all                 add every add-on.
       --wizard              interactively choose which add-ons to install.
       A chosen set is remembered in <targetDir>/.piflow/skills.json ({ "addons": [...] }); a later bare
