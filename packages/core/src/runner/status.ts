@@ -10,7 +10,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ReturnMode, SandboxProviderKind } from '../types.js';
+import type { ReturnMode, SandboxProviderKind, OpWhen, PolicyAction } from '../types.js';
 import type { CheckResult } from '../checks.js';
 import { piDir, runJsonFile } from './layout.js';
 
@@ -31,6 +31,38 @@ export interface ArtifactState {
   path: string;
   exists: boolean;
   bytes: number;
+}
+
+/**
+ * (POLICY channel) One entry in a node's authored post-node consequence chain, folded from its `op[]` (and the
+ * G5 `checkpoint`). A LEGIBLE projection of the op envelope — NOT the raw op — so the single observe path can
+ * render "what happens after this node / what are our set policies" without re-parsing the template.
+ */
+export interface GateSummaryEntry {
+  /** The consequence, folded from the op body: `run`→'exec', `gate`→'check', `action.kind` (rerouteTo→'reroute'),
+   *  the G5 checkpoint→'human'. */
+  kind: 'exec' | 'check' | 'judge' | 'retry' | 'escalate' | 'notify' | 'reroute' | 'human';
+  /** A compact human label (e.g. `non-empty`, `npm test`, `reroute→w1-design ×1`, `confirm`). */
+  label: string;
+  /** When it fires (default 'post'); lets a viewer split before-model (`pre`) from after-node consequences. */
+  when: OpWhen;
+  /** The on-fail policy of a gate/exec (`block|warn|stop|retry|escalate`). Omitted for control actions + human. */
+  onFail?: PolicyAction;
+  /** A non-blocking (advisory) gate — Dagster `blocking=False`. */
+  advisory?: boolean;
+}
+
+/**
+ * (POLICY channel) A node's authored gate/policy summary — the ordered consequence chain (`op[]` gate lane +
+ * control actions) plus the human-checkpoint kind. Distilled ONCE at run time (`summarizeGates`) and mirrored
+ * via `NodeConfig`, so GUI/TUI render the post-node policy legibly and the optimizer reads it without re-parsing
+ * the template. Omitted entirely when a node has no gates/actions/checkpoint.
+ */
+export interface GateSummary {
+  /** The consequence chain in authored order. */
+  entries: GateSummaryEntry[];
+  /** (G5) The human checkpoint kind, if this node stops for a person. */
+  checkpoint?: 'confirm' | 'input' | 'select';
 }
 
 /**
@@ -65,6 +97,13 @@ export interface NodeConfig {
   fullAccess?: boolean;
   /** Per-node SCOPING (not the backend): workspace cwd + read scope + write-authority globs. */
   sandbox?: { workspace?: string; readScope?: string[]; owns?: string[] };
+  /**
+   * (POLICY channel) The node's authored post-node consequence chain — the ordered gate lane (kinds + each
+   * gate's on-fail policy), control actions (retry/escalate/reroute), and the human checkpoint. A LEGIBLE
+   * DISTILLED slice of `node.op` (never the raw op envelope), so a viewer renders "what happens after this
+   * node" straight off config. Omitted when the node has no gates/actions/checkpoint. See `summarizeGates`.
+   */
+  gates?: GateSummary;
 }
 
 /** A node's record in the run status. */

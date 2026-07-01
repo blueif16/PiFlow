@@ -22,6 +22,7 @@ import { ProgressBar } from "./ProgressBar";
 import { StatusPill, HudCorners } from "./HudBits";
 import { FileView, type FileTarget } from "./FileContent";
 import { CacheDonut } from "./CacheDonut";
+import { NodeGates } from "./NodeGates";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
 import { formatMs, formatBytes, type RunViewNode, type ScopeKind } from "../data/runView";
@@ -328,6 +329,15 @@ function Overview({ rv, status, expected, elapsedMs }: { rv: RunViewNode; status
         {expected != null && <Fact k="Avg / prior" v={`${formatMs(expected)} · ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}`} />}
         {ctxPeak > 0 && <Fact k="Context peak" v={`${ctxPeak.toLocaleString()} tok`} />}
       </div>
+
+      {/* (POLICY channel) The detailed "what happens after this node" chain — the node's authored gate lane +
+          policy + checkpoint, projected from observe (config.gates). The detail tier of the card's short symbol. */}
+      {rv.config?.gates && rv.config.gates.entries.length > 0 && (
+        <div className="ds-hud__policy">
+          <span className="ds-hud__policy-title">After this node</span>
+          <NodeGates variant="detail" gates={rv.config.gates} />
+        </div>
+      )}
 
       <div className="ds-hud__hintline">Hover a panel, or click an input file.</div>
     </div>

@@ -246,6 +246,31 @@ describe('buildRunView — the SKIN channel surfaces the run sandbox + per-node 
     // a node with NO config slice surfaces undefined (additive).
     expect(vById.b1.config).toBeUndefined();
   });
+
+  // (POLICY channel) The authored gate/policy summary rides the SAME config passthrough. The runner distills
+  // it once (summarizeGates → buildNodeConfig) into `config.gates`; observe must carry it VERBATIM so the GUI
+  // renders "what happens after this node" from the ONE data path, never the /__piflow/node-config side-channel.
+  // If observe stripped or reshaped config, this reads undefined and goes RED.
+  it('surfaces node.config.gates (the POLICY channel) verbatim through buildRunView', async () => {
+    const runDir = mkRunDir();
+    const { status, nodes } = baseFixture();
+    const gates = {
+      entries: [
+        { kind: 'check' as const, label: 'non-empty', when: 'post' as const, onFail: 'block' as const },
+        { kind: 'reroute' as const, label: 'reroute→w0 ×4', when: 'on-failure' as const },
+        { kind: 'human' as const, label: 'confirm', when: 'post' as const },
+      ],
+      checkpoint: 'confirm' as const,
+    };
+    status.nodes.w0.config = { gates };
+    await writeFixture(runDir, status, nodes);
+
+    const { view } = buildRunView(runDir);
+    const vById = Object.fromEntries(view.nodes.map((n) => [n.id, n]));
+    expect(vById.w0.config?.gates).toEqual(gates);
+    // a node without a gates summary stays undefined (additive minimal-slice).
+    expect(vById.b1.config?.gates).toBeUndefined();
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────

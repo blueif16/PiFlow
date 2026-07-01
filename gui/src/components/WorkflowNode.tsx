@@ -20,6 +20,7 @@ import { useViewMode } from "./ViewModeContext";
 import { NodeModeStrip } from "./NodeModeStrip";
 import { NodeFusionToggle } from "./NodeFusionToggle";
 import { NodeGateChips } from "./NodeGateChips";
+import { NodeGates } from "./NodeGates";
 import { ProgressBar } from "./ProgressBar";
 import type { FieldTone } from "./FieldBlock";
 import type { RunViewNode } from "../data/runView";
@@ -288,6 +289,11 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
           aria-label={`${data.title} progress`}
         />
       )}
+
+      {/* (POLICY channel) The always-on "short symbol": this node's authored post-node consequence chain,
+          projected from observe (config.gates). Hidden in Compose — the editor (NodeGateChips) owns that slot
+          and reads the authored template instead. */}
+      {mode !== "compose" && <NodeGates variant="card" gates={data.rv?.config?.gates} />}
 
       <Handle type="source" position={Position.Right} className="ds-handle" />
 

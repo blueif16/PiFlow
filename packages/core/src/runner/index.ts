@@ -1,7 +1,7 @@
 // @piflow/core/runner — the M1 execution loop + its injection seams. Barrel for the parent to wire
 // into src/index.ts (the parent owns the public-export edit; this file only collects the runner API).
 
-export { runWorkflow, defaultExecRunner, defaultCheckpointWait, lastJsonBlock, selectedBridgedTool, buildNodeConfig } from './runner.js';
+export { runWorkflow, defaultExecRunner, defaultCheckpointWait, lastJsonBlock, selectedBridgedTool, buildNodeConfig, summarizeGates } from './runner.js';
 export type { RunOptions, RunResult, ExecRunner, ExecWatchdogOpts, CheckpointWaiter } from './runner.js';
 // P6 — mid-run migration: the single-writer lease + the freeze-at-node-boundary signal + run-dir bundle.
 export { acquireLease, readLease, LeaseHeldError, lockFile } from './lease.js';

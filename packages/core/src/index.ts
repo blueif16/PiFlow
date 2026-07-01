@@ -200,7 +200,9 @@ export type { HookReport, RunHooksOpts } from './hooks/index.js';
 export { runWorkflow, defaultExecRunner, defaultPiCommand, dispatchCommand, lastJsonBlock, writeStatus, artifactState, nowISO } from './runner/index.js';
 // buildNodeConfig — the curated per-node config-slice builder (the SKIN channel mirror). Surfaced so a test
 // can pin the slice mapping (e.g. the `fullAccess`/`programmatic` carve-outs) directly off the resolved NodeSpec.
-export { buildNodeConfig } from './runner/index.js';
+// summarizeGates — the POLICY-channel distiller (node.op + checkpoint → the legible post-node consequence chain).
+export { buildNodeConfig, summarizeGates } from './runner/index.js';
+export type { GateSummary, GateSummaryEntry, NodeConfig } from './runner/status.js';
 // P6 — mid-run migration primitives: the single-writer lease (guards journal double-write across a
 // migration), the freeze-at-node-boundary signal (`.pi/freeze` → park the run), and the run-dir bundle
 // (the portable snapshot shipped laptop⇄cloud). Surfaced for @piflow/server (the migrate endpoints) +
