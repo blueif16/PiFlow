@@ -404,6 +404,8 @@ export {
   renderOptimizeEvent,
   // The multi-round OVERLORD (§6) — composes the injected round stages over N rounds with early-stop + a breaker.
   runOptimizeLoop,
+  // The LONG-HORIZON outer loop (§6 reconcile, lifted) — generations of (optimize → redesign the next workflow).
+  runLongHorizon,
 } from './optimize/index.js';
 export type {
   GateInput, GateVerdict, LandPolicy, Fixer, ReplayScore, PrepareCandidate, BaseScore, CandidateEdit,
@@ -411,4 +413,6 @@ export type {
   CheckableTask, ReplayOracle, MineTask, CopyScope, ReplayDeps, ReplayStages, MineOpts,
   OptimizeEvent, OptimizeEventSink,
   OptimizeLoopStages, OptimizeLoopOpts, OptimizeLoopResult, RoundRecord, LoopStopReason,
+  LongHorizonStages, LongHorizonOpts, LongHorizonResult, GenerationRecord,
+  NextWorkflowPlan, RedesignStage, RunGeneration, LongHorizonStopReason,
 } from './optimize/index.js';

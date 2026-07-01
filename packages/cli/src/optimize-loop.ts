@@ -11,6 +11,15 @@
 // The CLI is THIN: it only sequences the injected stages and renders the trajectory. All the intelligence (what
 // a run/fix/memorize IS) lives in the injected stages; all the control flow / bounds / early-stop / circuit-
 // breaker live in core's runOptimizeLoop. `scoreRun` is injectable (deps) so the composition is testable.
+//
+// LONG-HORIZON SEAM (the STOP, 2026-07-01) — this `--rounds` path is ONE generation. The long-horizon OUTER loop
+// (core `runLongHorizon`) wraps it: each GENERATION runs this multi-round loop, then an INJECTED `redesign`
+// subgraph analyzes the run history and AUTHORS the next workflow's blueprint (analyze past nodes → design future
+// nodes), and the loop continues on that new template. To wire it here later: (1) add an optional `redesign?`
+// stage to `OptimizeBinding` (product-side, the deferred self-design subgraph), (2) recognize a `--generations N`
+// flag, (3) compose `runLongHorizon({ runGeneration: (g, dir) => <this loop over dir>, redesign: binding.redesign },
+// { templateDir, maxGenerations })`. The core contract + driver are BUILT + tested (long-horizon.ts); the redesign
+// subgraph is the deferred piece. Until then, this file stays single-generation (the honest stop).
 
 import { runOptimizeLoop, memorize, renderOptimizeEvent } from '@piflow/core';
 import type { OptimizeLoopStages, OptimizeEventSink, Defect } from '@piflow/core';

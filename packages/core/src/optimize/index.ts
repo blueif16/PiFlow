@@ -44,6 +44,15 @@ export type { StageOpts } from './land.js';
 export { runOptimizeLoop } from './loop.js';
 export type { OptimizeLoopStages, OptimizeLoopOpts, OptimizeLoopResult, RoundRecord, LoopStopReason } from './loop.js';
 
+// The LONG-HORIZON outer loop (v1.5 §6 reconcile, lifted) — the counterpart to the multi-round inner loop: each
+// GENERATION runs the inner loop, then an INJECTED redesign subgraph authors the NEXT workflow's blueprint. The
+// redesign (the self-design intelligence) is DEFERRED (the STOP); core pins the thin outer driver + the contract.
+export { runLongHorizon } from './long-horizon.js';
+export type {
+  LongHorizonStages, LongHorizonOpts, LongHorizonResult, GenerationRecord,
+  NextWorkflowPlan, RedesignStage, RunGeneration, LongHorizonStopReason,
+} from './long-horizon.js';
+
 // The LIVE progress surface for the FIX→GATE loop — its OWN dedicated event sink (NOT the runner's EventSink):
 // the driver emits one typed OptimizeEvent per phase boundary, fire-and-forget, and `renderOptimizeEvent` is
 // the pure one-line projection the `--watch` CLI prints.
