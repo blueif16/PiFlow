@@ -47,7 +47,7 @@ import {
   writeJournalEntry,
 } from './journal.js';
 import { lastJsonBlock } from './return-parse.js';
-import { parseClaudeResult } from './claude-result.js';
+import { parseClaudeResult, nodeUsageFromClaude } from './claude-result.js';
 import {
   CLOUD_KINDS,
   IN_PLACE_KINDS,
@@ -612,6 +612,15 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     const isClaude = node.executor === 'claude-code';
     const claudeVerdict = isClaude ? parseClaudeResult(result.stdout) : undefined;
     let parsed = isClaude ? null : lastJsonBlock(result.stdout);
+
+    // (agent-neutral spine) Persist Claude's authoritative token/cost/context telemetry from the ONE `result`
+    // event, so the observe surface sources it from the record instead of the pi-only event replay (blank for
+    // a claude node). Previously parsed for the verdict and DISCARDED. Also rescue the minted session id.
+    if (claudeVerdict) {
+      const usage = nodeUsageFromClaude(claudeVerdict);
+      if (usage) rec.usage = usage;
+      if (claudeVerdict.sessionId && !rec.sessionId) rec.sessionId = claudeVerdict.sessionId;
+    }
 
     // POST-NODE RETURN-SCHEMA GATE (mirrors the artifact schema gate, runner.ts above): a node's authored
     // `returnSchema` (node.json top-level `return`) constrains the SHAPE of its structured result. We

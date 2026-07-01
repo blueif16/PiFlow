@@ -106,6 +106,30 @@ export interface NodeConfig {
   gates?: GateSummary;
 }
 
+/**
+ * (agent-neutral telemetry spine) A node's authoritative token/cost rollup, persisted from the executor's
+ * OWN final report — so the observe surface has real numbers for EVERY agent type, not just pi. pi derives
+ * these from its event stream (createNodeAccumulator) so it does not populate this; Claude Code stamps it
+ * from the ONE `result` event (parseClaudeResult), which was previously parsed for the verdict and DISCARDED.
+ * Additive/optional: absent on a pi node and on older records. When present it is the authoritative source
+ * for the run-view's token spine (buildRunView prefers it over the — for Claude, blank — event replay).
+ */
+export interface NodeUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheRead?: number;
+  cacheCreation?: number;
+  /** total cost in USD (0/absent on non-billing providers — surface tokens-first). */
+  cost?: number;
+  /** the model's context-window cap for THIS run (the authoritative context-pressure denominator). */
+  contextWindow?: number;
+  /** time-to-first-token, ms. */
+  ttftMs?: number;
+  /** model invocations (Claude `num_turns`) — the real count, never a per-message-line count. */
+  numTurns?: number;
+  stopReason?: string;
+}
+
 /** A node's record in the run status. */
 export interface NodeStatusRecord {
   id: string;
@@ -113,6 +137,8 @@ export interface NodeStatusRecord {
   /** (G6) The agent-PRESET label (branding) carried verbatim from the NodeSpec → observe → GUI icon. */
   agentType?: string;
   status: NodeStatus;
+  /** (agent-neutral spine) authoritative token/cost rollup from the executor's final report. See NodeUsage. */
+  usage?: NodeUsage;
   startedAt?: string;
   endedAt?: string;
   durationMs?: number;

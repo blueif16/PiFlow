@@ -1,6 +1,12 @@
 // parseClaudeResult — parse the stdout of a headless `claude -p --output-format stream-json --verbose`
 // run into a normalized result + telemetry object (docs/design/agent-executor-interface.md).
 //
+// `nodeUsageFromClaude` projects that result into the agent-neutral `NodeUsage` spine the run record
+// persists — the seam that lets the observe surface source Claude's token/cost/context from the ONE
+// authoritative `result` event instead of the (pi-only, blank-for-Claude) events.jsonl replay.
+
+import type { NodeUsage } from './status.js';
+//
 // The stream is NDJSON: a `system` init, `assistant`/`user`/`rate_limit_event` turns, exactly one
 // `result` event, then possibly MORE trailing `system` events (e.g. hook_response). The `result` event
 // is NOT necessarily the last line, so we SCAN every line for `type==="result"` — never `tail -1`.
@@ -57,6 +63,26 @@ export function parseClaudeResult(stdout: string): ClaudeRunResult {
   if (cost) out.cost = cost;
 
   return out;
+}
+
+/**
+ * Project a parsed Claude result into the agent-neutral `NodeUsage` spine (the run-record field observe
+ * reads). Returns undefined when the run produced no telemetry (no `result` event) so the caller leaves
+ * `rec.usage` unset. Sources tokens/cost/turns from the `result` event ONLY — never a per-`assistant` sum.
+ */
+export function nodeUsageFromClaude(cv: ClaudeRunResult): NodeUsage | undefined {
+  const u: NodeUsage = {
+    ...(cv.cost?.inputTokens != null ? { inputTokens: cv.cost.inputTokens } : {}),
+    ...(cv.cost?.outputTokens != null ? { outputTokens: cv.cost.outputTokens } : {}),
+    ...(cv.cost?.cacheRead != null ? { cacheRead: cv.cost.cacheRead } : {}),
+    ...(cv.cost?.cacheCreation != null ? { cacheCreation: cv.cost.cacheCreation } : {}),
+    ...(cv.cost?.usd != null ? { cost: cv.cost.usd } : {}),
+    ...(cv.contextWindow != null ? { contextWindow: cv.contextWindow } : {}),
+    ...(cv.ttftMs != null ? { ttftMs: cv.ttftMs } : {}),
+    ...(cv.numTurns != null ? { numTurns: cv.numTurns } : {}),
+    ...(cv.stopReason != null ? { stopReason: cv.stopReason } : {}),
+  };
+  return Object.keys(u).length > 0 ? u : undefined;
 }
 
 // Scan ALL NDJSON lines; select the object with type === "result". Skip blank lines and any line that

@@ -7,7 +7,7 @@
 // impl MUST fail it. Each test asserts ONE behavior, against realistic captured fixtures.
 
 import { describe, it, expect } from 'vitest';
-import { parseClaudeResult } from '../src/runner/claude-result.js';
+import { parseClaudeResult, nodeUsageFromClaude } from '../src/runner/claude-result.js';
 
 // The authentic `result` line from a real captured run (verbatim from the executor design fixture).
 const RESULT_LINE =
@@ -91,5 +91,25 @@ describe('parseClaudeResult — stream-json stdout parser', () => {
     const r = parseClaudeResult(stdout);
     expect(r.ok).toBe(true);
     expect(r.text).toBe('Created `hello.txt` with the exact contents `piflow-claude-ok`.');
+  });
+
+  it('(f) nodeUsageFromClaude maps the result telemetry into the agent-neutral NodeUsage spine', () => {
+    const withCaps =
+      '{"type":"result","subtype":"success","is_error":false,"num_turns":2,"result":"Done.","stop_reason":"end_turn","session_id":"s1","total_cost_usd":0.013,"usage":{"input_tokens":18,"cache_creation_input_tokens":4790,"cache_read_input_tokens":17172,"output_tokens":337},"modelUsage":{"claude-haiku-4-5-20251001":{"inputTokens":18,"outputTokens":337,"cacheReadInputTokens":17172,"cacheCreationInputTokens":4790,"costUSD":0.013,"contextWindow":200000,"maxOutputTokens":32000}}}';
+    const u = nodeUsageFromClaude(parseClaudeResult(withCaps));
+    expect(u).toBeDefined();
+    expect(u!.inputTokens).toBe(18);
+    expect(u!.outputTokens).toBe(337);
+    expect(u!.cacheRead).toBe(17172);
+    expect(u!.cacheCreation).toBe(4790);
+    expect(u!.cost).toBeCloseTo(0.013, 5);
+    expect(u!.contextWindow).toBe(200000);
+    expect(u!.numTurns).toBe(2);
+    expect(u!.stopReason).toBe('end_turn');
+  });
+
+  it('(g) nodeUsageFromClaude returns undefined when the run had no result telemetry', () => {
+    expect(nodeUsageFromClaude(parseClaudeResult(''))).toBeUndefined();
+    expect(nodeUsageFromClaude(parseClaudeResult(SYSTEM_INIT))).toBeUndefined();
   });
 });
