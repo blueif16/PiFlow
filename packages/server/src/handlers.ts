@@ -13,6 +13,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, sendJson, type Middleware, type Next } from "./resolve.js";
 import { piflowStartRun, makePiflowStartRun } from "./start-run.js";
 import { piflowMigrate, makePiflowMigrate } from "./migrate.js";
+import { piflowContexts, piflowMigrateRun } from "./contexts.js";
 
 /** `GET /__piflow/{index,products}.json` — LIVE scoped snapshot (recomputed per request). */
 export const piflowGlobalIndex: Middleware = async (req, res, next) => {
@@ -590,6 +591,8 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
 export const apiHandlers: Middleware[] = [
   piflowStartRun,
   piflowMigrate,
+  piflowContexts,
+  piflowMigrateRun,
   piflowGlobalIndex,
   piflowRunStream,
   piflowRunView,
