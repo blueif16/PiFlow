@@ -10,7 +10,8 @@
 //
 // The Fly path is now ONE adapter behind the `HostAdapter` seam (packages/cli/src/hosts/): `--host` picks the
 // pathway, `cloud.ts` owns the shared core (mint · plan/render/gate · step factories), the adapter owns only
-// the URL shape + provider-CLI argvs. `--host` defaults to `fly`, so every existing invocation is unchanged.
+// the URL shape + provider-CLI argvs. `--host` defaults to `railway` (a managed builder); pass
+// `--host fly|selfhost|docker` for another pathway — every existing `--host fly` invocation is unchanged.
 //
 // TWO modes, by design (the user law: PAUSE before an outward-facing / paid action):
 //   • DEFAULT = PLAN. Mints the token, registers the `cloud` context row, and PRINTS the exact runbook.
@@ -63,8 +64,9 @@ import { resolveAdapter } from './hosts/registry.js';
 
 /** The Fly app name baked into `deploy/control-vm/fly.toml` — the default target (overridable with --app). */
 export const DEFAULT_APP = 'piflow-control-plane';
-/** The default hosting pathway — `fly` keeps every existing invocation byte-for-byte unchanged. */
-export const DEFAULT_HOST = 'fly';
+/** The default hosting pathway. `railway` builds the SAME control-VM image on a managed builder (no local
+ *  provider CLI or tunnel to babysit, ~$5/mo, first month free); pass `--host fly|selfhost|docker` to switch. */
+export const DEFAULT_HOST = 'railway';
 /** The default host port to publish (docker/selfhost); the control-VM image serves on 8080. */
 export const DEFAULT_PORT = 8080;
 /** The single env key the demo/plain path stages when no `--provider` gateway entry is found. */
@@ -461,7 +463,7 @@ const removeContextDefault = async (name: string): Promise<void> => {
 };
 
 export interface CloudUpOpts {
-  /** Which hosting pathway (`--host`). Resolved via `resolveAdapter`; defaults to `fly` (back-compat). */
+  /** Which hosting pathway (`--host`). Resolved via `resolveAdapter`; defaults to `railway`. */
   host: string;
   app: string;
   /** The public HTTPS origin for docker/selfhost (`--public-url`); ignored when the host derives its own. */
@@ -543,7 +545,7 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
 }
 
 export interface CloudDownOpts {
-  /** Which hosting pathway (`--host`). Resolved via `resolveAdapter`; defaults to `fly` (back-compat). */
+  /** Which hosting pathway (`--host`). Resolved via `resolveAdapter`; defaults to `railway`. */
   host: string;
   app: string;
   /** Host port (for the docker/selfhost teardown display); 8080 default. */
@@ -600,15 +602,19 @@ function fail(msg: string): void {
 }
 
 const UP_USAGE =
-  'usage: piflowctl cloud up [--host <fly|railway|selfhost|docker>] [--app <name>] [--public-url <https://…>] ' +
+  'usage: piflowctl cloud up [--host <railway|fly|selfhost|docker>] [--app <name>] [--public-url <https://…>] ' +
   '[--provider <gw>] [--provider-secret <VAR>] [--context <name>] [--config <fly.toml>] [--dockerfile <path>] ' +
-  '[--port <n>] [--execute]';
+  '[--port <n>] [--execute]  (--host defaults to railway)';
 const DOWN_USAGE =
-  'usage: piflowctl cloud down [--host <fly|railway|selfhost|docker>] [--app <name>] [--context <name>] ' +
+  'usage: piflowctl cloud down [--host <railway|fly|selfhost|docker>] [--app <name>] [--context <name>] ' +
   '[--port <n>] [--execute]';
 
-/** `piflowctl cloud <up|down> [...]` — parse flags, dispatch, map errors to stderr + a non-zero exit. */
-export async function runCloudCli(argv: string[]): Promise<void> {
+/**
+ * `piflowctl cloud <up|down> [...]` — parse flags, dispatch, map errors to stderr + a non-zero exit.
+ * `deps` is the injection seam runCloudUp/runCloudDown already expose (defaults to the real impls) — so a
+ * test can drive the CLI's default-flag resolution (e.g. no `--host` → the DEFAULT_HOST pathway) with fakes.
+ */
+export async function runCloudCli(argv: string[], deps: CloudDeps = {}): Promise<void> {
   const [verb, ...rest] = argv;
 
   // Shared flag parse (both verbs accept --host/--app/--port/--context/--execute; up also takes
@@ -651,7 +657,7 @@ export async function runCloudCli(argv: string[]): Promise<void> {
   switch (verb) {
     case 'up':
       try {
-        await runCloudUp({ host, app, publicUrl, port, provider, providerSecret, contextName, config, dockerfile, execute });
+        await runCloudUp({ host, app, publicUrl, port, provider, providerSecret, contextName, config, dockerfile, execute }, deps);
       } catch (e) {
         return fail((e as Error).message ?? String(e));
       }
@@ -659,7 +665,7 @@ export async function runCloudCli(argv: string[]): Promise<void> {
 
     case 'down':
       try {
-        await runCloudDown({ host, app, port, contextName, execute });
+        await runCloudDown({ host, app, port, contextName, execute }, deps);
       } catch (e) {
         return fail((e as Error).message ?? String(e));
       }

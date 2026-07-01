@@ -319,7 +319,8 @@ piflowctl cloud up   --host <fly|railway|selfhost|docker>
 piflowctl cloud down --host <fly|railway|selfhost|docker> [--app <name>] [--context <name>] [--port <n>] [--execute]
 ```
 
-- `--host` defaults to `fly` → **every existing invocation is byte-for-byte unchanged**.
+- `--host` defaults to `railway` (a managed builder — no local provider CLI or tunnel, ~$5/mo w/ a free first
+  month). Pass `--host fly` (or `selfhost`/`docker`) to switch; the fly pathway is byte-for-byte unchanged.
 - Parser (`runCloudCli`, `cloud.ts:500-552`): add `--host`, `--public-url`, `--port` to the shared flag loop; validate
   `host` via `resolveAdapter(host)` (→ `fail(...)` on unknown). Keep Fly defaults for `config`/`dockerfile`/`app`.
 - `runCloudUp`: resolve the adapter, `appUrl = adapter.appUrl(app, {publicUrl, port})`, pass `appUrl` into

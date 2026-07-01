@@ -6,6 +6,7 @@ import {
   renderPlan,
   runCloudUp,
   runCloudDown,
+  runCloudCli,
   flyAppUrl,
   MODELS_JSON_ENV,
   type MintDeps,
@@ -425,7 +426,7 @@ describe('runCloudUp fail-fast guard (--public-url required when the URL is not 
   });
 });
 
-describe('runCloudUp/down dispatch over --host fly (the default pathway)', () => {
+describe('runCloudUp/down dispatch over --host fly (the fly pathway)', () => {
   it('runCloudUp --host fly runs the fly steps in order then switches context', async () => {
     const ran: string[] = [];
     const switched: string[] = [];
@@ -455,6 +456,40 @@ describe('runCloudUp/down dispatch over --host fly (the default pathway)', () =>
       },
     );
     expect(ran).toEqual(['fly apps destroy a --yes']);
+    expect(removed).toEqual(['cloud']);
+  });
+});
+
+// ── the CLI default host (no --host) resolves to DEFAULT_HOST = railway ──────────────────────────────
+//
+// runCloudCli is where `--host`'s absence becomes a concrete pathway. These drive the CLI end-to-end with the
+// injected fakes and assert the RAILWAY plan runs — so if DEFAULT_HOST regressed to 'fly' the step sequences
+// diverge (fly has `apps-create` + `fly apps destroy`; railway has `domain` + `railway down`) and both go red.
+describe('runCloudCli default host (no --host) → railway', () => {
+  it('`cloud up --execute` with no --host runs the RAILWAY up steps then switches context', async () => {
+    const ran: string[] = [];
+    const switched: string[] = [];
+    await runCloudCli(['up', '--execute'], {
+      ...fixedMintDeps(),
+      registerContext: async () => {},
+      runStep: async (s: DeployStep) => { ran.push(s.id); return { ok: true }; },
+      switchContext: async (name: string) => { switched.push(name); },
+      print: () => {},
+    });
+    // railway plan = its upSteps + the invariant smoke: NO fly `apps-create`; HAS railway's `domain`.
+    expect(ran).toEqual(['copy-dockerignore', 'secrets-set', 'deploy', 'domain', 'rm-dockerignore', 'smoke']);
+    expect(switched).toEqual(['cloud']);
+  });
+
+  it('`cloud down --execute` with no --host runs the RAILWAY teardown (not `fly apps destroy`)', async () => {
+    const ran: string[] = [];
+    const removed: string[] = [];
+    await runCloudCli(['down', '--execute'], {
+      runStep: async (s: DeployStep) => { ran.push(s.command.join(' ')); return { ok: true }; },
+      removeContextFn: async (name: string) => { removed.push(name); },
+      print: () => {},
+    });
+    expect(ran).toEqual(['railway down --yes']);
     expect(removed).toEqual(['cloud']);
   });
 });
