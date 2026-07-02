@@ -1,73 +1,98 @@
 // claude-code.ts — the `claude-code` AgentDriver (docs/design/agent-driver-registry.md §2.3, P2).
 //
-// P2 STUB (RED). This is a WRONG-BUT-NON-THROWING placeholder so the P2 golden tests COMPILE and run RED for
-// the missing-behavior reason (a FAIL, not an import/type error). The REAL bodies — each a THIN WRAPPER over a
-// shipped claude function (buildCommand → claudeCommand, resolveModel → resolveClaudeModel, parseResult →
-// parseClaudeResult/nodeUsageFromClaude, modelCaps → contextWindowFor, describe() = the claude static card whose
-// tools.builtinMap() is a GETTER over the ONE CLAUDE_TOOL_BY_PI_NAME const, never a copy) — are the NEXT agent's
-// job. This phase is ADDITIVE ONLY; claude still runs via the existing dispatchCommand ternary (byte-identical).
+// The SECOND real driver — the per-node runtime strategy for the headless Claude Code executor. Each method is
+// a THIN WRAPPER over a shipped claude function, so wiring the runner through this driver (P3) is byte-identical
+// to today's dispatchCommand/effectiveModel ternaries: buildCommand → claudeCommand (the CommandBuilder seam,
+// structural pass-through), resolveModel → resolveClaudeModel (a SELECTOR; precedence stays in model-routing.ts,
+// mirroring the effectiveModel claude branch — provider is always undefined), parseResult →
+// parseClaudeResult/nodeUsageFromClaude (Claude rolls up usage in this block — the observe spine), modelCaps →
+// contextWindowFor (the fallback; the real per-run contextWindow rides usage from parseResult). The streaming
+// stream-json accumulator is P5 (net-new), so eventAccumulator is absent for now. describe() is the claude
+// static capability card, whose tools.builtinMap() is a GETTER over the ONE CLAUDE_TOOL_BY_PI_NAME const
+// (imported live from command.ts — never a copy, §3). This phase is ADDITIVE ONLY: claude still runs via the
+// existing dispatchCommand ternary (byte-identical); augmentSandbox is omitted (P3 defines + wires it).
 
 import type { AgentDriver } from './types.js';
+import { claudeCommand, CLAUDE_TOOL_BY_PI_NAME } from '../command.js';
+import { resolveClaudeModel } from '../model-routing.js';
+import { parseClaudeResult, nodeUsageFromClaude } from '../claude-result.js';
+import { contextWindowFor } from '../../observe/models.js';
 
 /**
- * The `claude-code` driver — STUB (P2 RED). Deliberately wrong so the golden tests FAIL cleanly; the next
- * agent replaces each body with its thin wrapper. Registered under a STUB id so the table wiring compiles
- * without the (yet-unbuilt) real driver silently going green.
+ * The `claude-code` driver — wraps the shipped claude functions with ZERO behavior change. Registered under id
+ * `claude-code`; `version` bumps only if buildCommand/eventAccumulator OUTPUT shape changes (sealing — §2.6).
  */
 export const claudeCodeDriver: AgentDriver = {
-  // WRONG id on purpose: the real driver registers under 'claude-code'. Keeps the table-wiring test RED.
-  id: 'claude-code-STUB',
+  id: 'claude-code',
   version: 1,
 
   describe() {
-    // STUB card — wrong on every load-bearing field the tests assert (builtinMap is {} not the live const,
-    // dropped absent, etc.) so describe()-driven tests fail cleanly.
+    // The claude STATIC card (§2.5) — a-priori, product-agnostic, node-independent capability data.
     return {
-      id: 'claude-code-STUB',
-      label: 'STUB',
+      id: 'claude-code',
+      label: 'Claude Code',
       version: 1,
       runtime: 'cli',
       binary: 'claude',
-      model: { tierAware: false, providerRouting: false, resolvesThrows: false },
+      // Claude is tier-aware (the `claude` tier block) but carries its own routing — no provider gateway; and
+      // resolveClaudeModel is TOTAL (degrades to the account default rather than throwing on an unresolvable tier).
+      model: { tierAware: true, providerRouting: false, resolvesThrows: false },
       tools: {
         grammar: 'claude-builtin',
-        supportsCustom: false,
-        supportsMcp: false,
-        supportsSkills: false,
-        // WRONG: the real getter returns the live CLAUDE_TOOL_BY_PI_NAME const. Empty ⇒ test 5 fails cleanly.
-        builtinMap: () => ({}),
+        supportsCustom: true,
+        supportsMcp: true,
+        supportsSkills: true,
+        // A GETTER over the ONE live CLAUDE_TOOL_BY_PI_NAME const (never a copy) — so a change to the source
+        // const is reflected here, and the map can never drift from what claudeCommand actually maps.
+        builtinMap: () => CLAUDE_TOOL_BY_PI_NAME,
+        // `ls` has no Claude-native tool (Bash/Glob cover it) — the one pi builtin dropped by the map (command.ts:97).
+        dropped: ['ls'],
       },
-      // WRONG sandbox: the real card injects/strips the Claude creds.
-      sandbox: { providers: [] },
-      // usageRollup:true is REQUIRED to be honest, but the STUB parseResult returns no usage ⇒ conformsToParity
-      // FAILS (test 4 red for the right reason: promise-vs-delivery gap).
-      telemetry: { usageRollup: true, perToolTimeline: 'count-only', loopSignal: false, costReported: true },
+      // The claude credential coupling: inject the OAuth token, strip the API-key vars (subscription auth only),
+      // and point CLAUDE_CONFIG_DIR at the jail. Local sandbox only (builtins, already-logged-in subscription).
+      sandbox: {
+        providers: ['local'],
+        authInjectEnv: ['CLAUDE_CODE_OAUTH_TOKEN'],
+        stripEnv: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
+        configDir: 'CLAUDE_CONFIG_DIR',
+      },
+      // Claude DOES roll up usage in parseResult — the token/cost/context spine off the ONE `result` event
+      // (usageRollup:true). The per-tool timeline is count-only (no tool_execution_end in the stream).
+      telemetry: { usageRollup: true, perToolTimeline: 'count-only', loopSignal: true, costReported: true },
       costModel: 'subscription-flat',
     };
   },
 
-  // WRONG: the real body returns claudeCommand(...). A non-claude string ⇒ test 1 fails cleanly.
-  buildCommand() {
-    return 'STUB';
+  // SELECTS the claude resolver; precedence is NOT re-encoded here — it stays in model-routing.ts's one home.
+  // Mirrors the effectiveModel claude branch: provider is always undefined (Claude's model carries its routing).
+  resolveModel(node, run) {
+    return { model: resolveClaudeModel(node, run), provider: undefined };
   },
 
-  // WRONG: the real body returns { model: resolveClaudeModel(node, run), provider: undefined }. ⇒ test 2 fails.
-  resolveModel() {
-    return {};
+  // The CommandBuilder seam — a true pass-through to claudeCommand (byte-identical by construction).
+  buildCommand(node, resolved, ctx, opts) {
+    return claudeCommand(node, resolved, ctx, opts);
   },
 
-  // WRONG: the real body wraps parseClaudeResult + nodeUsageFromClaude. No usage ⇒ tests 3 & 4 fail cleanly.
-  parseResult() {
-    return { verdict: { ok: false, selfReport: null }, usage: undefined };
+  // Claude's verdict + usage ride the ONE authoritative `result` event: ok/sessionId from the parsed result,
+  // usage the NodeUsage spine (token/cost/context) the observe surface reads. selfReport is null (Claude's
+  // verdict rides isError + the artifact-stat gates, not a self-reported JSON block).
+  parseResult(raw) {
+    const cv = parseClaudeResult(raw.stdout);
+    return {
+      verdict: { ok: cv.ok, selfReport: null, sessionId: cv.sessionId },
+      usage: nodeUsageFromClaude(cv),
+    };
   },
 
-  // The streaming Claude accumulator is P5 (net-new) — absent for now, as the spec declares.
+  // The streaming Claude stream-json accumulator is P5 (net-new) — absent for now, so no event decode.
   eventAccumulator() {
     return undefined;
   },
 
-  // WRONG: the real body returns contextWindowFor(model, catalog).
-  modelCaps() {
-    return null;
+  // The context-window denominator FALLBACK when the run didn't self-report one (the real per-run
+  // contextWindow rides usage from parseResult — the modelUsage[model].contextWindow off the result event).
+  modelCaps(model, catalog) {
+    return contextWindowFor(model, catalog);
   },
 };
