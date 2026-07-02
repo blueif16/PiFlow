@@ -21,6 +21,36 @@ const WRITE_TOOLS = new Set(['edit', 'write']); // file writes → "outputs"
 
 const baseName = (p: unknown): unknown => (typeof p === 'string' ? p.split('/').pop() : p);
 
+/**
+ * (P6) The CANONICAL loop fingerprint both accumulators (pi + Claude) key `loopScore` on: `name + "|" +
+ * args-first-100-chars`. DISTINCT from the maxToolRepeat fingerprint (`name|JSON.stringify(args)`, the FULL
+ * args): truncating to the first 100 arg chars makes near-identical retries (same command, a different
+ * trailing comment/suffix) collapse to ONE key, so a stuck back-to-back loop surfaces where the full-args
+ * global peak misses it. Guarded like the full-args fingerprint — non-serializable args fold to the bare name.
+ */
+export function loopFingerprint(name: string, args: unknown): string {
+  let s = '';
+  try { s = JSON.stringify(args ?? {}); } catch { s = ''; }
+  return `${name}|${s.slice(0, 100)}`;
+}
+
+/**
+ * (P6) A tiny consecutive-run tracker for `loopScore` — the LONGEST run of back-to-back identical
+ * fingerprints. `see(fp)` folds one tool call in order; `.value` is the running longest run. Distinct from a
+ * global-peak counter (maxToolRepeat): a repeat only counts if it is IMMEDIATELY after the same fingerprint.
+ */
+export function createLoopCounter() {
+  let prev: string | null = null, run = 0, longest = 0;
+  return {
+    see(fp: string) {
+      run = fp === prev ? run + 1 : 1;
+      prev = fp;
+      if (run > longest) longest = run;
+    },
+    get value() { return longest; },
+  };
+}
+
 // Recursively freeze an object graph — the snapshot() contract is a FROZEN copy so a live consumer can
 // hold it across polls without another poll (or a view) mutating it out from under them.
 function deepFreeze<T>(o: T): T {
@@ -70,6 +100,13 @@ export interface RichNode {
   maxToolRepeat: number;
   /** the tool name behind `maxToolRepeat` (null when no tool was called). */
   repeatedTool: string | null;
+  /**
+   * (P6) the LONGEST run of CONSECUTIVE back-to-back identical tool calls, keyed on the CANONICAL fingerprint
+   * `name + "|" + args-first-100-chars`. DISTINCT from `maxToolRepeat` (a global peak on the FULL-args
+   * fingerprint): loopScore catches a STUCK back-to-back loop of near-identical retries that the full-args
+   * global peak misses. Computed in BOTH accumulators (pi + Claude) off the same shared fingerprint helper.
+   */
+  loopScore: number;
   coverage: { eventsSeen: number; usageEvents: number; byType: Record<string, number> };
   startedAt?: string;
   endedAt?: string;
@@ -114,6 +151,8 @@ export interface LiveMetrics {
   toolCalls: number;
   maxToolRepeat: number;
   repeatedTool: string | null;
+  /** (P6) consecutive-repeat loop signal — see RichNode.loopScore. */
+  loopScore: number;
   retries: number;
   stopReason: string | null;
   truncated: boolean;
@@ -150,6 +189,8 @@ export function createNodeAccumulator(): NodeAccumulator {
   // tool-loop fingerprint: `name|<args-json>` → times seen. maxRepeat/repeatedTool track the running peak.
   const fpCounts = new Map<string, number>();
   let maxToolRepeat = 0, repeatedTool: string | null = null;
+  // (P6) loopScore: longest run of CONSECUTIVE calls sharing the canonical (first-100) fingerprint.
+  const loop = createLoopCounter();
   let retries = 0, stopReason: string | null = null, thinkingChars = 0;
   let model: string | null = null, provider: string | null = null, api: string | null = null;
   let firstT: number | null = null, lastT: number | null = null;
@@ -233,6 +274,9 @@ export function createNodeAccumulator(): NodeAccumulator {
           const seen = (fpCounts.get(fp) ?? 0) + 1;
           fpCounts.set(fp, seen);
           if (seen > maxToolRepeat) { maxToolRepeat = seen; repeatedTool = name; }
+          // (P6) fold the CANONICAL (first-100) fingerprint into the consecutive-run tracker — DISTINCT
+          // from maxToolRepeat's full-args global peak.
+          loop.see(loopFingerprint(name, args ?? {}));
           const p = args && args.path;
           open.set(e.toolCallId as string, { name, tStartMs: (e._t as number) ?? null, path: READ_TOOLS.has(name) && p ? p : null });
           if (READ_TOOLS.has(name) && p) { if (!reads.has(p)) reads.set(p, { path: p, via: name, tStartMs: (e._t as number) ?? null }); }
@@ -262,7 +306,9 @@ export function createNodeAccumulator(): NodeAccumulator {
     metrics(): LiveMetrics {
       return {
         model, provider,
-        modelCalls, toolCalls, maxToolRepeat, repeatedTool, retries, stopReason,
+        modelCalls, toolCalls, maxToolRepeat, repeatedTool,
+        loopScore: loop.value,
+        retries, stopReason,
         truncated: stopReason === 'max_tokens' || stopReason === 'length',
         tokens: { ...tok, billable: tok.input + tok.output },
       };
@@ -313,6 +359,7 @@ export function createNodeAccumulator(): NodeAccumulator {
       truncated: stopReason === 'max_tokens' || stopReason === 'length',
       thinkingChars,
       modelCalls, maxToolRepeat, repeatedTool,
+      loopScore: loop.value,
       coverage: { eventsSeen, usageEvents, byType: { ...byType } },
       startedAt, endedAt, durationMs,
     };

@@ -51,6 +51,51 @@ function slimMessage(m: unknown): Record<string, unknown> | undefined {
 }
 
 /**
+ * (P5) Cap a Claude tool_use `input` object for the archive — the streaming tool decoder needs the arg
+ * SHAPE (to fingerprint an identical-args loop), not the full payload, so a huge `content`/`old_string`
+ * can't bloat a line. JSON.stringify-guarded; over-cap args fold to a `{truncated}` marker (still a stable
+ * distinct fingerprint per distinct input, since the marker is size-derived).
+ */
+const MAX_ARG = 512;
+function capArg(input: unknown): unknown {
+  try {
+    const s = JSON.stringify(input);
+    if (s === undefined) return undefined;
+    return s.length <= MAX_ARG ? input : { truncated: true, len: s.length };
+  } catch {
+    return { truncated: true };
+  }
+}
+
+/**
+ * (P5) Executor-aware slim of a Claude `assistant`/`user` `message.content[]` array to ONLY its tool
+ * blocks — the pairing surface the count-only stream-json decoder reads (claude-distill.ts). Keeps
+ * `tool_use` as `{type,id,name,input}` (input arg-capped) and `tool_result` as `{type,tool_use_id,is_error}`
+ * (drops the bulky result text — the decoder needs only the pairing id + the error flag). Text/thinking
+ * blocks are dropped so a Claude line stays bounded like pi's. Returns undefined when the content array
+ * holds no tool block (a pure text/thinking assistant line, or a plain user prompt), so the caller drops
+ * `message` entirely — matching today's behaviour for a content-only snapshot. This branch triggers ONLY on
+ * the Claude-specific shape (`message.content` is an ARRAY of tool_use/tool_result), which pi's `--mode
+ * json` stream never emits (pi uses `tool_execution_*`/`message_end`), so pi stays byte-identical.
+ */
+function slimClaudeToolContent(m: unknown): Record<string, unknown> | undefined {
+  if (!m || typeof m !== 'object') return undefined;
+  const content = (m as { content?: unknown }).content;
+  if (!Array.isArray(content)) return undefined;
+  const kept: Record<string, unknown>[] = [];
+  for (const b of content) {
+    if (!b || typeof b !== 'object') continue;
+    const block = b as Record<string, unknown>;
+    if (block.type === 'tool_use') {
+      kept.push({ type: 'tool_use', id: block.id, name: block.name, input: capArg(block.input) });
+    } else if (block.type === 'tool_result') {
+      kept.push({ type: 'tool_result', tool_use_id: block.tool_use_id, is_error: block.is_error === true });
+    }
+  }
+  return kept.length ? { content: kept } : undefined;
+}
+
+/**
  * Slim ONE parsed event for the archive. The killer of size is the cumulative `message` snapshot pi
  * re-embeds on EVERY event (`message_update` per token, `turn_*`/`message_*` per turn) — the whole
  * accumulated transcript, re-sent each delta; that redundancy is what makes a raw stream 100s of MB.
@@ -68,8 +113,19 @@ export function slimEvent(ev: PiEvent): PiEvent | null {
   if (!hasMessage && !hasPartial && !bigResult) return ev; // nothing to strip — pass through
   const out: PiEvent = { ...ev };
   if (hasMessage) {
-    const slim = slimMessage(ev.message);
-    if (slim) out.message = slim; else delete out.message;
+    // (P5) A Claude `assistant`/`user` line carries its tool calls as `message.content[]` tool_use/tool_result
+    // blocks — a DIFFERENT vocabulary from pi (which uses `tool_execution_*`). Preserve JUST those blocks so
+    // the count-only stream-json decoder can pair them; otherwise slim to telemetry (pi's byte-identical path).
+    // The tool-content branch triggers only on the Claude shape (content is an ARRAY of tool blocks), which pi
+    // never emits, so pi lines fall through to `slimMessage` exactly as before.
+    const toolContent = (ev.type === 'assistant' || ev.type === 'user') ? slimClaudeToolContent(ev.message) : undefined;
+    if (toolContent) {
+      const telemetry = slimMessage(ev.message); // Claude's assistant usage/model, if any (harmless; tokens ride rec.usage)
+      out.message = { ...(telemetry ?? {}), ...toolContent };
+    } else {
+      const slim = slimMessage(ev.message);
+      if (slim) out.message = slim; else delete out.message;
+    }
   }
   if (hasPartial) { const ae = { ...a }; delete ae.partial; out.assistantMessageEvent = ae; }
   if (bigResult) out.result = truncResult(out.result);

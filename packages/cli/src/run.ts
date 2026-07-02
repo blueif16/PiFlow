@@ -188,6 +188,11 @@ export interface ParsedRunArgs {
    * Omit ⇒ the journal decides (reuse provably-unchanged nodes, re-run changed nodes + descendants).
    */
   noResume?: boolean;
+  /**
+   * (P4, §2.4) `--strict` — BLOCK a driver-fit misfit (sandbox provider · tier-vs-model-pin) instead of the
+   * default advisory `console.warn`. A misfit node then HALTs with a loud error record. Omit ⇒ advisory.
+   */
+  strict?: boolean;
   /** Active run PROFILE name → resolved against the template's declared `profiles` (elides nodes before compile). */
   profile?: string;
   args: Record<string, string>;
@@ -245,6 +250,7 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
     const k = argv[i];
     if (k === '--dry-run') out.dryRun = true;
     else if (k === '--no-resume') out.noResume = true;
+    else if (k === '--strict') out.strict = true;
     else if (k === '--run' || k === '--id') out.run = argv[++i];
     else if (k === '--workspace') out.workspace = argv[++i];
     else if (k === '--out' || k === '--out-dir') out.outDir = argv[++i];
@@ -720,6 +726,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     from: parsed.from,
     until: parsed.until,
     ...(parsed.noResume ? { noResume: true } : {}),
+    // (P4, §2.4) `--strict` flips the author-time driver-fit preflight from advisory-warn to blocking.
+    ...(parsed.strict ? { strict: true } : {}),
     profile: parsed.profile,
     providerName: parsed.provider,
     thinking: parsed.thinking,

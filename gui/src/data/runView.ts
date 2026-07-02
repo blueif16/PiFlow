@@ -85,6 +85,9 @@ export interface RunViewNode {
   phase: string | null;
   /** (G6) the agent-PRESET label (branding) — resolved to {icon,color,label} via the agents catalog. */
   agentType?: string;
+  /** (P5) the stamped executor/driver id this node ran under (pi/claude-code/third) — the badge source,
+   *  mirrored verbatim from core's `driverId` (separate from agentType branding). Absent ⇒ pi default. */
+  executor?: string;
   /** (SKIN channel) the curated per-node config slice (model/tools/scoping/programmatic) — mirrors core. */
   config?: NodeConfig;
   status: string; // ok | reused | error | blocked | running | pending | gap | dry
@@ -438,6 +441,7 @@ function liveNodeToRunViewNode(n: LiveNode): RunViewNode {
     label: n.label,
     phase: n.phase,
     status: n.status,
+    ...(n.executor ? { executor: n.executor } : {}), // (P5) stamped executor/driver id → badge
     model: n.model ?? null,
     // provider is PER-NODE (detected from the node's own events; null when undeterminable) — carried on the
     // enriched wire node (watch.ts mergeEnriched), so it matches buildRunView's per-node provider EXACTLY. A
@@ -507,6 +511,7 @@ function runViewNodeToLiveNode(n: RunViewNode): LiveNode {
     status: n.status as LiveNode["status"],
     stageIndex: n.stageIndex ?? 1,
     lane: n.lane ?? 0,
+    ...(n.executor ? { executor: n.executor } : {}), // (P5) stamped executor/driver id → badge
     tokens: n.tokens,
     derived: n.derived,
     model: n.model ?? null,

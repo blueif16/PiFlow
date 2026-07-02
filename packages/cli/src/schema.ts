@@ -11,7 +11,7 @@
 //  2. `--json` re-exports the SDK's OWN frozen schema objects from @piflow/core — never a copy. Change
 //     the schema in core and the output changes with it, by construction.
 
-import { nodeSchema, metaSchema, workflowSchema } from '@piflow/core';
+import { nodeSchema, metaSchema, workflowSchema, agentDriverDescriptorSchema } from '@piflow/core';
 
 /** One topic of the add-node authoring reference: a one-line summary + the concise flag grammar lines. */
 export interface CliTopic {
@@ -178,6 +178,10 @@ const SCHEMAS = {
   node: nodeSchema,
   meta: metaSchema,
   workflow: workflowSchema,
+  // (P4) The AgentDriverDescriptor schema — the machine-readable driver capability card (§2.5). The
+  // existing plain-text `schema agent` topic (add-node flag reference) is UNTOUCHED; this is the `--json`
+  // twin: `piflowctl schema --json agent`.
+  agent: agentDriverDescriptorSchema,
 } as const;
 type SchemaKey = keyof typeof SCHEMAS;
 

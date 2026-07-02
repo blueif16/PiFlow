@@ -19,6 +19,7 @@ import { resolveStructure } from './structure.js';
 import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
+import { builtinDrivers, type DriverTable } from '../runner/drivers/table.js';
 import type { NodeConfig, NodeUsage } from '../runner/status.js';
 import type { SandboxProviderKind, Workflow } from '../types.js';
 
@@ -37,6 +38,9 @@ export interface RunViewNode {
   phase: string | null;
   /** (G6) The agent-PRESET label (branding) — the GUI maps it to {icon,label,color} from ~/.piflow/agents/. */
   agentType?: string;
+  /** (P5) The stamped executor/driver id this node ran under (pi/claude-code/third) — the GUI badge source,
+   *  folded verbatim from the record's `driverId` (separate from agentType branding). Absent ⇒ pi default. */
+  executor?: string;
   /** (SKIN channel) The curated per-node config slice (model/tools/scoping/programmatic) — verbatim from the record. */
   config?: NodeConfig;
   status: string;
@@ -44,6 +48,10 @@ export interface RunViewNode {
   endedAt?: string;
   durationMs?: number | null;
   expectedMs?: number | null;
+  /** (P6) cross-run mean billable tokens (input+output) for this node — the cost-spike denominator; null without history. */
+  expectedBillable?: number | null;
+  /** (P6) cross-run mean cost (USD) for this node — the cost-spike SECONDARY signal; null without history. */
+  expectedCost?: number | null;
   priorSamples?: number;
   model?: string | null;
   provider?: string | null;
@@ -73,6 +81,9 @@ export interface RunViewNode {
   maxToolRepeat: number;
   /** the tool behind `maxToolRepeat` (null when none). */
   repeatedTool: string | null;
+  /** (P6) longest run of CONSECUTIVE back-to-back identical calls (canonical name+args-first-100 fingerprint);
+   *  DISTINCT from maxToolRepeat (global full-args peak). 0 = no tool calls / no consecutive repeat. */
+  loopScore?: number;
   /** the per-node DISPLAY projection (zones/rankings/unified outputs), computed ONCE here so the GUI +
    *  TUI render `derived.*` verbatim and never re-derive a threshold. See ./derive.ts. */
   derived?: NodeDerived;
@@ -129,6 +140,10 @@ export interface BuildRunViewOpts {
    *  io.json/events are sparse. Absent → structure is derived from the run alone (phase grouping + runtime
    *  file-flow edges). */
   workflow?: { stages?: string[][]; nodes?: Record<string, { phase?: string | null; deps?: string[] }> } | null;
+  /** (P5) The executor-id → AgentDriver table the per-node fold selects its accumulator from (keyed by the
+   *  node's stamped `driverId`). Absent ⇒ `builtinDrivers()` (pi + claude-code) — the hermetic default. A
+   *  caller only overrides it to register a third executor's driver. */
+  drivers?: DriverTable;
 }
 
 // Strip an absolute path to a clean DISPLAY path using the run's two roots. A file inside the run sandbox
@@ -159,10 +174,13 @@ const SCOPE_LABEL: Record<ScopeKind, string> = { run: 'Run workspace', skill: 'S
 const SCOPE_ORDER: ScopeKind[] = ['run', 'skill', 'template', 'package', 'repo'];
 
 // Replay a node's events.jsonl through the reducer, COUNTING every line + every torn line (the data-load
-// ledger: lines == eventsSeen + parseErrors must hold, or events were silently lost).
-function replayEvents(runDir: string, id: string) {
+// ledger: lines == eventsSeen + parseErrors must hold, or events were silently lost). The reducer is
+// DRIVER-SELECTED by the node's stamped `driverId` (P5): pi ⇒ createNodeAccumulator (byte-identical),
+// claude-code ⇒ the count-only stream-json decoder. `?? createNodeAccumulator()` covers a driver that
+// returns no accumulator (or an unstamped/legacy record ⇒ get(undefined) ⇒ pi) so nothing crashes.
+function replayEvents(runDir: string, id: string, drivers: DriverTable, driverId?: string) {
   const f = path.join(runDir, '.pi', 'nodes', id, 'events.jsonl');
-  const acc = createNodeAccumulator();
+  const acc = drivers.get(driverId).eventAccumulator?.() ?? createNodeAccumulator();
   let lines = 0, parseErrors = 0, exists = false, bytes = 0;
   if (fssync.existsSync(f)) {
     exists = true;
@@ -181,21 +199,34 @@ function replayEvents(runDir: string, id: string) {
 // diverges between the live stream and the loaded view — the shadow-diff parity break P4-live caught).
 export function buildHistory(historyDirs: string[]) {
   const dur: Record<string, number[]> = {};
+  // (P6) IN-PLACE extension: per node, gather billable (input+output) + cost samples from the SAME run.json
+  // set the durationMs fold reads — no new persistence file. Only runs that carried usage contribute.
+  const bill: Record<string, number[]> = {}, cost: Record<string, number[]> = {};
   for (const r of historyDirs) {
     const rjFile = path.join(r, '.pi', 'run.json');
     if (!fssync.existsSync(rjFile)) continue;
-    let rj: { nodes?: Record<string, { durationMs?: number }> };
+    let rj: { nodes?: Record<string, { durationMs?: number; usage?: NodeUsage }> };
     try { rj = JSON.parse(fssync.readFileSync(rjFile, 'utf8')); } catch { continue; }
     for (const [id, rec] of Object.entries(rj.nodes || {})) {
       if (typeof rec.durationMs === 'number') (dur[id] = dur[id] || []).push(rec.durationMs);
+      const u = rec.usage;
+      if (u && (typeof u.inputTokens === 'number' || typeof u.outputTokens === 'number')) {
+        (bill[id] = bill[id] || []).push((u.inputTokens ?? 0) + (u.outputTokens ?? 0));
+        (cost[id] = cost[id] || []).push(u.cost ?? 0);
+      }
     }
   }
+  const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
   const expected: Record<string, number> = {}, samples: Record<string, number> = {};
   for (const [id, arr] of Object.entries(dur)) {
-    expected[id] = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+    expected[id] = Math.round(mean(arr));
     samples[id] = arr.length;
   }
-  return { expected, samples };
+  // (P6) cross-run COST/BILLABLE mean per node — the cost-spike denominator, from the SAME run.json fold.
+  const expectedCost: Record<string, number> = {}, expectedBillable: Record<string, number> = {};
+  for (const [id, arr] of Object.entries(bill)) expectedBillable[id] = mean(arr);
+  for (const [id, arr] of Object.entries(cost)) expectedCost[id] = mean(arr);
+  return { expected, samples, expectedCost, expectedBillable };
 }
 
 interface RunJsonNode {
@@ -208,6 +239,9 @@ interface RunJsonNode {
   model?: string | null;
   /** (agent-neutral spine) authoritative token/cost rollup from the executor's final report. See NodeUsage. */
   usage?: NodeUsage;
+  /** (P5) the stamped driver/executor id (P3, `NodeStatusRecord.driverId`) — the observe fold selects the
+   *  per-node accumulator by this and folds it onto the wire node's `executor`. Absent ⇒ pi default. */
+  driverId?: string;
 }
 interface RunJson {
   run: string; source?: string; provider?: string; model?: string | null;
@@ -279,6 +313,10 @@ export interface AssembleNodeCtx {
   expected: Record<string, number>;
   /** cross-run sample count per node id. */
   samples: Record<string, number>;
+  /** (P6) cross-run mean billable tokens per node id (empty when no history dirs). */
+  expectedBillable?: Record<string, number>;
+  /** (P6) cross-run mean cost per node id (empty when no history dirs). */
+  expectedCost?: Record<string, number>;
   /** the `__checkpoints__` resolution journal read once off state.json. */
   ckJournal: Record<string, CheckpointJournalSlot>;
   /** read a node's checkpoint marker (`.pi/checkpoints/<id>.json`), null if absent/unparseable. */
@@ -330,15 +368,20 @@ export function assembleNode(
   const node: RunViewNode = {
     id, label: rec.label || id, phase, status,
     ...(rec.agentType ? { agentType: rec.agentType } : {}), // (G6) verbatim passthrough → GUI icon
+    ...(rec.driverId ? { executor: rec.driverId } : {}), // (P5) stamped executor/driver id → GUI badge
     ...(rec.config ? { config: rec.config } : {}), // (SKIN) curated config slice → GUI cloud skin
     startedAt: rec.startedAt, endedAt: rec.endedAt, durationMs: rec.durationMs,
     expectedMs: ctx.expected[id] ?? rec.durationMs ?? null, priorSamples: ctx.samples[id] ?? 0,
+    // (P6) cross-run cost/billable means — the cost-spike denominators (null without history).
+    expectedBillable: ctx.expectedBillable?.[id] ?? null,
+    expectedCost: ctx.expectedCost?.[id] ?? null,
     model: spine.model, provider: rich.provider, api: rich.api,
     contextWindow: spine.contextWindow,
     toolCalls: rich.toolCalls, toolBreakdown: rich.toolBreakdown, timeline: rich.timeline,
     reads, scopes, writes, artifacts, bash: rich.bash, tokens: spine.tokens,
     retries: rich.retries, stopReason: spine.stopReason, truncated: spine.truncated, thinkingChars: rich.thinkingChars,
     modelCalls: spine.modelCalls, maxToolRepeat: rich.maxToolRepeat, repeatedTool: rich.repeatedTool,
+    loopScore: rich.loopScore, // (P6) consecutive-repeat loop signal, folded from the reducer.
     summary: rec.summary, issues: rec.issues || [],
     ...(checkpoint ? { checkpoint } : {}),
   };
@@ -353,7 +396,7 @@ export function assembleNode(
  */
 export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { view: RunView; audit: NodeAudit[] } {
   const rj = JSON.parse(fssync.readFileSync(path.join(runDir, '.pi', 'run.json'), 'utf8')) as RunJson;
-  const { expected, samples } = buildHistory(opts.historyDirs ?? []);
+  const { expected, samples, expectedBillable, expectedCost } = buildHistory(opts.historyDirs ?? []);
   const runResolved = path.resolve(runDir);
   const displayPath = makeDisplayPath(runResolved, opts.workspaceRoot ?? null);
   // UNIFORM PATH RULE: every file path the view emits is ABSOLUTE. Reads/writes arrive absolute from the
@@ -364,6 +407,8 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
   const toAbs = (p: string) => (path.isAbsolute(p) ? p : path.join(runResolved, p));
   const underRun = (abs: string) => abs === runResolved || abs.startsWith(runResolved + path.sep);
   const catalog = opts.catalog ?? loadModelCatalog();
+  // (P5) The driver table the per-node fold selects its accumulator from — hermetic default (pi + claude).
+  const drivers = opts.drivers ?? builtinDrivers();
 
   // (G5) Read the `__checkpoints__` resolution journal ONCE off `.pi/state.json` (sync). Each node's
   // marker (`.pi/checkpoints/<id>.json`) is cross-checked against it so a resolved checkpoint shows
@@ -388,9 +433,9 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
   // events stream, io.json PERSISTS across reuse and predates per-node event capture, so the DAG wires
   // every node, not just the ones that happened to record events.
   const ioByNode = new Map<string, { reads: string[]; writes: string[] }>();
-  const ctx: AssembleNodeCtx = { toAbs, underRun, displayPath, catalog, expected, samples, ckJournal, readMarkerSync };
+  const ctx: AssembleNodeCtx = { toAbs, underRun, displayPath, catalog, expected, samples, expectedBillable, expectedCost, ckJournal, readMarkerSync };
   for (const [id, rec] of Object.entries(rj.nodes || {})) {
-    const replay = replayEvents(runDir, id);
+    const replay = replayEvents(runDir, id, drivers, rec.driverId);
     const { rich } = replay.acc.finalize(rec);
     const cov = rich.coverage;
     audit.push({

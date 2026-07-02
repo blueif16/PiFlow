@@ -21,6 +21,7 @@ import type {
 import type { SchemaValidator } from './schema.js';
 import type { EventSink } from './events.js';
 import type { CommandBuilder } from './command.js';
+import type { DriverTable } from './drivers/table.js';
 import type { ModelTiers } from './model-routing.js';
 import type { FailureSignals } from '../checks.js';
 import type { NodeUpdate } from '../workflow/ops/promote.js';
@@ -33,17 +34,28 @@ export interface RunContext {
   outDir: string;
   registry: ToolRegistry;
   buildCommand: CommandBuilder;
+  /**
+   * (AgentDriver registry — P1) The per-run executor→strategy lookup, defaulted at ctx construction to
+   * `builtinDrivers()`. Present so the default EXISTS; the runner does NOT yet dispatch through it (P2/P3).
+   */
+  drivers: DriverTable;
+  /**
+   * (P4, §2.4) Author-time driver-fit enforcement mode. false/absent ⇒ ADVISORY (misfit ⇒ `console.warn`,
+   * run proceeds); true ⇒ STRICT (misfit HALTs the node). Consumed at the per-node run-construction seam
+   * (node-lifecycle.ts) via `driverFits(node, ctx.drivers.get(node.executor))`.
+   */
+  strict?: boolean;
   execRunner: ExecRunner;
   providerName: string;
   model?: string;
   /**
    * Run-start executor selection (run-level default + per-node override), applied at each node run by
    * `resolveExecutor` (node-lifecycle.ts): `executorOverride[node.id] ?? executorDefault ?? node.executor`.
-   * Lets a caller (CLI/GUI) pick `pi` vs `claude-code` WITHOUT editing the template. Both absent ⇒ every
-   * node keeps its authored `executor` (today's behavior).
+   * Lets a caller (CLI/GUI) pick the executor WITHOUT editing the template. Both absent ⇒ every node keeps
+   * its authored `executor` (today's behavior). (P3) OPEN driver ids, gated at the runtime `drivers.get`.
    */
-  executorDefault?: 'pi' | 'claude-code';
-  executorOverride?: Record<string, 'pi' | 'claude-code'>;
+  executorDefault?: string;
+  executorOverride?: Record<string, string>;
   /**
    * G1 — global routing config (the activatable tier map + pi's models.json index), loaded ONCE at run start.
    * The per-node effective model/provider is resolved from this via `resolveNodeModel` at the build call.

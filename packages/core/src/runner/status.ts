@@ -152,6 +152,14 @@ export interface NodeStatusRecord {
   command?: string;
   /** G1 — the EFFECTIVE model this node ran on (after the routing precedence). Null/absent ⇒ pi's provider default. */
   model?: string | null;
+  /**
+   * (AgentDriver registry — P3) The executor DRIVER that ran this node — its id + its seal `version`,
+   * stamped in `finishNode` (the single choke point every lane funnels through). Absent on records written
+   * before P3; a pi node ⇒ `{driverId:'pi',driverVersion:1}`, claude ⇒ `{driverId:'claude-code',…}`, a
+   * THIRD executor ⇒ its own id. Pure-additive telemetry — never gated on in the verdict path.
+   */
+  driverId?: string;
+  driverVersion?: number;
   /** (SKIN channel) The curated per-node config slice mirrored from the resolved NodeSpec (see NodeConfig). */
   config?: NodeConfig;
   /** Declarative integrity-check results (explicit ∪ auto fill-sentinel), when any were run. */

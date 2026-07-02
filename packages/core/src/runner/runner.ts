@@ -29,7 +29,8 @@ import { DefaultToolRegistry } from '../tools/registry.js';
 import { InMemorySandboxProvider } from '../sandbox/index.js';
 import { defaultSchemaValidator, type SchemaValidator } from './schema.js';
 import { type EventSink } from './events.js';
-import { dispatchCommand, type CommandBuilder } from './command.js';
+import { type CommandBuilder } from './command.js';
+import { DriverTable, builtinDrivers } from './drivers/table.js';
 import { loadModelTiers, loadModelsIndex, type ModelTiers } from './model-routing.js';
 import { resolveTokens, type ResolveCtx } from '../workflow/resolver.js';
 import { barrierMerge, type NodeUpdate } from '../workflow/ops/promote.js';
@@ -92,6 +93,19 @@ export interface RunOptions {
   registry?: ToolRegistry;
   /** Agent-command builder. Default the production headless `pi` command; tests inject a stub. */
   buildCommand?: CommandBuilder;
+  /**
+   * (AgentDriver registry — P1) The per-run executor→strategy lookup. Default `builtinDrivers()` (a FRESH
+   * table each run — hermetic, no global mutation; in P1 it holds only `piDriver`). Wired here so the default
+   * EXISTS; the runner does NOT yet dispatch through it (that is P2/P3) — behavior is unchanged.
+   */
+  drivers?: DriverTable;
+  /**
+   * (AgentDriver registry — P4, §2.4/§8 Q2) Author-time driver-fit ENFORCEMENT. `driverFits` (the 2 axes a
+   * driver adds — sandbox provider · tier-vs-model-pin) runs per node at run construction. DEFAULT (omit /
+   * false) is ADVISORY: a misfit is `console.warn`ed and the run proceeds (the executor may still cope).
+   * `strict:true` (opt-in, `--strict`) BLOCKS instead — a misfit HALTs the node with a loud error record.
+   */
+  strict?: boolean;
   /** The exec primitive (carries the watchdog + kill seam). Default `defaultExecRunner`. */
   execRunner?: ExecRunner;
   /** Provider name passed to the command builder (`pi --provider`). Default 'cp'. */
@@ -103,16 +117,17 @@ export interface RunOptions {
    * the template (which is otherwise the only place `NodeSpec.executor` lives). A caller (CLI/GUI) sets
    * this to run the whole workflow on the other executor. PRECEDENCE: `executorOverride[nodeId]` (per-node)
    * wins over this; this wins over the node's authored `executor`; absent everywhere ⇒ `pi`. Omit ⇒ each
-   * node keeps its authored executor (today's behavior).
+   * node keeps its authored executor (today's behavior). (P3) An OPEN string — any registered driver id,
+   * gated at the runtime `drivers.get`.
    */
-  executor?: 'pi' | 'claude-code';
+  executor?: string;
   /**
-   * PER-NODE EXECUTOR OVERRIDE — pick `pi` vs `claude-code` for SPECIFIC nodes (keyed by node id) at run
-   * start, WITHOUT editing the template. A per-node entry WINS over the run-level `executor` default AND
-   * over the node's authored `executor`. A node id absent from this map falls through to `executor` then to
-   * its authored value. Omit ⇒ no per-node override (today's behavior).
+   * PER-NODE EXECUTOR OVERRIDE — pick the executor for SPECIFIC nodes (keyed by node id) at run start,
+   * WITHOUT editing the template. A per-node entry WINS over the run-level `executor` default AND over the
+   * node's authored `executor`. A node id absent from this map falls through to `executor` then to its
+   * authored value. Omit ⇒ no per-node override (today's behavior). (P3) Values are OPEN driver ids.
    */
-  executorOverride?: Record<string, 'pi' | 'claude-code'>;
+  executorOverride?: Record<string, string>;
   /**
    * (G1) Routing config injection seam — the activatable tier map + pi's models.json index. Omit ⇒ the
    * runner loads both from disk (`loadModelTiers`/`loadModelsIndex`, today's behavior). A test injects a
@@ -362,11 +377,26 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   const provider = opts.provider ?? new InMemorySandboxProvider();
   // Resolve the schema validator ONCE: explicit (incl. null=disabled) wins; else the best-effort ajv default.
   const validateSchema = opts.validateSchema !== undefined ? opts.validateSchema : await defaultSchemaValidator();
+  // (AgentDriver registry — P3) The per-run driver table, HOISTED above the ctx literal so the buildCommand
+  // default closure and `ctx.drivers` capture the SAME table — a per-run `opts.drivers` (e.g. a test's echo
+  // driver) is then honored UNIFORMLY by the command default AND forks B/C/D. Default `builtinDrivers()`
+  // (a FRESH table each run — hermetic, no global mutation).
+  const drivers = opts.drivers ?? builtinDrivers();
   const ctx: RunContext = {
     wf,
     outDir,
     registry: opts.registry ?? new DefaultToolRegistry(),
-    buildCommand: opts.buildCommand ?? dispatchCommand, // per-node executor routing (pi | claude-code)
+    // (P3) The DEFAULT command builder now ROUTES through the per-run driver table (was `dispatchCommand`, the
+    // pi|claude ternary). An injected `opts.buildCommand` (29 test files) still WINS — the seam + its
+    // precedence are unchanged; absent, the closure picks the node's driver by `node.executor` (pi →
+    // defaultPiCommand, claude-code → claudeCommand, a THIRD id → its own buildCommand), byte-identical to
+    // dispatchCommand for pi/claude and the ONLY way a third executor's command is emitted.
+    buildCommand: opts.buildCommand ?? ((node, resolved, cctx, copts) => drivers.get(node.executor).buildCommand(node, resolved, cctx, copts)),
+    // (AgentDriver registry — P3) The per-run executor→strategy lookup. Forks B (model), C (sandbox/cred),
+    // D (verdict/telemetry) now dispatch through THIS table at the node-lifecycle call sites.
+    drivers,
+    // (P4, §2.4) Author-time driver-fit enforcement — advisory-warn by default, blocking under `--strict`.
+    strict: opts.strict,
     execRunner: opts.execRunner ?? defaultExecRunner,
     providerName: opts.providerName ?? 'cp',
     model: opts.model,

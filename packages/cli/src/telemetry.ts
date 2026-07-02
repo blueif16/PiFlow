@@ -53,7 +53,7 @@ const usd = (c: number): string => (c >= 0.01 ? `$${c.toFixed(2)}` : c > 0 ? `$$
 const pct = (p: number | null): string => (p == null ? '' : `${Math.round(p * 100)}%`);
 const pad = (s: unknown, n: number): string => String(s ?? '').padEnd(n).slice(0, n);
 
-const ANOM_ICON: Record<AnomalyKind, string> = { failed: '✗', truncated: '✂', 'tool-loop': '↻', 'context-pressure': '▓', slow: '⏱', retries: '↺' };
+const ANOM_ICON: Record<AnomalyKind, string> = { failed: '✗', truncated: '✂', 'tool-loop': '↻', 'loop-score': '⟳', 'context-pressure': '▓', slow: '⏱', 'cost-spike': '$', retries: '↺' };
 const OUTCOME_ICON: Record<string, string> = { ok: '✓', reused: '✓', running: '▶', pending: '·', gap: '~', blocked: '✗', error: '✗', 'awaiting-input': '⏸', dry: '∅' };
 
 function anomalyLine(a: Anomaly): string {

@@ -19,8 +19,12 @@ import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } fro
 import { validateArtifactSchemas } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox } from './events.js';
-import { effectiveModel, type EffectiveModel } from './model-routing.js';
-import { claudeExecutorEnvAdditions } from './claude-executor.js';
+// (P3) Forks B/C/D route through `ctx.drivers.get(node.executor)` — the per-run driver table — instead of
+// `effectiveModel`/`claudeExecutorEnvAdditions`/the `isClaude` parse ternary. Those value imports are gone;
+// the driver's run-side methods (resolveModel/augmentSandbox/parseResult) wrap the SAME shipped functions
+// byte-identically. `lastJsonBlock` STAYS: the pi `parsed` self-report must be the FULL parsed block (a
+// promote's `@return:<field>` + the returnSchema gate read arbitrary fields), which the narrowed
+// `AgentVerdict.selfReport` cannot carry — so we still recover it here, GATED by the driver descriptor.
 import { resolveTokens, resolveAll, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
 import { stageSeed } from '../workflow/ops/seed.js';
 import { resolveSkillStage } from '../workflow/ops/skill.js';
@@ -29,6 +33,7 @@ import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, type ResolvedPromote } from '../workflow/ops/promote.js';
 import { derivesFromOp, gatesFromOp, runOpsFromOp } from './op-dispatch.js';
+import { driverFits } from './drivers/driver-fits.js';
 import {
   type NodeStatusRecord,
   type ArtifactState,
@@ -47,7 +52,6 @@ import {
   writeJournalEntry,
 } from './journal.js';
 import { lastJsonBlock } from './return-parse.js';
-import { parseClaudeResult, nodeUsageFromClaude } from './claude-result.js';
 import {
   CLOUD_KINDS,
   IN_PLACE_KINDS,
@@ -239,12 +243,36 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // so session/history isolate there. `{}` for a pi node ⇒ byte-identical. The credential rides the ENV, NOT
   // a jail read-grant — so `readScope` stays exactly the node's declared scope (no ~/.claude widening).
   const claudeConfigDir = path.join(ctx.outDir, '.claude-config', node.id);
-  const claudeEnv = await claudeExecutorEnvAdditions({
-    executor: node.executor,
-    nodeId: node.id,
-    configDir: claudeConfigDir,
-    resolver: ctx.secretResolver ?? defaultSecretResolver,
-  });
+  // (P3 — Fork C) The pre-spawn credential/sandbox coupling now routes through the node's DRIVER: a driver
+  // with `augmentSandbox` (claude-code wraps `claudeExecutorEnvAdditions`) contributes env; pi OMITS the
+  // method ⇒ `{}` (byte-identical). Only `add.env` is consumed in P3 — `read`/`write` additions are reserved
+  // (unused) for a later phase. `claudeEnv` flows UNCHANGED into the env-merge below.
+  const drv = ctx.drivers.get(node.executor);
+  // (P4, §2.4/§8 Q2) Author-time DRIVER-FIT preflight — the earliest run-construction point that has BOTH
+  // the node and its resolved driver. Checks EXACTLY the 2 axes a driver adds (sandbox provider ·
+  // tier-vs-model-pin); loadout/skill fit stays on the shipped `preflightSkills`. DEFAULT is ADVISORY: a
+  // misfit is `console.warn`ed and the run PROCEEDS (the executor may still cope) — it NEVER throws.
+  // `ctx.strict` (opt-in `--strict`) BLOCKS instead: the node HALTs with a loud error record.
+  const fit = driverFits(node, drv);
+  if (!fit.ok) {
+    const msg = `driver "${drv.id}" does not fit node "${node.id}": ${fit.problems.join('; ')}`;
+    if (ctx.strict) {
+      return finishNode(ctx, node, rec, t0, 'error', `driver-fit (strict): ${msg}`, [], fit.problems);
+    }
+    console.warn(`[driver-fit] ${msg}`);
+  }
+  const add = drv.augmentSandbox
+    ? await drv.augmentSandbox({
+        node,
+        nodeId: node.id,
+        configDir: claudeConfigDir,
+        env: process.env,
+        resolver: ctx.secretResolver ?? defaultSecretResolver,
+      })
+    : {};
+  // The additions carry only concrete string env (claudeExecutorEnvAdditions sets each var to a string,
+  // including the empty-string strips) — narrow to the CreateOpts.env shape so the merge below is unchanged.
+  const claudeEnv = (add.env ?? {}) as Record<string, string>;
   if (Object.keys(claudeEnv).length) await fs.mkdir(claudeConfigDir, { recursive: true });
   let sandbox: Sandbox;
   try {
@@ -417,16 +445,21 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       return finishNode(ctx, node, rec, t0, 'error', `pre-hook failed: ${(e as Error).message}`, []);
     }
 
-    // G1 — resolve THIS node's effective model/provider (the §2 precedence lives in model-routing.ts). An
-    // unresolvable tier throws → fail the node cleanly (never crash the run, never silently mis-route).
-    let eff: EffectiveModel;
+    // G1 — resolve THIS node's effective model/provider via the node's DRIVER (Fork B). The driver SELECTS
+    // the resolver; the §2 precedence still lives in model-routing.ts (piDriver→resolveNodeModel,
+    // claudeCodeDriver→resolveClaudeModel), so this is byte-identical to the old `effectiveModel` ternary. An
+    // unresolvable tier still throws INSIDE this try (piDriver→resolveNodeModel→ModelRoutingError) → fail the
+    // node cleanly (never crash the run, never silently mis-route). `drv` is the SAME per-run driver resolved
+    // for Fork C above.
+    let eff: { model?: string; provider?: string };
     try {
-      eff = effectiveModel(node, {
+      const routed = drv.resolveModel(node, {
         model: ctx.model,
         provider: ctx.providerName,
         tiers: ctx.modelRouting.tiers,
         modelsIndex: ctx.modelRouting.modelsIndex,
       });
+      eff = { model: routed.model, provider: routed.provider };
     } catch (e) {
       return finishNode(ctx, node, rec, t0, 'error', (e as Error).message, []);
     }
@@ -438,6 +471,13 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // `--session-dir` + `--session-id`/`--session`). `undefined` ⇒ no merge ⇒ today's `--no-session` default.
     const cmd = ctx.buildCommand(node, resolved, { promptFile: stageRef(promptFile), model: effModel, provider: effProvider, extensionFile: extensionRef, skillPath }, session ? { ...ctx.commandOpts, session } : ctx.commandOpts);
     rec.command = cmd;
+    // (P5 — early driver stamp) Stamp the executor driver id/version NOW, at node start, not only at
+    // finishNode. The live observe fold (watch.ts) selects the per-node accumulator by rec.driverId; without
+    // this a mid-run Claude node reads unstamped ⇒ get(undefined) ⇒ the pi reducer ⇒ folds BLANK until it
+    // settles. Stamping here lets the live stream pick the count-only stream-json decoder from byte 0.
+    // Idempotent + additive: `drv` is the SAME driver finishNode re-stamps, and pi stamps `pi` (byte-identical).
+    rec.driverId = drv.id;
+    rec.driverVersion = drv.version;
 
     // `nodeTimeoutMs` is resolved ONCE above (shared with the cloud per-command cap at scope.create).
     // Tee the agent's stdout into a per-node slimmed events archive (additive — the wrap chains the
@@ -599,28 +639,34 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // a non-ok self-report is honored; then a MISSING handshake errors ONLY when it was required; else ok.
     //
     // EXECUTOR-AWARE SELF-REPORT: the pi RETURN PROTOCOL (a fenced `{status,summary,issues}` tail recovered
-    // by `lastJsonBlock`) is a PI convention — it DOES NOT APPLY to a claude-code node, whose stdout is
-    // `--output-format stream-json` NDJSON. Running `lastJsonBlock` over that NDJSON MISREADS a benign
-    // `rate_limit_event` ({status:"allowed",…}) as the node's structured return → a non-ok, non-gap/blocked
-    // self-report → a false `gap`. For a claude-code node we therefore (a) NEUTER the pi `parsed` self-report
-    // (so the return-protocol clauses below — the self-report, the no-handshake, the return-schema gate, the
-    // G8 re-parse, the `parsed.issues` carry — can never fire on the stream-json misread) and (b) derive the
-    // claude verdict from `parseClaudeResult` instead: `isError ⇒ error` (claude self-reported a failure on
-    // exit 0); else the driver-verified gates alone decide (success ⇒ ok). The driver gates (missing/schema/
-    // integrity/op breaches above the self-report clause) are executor-agnostic and STILL beat the claude
-    // self-report — a claude success with a missing required artifact still blocks.
-    const isClaude = node.executor === 'claude-code';
-    const claudeVerdict = isClaude ? parseClaudeResult(result.stdout) : undefined;
-    let parsed = isClaude ? null : lastJsonBlock(result.stdout);
+    // by `lastJsonBlock`) is a PI convention — it DOES NOT APPLY to a self-report-less executor (claude,
+    // whose stdout is `--output-format stream-json` NDJSON — running `lastJsonBlock` over it MISREADS a benign
+    // `rate_limit_event` as the node's structured return → a false `gap`). So for such an executor we (a)
+    // NEUTER the pi `parsed` self-report (the return-protocol clauses below — the self-report, the
+    // no-handshake, the return-schema gate, the G8 re-parse, the `parsed.issues` carry — can never fire) and
+    // (b) let its DRIVER's verdict decide: `selfReportedError ⇒ error`; else the driver-verified gates alone
+    // decide (success ⇒ ok). The driver gates (missing/schema/integrity/op breaches above the self-report
+    // clause) are executor-agnostic and STILL beat the self-report — a success with a missing required
+    // artifact still blocks.
+    // (P3 — Fork D) The verdict + telemetry now route through the node's DRIVER's `parseResult`, replacing the
+    // `isClaude` ternary. `usesSelfReport` (the driver descriptor's `telemetry.usageRollup === false`) is the
+    // agent-neutral replacement for `!isClaude`: pi (usageRollup:false) keeps the pi return-protocol
+    // self-report + handshake live; claude (usageRollup:true) neuters them, matching today. `verdict` carries
+    // ok/sessionId, the OPTIONAL NodeUsage spine (claude), and `selfReportedError` (claude's result-event
+    // failure) — the driver-neutral inputs the status ladder reads below.
+    const usesSelfReport = drv.describe().telemetry.usageRollup === false;
+    const { verdict, usage } = drv.parseResult({ stdout: result.stdout, exitCode: result.code, killed });
+    // `parsed` is the pi self-report block — recovered from the FULL `lastJsonBlock` (NOT the narrowed
+    // `verdict.selfReport`) so a promote's `@return:<field>` + the returnSchema gate still read arbitrary
+    // fields. Gated by the driver: a non-self-reporting executor (claude, usageRollup:true) yields null,
+    // neutering the pi return-protocol clauses exactly like the old `isClaude ? null : …`.
+    let parsed = usesSelfReport ? lastJsonBlock(result.stdout) : null;
 
-    // (agent-neutral spine) Persist Claude's authoritative token/cost/context telemetry from the ONE `result`
-    // event, so the observe surface sources it from the record instead of the pi-only event replay (blank for
-    // a claude node). Previously parsed for the verdict and DISCARDED. Also rescue the minted session id.
-    if (claudeVerdict) {
-      const usage = nodeUsageFromClaude(claudeVerdict);
-      if (usage) rec.usage = usage;
-      if (claudeVerdict.sessionId && !rec.sessionId) rec.sessionId = claudeVerdict.sessionId;
-    }
+    // (agent-neutral spine) Persist the executor's authoritative token/cost/context telemetry (claude's ONE
+    // `result` event) from `parseResult`, so observe sources it from the record instead of the pi-only event
+    // replay. Also rescue the minted session id. pi/echo yield no usage ⇒ these are no-ops (byte-identical).
+    if (usage) rec.usage = usage;
+    if (verdict.sessionId && !rec.sessionId) rec.sessionId = verdict.sessionId;
 
     // POST-NODE RETURN-SCHEMA GATE (mirrors the artifact schema gate, runner.ts above): a node's authored
     // `returnSchema` (node.json top-level `return`) constrains the SHAPE of its structured result. We
@@ -698,7 +744,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         artifacts = await Promise.all(node.io.artifacts.map((a) => artifactState(path.resolve(ctx.outDir, a.path), a.path)));
         missing = artifacts.filter((a) => !a.exists).map((a) => a.path);
         schema = await validateArtifactSchemas(node.io.artifacts, { outDir: ctx.outDir, roots: [ctx.outDir, scope.root], validate: ctx.validateSchema });
-        parsed = isClaude ? null : lastJsonBlock(result.stdout); // claude: never re-introduce the stream-json misread
+        parsed = usesSelfReport ? lastJsonBlock(result.stdout) : null; // claude: never re-introduce the stream-json misread
         returnSchemaInvalid = validateReturn();
         returnSchemaBreach = returnSchemaInvalid.length > 0 && returnMode === 'required';
       }
@@ -746,23 +792,25 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     } else if (returnSchemaBreach) {
       st = 'blocked';
       issues.push(`contract breach — return violates the declared returnSchema: ${returnSchemaInvalid.join('; ')}`);
-    } else if (claudeVerdict?.isError && claudeVerdict.subtype !== undefined) {
-      // CLAUDE SELF-REPORT (replaces the pi self-report clause for a claude-code node): the `result` event
-      // was PRESENT and reported a failure on a CLEAN exit 0 (e.g. error_during_execution / error_max_turns).
-      // The exec is formally a success, but claude says it failed → `error`, surfacing claude's reason.
-      // GATED on `subtype !== undefined` so this honors only an ACTUAL `result` event: `parseClaudeResult`
-      // ALSO returns isError=true when NO result event is found (empty/truncated stdout) — but that is an
-      // ABSENT handshake, NOT a claude self-report. The driver gates own the produced-nothing case (a real
-      // empty run fails the artifact gate above); a result-less exit-0 node with its artifact on disk stays
-      // the pi-parity `ok`. (Exit-nonzero is already handled at the top of the ladder.) `parsed` is null for
-      // claude, so the pi clauses below are dead — a claude success (isError=false) falls straight to `ok`.
+    } else if (verdict.selfReportedError) {
+      // EXECUTOR SELF-REPORTED ERROR (replaces the pi self-report clause for a claude-code node): the driver's
+      // `parseResult` populated `selfReportedError` — claude's `result` event was PRESENT and reported a
+      // failure on a CLEAN exit 0 (e.g. error_during_execution / error_max_turns). The exec is formally a
+      // success, but the executor says it failed → `error`, surfacing its reason. The driver GATES this on the
+      // ACTUAL result event (isError && subtype !== undefined) so a result-less exit-0 node leaves it unset and
+      // the driver gates own the produced-nothing case (a real empty run fails the artifact gate above);
+      // pi/echo never populate it. (Exit-nonzero is already handled at the top of the ladder.) `parsed` is null
+      // for a non-self-reporting executor, so the pi clauses below are dead — a clean success falls to `ok`.
       st = 'error';
-      issues.push(`claude reported an error (${claudeVerdict.subtype})${claudeVerdict.text ? `: ${claudeVerdict.text}` : ''}`);
+      const sre = verdict.selfReportedError;
+      issues.push(`claude reported an error (${sre.subtype})${sre.text ? `: ${sre.text}` : ''}`);
     } else if (parsed?.status && parsed.status !== 'ok') {
       st = parsed.status === 'gap' || parsed.status === 'blocked' ? parsed.status : 'gap';
-    } else if (!parsed && returnMode === 'required' && !isClaude) {
-      // The pi handshake (a return-protocol block is REQUIRED when the node declares no artifact) does NOT
-      // apply to a claude-code node — its handshake is the `result` event, already verified above (isError).
+    } else if (!parsed && returnMode === 'required' && usesSelfReport) {
+      // The pi return-protocol handshake (a block is REQUIRED when the node declares no artifact) applies ONLY
+      // to a SELF-REPORTING executor (`usesSelfReport` — pi). A claude-code node's handshake is the `result`
+      // event, already verified above (selfReportedError); an executor that self-reports no block (usageRollup
+      // true) neuters this clause, matching the old `!isClaude` guard byte-identically.
       st = 'error';
       issues.push('no return-protocol block parsed from output (return:required)');
     } else {
@@ -960,6 +1008,13 @@ export async function finishNode(
   // SAME site that stamps the verdict — `agentType`/`model` already ride the record). Only set when non-empty.
   const cfg = buildNodeConfig(node);
   if (Object.keys(cfg).length) rec.config = cfg;
+  // (AgentDriver registry — P3) STAMP the executor DRIVER that ran this node + its seal version — here, the
+  // ONE choke point every lane funnels through (incl. the no-pi lanes). `node.executor` is the RESOLVED
+  // executor on the pi lane (the resolved clone); on early/no-pi lanes `table.get(undefined)` defaults to pi,
+  // so an authored-pi node stamps `pi`. Pure-additive telemetry (never gated on in the verdict path).
+  const stampDriver = ctx.drivers.get(node.executor);
+  rec.driverId = stampDriver.id;
+  rec.driverVersion = stampDriver.version;
   // (per-node stop) The node has EXITED ⇒ any persisted live-pi pid is now STALE and must never be signalled.
   // Remove `.pi/nodes/<id>/pid.json` on EVERY terminal verdict (the single choke point for every lane,
   // incl. the no-pi lanes that reuse finishNode). Best-effort + absent-file-safe (a node that never persisted

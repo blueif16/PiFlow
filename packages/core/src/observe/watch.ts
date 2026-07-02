@@ -27,6 +27,7 @@ import { nodeEventsFile, nodeIoFile } from '../runner/layout.js';
 import type { PiEvent } from '../runner/events.js';
 import type { NodeStatus, NodeStatusRecord } from '../runner/status.js';
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
+import { builtinDrivers } from '../runner/drivers/table.js';
 import { readRunModel, readRunJson } from './read.js';
 import { createNodeAccumulator, type NodeAccumulator } from './distill.js';
 import { loadModelCatalog, type ModelCatalog } from './models.js';
@@ -154,6 +155,9 @@ function mergeEnriched(base: NodeView, full: RunViewNode): NodeView {
     ...base,
     tokens: full.tokens,
     derived: full.derived,
+    // (P5) the stamped executor/driver id — NOT on the lean base NodeView, so copy it from the assembled
+    // node or the live badge blanks and diverges from buildRunView's per-node `executor` (shadow-diff key).
+    ...(full.executor ? { executor: full.executor } : {}),
     model: full.model,
     // per-node PROVIDER (rich.provider) — NOT carried on the lean base NodeView, so copy it from the assembled
     // node or the live adapter blanks it / falls back to the run provider and diverges from buildRunView.
@@ -212,6 +216,10 @@ export async function* watchRun(runDir: string, opts: WatchOpts = {}): AsyncIter
 
   const catalog = loadModelCatalog();
   const ctx = buildAssembleCtx(runDir, catalog, opts);
+  // (P5) The driver table the per-node fold selects its accumulator from — the SAME hermetic default
+  // (pi + claude-code) buildRunView uses, so the live seed and the batch replay pick the SAME accumulator
+  // KIND per node (keyed by the stamped rec.driverId) and stay byte-identical at settle.
+  const drivers = builtinDrivers();
 
   /** Assemble the enriched node from its long-lived accumulator + the raw run.json record + io ledger. */
   const enrich = (rec: NodeStatusRecord, acc: NodeAccumulator): RunViewNode => {
@@ -243,7 +251,11 @@ export async function* watchRun(runDir: string, opts: WatchOpts = {}): AsyncIter
     // separate statSync — or a line folds twice or is skipped). This runs once (on the first poll that has a
     // model); a node that first appears later is seeded in the delta branch below.
     const seedNode = (id: string): void => {
-      const acc = createNodeAccumulator();
+      // DRIVER-SELECTED accumulator (P5): pick by the node's stamped driverId (rec.usage-neutral) so a
+      // claude-code node seeds the count-only stream-json decoder, pi seeds createNodeAccumulator. Unstamped
+      // (mid-run before finishNode / legacy) ⇒ get(undefined) ⇒ pi; `?? createNodeAccumulator()` covers a
+      // driver with no accumulator so seeding never crashes.
+      const acc = drivers.get(recById[id]?.driverId).eventAccumulator?.() ?? createNodeAccumulator();
       const file = nodeEventsFile(runDir, id);
       const { events, offset, carry: nextCarry } = tailEvents(file, 0, '');
       for (const e of events) acc.push(e);
