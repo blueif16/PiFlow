@@ -1,0 +1,31 @@
+{
+  "_comment": "E6 golden retrieval set — the FIND ranker's quality gate. Each row: a query an agent would actually ask, the card that TRULY owns it (or UNCOVERED), and the primary file for the codegraph-explore baseline arm. Classes: file / symbol / concept / phrase / negative. The phrase class is expected to be the ranker's weak spot (substring matching) — a miss there is a FINDING, not a broken eval. Never edit an expectation to make a run pass; fix the ranker or the cards.",
+  "cases": [
+    { "class": "file", "query": "packages/core/src/observe/runView.ts", "expect": "observe", "primaryFile": "packages/core/src/observe/runView.ts" },
+    { "class": "file", "query": "packages/core/src/memory/skeleton.ts", "expect": "memory-leg", "primaryFile": "packages/core/src/memory/skeleton.ts" },
+    { "class": "file", "query": "packages/cli/src/scaffold.ts", "expect": "cli-scaffold", "primaryFile": "packages/cli/src/scaffold.ts" },
+    { "class": "file", "query": "packages/core/src/runner/env-staging.ts", "expect": "cloud-backends", "primaryFile": "packages/core/src/runner/env-staging.ts" },
+    { "class": "file", "query": "gui/src/data/runStream.ts", "expect": "gui", "primaryFile": "gui/src/data/runStream.ts" },
+    { "class": "symbol", "query": "runWorkflow", "expect": "runner", "primaryFile": "packages/core/src/runner/runner.ts" },
+    { "class": "symbol", "query": "buildRunView", "expect": "observe", "primaryFile": "packages/core/src/observe/runView.ts" },
+    { "class": "symbol", "query": "mergePreset", "expect": "base-agent-types", "primaryFile": "packages/core/src/workflow/agent-preset.ts" },
+    { "class": "symbol", "query": "compactMemory", "expect": "memory-leg", "primaryFile": "packages/core/src/optimize/compact.ts" },
+    { "class": "symbol", "query": "seatbeltExecPlan", "expect": "sandbox", "primaryFile": "packages/core/src/sandbox/seatbelt.ts" },
+    { "class": "symbol", "query": "generateRunName", "expect": "names", "primaryFile": "packages/core/src/names/generator.ts" },
+    { "class": "concept", "query": "fusion", "expect": "per-node-routing-and-fusion", "primaryFile": "packages/core/src/dag.ts" },
+    { "class": "concept", "query": "seatbelt", "expect": "sandbox", "primaryFile": "packages/core/src/sandbox/seatbelt.ts" },
+    { "class": "concept", "query": "companion", "expect": "gui", "primaryFile": "gui/src/components/Companion.tsx" },
+    { "class": "concept", "query": "telemetry", "expect": "observe", "primaryFile": "packages/core/src/observe/telemetry.ts" },
+    { "class": "concept", "query": "daytona", "expect": "cloud-backends", "primaryFile": "packages/core/src/runner/env-staging.ts" },
+    { "class": "concept", "query": "triage", "expect": "optimize", "primaryFile": "packages/core/src/optimize/triage.ts" },
+    { "class": "phrase", "query": "how does the run journal replay", "expect": "runner", "primaryFile": "packages/core/src/runner/runner.ts" },
+    { "class": "phrase", "query": "jail reads and writes per node", "expect": "sandbox", "primaryFile": "packages/core/src/sandbox/seatbelt.ts" },
+    { "class": "phrase", "query": "model routing precedence", "expect": "per-node-routing-and-fusion", "primaryFile": "packages/core/src/workflow/model-routing.ts" },
+    { "class": "phrase", "query": "cloud control plane host adapter", "expect": "context", "primaryFile": "packages/cli/src/hosts" },
+    { "class": "phrase", "query": "op array post gates", "expect": "node-action-protocol", "primaryFile": "packages/core/src/runner/op-dispatch.ts" },
+    { "class": "negative", "query": "packages/core/src/runner/drivers/claude-code.ts", "expect": "UNCOVERED" },
+    { "class": "negative", "query": "stripe payment webhooks", "expect": "UNCOVERED" },
+    { "class": "negative", "query": "site-piflow/app/globals.css", "expect": "UNCOVERED" },
+    { "class": "negative", "query": "kubernetes reconcile overlord loop", "expect": "UNCOVERED" }
+  ]
+}
