@@ -19,6 +19,9 @@ const LIVE = [
   'packages/daytona/test/sandbox-daytona-e2e.test.ts',
   'packages/tool-bridge/test/tool-bridge-openclaw-gateway.e2e.test.ts',
   'packages/core/test/spike-full-plugin-loop.test.ts',
+  // L3 control-plane full-run: greet in a REAL e2b VM + real model writes CONTROL-VM-OK (self-skips w/o creds).
+  // The vitest-native twin of deploy/control-vm/smoke-live.mjs's D-check — closes "L3 exercises nothing new".
+  'packages/e2b/test/control-plane-full-run.live.test.ts',
 ];
 
 const include = [
