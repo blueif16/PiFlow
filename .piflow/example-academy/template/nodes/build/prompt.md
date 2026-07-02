@@ -18,7 +18,9 @@ Implement the function the brief describes and prove it with a passing test, ful
 3. Write a test to `out/build/test/binary-search.test.mjs` using Node's BUILT-IN runner only:
    `import { test } from 'node:test'; import assert from 'node:assert/strict';`. No third-party packages, no
    `npm install`. The test MUST cover EVERY case listed in the brief's `## Required test cases`.
-4. Run the test with the bash tool: `node --test out/build/test/`.
+4. Run the test with the bash tool: `node --test out/build/test/*.test.mjs`.
+   (Pass the test-file glob, NOT the bare directory — `node --test <dir>` mis-resolves the directory as a
+   module under ESM in this runtime, so use the `*.test.mjs` glob.)
 5. If any test fails, use `grep`/`read` to locate the bug, fix it with `edit`, and re-run — repeat until ALL
    tests pass.
 6. Call `submit_result` with status "ok".
@@ -30,7 +32,7 @@ Required — revise until every item PASSES:
   `-1` when absent), and correctly handles the classic bug the brief warns about.
 - `out/build/test/binary-search.test.mjs` covers EVERY case in the brief's `## Required test cases` (≥6),
   including the empty-array and absent-target cases.
-- You RAN `node --test out/build/test/` in this session and saw ALL tests pass (0 failures).
+- You RAN `node --test out/build/test/*.test.mjs` in this session and saw ALL tests pass (0 failures).
 A stub, a test that asserts nothing, or "I would run the test" FAILS. The test must actually run and pass.
 </the_bar>
 
@@ -42,6 +44,6 @@ A stub, a test that asserts nothing, or "I would run the test" FAILS. The test m
 </constraints>
 
 <self_check>
-Before `submit_result`: re-run `node --test out/build/test/` and confirm 0 failures (paste-worthy evidence). Audit
+Before `submit_result`: re-run `node --test out/build/test/*.test.mjs` and confirm 0 failures (paste-worthy evidence). Audit
 each <the_bar> item PASS/FAIL with one line of evidence; fix every FAIL and re-run. Submit only when green.
 </self_check>
