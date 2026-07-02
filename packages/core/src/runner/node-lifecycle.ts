@@ -471,6 +471,13 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // `--session-dir` + `--session-id`/`--session`). `undefined` ⇒ no merge ⇒ today's `--no-session` default.
     const cmd = ctx.buildCommand(node, resolved, { promptFile: stageRef(promptFile), model: effModel, provider: effProvider, extensionFile: extensionRef, skillPath }, session ? { ...ctx.commandOpts, session } : ctx.commandOpts);
     rec.command = cmd;
+    // (P5 — early driver stamp) Stamp the executor driver id/version NOW, at node start, not only at
+    // finishNode. The live observe fold (watch.ts) selects the per-node accumulator by rec.driverId; without
+    // this a mid-run Claude node reads unstamped ⇒ get(undefined) ⇒ the pi reducer ⇒ folds BLANK until it
+    // settles. Stamping here lets the live stream pick the count-only stream-json decoder from byte 0.
+    // Idempotent + additive: `drv` is the SAME driver finishNode re-stamps, and pi stamps `pi` (byte-identical).
+    rec.driverId = drv.id;
+    rec.driverVersion = drv.version;
 
     // `nodeTimeoutMs` is resolved ONCE above (shared with the cloud per-command cap at scope.create).
     // Tee the agent's stdout into a per-node slimmed events archive (additive — the wrap chains the

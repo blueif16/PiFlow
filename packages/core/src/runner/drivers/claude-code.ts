@@ -18,6 +18,7 @@ import { resolveClaudeModel } from '../model-routing.js';
 import { parseClaudeResult, nodeUsageFromClaude } from '../claude-result.js';
 import { claudeExecutorEnvAdditions } from '../claude-executor.js';
 import { contextWindowFor } from '../../observe/models.js';
+import { createClaudeAccumulator } from '../../observe/claude-distill.js';
 
 /**
  * The `claude-code` driver — wraps the shipped claude functions with ZERO behavior change. Registered under id
@@ -107,9 +108,14 @@ export const claudeCodeDriver: AgentDriver = {
     return { verdict, usage: nodeUsageFromClaude(cv) };
   },
 
-  // The streaming Claude stream-json accumulator is P5 (net-new) — absent for now, so no event decode.
+  // (P5) The streaming Claude stream-json accumulator — the count-only twin of pi's createNodeAccumulator.
+  // It decodes the NESTED tool blocks (assistant `tool_use` opens a span, the matching user `tool_result`
+  // closes it) into toolBreakdown + a tool SEQUENCE + maxToolRepeat, every span durMs:0 (the §4.1 count-only
+  // ceiling — Claude carries no per-tool end timestamp). Token/cost/model ride rec.usage (nodeTokenSpine),
+  // NOT this reducer, so nothing double-sources from the slimmed stream. A blank Claude node becomes a real
+  // tool list, folded through the SAME assembleNode as pi.
   eventAccumulator() {
-    return undefined;
+    return createClaudeAccumulator();
   },
 
   // The context-window denominator FALLBACK when the run didn't self-report one (the real per-run

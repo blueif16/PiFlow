@@ -79,6 +79,10 @@ export interface NodeView {
   tokens?: RunTokens;
   /** the per-node DISPLAY projection (zones/rankings/unified outputs), computed ONCE — the view re-derives nothing. */
   derived?: NodeDerived;
+  /** (P5) the stamped executor/driver id this node ran under (pi/claude-code/third) — the GUI badge source,
+   *  folded verbatim from the record's `driverId` (separate from agentType branding). Absent ⇒ pi default.
+   *  Copied from the assembled RunViewNode.executor so the live SSE node matches buildRunView's. */
+  executor?: string;
   /** the effective model label the node ran on. */
   model?: string | null;
   /** the effective PROVIDER the node ran on (detected per-node from the node's own events; `null` when

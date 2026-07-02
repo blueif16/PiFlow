@@ -19,6 +19,7 @@ import { resolveStructure } from './structure.js';
 import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
+import { builtinDrivers, type DriverTable } from '../runner/drivers/table.js';
 import type { NodeConfig, NodeUsage } from '../runner/status.js';
 import type { SandboxProviderKind, Workflow } from '../types.js';
 
@@ -132,6 +133,10 @@ export interface BuildRunViewOpts {
    *  io.json/events are sparse. Absent → structure is derived from the run alone (phase grouping + runtime
    *  file-flow edges). */
   workflow?: { stages?: string[][]; nodes?: Record<string, { phase?: string | null; deps?: string[] }> } | null;
+  /** (P5) The executor-id → AgentDriver table the per-node fold selects its accumulator from (keyed by the
+   *  node's stamped `driverId`). Absent ⇒ `builtinDrivers()` (pi + claude-code) — the hermetic default. A
+   *  caller only overrides it to register a third executor's driver. */
+  drivers?: DriverTable;
 }
 
 // Strip an absolute path to a clean DISPLAY path using the run's two roots. A file inside the run sandbox
@@ -162,10 +167,13 @@ const SCOPE_LABEL: Record<ScopeKind, string> = { run: 'Run workspace', skill: 'S
 const SCOPE_ORDER: ScopeKind[] = ['run', 'skill', 'template', 'package', 'repo'];
 
 // Replay a node's events.jsonl through the reducer, COUNTING every line + every torn line (the data-load
-// ledger: lines == eventsSeen + parseErrors must hold, or events were silently lost).
-function replayEvents(runDir: string, id: string) {
+// ledger: lines == eventsSeen + parseErrors must hold, or events were silently lost). The reducer is
+// DRIVER-SELECTED by the node's stamped `driverId` (P5): pi ⇒ createNodeAccumulator (byte-identical),
+// claude-code ⇒ the count-only stream-json decoder. `?? createNodeAccumulator()` covers a driver that
+// returns no accumulator (or an unstamped/legacy record ⇒ get(undefined) ⇒ pi) so nothing crashes.
+function replayEvents(runDir: string, id: string, drivers: DriverTable, driverId?: string) {
   const f = path.join(runDir, '.pi', 'nodes', id, 'events.jsonl');
-  const acc = createNodeAccumulator();
+  const acc = drivers.get(driverId).eventAccumulator?.() ?? createNodeAccumulator();
   let lines = 0, parseErrors = 0, exists = false, bytes = 0;
   if (fssync.existsSync(f)) {
     exists = true;
@@ -336,6 +344,7 @@ export function assembleNode(
   const node: RunViewNode = {
     id, label: rec.label || id, phase, status,
     ...(rec.agentType ? { agentType: rec.agentType } : {}), // (G6) verbatim passthrough → GUI icon
+    ...(rec.driverId ? { executor: rec.driverId } : {}), // (P5) stamped executor/driver id → GUI badge
     ...(rec.config ? { config: rec.config } : {}), // (SKIN) curated config slice → GUI cloud skin
     startedAt: rec.startedAt, endedAt: rec.endedAt, durationMs: rec.durationMs,
     expectedMs: ctx.expected[id] ?? rec.durationMs ?? null, priorSamples: ctx.samples[id] ?? 0,
@@ -370,6 +379,8 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
   const toAbs = (p: string) => (path.isAbsolute(p) ? p : path.join(runResolved, p));
   const underRun = (abs: string) => abs === runResolved || abs.startsWith(runResolved + path.sep);
   const catalog = opts.catalog ?? loadModelCatalog();
+  // (P5) The driver table the per-node fold selects its accumulator from — hermetic default (pi + claude).
+  const drivers = opts.drivers ?? builtinDrivers();
 
   // (G5) Read the `__checkpoints__` resolution journal ONCE off `.pi/state.json` (sync). Each node's
   // marker (`.pi/checkpoints/<id>.json`) is cross-checked against it so a resolved checkpoint shows
@@ -396,7 +407,7 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
   const ioByNode = new Map<string, { reads: string[]; writes: string[] }>();
   const ctx: AssembleNodeCtx = { toAbs, underRun, displayPath, catalog, expected, samples, ckJournal, readMarkerSync };
   for (const [id, rec] of Object.entries(rj.nodes || {})) {
-    const replay = replayEvents(runDir, id);
+    const replay = replayEvents(runDir, id, drivers, rec.driverId);
     const { rich } = replay.acc.finalize(rec);
     const cov = rich.coverage;
     audit.push({
