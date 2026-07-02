@@ -439,7 +439,12 @@ function liveNodeToRunViewNode(n: LiveNode): RunViewNode {
     phase: n.phase,
     status: n.status,
     model: n.model ?? null,
-    // provider is carried run-level on the LiveModel, not per-node — the node inherits it in the adapter below.
+    // provider is PER-NODE (detected from the node's own events; null when undeterminable) — carried on the
+    // enriched wire node (watch.ts mergeEnriched), so it matches buildRunView's per-node provider EXACTLY. A
+    // stale run-level blanket here diverged for nodes whose own provider differs (e.g. a rec.usage node → null).
+    provider: n.provider ?? null,
+    // the node's settled duration (null while running) — buildRunView renders it, so the live node must carry it.
+    durationMs: n.durationMs ?? null,
     contextWindow: n.contextWindow ?? null,
     toolCalls: n.toolCalls ?? 0,
     toolBreakdown: n.toolBreakdown ?? {},
@@ -483,8 +488,8 @@ export function liveModelToRunView(model: LiveModel): RunView {
     // stageIndex/lane (not this array), so populating it does not change the render.
     stages: model.stages ?? [],
     edges: (model.edges ?? []).map((e) => ({ from: e.from, to: e.to, path: e.path })),
-    // provider is run-level on the live model; carry it onto each node so the HUD's Provider meta renders.
-    nodes: model.nodes.map((n) => ({ ...liveNodeToRunViewNode(n), provider: model.provider ?? null })),
+    // each node carries its OWN provider (per-node, from the enriched wire node) — see liveNodeToRunViewNode.
+    nodes: model.nodes.map((n) => liveNodeToRunViewNode(n)),
   };
 }
 

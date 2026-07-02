@@ -33,6 +33,11 @@ export interface LiveNode {
   derived?: NodeDerived;
   /** the effective model label the node ran on. */
   model?: string | null;
+  /** the PER-NODE provider (detected from the node's own events; null when undeterminable) — mirrors core
+   *  NodeView.provider so the adapter renders each node's own provider, matching buildRunView's field key. */
+  provider?: string | null;
+  /** the node's settled run duration (ms); null while running (the elapsed clock is a view-side concern). */
+  durationMs?: number | null;
   /** the context-window denominator for the context-pressure bar. */
   contextWindow?: number | null;
   /** how many tool invocations this node made. */
@@ -79,8 +84,9 @@ export interface LiveModel {
   stages?: RunViewStage[];
 }
 
-/** A wire frame: the observe RunUpdate kinds + the bridge's `meta`/`stream-error` wrappers. */
-type Frame =
+/** A wire frame: the observe RunUpdate kinds + the bridge's `meta`/`stream-error` wrappers. Exported so the
+ *  headless P4 parity test can fold the EXACT server frames through the real `reduce` (no reinvented fold). */
+export type Frame =
   | { kind: "meta"; run: string; runDir: string }
   | { kind: "snapshot"; model: LiveModel }
   | { kind: "node-status"; id: string; status: LiveNodeStatus }
@@ -100,7 +106,7 @@ export interface RunStreamState {
   error?: string;
 }
 
-const INITIAL: RunStreamState = { status: "connecting", model: null, recent: [] };
+export const INITIAL: RunStreamState = { status: "connecting", model: null, recent: [] };
 const RECENT_CAP = 40;
 
 /** Shared stream state — CanvasInner owns ONE subscription (for the live graph) and provides it here so
@@ -128,7 +134,10 @@ export function foldTokenTotal(nodes: LiveNode[]): RunTokens {
   );
 }
 
-function reduce(prev: RunStreamState, f: Frame): RunStreamState {
+/** The PURE SSE fold: apply one wire frame to the stream state. This is the testable core of `useRunStream`
+ *  (which is only the EventSource plumbing around it) — exported so the headless P4 parity test folds the exact
+ *  server frames through THIS reducer, proving the SSE-rendered graph ≡ /run-view without a browser. */
+export function reduce(prev: RunStreamState, f: Frame): RunStreamState {
   switch (f.kind) {
     case "meta":
       return prev;

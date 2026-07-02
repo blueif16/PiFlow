@@ -19,6 +19,7 @@ import type { NodeStatus, NodeStatusRecord, RunStatus } from '../runner/status.j
 import { readMarker, readCheckpointJournal, checkpointViewFrom } from '../runner/checkpoint.js';
 import type { NodeIo } from '../types.js';
 import { resolveStructure } from './structure.js';
+import { makeDisplayPath } from './runView.js';
 import type { CheckpointView, NodeView, RunModel } from './types.js';
 
 /** Read `.pi/run.json` → a RunStatus, or null when absent/unparseable. */
@@ -72,7 +73,13 @@ export function deriveStatus(reported: NodeStatus, missing: string[], checkpoint
  * Read a run dir → the shared `RunModel`. Throws (rather than returning a half model) when there is no
  * readable `.pi/run.json` — a watcher/CLI surfaces that as "no run here".
  */
-export async function readRunModel(runDir: string): Promise<RunModel> {
+export interface ReadRunModelOpts {
+  /** the launched product root — makes reads/writes/edge paths under the workspace display WORKSPACE-relative,
+   *  matching buildRunView(runDir, { workspaceRoot }). Omit ⇒ only the run root strips (today's behavior). */
+  workspaceRoot?: string | null;
+}
+
+export async function readRunModel(runDir: string, opts: ReadRunModelOpts = {}): Promise<RunModel> {
   const status = await readRunJson(runDir);
   if (!status) {
     throw new Error(`readRunModel: no readable .pi/run.json under ${path.resolve(runDir)}`);
@@ -91,7 +98,9 @@ export async function readRunModel(runDir: string): Promise<RunModel> {
   // buildRunView does, so a run WITHOUT workflow.json still agrees on the fallback edges.
   const runResolved = path.resolve(runDir);
   const toAbs = (p: string): string => (path.isAbsolute(p) ? p : path.join(runResolved, p));
-  const displayPath = (abs: string): string => (abs.startsWith(runResolved + path.sep) ? abs.slice(runResolved.length + 1) : abs);
+  // Use the SAME display-path rule buildRunView uses (run root, THEN workspace root) so the live snapshot's
+  // edge/read paths match /run-view when the SSE handler passes a workspaceRoot; unset ⇒ run-root only.
+  const displayPath = makeDisplayPath(runResolved, opts.workspaceRoot ?? null);
   const { stages, edges, placement } = resolveStructure(
     runDir,
     Object.values(status.nodes).map((rec) => ({

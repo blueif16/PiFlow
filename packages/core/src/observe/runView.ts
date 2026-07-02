@@ -135,7 +135,7 @@ export interface BuildRunViewOpts {
 // ({{RUN}}) shows relative to it (`spec/blueprint.json`); a file in the shared tree ({{WORKSPACE}}) shows
 // relative to it (`packages/skills/...`); anything else falls back to a bare basename. runDir is checked
 // FIRST because it nests under workspaceRoot, so a run file never displays as the long `.piflow/.../runs/…`.
-function makeDisplayPath(runDir: string | null, workspaceRoot: string | null) {
+export function makeDisplayPath(runDir: string | null, workspaceRoot: string | null) {
   const run = runDir ? path.resolve(runDir) : null;
   const ws = workspaceRoot ? path.resolve(workspaceRoot) : null;
   return (abs: unknown): string => {
@@ -176,8 +176,10 @@ function replayEvents(runDir: string, id: string) {
   return { acc, lines, parseErrors, exists, bytes };
 }
 
-// Cross-run history: expectedMs[id] = mean durationMs across history runs that ran node `id`.
-function buildHistory(historyDirs: string[]) {
+// Cross-run history: expectedMs[id] = mean durationMs across history runs that ran node `id`. Exported so the
+// live watchRun ctx computes expectedMs from the SAME history the /run-view handler passes (else derived.time
+// diverges between the live stream and the loaded view — the shadow-diff parity break P4-live caught).
+export function buildHistory(historyDirs: string[]) {
   const dur: Record<string, number[]> = {};
   for (const r of historyDirs) {
     const rjFile = path.join(r, '.pi', 'run.json');

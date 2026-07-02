@@ -37,24 +37,32 @@ export const piflowRunStream: Middleware = async (req, res, next) => {
   if (!m) return next();
   const run = decodeURIComponent(m[1]);
 
-  // resolve runDir from the LIVE index (so a run added since launch is followable).
+  // resolve runDir from the LIVE index (so a run added since launch is followable). Resolve the SAME
+  // workspaceRoot + sibling historyDirs the /run-view handler passes to buildRunView, so the live stream's
+  // enriched nodes (derived.time + workspace-relative paths) are byte-identical to /run-view (P4 parity).
   let runDir: string | null = null;
+  let workspaceRoot: string | null = null;
+  const historyDirs: string[] = [];
   const lib = findLib("index-snapshot.mjs");
   if (lib) {
     try {
       const { loadScopedRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
       const ix = await buildSnapshot(loadScopedRegistry());
       for (const p of ix.products ?? [])
-        for (const ns of p.namespaces ?? [])
-          for (const t of ns.threads ?? [])
-            if (t.run === run && t.runDir) runDir = t.runDir;
+        for (const ns of p.namespaces ?? []) {
+          const hit = (ns.threads ?? []).find((t: { run?: string; runDir?: string }) => t.run === run && t.runDir);
+          if (!hit) continue;
+          runDir = hit.runDir;
+          workspaceRoot = p.root ?? null;
+          for (const t of ns.threads ?? []) if (t.runDir) historyDirs.push(t.runDir);
+        }
     } catch { /* fall through to 404 */ }
   }
   if (!runDir) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered? (piflowctl gui / npm run data:index)` });
 
   const obs = findCore("observe/index.js");
   if (!obs) return sendJson(res, 500, { error: "@piflow/core observe dist not found — run: npm run build (at repo root)" });
-  let watchRun: (dir: string, opts?: { signal?: AbortSignal; pollMs?: number }) => AsyncIterable<unknown>;
+  let watchRun: (dir: string, opts?: { signal?: AbortSignal; pollMs?: number; historyDirs?: string[]; workspaceRoot?: string | null }) => AsyncIterable<unknown>;
   try {
     ({ watchRun } = await import(pathToFileURL(obs).href));
   } catch (e) {
@@ -79,7 +87,7 @@ export const piflowRunStream: Middleware = async (req, res, next) => {
   write({ kind: "meta", run, runDir });
 
   try {
-    for await (const update of watchRun(runDir, { signal: ac.signal })) {
+    for await (const update of watchRun(runDir, { signal: ac.signal, historyDirs, workspaceRoot })) {
       write(update);
       if ((update as { kind?: string }).kind === "done") break;
     }

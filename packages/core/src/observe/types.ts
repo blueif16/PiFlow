@@ -81,6 +81,10 @@ export interface NodeView {
   derived?: NodeDerived;
   /** the effective model label the node ran on. */
   model?: string | null;
+  /** the effective PROVIDER the node ran on (detected per-node from the node's own events; `null` when
+   *  undeterminable, e.g. a rec.usage node with no event stream). PER-NODE, not the run-level provider —
+   *  so the enriched live node matches buildRunView's per-node `provider` (the shadow-diff field key). */
+  provider?: string | null;
   /** the context-window denominator for the context-pressure bar. */
   contextWindow?: number | null;
   /** how many tool invocations this node made. */

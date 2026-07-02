@@ -30,7 +30,7 @@ import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot }
 import { readRunModel, readRunJson } from './read.js';
 import { createNodeAccumulator, type NodeAccumulator } from './distill.js';
 import { loadModelCatalog, type ModelCatalog } from './models.js';
-import { assembleNode, type AssembleNodeCtx, type NodeIoLedger, type RunViewNode, type RunTokens } from './runView.js';
+import { assembleNode, buildHistory, makeDisplayPath, type AssembleNodeCtx, type NodeIoLedger, type RunViewNode, type RunTokens } from './runView.js';
 import type { NodeView, RunModel, RunUpdate } from './types.js';
 
 export interface WatchOpts {
@@ -38,6 +38,13 @@ export interface WatchOpts {
   signal?: AbortSignal;
   /** Poll interval (ms). Default 700 (the `followRun` cadence). */
   pollMs?: number;
+  /** Sibling run dirs — the SAME cross-run baseline the /run-view handler passes to buildRunView. The enriched
+   *  node's `derived.time` is `durationMs / mean(history)`; omitting this here (while /run-view passes it) made
+   *  the live stream disagree with the loaded view on every settled node of a run WITH siblings (P4-live). */
+  historyDirs?: string[];
+  /** The launched product root — makes reads/writes/edge paths display WORKSPACE-relative, matching
+   *  buildRunView(runDir, { workspaceRoot }). Omit ⇒ only the run root strips. */
+  workspaceRoot?: string | null;
 }
 
 const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
@@ -85,21 +92,20 @@ function readIoLedger(runDir: string, id: string): NodeIoLedger | null {
   }
 }
 
-/** The run-scoped closures `assembleNode` needs — built ONCE per stream, the SAME way buildRunView(runDir)
- *  does for a live run (no workspaceRoot, no historyDirs). `ckJournal`/`readMarkerSync` re-read each poll so
- *  an awaiting-input node is re-evaluated on both the snapshot AND every enriched delta (M1 contract). */
-function buildAssembleCtx(runDir: string, catalog: ModelCatalog): AssembleNodeCtx {
+/** The run-scoped closures `assembleNode` needs — built ONCE per stream, the SAME way buildRunView(runDir, opts)
+ *  does. It reuses buildRunView's OWN `makeDisplayPath` + `buildHistory` over the passed `historyDirs`/
+ *  `workspaceRoot`, so the live enriched node (reads/writes display paths + `derived.time`) is byte-identical
+ *  to /run-view's — the caller (SSE handler) MUST pass the same history/workspace it passes to buildRunView.
+ *  `ckJournal`/`readMarkerSync` re-read each poll so an awaiting-input node is re-evaluated on both the
+ *  snapshot AND every enriched delta (M1 contract). */
+function buildAssembleCtx(runDir: string, catalog: ModelCatalog, opts: WatchOpts): AssembleNodeCtx {
   const runResolved = path.resolve(runDir);
   const toAbs = (p: string): string => (path.isAbsolute(p) ? p : path.join(runResolved, p));
   const underRun = (abs: string): boolean => abs === runResolved || abs.startsWith(runResolved + path.sep);
-  // No workspaceRoot for a live run ⇒ only the {{RUN}} root strips; anything else falls back to a basename
-  // (identical to makeDisplayPath(runDir, null) in buildRunView).
-  const displayPath = (abs: unknown): string => {
-    if (typeof abs !== 'string') return String(abs);
-    if (abs.startsWith(runResolved + path.sep)) return abs.slice(runResolved.length + 1);
-    if (!abs.startsWith('/')) return abs;
-    return abs.replace(/^.*\//, '');
-  };
+  // The SAME display-path rule buildRunView uses (run root, THEN workspace root) — reused, not re-implemented.
+  const displayPath = makeDisplayPath(runResolved, opts.workspaceRoot ?? null);
+  // The SAME cross-run baseline buildRunView folds — derived.time = durationMs / mean(history).
+  const { expected, samples } = buildHistory(opts.historyDirs ?? []);
   const readCkJournal = (): Record<string, CheckpointJournalSlot> => {
     try {
       const st = JSON.parse(fssync.readFileSync(path.join(runResolved, '.pi', 'state.json'), 'utf8')) as Record<string, unknown>;
@@ -117,8 +123,8 @@ function buildAssembleCtx(runDir: string, catalog: ModelCatalog): AssembleNodeCt
   };
   return {
     toAbs, underRun, displayPath, catalog,
-    // No history dirs for a live run ⇒ expectedMs falls back to the node's own duration (buildRunView default).
-    expected: {}, samples: {},
+    // cross-run baseline from the passed history dirs (empty ⇒ expectedMs falls back to the node's own duration).
+    expected, samples,
     // Re-read the checkpoint journal per assemble so a mid-run resolution is reflected in the delta.
     get ckJournal(): Record<string, CheckpointJournalSlot> { return readCkJournal(); },
     readMarkerSync,
@@ -149,6 +155,9 @@ function mergeEnriched(base: NodeView, full: RunViewNode): NodeView {
     tokens: full.tokens,
     derived: full.derived,
     model: full.model,
+    // per-node PROVIDER (rich.provider) — NOT carried on the lean base NodeView, so copy it from the assembled
+    // node or the live adapter blanks it / falls back to the run provider and diverges from buildRunView.
+    provider: full.provider,
     contextWindow: full.contextWindow,
     toolCalls: full.toolCalls,
     toolBreakdown: full.toolBreakdown,
@@ -202,7 +211,7 @@ export async function* watchRun(runDir: string, opts: WatchOpts = {}): AsyncIter
   let sentSnapshot = false;
 
   const catalog = loadModelCatalog();
-  const ctx = buildAssembleCtx(runDir, catalog);
+  const ctx = buildAssembleCtx(runDir, catalog, opts);
 
   /** Assemble the enriched node from its long-lived accumulator + the raw run.json record + io ledger. */
   const enrich = (rec: NodeStatusRecord, acc: NodeAccumulator): RunViewNode => {
@@ -218,7 +227,7 @@ export async function* watchRun(runDir: string, opts: WatchOpts = {}): AsyncIter
     let model: RunModel;
     let raw;
     try {
-      model = await readRunModel(runDir);
+      model = await readRunModel(runDir, { workspaceRoot: opts.workspaceRoot });
       raw = await readRunJson(runDir);
     } catch {
       await sleep(pollMs, signal);
