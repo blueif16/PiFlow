@@ -1,0 +1,114 @@
+# Live E2E (L3 + live L4) — the PAID, model-calling full-run tier (full-run-simulation.md §4 mode×host, §6
+# tier L3, §7 cost policy). This is the tier that actually boots a real backend and drives a real agent, so it
+# is NEVER on a PR's critical path — it runs on push to main, nightly, and manual dispatch, cost-capped.
+#
+# The runner steps call the budgetGuard(estCost, PIFLOW_RUN_BUDGET_USD ?? 1.0) seam
+# (packages/cli/src/budget-guard.ts) BEFORE any paid VM boots — an over-cap estimate throws and fails the job
+# loud, before a single dollar is spent. The §7 ceiling is $1.00/run by default; override via the env below.
+#
+# `pnpm test:live` == `vitest run --project live`; the live cases self-gate on PIFLOW_LIVE + E2B_API_KEY /
+# E2B_TEMPLATE (see vitest.config.ts), so a run with the secrets absent skips-with-reason instead of a false
+# green — it is NEVER reported as a passing full-run.
+
+name: E2E Live
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 07:00 UTC — the heartbeat the release gate checks (a stale/missed nightly must not read green).
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # NO cancel-in-progress — a paid live run must never be interrupted mid-flight (a killed VM still bills).
+  group: e2e-live-${{ github.workflow }}-${{ github.ref }}
+
+jobs:
+  live:
+    strategy:
+      # fail-fast:false so one flaky live cell does not cancel the others (each is an independent paid signal).
+      fail-fast: false
+      # Rate-limit guard on real cloud cells — at most two paid backends in flight at once (§7).
+      max-parallel: 2
+      matrix:
+        # §4 mode×host support matrix, CI-runner hosts only. Fly/Railway are NOT CI hosts (their docker cells
+        # are n/a VM-in-VM) — they are covered by the `cloud up` live smoke, not this matrix.
+        mode: [e2b, docker, local]
+        host: [gh-hosted, self-hosted]
+        exclude:
+          # §4: local × gh-hosted = N/A — the GH-hosted runner can't build an unprivileged userns (bwrap 126).
+          - { mode: local, host: gh-hosted }
+        # docker × self-hosted is SUPPORTED (§4 ✅) — deliberately NOT excluded.
+        # danger-full-access is omitted from `mode` entirely (§4: excluded in CI, never unsandboxed).
+        # Cells: e2b×gh-hosted = the nightly cost-capped live cell; docker×{gh-hosted,self-hosted} = free
+        # container mirror; e2b/local×self-hosted = the self-hosted-runner cells.
+    runs-on: ${{ matrix.host == 'self-hosted' && 'self-hosted' || 'ubuntu-latest' }}
+    # §7 cost cap: a live run that hasn't finished in 15 min has hung — kill it before it bills more.
+    timeout-minutes: 15
+    env:
+      PIFLOW_LIVE: '1'
+      # §7 per-run budget ceiling (USD). budgetGuard(estimate, this) rejects an over-cap run before the VM boots.
+      PIFLOW_RUN_BUDGET_USD: '1.0'
+      PIFLOW_SANDBOX_MODE: ${{ matrix.mode }}
+      # e2b live cells need the pi-baked template projected (N-127) + the key; docker/local cells ignore these.
+      E2B_API_KEY: ${{ secrets.E2B_API_KEY }}
+      E2B_TEMPLATE: ${{ secrets.E2B_TEMPLATE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      # action-setup MUST run before setup-node so `cache: pnpm` can find pnpm on PATH.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Set up Node
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      # Live-tier full run. `pnpm test:live` == `vitest run --project live`; the live cases self-gate on
+      # PIFLOW_LIVE + the E2B secrets and call budgetGuard before any paid VM boots. NO retry (a retry = a new
+      # paid session), NO continue-on-error — a red on a live assertion must fail the cell LOUD.
+      - name: Live full-run assertion (mode=${{ matrix.mode }})
+        run: pnpm test:live
+
+      # Preserve the evidence of a live failure for 14 days — the failing run-view + Playwright trace are what a
+      # triage reads. Only on failure (a green live run needs no artifacts).
+      - name: Upload live failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: live-e2e-${{ matrix.mode }}-${{ matrix.host }}
+          path: |
+            out/**/run.json
+            out/**/run-view.json
+            gui/test-results/**
+            gui/playwright-report/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Heartbeat: a SUCCESSFUL nightly/dispatch run records that the live tier is currently green. The release
+  # gate reads this — a MISSED nightly (no run at all) must be catchable, so a skipped required check can never
+  # silently report green. This job only runs when the whole `live` matrix succeeded.
+  heartbeat:
+    needs: live
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Record live-tier heartbeat
+        run: |
+          echo "live-e2e green at $(date -u +%Y-%m-%dT%H:%M:%SZ) for ${GITHUB_SHA}"
+          echo "The release gate treats a stale (older than one nightly) heartbeat as NOT green."
