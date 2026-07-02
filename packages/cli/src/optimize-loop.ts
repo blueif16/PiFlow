@@ -24,8 +24,10 @@
 import { runOptimizeLoop, memorize, renderOptimizeEvent } from '@piflow/core';
 import type { OptimizeLoopStages, OptimizeEventSink, Defect } from '@piflow/core';
 import {
-  loadBinding, scoreTriageEnrich, makeFixGateRunner, type OptimizeBinding, type FixGatePolicy, type OptimizeFixDeps,
+  loadBinding, scoreTriageEnrich, makeFixGateRunner, distillAppendedLessons,
+  type OptimizeBinding, type FixGatePolicy, type OptimizeFixDeps,
 } from './optimize-fix.js';
+import type { FixGateResult } from '@piflow/core';
 
 export interface ParsedOptimizeLoopArgs {
   binding: string;
@@ -130,13 +132,17 @@ export async function runOptimizeLoopCli(argv: string[], deps: OptimizeFixDeps =
     },
     // The trace miner is bound to THIS round's run dir (captured from the run stage; the loop cannot thread it).
     fixGate: (defects: Defect[], rejectedBuffer: Set<string>) => makeFixGateRunner(binding, currentRunDir, policy, onEvent)(defects, rejectedBuffer),
-    // MEMORIZE (Leg-A): persist the round's tier0-signature lessons so recurrence carries ACROSS rounds. Off the
-    // critical path — re-derive the score pass memorize needs (idempotent) and never let a write failure sink a round.
-    memorize: async (runDir: string) => {
+    // MEMORIZE (Leg-A): persist the round's tier0-signature lessons so recurrence carries ACROSS rounds, then (when
+    // the binding injects a distiller) fill each newly-appended lesson's `(pending)` Root/Prevention prose keyed off
+    // the round's fixer foundRoot (threaded via `result.records`). Off the critical path — re-derive the score pass
+    // memorize needs (idempotent; the re-derived defects' node set === result.records' node set for this round's dir)
+    // and never let a write/distill failure sink a round.
+    memorize: async (runDir: string, result: FixGateResult) => {
       try {
         const { scores, defects, templateDir } = await scoreTriageEnrich(runDir, scoreOpts);
-        memorize(scores, defects, { runDir, templateDir });
-      } catch { /* memory is advisory; a write failure never fails the round */ }
+        const { lessons } = memorize(scores, defects, { runDir, templateDir });
+        if (binding.distill) await distillAppendedLessons(lessons, result.records, defects, binding.distill);
+      } catch { /* memory is advisory; a write/distill failure never fails the round */ }
     },
   };
 

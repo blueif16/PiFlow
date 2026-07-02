@@ -4,9 +4,9 @@ key: memory-leg
 title: Memory layer (the two legs — Leg A self/history · Leg B world/code)
 description: How each node gets two optimizer-facing markdown surfaces — memory.md (standing behavior + failure lessons) and code-map.md (a Tier-0 OKF slice of its scope) — seeded PURE create-if-absent by the scaffolder, never injected into the node's runtime prompt, intended only for the Hermes optimizer to read and update.
 resource: packages/core/src/memory/skeleton.ts
-aliases: [memory.md, code-map, code-map.md, memory-leg, buildNodeMemory, buildSystemMemory, buildNodeCodeMap, seedNodeMemory, seedNodeCodeMap, Leg A, Leg B, hermes, optimizer-facing, self/history, world/code, resolveSlice, DefectScope, cross-reference, pointer-resolve, resolve-at-read, freshness-ride]
-seeds: [packages/core/src/memory/skeleton.ts, packages/core/src/memory/seed.ts, packages/core/src/memory/index.ts, packages/core/src/code-map.ts, packages/core/src/index.ts, packages/cli/src/scaffold.ts, packages/cli/src/cli.ts, packages/cli/src/understand.ts]
-symbols: [buildNodeMemory, buildSystemMemory, buildNodeCodeMap, seedNodeMemory, seedSystemMemory, seedNodeCodeMap, writeIfAbsent, scaffoldMemory, resolveSlice]
+aliases: [memory.md, code-map, code-map.md, memory-leg, buildNodeMemory, buildSystemMemory, buildNodeCodeMap, seedNodeMemory, seedNodeCodeMap, Leg A, Leg B, hermes, optimizer-facing, self/history, world/code, resolveSlice, DefectScope, cross-reference, pointer-resolve, resolve-at-read, freshness-ride, deriveRecurrence, recurrence, memorize, MEMORIZE, distillLesson, compactMemory, cap-retire, memory-find, memory-check, memory-compact]
+seeds: [packages/core/src/memory/skeleton.ts, packages/core/src/memory/seed.ts, packages/core/src/memory/index.ts, packages/core/src/code-map.ts, packages/core/src/index.ts, packages/cli/src/scaffold.ts, packages/cli/src/cli.ts, packages/cli/src/understand.ts, packages/core/src/optimize/recurrence.ts, packages/core/src/optimize/memorize.ts, packages/core/src/optimize/distill.ts, packages/core/src/optimize/compact.ts, packages/cli/src/optimize-fix.ts, packages/cli/src/memory.ts, packages/cli/src/memory-compact.ts]
+symbols: [buildNodeMemory, buildSystemMemory, buildNodeCodeMap, seedNodeMemory, seedSystemMemory, seedNodeCodeMap, writeIfAbsent, scaffoldMemory, resolveSlice, deriveRecurrence, memorize, distillLesson, fillLessonProse, compactMemory]
 tags: [memory, optimizer, scaffold, core, cli, self-correction]
 timestamp: 2026-06-30
 ---
@@ -36,20 +36,20 @@ would have no `--check` to ride (see `docs/research/memory/piflow-memory-v1.5.md
 # Anchors
 DEFINED
 - `packages/core/src/memory/skeleton.ts:15` — `buildNodeMemory()` — PURE per-node `memory.md` seed (Leg A)
-- `packages/core/src/memory/skeleton.ts:45` — `buildSystemMemory()` — PURE template reconcile-summary seed (Leg A)
+- `packages/core/src/memory/skeleton.ts:53` — `buildSystemMemory()` — PURE template reconcile-summary seed (Leg A)
 - `packages/core/src/code-map.ts:35` — `buildNodeCodeMap()` — PURE per-node Tier-0 OKF slice seed (Leg B)
 - `packages/core/src/memory/seed.ts:17` — `writeIfAbsent()` — create-if-absent guard (never clobbers curated content)
 SEEDED (at scaffold time)
-- `packages/cli/src/scaffold.ts:391` — `scaffoldNew` → `seedSystemMemory` — seeds the template's system `memory.md`
-- `packages/cli/src/scaffold.ts:407` — `scaffoldAddNode` → `seedNodeMemory` + `seedNodeCodeMap` (line 237) — seeds both legs per node
-- `packages/cli/src/scaffold.ts:440` — `scaffoldMemory()` — backfill engine for `piflowctl memory scaffold`
+- `packages/cli/src/scaffold.ts:396` — `scaffoldNew` → `seedSystemMemory` — seeds the template's system `memory.md`
+- `packages/cli/src/scaffold.ts:412` — `scaffoldAddNode` → `seedNodeMemory` + `seedNodeCodeMap` (line 435) — seeds both legs per node
+- `packages/cli/src/scaffold.ts:445` — `scaffoldMemory()` — backfill engine for `piflowctl memory scaffold`
 CONSUMED (the out-of-band optimizer reads the legs; NEVER a worker node)
 - `packages/core/src/optimize/recurrence.ts:49` — `deriveRecurrence` — reads `memory.md` lesson blocks → RecurrenceIndex (the Leg-A reader; `triage` flips LAPSE→SKILL on it)
 - `packages/cli/src/understand.ts:136` — `resolveSlice` — dereference a lesson's `[[okf-slice]]` link to the linked slice's curated body (the Leg-A → Leg-B join)
-- `packages/cli/src/optimize-fix.ts:143` — `enrichCodeMap` — the CLI seam inlines the resolved code-map into `DefectScope.codeMap` at fix time (resolve-at-read)
+- `packages/cli/src/optimize-fix.ts:124` — `enrichCodeMap` — the CLI seam inlines the resolved code-map into `DefectScope.codeMap` at fix time (resolve-at-read)
 
 # Freshness (anti-drift)
-anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: no longer seed-only — the READERS shipped. Leg A's recurrence reader (`optimize/triage.ts`) + the cross-reference resolver (`resolveSlice`, `understand.ts`) now feed the optimizer's `DefectScope` (pointer + resolve-at-read; the join lives in `optimize-fix.ts`). What remains DEFERRED: LLM-distilled root/prevention (MEMORIZE writes deterministic placeholders today) and cap/retire compaction of `memory.md`. `index.ts` is marked `// STUB — RED phase` though the facade is wired + root-exported — verify that label.
+anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: no longer seed-only — the READERS and WRITERS shipped. Leg A's recurrence reader (`optimize/recurrence.ts` → `triage`) + the cross-reference resolver (`resolveSlice`, `understand.ts`) now feed the optimizer's `DefectScope` (pointer + resolve-at-read; the join lives in `optimize-fix.ts`). The MEMORIZE write path is now complete too: `memorize` (`optimize/memorize.ts`) appends deterministic lesson blocks, `distillLesson`/`fillLessonProse` (`optimize/distill.ts`) upgrade the root/prevention prose via an INJECTED model call (core holds no model/network), and `compactMemory` (`optimize/compact.ts`, driven by the `piflowctl memory compact` verb) is the ACE cap/retire pass that bounds `memory.md`. The `optimize/index.ts` facade is fully wired and root-exports the loop/distill/compact/memorize surface — the old `// STUB — RED phase` label is GONE (self-flag resolved). What remains DEFERRED: only the LIVE product-side distiller/fixer binding that supplies the model prose (validated by a live run, never CI).
 
 <!-- okf:auto-start -->
 > _Auto-generated by `_generate.mjs` — do not hand-edit between the markers; re-run `--write`._
@@ -65,6 +65,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 | `packages/core/src/index.ts` | ✓ |
 | `packages/cli/src/scaffold.ts` | ✓ |
 | `packages/cli/src/cli.ts` | ✓ |
+| `packages/cli/src/understand.ts` | ✓ |
+| `packages/core/src/optimize/recurrence.ts` | ✓ |
+| `packages/core/src/optimize/memorize.ts` | ✓ |
+| `packages/core/src/optimize/distill.ts` | ✓ |
+| `packages/core/src/optimize/compact.ts` | ✓ |
+| `packages/cli/src/optimize-fix.ts` | ✓ |
+| `packages/cli/src/memory.ts` | ✓ |
+| `packages/cli/src/memory-compact.ts` | ✓ |
 
 ### Evolution arc
 
@@ -181,6 +189,19 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `cc65e95` 2026-06-30 — refactor(core): lift project-scope resolution into @piflow/core (shared)
 - `ed90d7c` 2026-06-30 — feat(tui): scope the terminal fleet view to the launched project + add `piflowctl tui`
 - `240da26` 2026-06-30 — feat(optimize): Leg-A recurrence reader — fills the deferred SKILL bucket in triage
+- `0450c46` 2026-06-30 — feat(optimize): MEMORIZE writer — auto-records lessons so the recurrence carry needs no human
+- `eb81f3e` 2026-06-30 — feat(cli): piflowctl understand — user-facing name for the code slices
+- `fb3b4cb` 2026-07-01 — feat(optimize): resolve a lesson's [[okf-slice]] into the fixer's code-map (resolve-at-read)
+- `992cfa0` 2026-07-01 — feat(optimize): cap/retire compaction — bound memory.md without re-summarizing (v1.5 §5.3)
+- `a55668a` 2026-07-01 — feat(optimize): MEMORIZE distillation seam — real Root/Prevention, model injected (v1.5 §6)
+- `56731eb` 2026-07-01 — chore(core): export the loop / compact / distill optimize surface from the package root
+- `d123539` 2026-07-01 — feat(cli): activate the optimizer — optimize --rounds N loop + single-shot MEMORIZE (v1.5 §6)
+- `87bdfc4` 2026-07-01 — feat(optimize): long-horizon outer-loop seam — the counterpart to the multi-round loop (v1.5 §6)
+- `fefa626` 2026-07-01 — feat(optimize): wire the distiller into MEMORIZE + capture the fixer's root-cause
+- `4376c2b` 2026-07-01 — feat(optimize): physical adopt/LAND step — the explicit out-of-loop `optimize --adopt`
+- `8517442` 2026-07-01 — feat(optimize): activate the fix-cycle ceiling with a default file-backed counter
+- `ed89b62` 2026-07-01 — feat(cli): piflowctl memory find|check — surface standing lessons + ride the OKF freshness gate
+- `89036c4` 2026-07-01 — feat(cli): piflowctl memory compact — the out-of-band cap/retire pass
 
 ### Lessons — memory cluster
 
@@ -188,10 +209,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[codebase-memory-mcp-analysis]]
 - [[expert-representations]]
 - [[game-omni-reference-product]]
+- [[memory-legs-coordination]]
 - [[node-illustration-pipeline]]
+- [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -201,5 +225,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
 - `scaffoldMemory` (packages/cli/src/scaffold.ts:440) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold-memory.test.ts`
 
-<sub>derived 2026-07-01 · arc=113 commits · files=7 · lessons=7</sub>
+<sub>derived 2026-07-01 · arc=126 commits · files=15 · lessons=10</sub>
 <!-- okf:auto-end -->

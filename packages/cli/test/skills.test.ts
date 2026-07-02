@@ -153,17 +153,33 @@ describe('runSkillsCli — understand add-on (--with / --all / --wizard / manife
     expect(manifest).toEqual({ addons: ['understand'] });
   });
 
+  it('--with memory installs the trio + memory-slices and writes the manifest', async () => {
+    await runSkillsCli(['install', TARGET, '--with', 'memory']);
+
+    await assertTrioPresent();
+    await expect(
+      fs.access(path.join(skillsRootOf(TARGET), 'memory-slices', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+
+    const manifest = JSON.parse(await fs.readFile(manifestOf(TARGET), 'utf8'));
+    expect(manifest).toEqual({ addons: ['memory'] });
+  });
+
   it('--all installs the trio + every add-on skill and writes the manifest', async () => {
     await runSkillsCli(['install', TARGET, '--all']);
 
     await assertTrioPresent();
-    // Every add-on's skill(s) landed — currently understand → okf-slices.
+    // Every add-on's skill(s) landed — understand → okf-slices, memory → memory-slices.
     await expect(
       fs.access(path.join(skillsRootOf(TARGET), 'okf-slices', 'SKILL.md')),
+    ).resolves.toBeUndefined();
+    await expect(
+      fs.access(path.join(skillsRootOf(TARGET), 'memory-slices', 'SKILL.md')),
     ).resolves.toBeUndefined();
 
     const manifest = JSON.parse(await fs.readFile(manifestOf(TARGET), 'utf8'));
     expect(manifest.addons).toContain('understand');
+    expect(manifest.addons).toContain('memory');
   });
 
   it('a bare install READS a LEGACY-okf manifest (alias → understand, installs okf-slices) and does NOT rewrite it', async () => {
@@ -234,6 +250,21 @@ describe('runSkillsCli — understand add-on (--with / --all / --wizard / manife
     expect(
       installed.equals(canonical),
       'okf-slices/SKILL.md must be a byte-identical copy',
+    ).toBe(true);
+  });
+
+  it('ANTI-DRIFT: memory-slices/SKILL.md installed via --with memory is byte-identical to the canonical source', async () => {
+    // This is the guard that pins the dual-copy discipline — if `memory-slices` is missing from the add-on
+    // catalog / bundle mirror, the `only` allowlist excludes it and this fs.readFile rejects (RED).
+    await runSkillsCli(['install', TARGET, '--with', 'memory']);
+
+    const canonical = await fs.readFile(path.join(REPO_SKILLS, 'memory-slices', 'SKILL.md'));
+    const installed = await fs.readFile(
+      path.join(skillsRootOf(TARGET), 'memory-slices', 'SKILL.md'),
+    );
+    expect(
+      installed.equals(canonical),
+      'memory-slices/SKILL.md must be a byte-identical copy',
     ).toBe(true);
   });
 });

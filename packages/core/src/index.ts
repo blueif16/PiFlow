@@ -419,7 +419,7 @@ export type {
 // TYPES from the package root — it cannot reach into src/optimize/. All product-agnostic; no product concept
 // enters core (the live oracle/copyScope it injects stay product-side).
 export {
-  evaluateGate, runFixGate, writeStagingManifest, adoptFile, makeReplayStages, mineTaskFromTrace, gameOmniNodeToMilestone,
+  evaluateGate, runFixGate, writeStagingManifest, adoptFile, adoptFromManifest, makeReplayStages, mineTaskFromTrace, gameOmniNodeToMilestone,
   renderOptimizeEvent,
   // The multi-round OVERLORD (§6) — composes the injected round stages over N rounds with early-stop + a breaker.
   runOptimizeLoop,
@@ -427,8 +427,8 @@ export {
   runLongHorizon,
 } from './optimize/index.js';
 export type {
-  GateInput, GateVerdict, LandPolicy, Fixer, ReplayScore, PrepareCandidate, BaseScore, CandidateEdit,
-  FixGateStages, FixGateOpts, FixGateRecord, FixGateResult, FixCycleSkip, StageOpts,
+  GateInput, GateVerdict, LandPolicy, Fixer, ReplayScore, PrepareCandidate, LiveRootFor, BaseScore, CandidateEdit,
+  FixGateStages, FixGateOpts, FixGateRecord, FixGateResult, FixCycleSkip, StageOpts, AdoptManifest, AdoptReport,
   CheckableTask, ReplayOracle, MineTask, CopyScope, ReplayDeps, ReplayStages, MineOpts,
   OptimizeEvent, OptimizeEventSink,
   OptimizeLoopStages, OptimizeLoopOpts, OptimizeLoopResult, RoundRecord, LoopStopReason,

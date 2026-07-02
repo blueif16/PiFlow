@@ -93,7 +93,8 @@ export function memorize(scores: NodeScore[], defects: Defect[], opts: MemorizeO
     lessons.push({ node: r.node, sig: r.sig, recurrence: count, action, file });
   }
 
-  // TODO: cap/retire (memory-slices MODE B) — compaction is a SEPARATE out-of-band pass; NOT in the MVP.
+  // cap/retire (memory-slices MODE B) is a SEPARATE, out-of-band pass — NEVER inside this append loop. It
+  // lives in the `piflowctl memory compact` verb (compactMemory + the git/OKF retire-trigger injectors).
   return { signaturesPath, lessons };
 }
 

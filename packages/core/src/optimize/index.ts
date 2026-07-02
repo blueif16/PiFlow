@@ -32,11 +32,11 @@ export { evaluateGate } from './gate.js';
 export type { GateInput, GateVerdict, LandPolicy } from './gate.js';
 export { runFixGate } from './driver.js';
 export type {
-  Fixer, ReplayScore, PrepareCandidate, BaseScore, CandidateEdit,
+  Fixer, ReplayScore, PrepareCandidate, LiveRootFor, BaseScore, CandidateEdit,
   FixGateStages, FixGateOpts, FixGateRecord, FixGateResult, FixCycleSkip,
 } from './driver.js';
-export { writeStagingManifest, adoptFile } from './land.js';
-export type { StageOpts } from './land.js';
+export { writeStagingManifest, adoptFile, adoptFromManifest } from './land.js';
+export type { StageOpts, AdoptManifest, AdoptReport } from './land.js';
 
 // The multi-round OVERLORD (v1.5 §6) — the deterministic straight-line driver that composes the injected
 // round stages (run → score+triage → fix+gate → memorize) over N rounds, bounding by run-count + convergence +
