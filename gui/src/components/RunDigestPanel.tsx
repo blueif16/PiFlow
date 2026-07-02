@@ -22,7 +22,9 @@ const KIND_LABEL: Record<AnomalyKind, string> = {
   truncated: "TRUNCATED",
   "context-pressure": "CONTEXT",
   "tool-loop": "LOOP",
+  "loop-score": "STUCK-LOOP",
   slow: "SLOW",
+  "cost-spike": "COST-SPIKE",
   retries: "RETRIES",
 };
 // severity tone, reusing the gate/policy tint vocabulary (block=red, warn=amber, retry=blue, escalate=violet).
@@ -30,8 +32,10 @@ const KIND_TONE: Record<AnomalyKind, string> = {
   failed: "block",
   truncated: "block",
   "tool-loop": "warn",
+  "loop-score": "warn",
   "context-pressure": "warn",
   slow: "retry",
+  "cost-spike": "retry",
   retries: "escalate",
 };
 

@@ -70,6 +70,13 @@ export interface RichNode {
   maxToolRepeat: number;
   /** the tool name behind `maxToolRepeat` (null when no tool was called). */
   repeatedTool: string | null;
+  /**
+   * (P6) the LONGEST run of CONSECUTIVE back-to-back identical tool calls, keyed on the CANONICAL fingerprint
+   * `name + "|" + args-first-100-chars`. DISTINCT from `maxToolRepeat` (a global peak on the FULL-args
+   * fingerprint): loopScore catches a STUCK back-to-back loop of near-identical retries that the full-args
+   * global peak misses. Computed in BOTH accumulators (pi + Claude) off the same shared fingerprint helper.
+   */
+  loopScore: number;
   coverage: { eventsSeen: number; usageEvents: number; byType: Record<string, number> };
   startedAt?: string;
   endedAt?: string;
@@ -114,6 +121,8 @@ export interface LiveMetrics {
   toolCalls: number;
   maxToolRepeat: number;
   repeatedTool: string | null;
+  /** (P6) consecutive-repeat loop signal — see RichNode.loopScore. */
+  loopScore: number;
   retries: number;
   stopReason: string | null;
   truncated: boolean;
@@ -262,7 +271,9 @@ export function createNodeAccumulator(): NodeAccumulator {
     metrics(): LiveMetrics {
       return {
         model, provider,
-        modelCalls, toolCalls, maxToolRepeat, repeatedTool, retries, stopReason,
+        modelCalls, toolCalls, maxToolRepeat, repeatedTool,
+        loopScore: 0, // STUB (P6): real consecutive-first-100 fold not implemented yet.
+        retries, stopReason,
         truncated: stopReason === 'max_tokens' || stopReason === 'length',
         tokens: { ...tok, billable: tok.input + tok.output },
       };
@@ -313,6 +324,7 @@ export function createNodeAccumulator(): NodeAccumulator {
       truncated: stopReason === 'max_tokens' || stopReason === 'length',
       thinkingChars,
       modelCalls, maxToolRepeat, repeatedTool,
+      loopScore: 0, // STUB (P6): real consecutive-first-100 fold not implemented yet.
       coverage: { eventsSeen, usageEvents, byType: { ...byType } },
       startedAt, endedAt, durationMs,
     };

@@ -27,10 +27,14 @@ export interface TelemetryThresholds {
   slowRatio: number;
   /** retries fires at this many provider rate-limit/overload retries. */
   retries: number;
+  /** (P6) cost-spike fires when billable tokens ≥ this × the cross-run mean (record mode only — needs history). */
+  costSpikeRatio: number;
+  /** (P6) loop-score fires when the consecutive-repeat loopScore ≥ this. */
+  loopRepeat: number;
 }
-export const DEFAULT_THRESHOLDS: TelemetryThresholds = { contextPct: 0.85, toolRepeat: 3, slowRatio: 2, retries: 2 };
+export const DEFAULT_THRESHOLDS: TelemetryThresholds = { contextPct: 0.85, toolRepeat: 3, slowRatio: 2, retries: 2, costSpikeRatio: 2, loopRepeat: 3 };
 
-export type AnomalyKind = 'failed' | 'truncated' | 'context-pressure' | 'tool-loop' | 'slow' | 'retries';
+export type AnomalyKind = 'failed' | 'truncated' | 'context-pressure' | 'tool-loop' | 'slow' | 'retries' | 'cost-spike' | 'loop-score';
 
 /** One reason a node is worth the agent's attention — the worklist item, with the value/bar it crossed. */
 export interface Anomaly {
@@ -135,12 +139,20 @@ interface NodeMetrics {
   inputTokens: number;
   outputTokens: number;
   cost: number;
+  /** (P6) billable tokens (input+output) this run — the cost-spike numerator. */
+  billable: number;
+  /** (P6) cross-run mean billable tokens (null without history) — the cost-spike denominator. */
+  expectedBillable: number | null;
+  /** (P6) cross-run mean cost (null without history) — the cost-spike secondary signal. */
+  expectedCost: number | null;
   contextPeak: number;
   modelCalls: number;
   toolCalls: number;
   toolBreakdown: Record<string, number>;
   maxToolRepeat: number;
   repeatedTool: string | null;
+  /** (P6) longest consecutive back-to-back identical-fingerprint tool run — the loop-score signal. */
+  loopScore: number;
   retries: number;
   stopReason: string | null;
   truncated: boolean;
@@ -175,6 +187,10 @@ function detectAnomalies(m: NodeMetrics, th: TelemetryThresholds): Anomaly[] {
   if (m.retries >= th.retries) {
     out.push({ kind: 'retries', nodeId: m.id, detail: `${m.retries} provider retries`, value: m.retries, threshold: th.retries });
   }
+  // STUB (P6): cost-spike (tokens-first, sibling of slow) + loop-score anomalies not implemented yet — they
+  // never fire, so the P6 tests go RED here for the missing-behavior reason. The threshold fields
+  // (costSpikeRatio/loopRepeat) + the NodeMetrics inputs (billable/expectedBillable/expectedCost/loopScore)
+  // are already wired so the real bodies drop in with no signature change.
   return out;
 }
 
@@ -232,12 +248,16 @@ function metricsFromView(n: RunViewNode): NodeMetrics {
     inputTokens: t?.input ?? 0,
     outputTokens: t?.output ?? 0,
     cost: t?.cost ?? 0,
+    billable: t?.billable ?? 0,
+    expectedBillable: n.expectedBillable ?? null,
+    expectedCost: n.expectedCost ?? null,
     contextPeak: t?.contextPeak ?? 0,
     modelCalls: n.modelCalls ?? 0,
     toolCalls: n.toolCalls ?? 0,
     toolBreakdown: n.toolBreakdown ?? {},
     maxToolRepeat: n.maxToolRepeat ?? 0,
     repeatedTool: n.repeatedTool ?? null,
+    loopScore: n.loopScore ?? 0,
     retries: n.retries ?? 0,
     stopReason: n.stopReason ?? null,
     truncated: !!n.truncated,
@@ -328,7 +348,7 @@ export function projectRunDigest(view: RunView, opts: { thresholds?: Partial<Tel
 }
 
 /** Order the worklist: failures first, then truncation, loops, context pressure, slow, retries. */
-const ANOMALY_RANK: Record<AnomalyKind, number> = { failed: 0, truncated: 1, 'tool-loop': 2, 'context-pressure': 3, slow: 4, retries: 5 };
+const ANOMALY_RANK: Record<AnomalyKind, number> = { failed: 0, truncated: 1, 'tool-loop': 2, 'loop-score': 2.5, 'context-pressure': 3, slow: 4, 'cost-spike': 4.5, retries: 5 };
 function rankAnomalies(a: Anomaly[]): Anomaly[] {
   return [...a].sort((x, y) => ANOMALY_RANK[x.kind] - ANOMALY_RANK[y.kind]);
 }
@@ -395,12 +415,16 @@ export async function* telemetryStream(updates: AsyncIterable<RunUpdate>, opts: 
       inputTokens: lm.tokens.input,
       outputTokens: lm.tokens.output,
       cost: lm.tokens.cost,
+      billable: lm.tokens.billable,
+      expectedBillable: null, // live has no cross-run history (like expectedMs) — cost-spike is a record-mode anomaly.
+      expectedCost: null,
       contextPeak: lm.tokens.contextPeak,
       modelCalls: lm.modelCalls,
       toolCalls: lm.toolCalls,
       toolBreakdown: {}, // not needed for live anomaly checks; the record digest carries the breakdown
       maxToolRepeat: lm.maxToolRepeat,
       repeatedTool: lm.repeatedTool,
+      loopScore: lm.loopScore,
       retries: lm.retries,
       stopReason: lm.stopReason,
       truncated: lm.truncated,

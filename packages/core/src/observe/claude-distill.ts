@@ -134,7 +134,9 @@ export function createClaudeAccumulator(): NodeAccumulator {
       // the live metrics carry only what this stream authoritatively knows: the tool-loop signal.
       return {
         model: null, provider: null,
-        modelCalls: 0, toolCalls, maxToolRepeat, repeatedTool, retries: 0, stopReason: null,
+        modelCalls: 0, toolCalls, maxToolRepeat, repeatedTool,
+        loopScore: 0, // STUB (P6): real consecutive-first-100 fold not implemented yet.
+        retries: 0, stopReason: null,
         truncated: false,
         tokens: { ...ZERO_TOKENS },
       };
@@ -172,6 +174,7 @@ export function createClaudeAccumulator(): NodeAccumulator {
       tokens: { ...ZERO_TOKENS },
       retries: 0, stopReason: null, truncated: false, thinkingChars: 0,
       modelCalls: 0, maxToolRepeat, repeatedTool,
+      loopScore: 0, // STUB (P6): real consecutive-first-100 fold not implemented yet.
       coverage: { eventsSeen, usageEvents: 0, byType: { ...byType } },
       startedAt, endedAt, durationMs,
     };

@@ -48,6 +48,10 @@ export interface RunViewNode {
   endedAt?: string;
   durationMs?: number | null;
   expectedMs?: number | null;
+  /** (P6) cross-run mean billable tokens (input+output) for this node — the cost-spike denominator; null without history. */
+  expectedBillable?: number | null;
+  /** (P6) cross-run mean cost (USD) for this node — the cost-spike SECONDARY signal; null without history. */
+  expectedCost?: number | null;
   priorSamples?: number;
   model?: string | null;
   provider?: string | null;
@@ -77,6 +81,9 @@ export interface RunViewNode {
   maxToolRepeat: number;
   /** the tool behind `maxToolRepeat` (null when none). */
   repeatedTool: string | null;
+  /** (P6) longest run of CONSECUTIVE back-to-back identical calls (canonical name+args-first-100 fingerprint);
+   *  DISTINCT from maxToolRepeat (global full-args peak). 0 = no tool calls / no consecutive repeat. */
+  loopScore?: number;
   /** the per-node DISPLAY projection (zones/rankings/unified outputs), computed ONCE here so the GUI +
    *  TUI render `derived.*` verbatim and never re-derive a threshold. See ./derive.ts. */
   derived?: NodeDerived;
@@ -206,7 +213,10 @@ export function buildHistory(historyDirs: string[]) {
     expected[id] = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
     samples[id] = arr.length;
   }
-  return { expected, samples };
+  // (P6) cross-run COST/BILLABLE mean per node — the cost-spike denominator, from the SAME run.json fold.
+  // STUB: not yet folded from usage.cost / (inputTokens+outputTokens), so both maps are empty (no cost-spike).
+  const expectedCost: Record<string, number> = {}, expectedBillable: Record<string, number> = {};
+  return { expected, samples, expectedCost, expectedBillable };
 }
 
 interface RunJsonNode {
@@ -293,6 +303,10 @@ export interface AssembleNodeCtx {
   expected: Record<string, number>;
   /** cross-run sample count per node id. */
   samples: Record<string, number>;
+  /** (P6) cross-run mean billable tokens per node id (empty when no history dirs). */
+  expectedBillable?: Record<string, number>;
+  /** (P6) cross-run mean cost per node id (empty when no history dirs). */
+  expectedCost?: Record<string, number>;
   /** the `__checkpoints__` resolution journal read once off state.json. */
   ckJournal: Record<string, CheckpointJournalSlot>;
   /** read a node's checkpoint marker (`.pi/checkpoints/<id>.json`), null if absent/unparseable. */
@@ -348,12 +362,16 @@ export function assembleNode(
     ...(rec.config ? { config: rec.config } : {}), // (SKIN) curated config slice → GUI cloud skin
     startedAt: rec.startedAt, endedAt: rec.endedAt, durationMs: rec.durationMs,
     expectedMs: ctx.expected[id] ?? rec.durationMs ?? null, priorSamples: ctx.samples[id] ?? 0,
+    // (P6) cross-run cost/billable means — the cost-spike denominators (null without history).
+    expectedBillable: ctx.expectedBillable?.[id] ?? null,
+    expectedCost: ctx.expectedCost?.[id] ?? null,
     model: spine.model, provider: rich.provider, api: rich.api,
     contextWindow: spine.contextWindow,
     toolCalls: rich.toolCalls, toolBreakdown: rich.toolBreakdown, timeline: rich.timeline,
     reads, scopes, writes, artifacts, bash: rich.bash, tokens: spine.tokens,
     retries: rich.retries, stopReason: spine.stopReason, truncated: spine.truncated, thinkingChars: rich.thinkingChars,
     modelCalls: spine.modelCalls, maxToolRepeat: rich.maxToolRepeat, repeatedTool: rich.repeatedTool,
+    loopScore: rich.loopScore, // (P6) consecutive-repeat loop signal, folded from the reducer.
     summary: rec.summary, issues: rec.issues || [],
     ...(checkpoint ? { checkpoint } : {}),
   };
@@ -368,7 +386,7 @@ export function assembleNode(
  */
 export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { view: RunView; audit: NodeAudit[] } {
   const rj = JSON.parse(fssync.readFileSync(path.join(runDir, '.pi', 'run.json'), 'utf8')) as RunJson;
-  const { expected, samples } = buildHistory(opts.historyDirs ?? []);
+  const { expected, samples, expectedBillable, expectedCost } = buildHistory(opts.historyDirs ?? []);
   const runResolved = path.resolve(runDir);
   const displayPath = makeDisplayPath(runResolved, opts.workspaceRoot ?? null);
   // UNIFORM PATH RULE: every file path the view emits is ABSOLUTE. Reads/writes arrive absolute from the
@@ -405,7 +423,7 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
   // events stream, io.json PERSISTS across reuse and predates per-node event capture, so the DAG wires
   // every node, not just the ones that happened to record events.
   const ioByNode = new Map<string, { reads: string[]; writes: string[] }>();
-  const ctx: AssembleNodeCtx = { toAbs, underRun, displayPath, catalog, expected, samples, ckJournal, readMarkerSync };
+  const ctx: AssembleNodeCtx = { toAbs, underRun, displayPath, catalog, expected, samples, expectedBillable, expectedCost, ckJournal, readMarkerSync };
   for (const [id, rec] of Object.entries(rj.nodes || {})) {
     const replay = replayEvents(runDir, id, drivers, rec.driverId);
     const { rich } = replay.acc.finalize(rec);
