@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { findProductRootsUnder, resolveScope, loadScopedRegistry } from '../src/observe/scope.js';
+import { findProductRootsUnder, resolveScope, loadScopedRegistry, templateLayout } from '../src/observe/scope.js';
 
 // The SHARED project-scope resolver (used by `piflowctl gui`, `piflowctl tui`, and the TUI's in-process fleet
 // discovery). A "product" is a dir whose `.piflow/` holds a REAL workflow (`<wf>/template/meta.json` or
@@ -89,6 +89,28 @@ describe('findProductRootsUnder', () => {
     expect(findProductRootsUnder(ROOT)).not.toContain(deepProduct);
     // …but a shallower start reaches it
     expect(findProductRootsUnder(path.join(ROOT, 'deep', 'a', 'b'))).toContain(deepProduct);
+  });
+});
+
+describe('templateLayout', () => {
+  it('derives productRoot + runsHome from a .piflow/<wf>/template path', () => {
+    const tdir = path.join(projA, '.piflow', 'wf1', 'template');
+    expect(templateLayout(tdir)).toEqual({
+      productRoot: projA,
+      runsHome: path.join(projA, '.piflow', 'wf1', 'runs'),
+    });
+  });
+
+  it('resolves a relative template path to an absolute productRoot (never cwd-relative)', () => {
+    const abs = path.join(projA2, '.piflow', 'wf', 'template');
+    const rel = path.relative(process.cwd(), abs);
+    expect(templateLayout(rel)?.productRoot).toBe(projA2);
+  });
+
+  it('returns null when the path is not a <product>/.piflow/<wf>/template shape', () => {
+    expect(templateLayout(path.join(projA, 'src', 'foo'))).toBeNull(); // basename not "template"
+    expect(templateLayout(path.join(projA, '.piflow', 'wf1'))).toBeNull(); // the <wf> dir, not its template
+    expect(templateLayout('/tmp/loose/template')).toBeNull(); // "template" but not under a .piflow
   });
 });
 

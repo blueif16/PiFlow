@@ -376,6 +376,7 @@ export {
   isProductRoot,
   findProductRoot,
   findProductRootsUnder,
+  templateLayout,
   resolveScope,
   registryFromRoots,
   loadScopedRegistry,

@@ -43,4 +43,4 @@ export type { NamespaceDesc, NamespaceMeta, ThreadRow, SnapshotNamespace, Snapsh
 
 // SCOPE — resolve the launched project's product roots from a cwd + build a registry scoped to them. The shared
 // spine behind "a view shows the project you launched it in, not the whole global registry" (piflowctl gui/tui).
-export { isProductRoot, findProductRoot, findProductRootsUnder, resolveScope, registryFromRoots, loadScopedRegistry } from './scope.js';
+export { isProductRoot, findProductRoot, findProductRootsUnder, templateLayout, resolveScope, registryFromRoots, loadScopedRegistry } from './scope.js';
