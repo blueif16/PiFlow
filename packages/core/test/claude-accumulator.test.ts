@@ -41,6 +41,7 @@ function fixtureLines(name: string): PiEvent[] {
   return text.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as PiEvent);
 }
 const CLAUDE_TOOLS = 'claude-stream-json-tools.ndjson';
+const CLAUDE_TOOL_ERROR = 'claude-stream-json-tool-error.ndjson';
 
 // ── HAND-COUNT ORACLE (independently justified from the fixture, NOT copied from any output) ──────────────
 // The fixture pairs one assistant `tool_use` with the next user `tool_result`, in this order:
@@ -85,6 +86,28 @@ describe('claudeCodeDriver.eventAccumulator() — decodes claude stream-json too
     // count-only ceiling: claude carries NO per-tool end timestamp, so EVERY span is durMs 0 (never a faked duration).
     expect(rich.timeline).toHaveLength(EXPECTED_TOOL_CALLS);
     for (const span of rich.timeline) expect(span.durMs).toBe(0);
+  });
+
+  // ── HAND-COUNT ORACLE for the tool_result CLOSE path (independently justified from
+  // claude-stream-json-tool-error.ndjson, NOT copied from any output) ────────────────────────────
+  // The fixture pairs two assistant tool_use blocks with two user tool_result blocks, in order:
+  //   line 2 assistant tool_use  Read  {file_path:"/tmp/cc-run-err/missing.txt"} → call #1
+  //   line 3 user     tool_result is_error:true  (tool_use_id toolu_read_err)    → closes #1 as FAILED
+  //   line 4 assistant tool_use  Bash  {command:"echo hi"}                      → call #2
+  //   line 5 user     tool_result (no is_error key)  (tool_use_id toolu_bash_ok) → closes #2 as OK
+  // So, by hand: timeline[0] is the Read span with ok:false; timeline[1] is the Bash span with ok:true.
+  it('closes a tool_result with is_error:true as ok:false and a clean tool_result as ok:true, matched by tool order', () => {
+    const acc = claudeCodeDriver.eventAccumulator();
+    expect(acc).toBeDefined();
+    const rich = foldAll(acc!, fixtureLines(CLAUDE_TOOL_ERROR));
+
+    expect(rich.timeline).toHaveLength(2);
+    // the specific errored span (Read, closed by the is_error:true tool_result).
+    expect(rich.timeline[0].name).toBe('Read');
+    expect(rich.timeline[0].ok).toBe(false);
+    // the specific successful span (Bash, closed by the tool_result with no is_error key).
+    expect(rich.timeline[1].name).toBe('Bash');
+    expect(rich.timeline[1].ok).toBe(true);
   });
 
   it('is selected from the driver table by executor id — get("claude-code").eventAccumulator() decodes, get("pi") does NOT', () => {
