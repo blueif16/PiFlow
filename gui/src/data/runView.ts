@@ -493,6 +493,19 @@ export function liveModelToRunView(model: LiveModel): RunView {
   };
 }
 
+/** (P5) The trigger signature RunDigestPanel refetches `/run-digest` on UNDER SSE — the panel/canvas decide
+ *  WHEN to refetch; they never compute the digest (that stays server-side). Returns `null` in POLL-mode
+ *  (`!sseLive || !model`), which tells the panel to keep its 3 s fallback timer; otherwise a STABLE string over
+ *  what the digest renders: the per-node statuses PLUS a COARSE billable bucket. It CHANGES when a node's status
+ *  flips (verdict/anomalies move) or billable crosses a ~5000-token bucket (cost-spine freshness during active
+ *  accrual), and is STABLE while the run is idle ⇒ no wasted refetch when nothing happens. PURE. */
+export function digestLiveSig(sseLive: boolean, model: LiveModel | null): string | null {
+  if (!sseLive || !model) return null;
+  const statuses = model.nodes.map((n) => `${n.id}:${n.status}`).join("|");
+  const bucket = Math.round((model.tokenTotal?.billable ?? 0) / 5000);
+  return `${statuses}#${bucket}`;
+}
+
 /** Build the React Flow graph (positions by stage column / parallel-lane row) from a run-view. The optional
  *  agent-preset `catalog` resolves a node's `agentType` → its branded icon/color/label (G6); absent ⇒ the
  *  node renders the default chip. */

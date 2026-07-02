@@ -7,7 +7,9 @@
  * builds (projectRunDigest over the same run-view the canvas renders) — so nothing is re-derived here. It
  * shows the run verdict + cost spine, the RANKED anomaly worklist (each row tinted by severity, clicking it
  * focuses the node), and failure-onset localization (the earliest decisive upstream node → … → the failure).
- * While the run is live it self-polls; when the stream flips to done it refetches the authoritative record.
+ * REFRESH (P5): EVENT-DRIVEN under SSE (a `liveSig` delta — a node status flip or a billable bucket crossing —
+ * re-runs the effect), with a 3 s self-poll only as the POLL-mode fallback (`liveSig === null`). Either way a
+ * stream flip to "done" refetches the authoritative record.
  */
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -44,6 +46,7 @@ export function RunDigestPanel({
   open,
   activeRun,
   liveStatus,
+  liveSig,
   onFocusNode,
   onClose,
 }: {
@@ -51,14 +54,19 @@ export function RunDigestPanel({
   activeRun: string;
   /** the live stream status ("connecting" | "live" | "done" | "error") — a flip to "done" refetches the record. */
   liveStatus: string;
+  /** (P5) the SSE trigger signature (`digestLiveSig`): non-null ⇒ SSE-driven — refetch when it changes (a delta),
+   *  no 3 s success timer; null ⇒ POLL-mode — keep the 3 s fallback timer while the run is unfinished. */
+  liveSig: string | null;
   onFocusNode: (nodeId: string) => void;
   onClose: () => void;
 }) {
   const [digest, setDigest] = useState<RunDigest | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch on open; while the run is unfinished, self-poll (mirrors the canvas's run-view poll). Re-running on
-  // `liveStatus` means a stream flip to "done" pulls the final record promptly.
+  // Fetch on open. REFRESH is EVENT-DRIVEN under SSE (`liveSig !== null`): the effect re-runs when `liveSig`
+  // changes (a node status flip or a billable bucket crossing) or `liveStatus` flips to "done", so NO success
+  // timer is armed. In POLL-mode (`liveSig === null`) it keeps the 3 s self-poll while the run is unfinished
+  // (mirrors the canvas's run-view poll). Either mode retries on error — a just-started run may not be distillable yet.
   useEffect(() => {
     if (!open || !activeRun) { setDigest(null); setError(null); return; }
     let alive = true;
@@ -69,16 +77,16 @@ export function RunDigestPanel({
         if (!alive) return;
         setDigest(d);
         setError(null);
-        if (!d.done) timer = setTimeout(load, 3000);
+        if (liveSig === null && !d.done) timer = setTimeout(load, 3000); // poll-mode fallback only; SSE re-runs on a delta
       } catch (e) {
         if (!alive) return;
         setError(String((e as Error)?.message ?? e));
-        timer = setTimeout(load, 3000); // a just-started run may not be distillable yet — retry
+        timer = setTimeout(load, 3000); // a just-started run may not be distillable yet — retry (both modes)
       }
     };
     load();
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [open, activeRun, liveStatus]);
+  }, [open, activeRun, liveStatus, liveSig]);
 
   if (!open) return null;
 

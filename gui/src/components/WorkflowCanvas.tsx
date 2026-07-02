@@ -59,7 +59,7 @@ import { FusionContext, type FusionMode } from "./FusionContext";
 import { FusionSaveBar } from "./FusionSaveBar";
 import { ComposeContext } from "./ComposeContext";
 import { ChipPalette } from "./ChipPalette";
-import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
+import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
 import { deriveZones, toZoneFlowNode, type ZoneFlowNode } from "../data/zones";
 import { loadIndex, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
 import { useRunStream, RunStreamContext } from "../data/runStream";
@@ -199,6 +199,10 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // The 3 s /run-view re-poll above is SKIPPED. Zones/positions come from the same RunView shape, so the canvas
   // is identical to the poll path — only the transport differs.
   const liveModel = live.model;
+  // (P5) The digest-refetch trigger for RunDigestPanel: non-null under SSE (a status/billable-bucket delta drives
+  // an event-driven refetch), null in poll-mode (the panel keeps its 3 s fallback). The panel never computes the
+  // digest — this only decides WHEN it refetches the server projection.
+  const digestSig = digestLiveSig(sseLive, liveModel);
   // Fetch the ~static agent-preset catalog once when the sse path first drives this run (not per token delta).
   useEffect(() => {
     if (!sseLive) return;
@@ -452,7 +456,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.
               Clicking an anomaly/onset node focuses that node on the canvas. */}
-          <RunDigestPanel activeRun={activeRun} open={digestOpen} liveStatus={live.status} onFocusNode={setExpandedId} onClose={() => setDigestOpen(false)} />
+          <RunDigestPanel activeRun={activeRun} open={digestOpen} liveStatus={live.status} liveSig={digestSig} onFocusNode={setExpandedId} onClose={() => setDigestOpen(false)} />
           {/* Launch a run → on the 202, select it via `selectRun` so the live views observe the new run. */}
           <StartRunPanel open={startOpen} onClose={() => setStartOpen(false)} onStarted={selectRun} />
           {/* Migrate the active run → on the 202, re-point the console to the target serve + follow the run. */}
