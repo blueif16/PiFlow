@@ -46,6 +46,9 @@ describe('migrateRun — the freeze → bundle → adopt → use orchestration',
       requestFreeze: async (dir) => { calls.push(`freeze:${dir}`); frozenYet = true; },
       readRunModel: async () => ({ run: 'r1', done: false, ok: null, frozen: frozenYet, durationMs: null, stage: null, totals: null, nodes: [], stages: [], edges: [] }),
       packRunDir: async (dir) => { calls.push(`pack:${dir}`); return bundle; },
+      // The one gap migrate had: it never shipped the TEMPLATE. Now it pushes the source template BEFORE adopt
+      // so the resume can resolve it. (Stub the boundary so the test stays offline + deterministic.)
+      pushTemplate: async (_e, tpl, o) => { calls.push(`push:${tpl}`); return { ok: true, status: 202, templateDir: tpl, product: o.product, workflow: o.workflow }; },
       fetchImpl: (async (url: string, init: { method?: string; body?: unknown }) => {
         fetched.push({ url: String(url), method: init?.method, body: init?.body });
         return { ok: true, status: 202, async text() { return '{}'; } } as unknown as Response;
@@ -57,7 +60,8 @@ describe('migrateRun — the freeze → bundle → adopt → use orchestration',
 
     const dir = await migrateRun({ target: 'cloud', run: 'r1' }, deps);
     expect(dir).toBe('upload');
-    expect(calls).toEqual(['freeze:/src/run', 'pack:/src/run', 'use:cloud']); // ordered: freeze → bundle → switch
+    // ordered: freeze → bundle → PUSH the template → switch. The push lands BEFORE adopt so the resume resolves.
+    expect(calls).toEqual(['freeze:/src/run', 'pack:/src/run', 'push:/p/.piflow/greet/template', 'use:cloud']);
     const adopt = fetched.find((f) => f.url.includes('/adopt'));
     expect(adopt).toBeTruthy();
     expect(adopt!.url).toContain('https://cloud.example/__piflow/migrate/r1/adopt');

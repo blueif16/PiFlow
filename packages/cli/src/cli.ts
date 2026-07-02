@@ -92,7 +92,7 @@ USAGE
                                             Active-context ladder: --context flag > PIFLOW_CONTEXT env >
                                             the \`use\` pointer > the implicit \`local\` (${'http://127.0.0.1:5273'}).
   piflowctl cloud   up [--host <railway|fly|selfhost|docker>] [--app <n>] [--public-url <url>] [--provider <gw>]
-                    [--execute] | down [--host <...>] [--execute]  stand up (or tear down) the SAME control
+                    [--execute] | down [--host <...>] [--execute] | push <templateDir> [--product p] [--workflow w] [--context c]  stand up (or tear down) the SAME control
                                             plane over any host pathway from ONE image (default \`railway\`;
                                             fly/selfhost/docker also available). Bare \`up\` = a PLAN (mint the bearer token, register
                                             a \`cloud\` context, print the runbook — spends nothing).

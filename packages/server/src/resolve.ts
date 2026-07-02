@@ -62,6 +62,22 @@ export const readBody = (req: IncomingMessage, cap = 1_000_000): Promise<string>
     req.on("error", reject);
   });
 
+/** Read a BINARY request body (a gzip bundle — migrate/adopt + template push) under a bounded cap. Accumulate
+ *  Buffers, NEVER a string (which would corrupt the bytes). Default cap 256 MB (a run/template bundle). */
+export const readBodyBuffer = (req: IncomingMessage, cap = 256_000_000): Promise<Buffer> =>
+  new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let tooBig = false;
+    req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > cap) { tooBig = true; req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on("end", () => (tooBig ? reject(new Error("bundle too large")) : resolve(Buffer.concat(chunks))));
+    req.on("error", reject);
+  });
+
 /** Resolve a run id → its run dir + the owning product's workspace root + the sibling runs of the SAME
  *  workflow (the `historyDirs` baseline for expectedMs / slow-anomaly detection), from the LIVE index (so a
  *  run added since launch resolves). Shared by the stream/run-view/run-digest/file endpoints' lookups. */

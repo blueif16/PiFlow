@@ -14,29 +14,11 @@
 
 import { spawn } from "node:child_process";
 import path from "node:path";
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { requestFreeze, packRunDir, unpackRunDir, readRunJson } from "@piflow/core";
-import { findUp, resolveRunDir, sendJson, type Middleware } from "./resolve.js";
+import { findUp, resolveRunDir, sendJson, readBodyBuffer, type Middleware } from "./resolve.js";
 import { resolveTemplateDir, runsHomeFor, isTemplateAllowed, buildStartRunArgv, type StartBody } from "./start-run.js";
 
 const MIGRATE_RE = /^\/__piflow\/migrate\/([^/?]+)\/(freeze|bundle|adopt)(?:\?.*)?$/;
-
-/** Read a BINARY request body (the gzip bundle) — bundles can be many MB, so accumulate Buffers (never a
- *  string, which would corrupt the bytes) under a generous-but-bounded cap. */
-function readBodyBuffer(req: IncomingMessage, cap = 256_000_000): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let tooBig = false;
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > cap) { tooBig = true; req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on("end", () => (tooBig ? reject(new Error("bundle too large")) : resolve(Buffer.concat(chunks))));
-    req.on("error", reject);
-  });
-}
 
 /**
  * The migration middleware, bound to the same template allow-list as start-run (adopt spawns a credentialed

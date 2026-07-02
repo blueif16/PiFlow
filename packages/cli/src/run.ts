@@ -51,6 +51,7 @@ import os from 'node:os';
 import { readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { resolveRemote, startRemoteRun, streamUrlFor, type StartRemoteResult, type RemoteOpts } from './remote.js';
+import { pushTemplate, type PushResult } from './template-push.js';
 import {
   readContexts,
   resolveActive,
@@ -806,6 +807,8 @@ export function remoteStartBody(parsed: ParsedRunArgs): Record<string, unknown> 
 /** Injectable seam for the remote-run path (default = the real `startRemoteRun` + stdout), so a test spies it. */
 export interface RemoteRunDeps {
   startRemoteRun?: (entry: ContextEntry, body: object, opts?: RemoteOpts) => Promise<StartRemoteResult>;
+  /** Ship the local template to the plane first (setup-on-miss). Default = the real pushTemplate; a test spies it. */
+  pushTemplate?: (entry: ContextEntry, templateDir: string) => Promise<PushResult>;
   print?: (line: string) => void;
 }
 
@@ -821,8 +824,20 @@ export async function runTemplateRemote(
   deps: RemoteRunDeps = {},
 ): Promise<StartRemoteResult> {
   const start = deps.startRemoteRun ?? startRemoteRun;
+  const push = deps.pushTemplate ?? ((e: ContextEntry, t: string) => pushTemplate(e, t, {}));
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
-  const res = await start(entry, remoteStartBody(parsed));
+  const body = remoteStartBody(parsed);
+  // AUTO-PUSH (setup-on-miss): ship the LOCAL template to the plane FIRST, so a purely-local workflow runs in
+  // the cloud with NO image rebuild — the missing half of local⇄cloud symmetry. Idempotent; best-effort: a
+  // bake-only plane 501s and we fall back to sending the local path (today's behavior, works for a baked one).
+  try {
+    const pushed = await push(entry, path.resolve(parsed.templateDir));
+    if (pushed.ok && pushed.templateDir) {
+      body.templateDir = pushed.templateDir; // the plane-side path (under its uploads root) — the plane resolves THIS
+      print(`  ↑ pushed template to "${contextName}" (product "${pushed.product}") — launching the pushed copy.`);
+    }
+  } catch { /* best-effort — fall back to the local templateDir already in `body` */ }
+  const res = await start(entry, body);
   print(`piflowctl run: launched on context "${contextName}" (${entry.baseUrl}) — run "${res.run}".`);
   // Prefer the server-returned streamUrl (absolute-ized against the base); else derive the canonical one.
   const streamUrl = res.streamUrl

@@ -9,27 +9,10 @@
 
 import path from "node:path";
 import { existsSync } from "node:fs";
-import type { IncomingMessage } from "node:http";
 import { unpackRunDir } from "@piflow/core";
-import { sendJson, type Middleware } from "./resolve.js";
+import { sendJson, readBodyBuffer, type Middleware } from "./resolve.js";
 
 const TEMPLATES_RE = /^\/__piflow\/templates(?:\?.*)?$/;
-
-/** Read a BINARY request body (the gzip bundle) under a bounded cap — accumulate Buffers, never a string. */
-function readBodyBuffer(req: IncomingMessage, cap = 256_000_000): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    let size = 0;
-    let tooBig = false;
-    req.on("data", (c: Buffer) => {
-      size += c.length;
-      if (size > cap) { tooBig = true; req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on("end", () => (tooBig ? reject(new Error("bundle too large")) : resolve(Buffer.concat(chunks))));
-    req.on("error", reject);
-  });
-}
 
 /** A product/workflow id used as a path segment: leading alphanumeric then [._-], NO separators, NO `..`. */
 export function isSafeSegment(s: string | null | undefined): s is string {

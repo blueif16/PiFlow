@@ -48,6 +48,8 @@ import {
   type SecretResolver,
 } from '@piflow/core';
 import { parsePiProvider } from './run.js';
+import { resolveRemote } from './remote.js';
+import { pushTemplate } from './template-push.js';
 import {
   readContexts,
   writeContexts,
@@ -665,8 +667,44 @@ const DOWN_USAGE =
  * `deps` is the injection seam runCloudUp/runCloudDown already expose (defaults to the real impls) — so a
  * test can drive the CLI's default-flag resolution (e.g. no `--host` → the DEFAULT_HOST pathway) with fakes.
  */
+/**
+ * `piflowctl cloud push <templateDir> [--product p] [--workflow w] [--context c]` — install a LOCAL template on
+ * the active (or named) cloud plane so it runs there with NO image rebuild. Thin glue over the tested
+ * `pushTemplate`; the plane must have push enabled (`serve --uploads <dir>`) or it 501s with a hint.
+ */
+export async function runCloudPush(rest: string[]): Promise<void> {
+  const print = (s: string) => process.stdout.write(s + '\n');
+  const fail = (m: string) => { process.stderr.write(`piflowctl cloud push: ${m}\n`); process.exitCode = 1; };
+  let templateDir: string | undefined;
+  let product: string | undefined;
+  let workflow: string | undefined;
+  let contextName: string | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--product') product = rest[++i];
+    else if (a === '--workflow') workflow = rest[++i];
+    else if (a === '--context') contextName = rest[++i];
+    else if (!a.startsWith('-') && !templateDir) templateDir = a;
+    else return fail(`unexpected argument "${a}"`);
+  }
+  if (!templateDir) return fail('a template directory is required (piflowctl cloud push <templateDir>)');
+  let remote: ReturnType<typeof resolveRemote>;
+  try { remote = resolveRemote(contextName); } catch (e) { return fail((e as Error).message ?? String(e)); }
+  if (!remote) return fail('this targets a CLOUD context — run `piflowctl context use cloud` first, or pass --context <name>');
+  let res;
+  try { res = await pushTemplate(remote.entry, templateDir, { product, workflow }); }
+  catch (e) { return fail(`push failed — ${(e as Error).message ?? String(e)}`); }
+  if (!res.ok) return fail(`the plane rejected the push (HTTP ${res.status})${res.error ? ` — ${res.error}` : ''}${res.status === 501 ? '  [enable it on the plane: serve --uploads <dir>]' : ''}`);
+  print(`✓ pushed → context "${remote.name}" (${remote.entry.baseUrl}) as product "${res.product}" / workflow "${res.workflow}".`);
+  print(`  plane path: ${res.templateDir}`);
+  print(`  → run it in the cloud:  piflowctl run ${templateDir} --context ${remote.name}`);
+}
+
 export async function runCloudCli(argv: string[], deps: CloudDeps = {}): Promise<void> {
   const [verb, ...rest] = argv;
+  // `push` has its own arg shape (a positional templateDir) — intercept BEFORE the up/down flag parser, which
+  // would reject the positional as an unknown flag.
+  if (verb === 'push') return runCloudPush(rest);
 
   // Shared flag parse (both verbs accept --host/--app/--port/--context/--execute; up also takes
   // provider/config/dockerfile/public-url).
