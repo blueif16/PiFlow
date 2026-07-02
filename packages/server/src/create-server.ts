@@ -18,6 +18,9 @@ export interface CreateServerOptions {
   /** Template allow-list for POST /api/runs/start. null/omitted/empty ⇒ allow all (local dev); when set,
    *  only requests resolving to a listed templateDir may launch a run (403 otherwise) — P5 cloud hardening. */
   allowedTemplates?: string[] | null;
+  /** Uploads root for POST /__piflow/templates (`cloud push`). null/omitted ⇒ push DISABLED (501). When set,
+   *  a pushed template is written under this dir and — provided this root is also allow-listed — is runnable. */
+  uploadsRoot?: string | null;
 }
 
 /**
@@ -43,7 +46,7 @@ function bearerGate(token: string): Middleware {
 }
 
 export function createServer(opts: CreateServerOptions = {}): http.Server {
-  const api = createApiMiddleware(opts.extraApi ?? [], opts.allowedTemplates);
+  const api = createApiMiddleware(opts.extraApi ?? [], opts.allowedTemplates, opts.uploadsRoot);
   const staticMw = opts.staticDir ? serveStatic(opts.staticDir) : null;
   const gate = opts.token ? bearerGate(opts.token) : null;
 

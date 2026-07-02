@@ -7,7 +7,7 @@
 // so `serve` shows EXACTLY the project you launched it in, never the whole global registry.
 
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { resolveScope } from "@piflow/core";
 import { createServer } from "./create-server.js";
 import { findUp } from "./resolve.js";
@@ -21,6 +21,9 @@ export interface ServeOptions {
   open: boolean;
   /** Template allow-list for POST /api/runs/start (empty ⇒ allow all — today's local behavior). */
   allowedTemplates: string[];
+  /** Uploads root for `cloud push` (POST /__piflow/templates). null ⇒ push disabled. Also joins the scope
+   *  roots (so pushed products are discovered) + the allow-list (so a pushed template is runnable). */
+  uploadsRoot: string | null;
 }
 
 /** Split a `path.delimiter`-separated list of template dirs (from --allow-templates or PIFLOW_ALLOWED_TEMPLATES). */
@@ -35,6 +38,7 @@ export function parseServeArgs(argv: string[]): ServeOptions {
     roots: [],
     open: false,
     allowedTemplates: splitTemplates(process.env.PIFLOW_ALLOWED_TEMPLATES),
+    uploadsRoot: process.env.PIFLOW_UPLOADS_ROOT || null,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -44,6 +48,7 @@ export function parseServeArgs(argv: string[]): ServeOptions {
     else if (a === "--static") out.staticDir = argv[++i];
     else if (a === "--roots") out.roots.push(...(argv[++i]?.split(path.delimiter).filter(Boolean) ?? []));
     else if (a === "--allow-templates") out.allowedTemplates = splitTemplates(argv[++i]);
+    else if (a === "--uploads") out.uploadsRoot = argv[++i];
     else if (a === "--open") out.open = true;
     else if (a === "--no-scope") out.roots = ["*none*"]; // sentinel: force the global fleet view
   }
@@ -52,6 +57,18 @@ export function parseServeArgs(argv: string[]): ServeOptions {
 
 export async function runServeCli(argv: string[]): Promise<void> {
   const opts = parseServeArgs(argv);
+
+  // --uploads: the root a PUSHED template lands in (POST /__piflow/templates). Ensure it exists, then join it to
+  // BOTH the scope roots (so the index discovers pushed products + their runs) and the allow-list (so a pushed
+  // template passes the start-run/adopt gate via the Phase-1 prefix). This is what makes "push a local template →
+  // run it in the cloud" need NO image rebuild — the whole local⇄cloud symmetry closes here.
+  if (opts.uploadsRoot) {
+    const root = path.resolve(opts.uploadsRoot);
+    mkdirSync(root, { recursive: true });
+    opts.uploadsRoot = root;
+    if (!opts.roots.includes(root)) opts.roots.push(root);
+    if (!opts.allowedTemplates.includes(root)) opts.allowedTemplates.push(root);
+  }
 
   // scope → PIFLOW_SCOPE_ROOTS (the handlers' loadScopedRegistry reads it).
   if (opts.roots.length && opts.roots[0] !== "*none*") {
@@ -80,7 +97,11 @@ export async function runServeCli(argv: string[]): Promise<void> {
     process.stdout.write(`piflowctl serve: start-run restricted to ${opts.allowedTemplates.length} allow-listed template(s).\n`);
   }
 
-  const server = createServer({ staticDir, token: opts.token, allowedTemplates: opts.allowedTemplates });
+  if (opts.uploadsRoot) {
+    process.stdout.write(`piflowctl serve: template push ENABLED — pushed templates land under ${opts.uploadsRoot} (POST /__piflow/templates).\n`);
+  }
+
+  const server = createServer({ staticDir, token: opts.token, allowedTemplates: opts.allowedTemplates, uploadsRoot: opts.uploadsRoot });
   server.on("error", (e) => { process.stderr.write(`piflowctl serve: ${String(e)}\n`); process.exitCode = 1; });
   server.listen(opts.port, opts.host, () => {
     const shown = opts.host === "0.0.0.0" ? "localhost" : opts.host;
