@@ -62,11 +62,14 @@ ARG CLAUDE_CODE_VERSION=latest
 
 # OS deps + the two agent CLIs, one layer, apt cache never persisted. pi + claude are the node
 # executors; git/ca-certs/ripgrep/bubblewrap are the node-runtime substrate (jail + tools + TLS).
+# NOTE: pi installs with --ignore-scripts (pure JS, no native binary), but claude-code MUST run its
+# postinstall — it downloads a platform-native binary; with --ignore-scripts `claude --version` fails
+# ("claude native binary not installed") and the build breaks. So claude-code omits --ignore-scripts.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends git ca-certificates ripgrep bubblewrap \
  && rm -rf /var/lib/apt/lists/* \
  && npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}" \
- && npm install -g --ignore-scripts "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
+ && npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && pi --version \
  && claude --version \
  && bwrap --version
