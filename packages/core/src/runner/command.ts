@@ -98,7 +98,7 @@ export const defaultPiCommand: CommandBuilder = (node, resolved, ctx, opts = {})
 // Claude-native tool (Bash/Glob cover it), so it is intentionally dropped; sdk/mcp tools are OUT of
 // scope for the Claude executor (builtins only), so unmapped names fall away. See
 // docs/design/agent-executor-interface.md §5.
-const CLAUDE_TOOL_BY_PI_NAME: Record<string, string> = {
+export const CLAUDE_TOOL_BY_PI_NAME: Record<string, string> = {
   read: 'Read',
   write: 'Write',
   edit: 'Edit',

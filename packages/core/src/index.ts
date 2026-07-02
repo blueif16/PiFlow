@@ -249,6 +249,7 @@ export type { ModelTiers, NodeRouting, RunRouting, EffectiveModel } from './runn
 // DriverTable. P0 froze the parity contract (AgentDriver + descriptor + RawRun/AgentVerdict + conformsToParity);
 // P1 adds the first real driver (`piDriver`, wrapping the shipped pi functions) + the table + its factory.
 export { piDriver } from './runner/drivers/pi.js';
+export { claudeCodeDriver } from './runner/drivers/claude-code.js';
 export { DriverTable, builtinDrivers } from './runner/drivers/table.js';
 export { conformsToParity } from './runner/drivers/parity.js';
 export type {

@@ -8,6 +8,7 @@
 
 import type { AgentDriver } from './types.js';
 import { piDriver } from './pi.js';
+import { claudeCodeDriver } from './claude-code.js';
 
 /** Thrown when two drivers are registered under the same id — an id maps to exactly one driver. */
 export class DriverConflictError extends Error {
@@ -59,9 +60,9 @@ export class DriverTable {
 }
 
 /**
- * A FRESH table of the built-in drivers — a FACTORY, not a shared mutable singleton (hermeticity). In P1 it
- * registers ONLY piDriver (claude-code is P2).
+ * A FRESH table of the built-in drivers — a FACTORY, not a shared mutable singleton (hermeticity). P2 adds
+ * claudeCodeDriver, so the table now holds pi AND claude-code.
  */
 export function builtinDrivers(): DriverTable {
-  return new DriverTable().register(piDriver);
+  return new DriverTable().register(piDriver).register(claudeCodeDriver);
 }
