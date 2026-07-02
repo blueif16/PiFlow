@@ -84,21 +84,30 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `be2f36b` 2026-06-26 — feat(e2b): @piflow/e2b installable sandbox extension + CLI choose-to-install wiring
 - `08c153a` 2026-06-27 — refactor(daytona): extract the Daytona cloud backend into @piflow/daytona
 - `c7cb370` 2026-06-27 — fix(sandbox): banner + docs state programmatic nodes run unsandboxed on host
+- `e82e2b3` 2026-07-01 — feat(core): run-start executor override (pick pi|claude-code per node/run without editing the template)
+- `e7a62b2` 2026-07-01 — feat(cli): P7 — the active context redirects observe/start to a remote serve
+- `62a9c03` 2026-07-01 — feat(docker): local Docker container sandbox backend (--sandbox docker)
+- `368ea00` 2026-07-01 — feat(docker): zero-setup auto-build + live-verified end to end
+- `6c73eec` 2026-07-01 — feat(run): merge --sandbox into context worker (one setting; --sandbox = legacy override)
+- `7a3ee69` 2026-07-02 — fix(cli): fail loud on --sandbox e2b without E2B_TEMPLATE (no silent exit-127)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[blueprints-layer]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
 - [[runs-live-in-product-runs-folder]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `pieSlugList` (packages/core/src/names/slugify.ts:64) — 5 callers in `packages/core/src/names/generate-pies.mjs`, `packages/core/src/index.ts`, `packages/core/src/names/index.ts`; tests: `packages/core/test/names.test.ts`
-- `generateRunName` (packages/core/src/names/generator.ts:40) — 5 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`, `packages/core/src/names/index.ts`; tests: `packages/core/test/names.test.ts`
-- `pieSlug` (packages/core/src/names/slugify.ts:43) — 4 callers in `packages/core/src/names/slugify.ts`, `packages/core/src/index.ts`, `packages/core/src/names/index.ts`; tests: `packages/core/test/names.test.ts`
-- `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/index.ts`, `packages/core/src/names/index.ts`; tests: `packages/core/test/names.test.ts`
-- `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/index.ts`, `packages/core/src/names/index.ts`; tests: `packages/core/test/names.test.ts`
+- `pieSlugList` (packages/core/src/names/slugify.ts:64) — 5 callers in `packages/core/src/names/generate-pies.mjs`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+- `generateRunName` (packages/core/src/names/generator.ts:40) — 7 callers in `packages/cli/src/run.ts`, `packages/server/src/start-run.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+- `pieSlug` (packages/core/src/names/slugify.ts:43) — 4 callers in `packages/core/src/names/slugify.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+- `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+- `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-01 · arc=25 commits · files=7 · lessons=3</sub>
+<sub>derived 2026-07-02 · arc=33 commits · files=7 · lessons=4</sub>
 <!-- okf:auto-end -->

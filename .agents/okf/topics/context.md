@@ -54,7 +54,7 @@ SWITCH (the CLI — one word to live in + escape hatches)
 - `packages/cli/src/context.ts:56` — `hostSetupHint()` — setup-on-miss guidance; `selfhost` = the FREE serve + Cloudflare quick-tunnel (`*.trycloudflare.com`)
 - `packages/cli/src/context.ts:73` — `workerSetupHint()` — cloud-worker cred setup guidance (`E2B_API_KEY` / `DAYTONA_API_KEY`)
 TERMINAL (the merge — context worker IS the sandbox)
-- `packages/cli/src/run.ts:775` — `resolveRunSandbox()` — the ONE resolver: `--sandbox` (legacy override) > context worker > `inmemory` default
+- `packages/cli/src/run.ts:784` — `resolveRunSandbox()` — the ONE resolver: `--sandbox` (legacy override) > context worker > `inmemory` default
 - `packages/cli/src/run.ts:843` — `runRunCli` wiring — sets `parsed.sandbox = resolveRunSandbox(...)` before BOTH the local (`runTemplate`) and remote (`remoteStartBody`) paths
 - `packages/cli/src/context-store.ts:134` — `resolveActive()` — the `--context` flag > `PIFLOW_CONTEXT` env > persisted `current` > `local` ladder (which context is active)
 
@@ -120,6 +120,10 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `ebcf494` 2026-07-01 — feat(context): host/worker two-axis schema + pure cascade resolver
 - `2692485` 2026-07-01 — feat(context): host/worker subverbs + cascade + setup-on-miss guidance
 - `6c73eec` 2026-07-01 — feat(run): merge --sandbox into context worker (one setting; --sandbox = legacy override)
+- `c358ceb` 2026-07-01 — fix(context): baseUrl is the ONE authoritative predicate for remote-ness
+- `7a3ee69` 2026-07-02 — fix(cli): fail loud on --sandbox e2b without E2B_TEMPLATE (no silent exit-127)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 
 ### Lessons — memory cluster
 
@@ -129,6 +133,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[cloud-sandbox-portability]]
 - [[competitive-gaps-pdw]]
 - [[delegate-inspection-to-subagents]]
+- [[design-at-init-architecture]]
 - [[expert-representations]]
 - [[g6-agenttype-presets]]
 - [[gui-nodehud-redesign]]
@@ -141,9 +146,18 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
+- [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
 - [[telemetry-legibility-tracks]]
 - [[use-understanding-system-first]]
 
-<sub>derived 2026-07-01 · arc=34 commits · files=3 · lessons=20</sub>
+### Code anchors / blast radius (codegraph)
+
+- `resolveWorker` (packages/cli/src/context-store.ts:230) — 6 callers in `packages/cli/src/context.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
+- `configuredWorkers` (packages/cli/src/context-store.ts:50) — 5 callers in `packages/cli/src/context.ts`, `packages/cli/src/run.ts`; ⚠ no covering tests found
+- `defaultWorkerFor` (packages/cli/src/context-store.ts:221) — 1 caller; tests: `packages/cli/test/context-store.test.ts`
+- `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
+- `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/remote.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
+
+<sub>derived 2026-07-02 · arc=38 commits · files=3 · lessons=22</sub>
 <!-- okf:auto-end -->

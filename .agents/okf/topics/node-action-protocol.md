@@ -128,13 +128,25 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `d71e46c` 2026-06-29 — feat(core): inherit agentType preset role-prompt at render time
 - `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
 - `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
+- `e82e2b3` 2026-07-01 — feat(core): run-start executor override (pick pi|claude-code per node/run without editing the template)
+- `81c5e1d` 2026-07-01 — fix(core): staged prompt/extension refs are workdir-absolute under execCwd (E10 bug #2)
+- `0c9762f` 2026-07-01 — Merge branch 'main' into worktree-control-plane-serve-context
+- `e021934` 2026-07-01 — feat(observe): distill each node's authored gates/policies into the config slice
+- `62a9c03` 2026-07-01 — feat(docker): local Docker container sandbox backend (--sandbox docker)
+- `dcdfb3a` 2026-07-01 — Merge branch 'main' into worktree-feat+observe-policy-legibility
+- `76f6f0b` 2026-07-01 — feat(observe): persist Claude's result-event telemetry into the run record (NodeUsage spine)
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
+- [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
@@ -142,16 +154,23 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[delegate-inspection-to-subagents]]
+- [[design-at-init-architecture]]
+- [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
+- [[memory-legs-coordination]]
+- [[merge-workspace-token-bug]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
 - [[op-consumption-two-layer]]
+- [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
@@ -162,18 +181,21 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[swarm-consensus-deferred]]
+- [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `CHECK_KINDS` (packages/core/src/checks.ts:62) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
-- `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/workflow/template/render.ts`; ⚠ no covering tests found
+- `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-01 · arc=65 commits · files=8 · lessons=35</sub>
+<sub>derived 2026-07-02 · arc=75 commits · files=8 · lessons=47</sub>
 <!-- okf:auto-end -->

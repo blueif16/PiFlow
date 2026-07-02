@@ -13,9 +13,10 @@ timestamp: 2026-06-30
 
 # Why / how it works (the lifecycle, end to end)
 The GUI is a static viewer: it OWNS no data, it projects what the dev middleware distills on demand. SOURCE
-— `gui/vite.config.ts` registers `/__piflow/*` plugins that read the GLOBAL `~/.piflow` registry/index LIVE
-(never a committed `gui/public/index.json`): `piflowRunView` calls core's `buildRunView(runDir)` to distill a
-run's real `.pi/`, `piflowAgents` reads the preset catalog, `piflowRunStream` pipes `observe.watchRun`. The
+— the `/__piflow/*` handlers live in `@piflow/server` (`packages/server/src/handlers.ts`); `gui/vite.config.ts`
+lazy-imports `createApiMiddleware()` from it (never a committed `gui/public/index.json`): `piflowRunView` calls
+core's `buildRunView(runDir)` to distill a run's real `.pi/`, `piflowAgents` reads the preset catalog,
+`piflowRunStream` pipes `observe.watchRun`. The
 canvas (`WorkflowCanvas`) calls `loadIndex()` (`/__piflow/index.json`) → `pickCurrentRun`, then
 `loadRunView` + `loadAgentCatalog`. SHAPE→RENDER — `toFlowGraph(view, catalog)` maps each `RunViewNode` onto a
 positioned `FlowNode` (resolving `agentType`→icon), `WorkflowNode` draws the card and paints a `NodeModeStrip`
@@ -26,18 +27,18 @@ own control-session channel.
 
 # Anchors
 SOURCE
-- `gui/vite.config.ts:165` — `piflowRunView()` — `/__piflow/run-view/<run>` distills real `.pi/` via core `buildRunView`
-- `gui/vite.config.ts:90` — `piflowRunStream()` — `/__piflow/stream/<run>` SSE feed of `observe.watchRun`
+- `packages/server/src/handlers.ts:103` — `piflowRunView` — `/__piflow/run-view/<run>` distills real `.pi/` via core `buildRunView`
+- `packages/server/src/handlers.ts:35` — `piflowRunStream` — `/__piflow/stream/<run>` SSE feed of `observe.watchRun`
 - `gui/src/data/runIndex.ts:60` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
 SHAPE
-- `gui/src/data/runView.ts:105` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
-- `gui/src/data/runView.ts:373` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
+- `gui/src/data/runView.ts:157` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
+- `gui/src/data/runView.ts:573` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
 RENDER
 - `gui/src/components/WorkflowCanvas.tsx:139` — index→view→graph wiring (loadRunView+loadAgentCatalog→toFlowGraph)
 - `gui/src/components/WorkflowNode.tsx:274` — paints `NodeModeStrip` under the card when a view-mode is active
 - `gui/src/components/NodeModeStrip.tsx:31` — `NodeModeStrip()` — the per-node view-mode overlay (status/model/basis)
 COMPANION
-- `gui/src/data/runStream.ts:103` — `useRunStream()` — ONE EventSource over the SSE bridge → live model + richByNode
+- `gui/src/data/runStream.ts:186` — `useRunStream()` — ONE EventSource over the SSE bridge → live model + richByNode
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the memory's "view-mode overlays (T/M/A)" is partly stale — `VIEW_MODES` (ViewModeContext.tsx:34) keys are t/m/a/**b**/f/c (status·model·artifacts·basis·fusion·compose), and fusion/compose are INTERACTIVE editors (preview re-expand · template `op[]` write-back), not passive info strips.
@@ -107,21 +108,41 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `85d4205` 2026-06-29 — Merge per-node fullAccess: open the fs jail for one node (config-is-truth, skin is projection)
 - `c7f15f7` 2026-06-30 — fix(gui): scope `piflowctl gui` to the launched project, not the global registry
 - `cc65e95` 2026-06-30 — refactor(core): lift project-scope resolution into @piflow/core (shared)
+- `79ee97e` 2026-07-01 — feat(gui): route every control-server call through one configurable API base (VITE_PIFLOW_API)
+- `10ea496` 2026-07-01 — feat(server): @piflow/server + piflowctl serve — host the control plane (control API + GUI) on any host
+- `aaa64cf` 2026-07-01 — feat(gui): Start-run panel — launch agents from the console (pick product/workflow/args/sandbox/executor)
+- `94e87e0` 2026-07-01 — feat(gui): runtime-repointable endpoint + bearer auth + one-click migrate button (D1)
+- `21d824c` 2026-07-01 — feat(gui): render each node's authored gates/policies from observe (the short symbol + HUD detail)
+- `c49e750` 2026-07-01 — feat(gui): run-digest panel — the run-level observation lens (D key)
+- `fe309b4` 2026-07-01 — feat(gui): render node.derived — the HUD re-derives no threshold
+- `b1729d4` 2026-07-01 — refactor(gui): render server `derived` only — delete the dead SSE live-fold + derive mirror
+- `8f1cd7e` 2026-07-01 — feat(gui): render the graph from the enriched live.model behind a liveSource flag (default poll)
+- `f19b3c4` 2026-07-01 — feat(gui): P4 shadow-diff parity harness — prove SSE≡/run-view before the cutover
+- `67beeb0` 2026-07-01 — fix(gui): liveModelToRunView carries the SSE snapshot stages — shadow-diff parity matches /run-view (P4)
+- `f8e9865` 2026-07-01 — fix(observe): the live SSE fold byte-matches /run-view (P4-live parity)
+- `36ba65e` 2026-07-01 — feat(gui): P5 — RunDigestPanel refetches off SSE deltas, not a 3s idle poll
+- `a06e930` 2026-07-01 — feat(gui): DR6 reconcile net — heal SSE drift on tab return (MODEL REPLACE)
+- `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[blueprints-layer]]
 - [[claude-code-executor]]
+- [[cloud-control-plane-local-cloud-switch]]
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
+- [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[memory-legs-coordination]]
+- [[merge-workspace-token-bug]]
 - [[observe-single-data-path]]
 - [[optimize-loop-native-not-adhoc]]
 - [[per-node-routing-fusion]]
@@ -133,18 +154,20 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
+- [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `toFlowGraph` (gui/src/data/runView.ts:383) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `NodeHud` (gui/src/components/NodeHud.tsx:92) — 2 callers in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
-- `loadIndex` (gui/src/data/runIndex.ts:60) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:108) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `watchRun` (packages/cli/src/watch.ts:60) — 14 callers in `gui/vite.config.ts`, `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/langgraph/src/stream.ts` +4 more; tests: `packages/cli/test/watch.test.ts`, `packages/core/test/observe.test.ts`
+- `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `loadRunView` (gui/src/data/runView.ts:157) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:573) — 4 callers in `gui/src/components/WorkflowCanvas.tsx`; tests: `gui/src/data/liveModelToRunView.test.ts`, `gui/src/data/runView.test.ts`
+- `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/observe.test.ts`, `packages/core/test/watch.test.ts`
 
-<sub>derived 2026-07-01 · arc=47 commits · files=8 · lessons=26</sub>
+<sub>derived 2026-07-02 · arc=62 commits · files=8 · lessons=34</sub>
 <!-- okf:auto-end -->

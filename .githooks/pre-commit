@@ -1,0 +1,7 @@
+#!/bin/sh
+# OKF anchor drift gate — blocks the commit ONLY on a HEALTH failure (a slice card's seed/anchor
+# file or symbol/line moved, so its anchors may be WRONG). Advisory DRIFT (stale auto region) never
+# blocks. --staged scopes the check to cards whose seeds/anchors intersect this commit's files, so
+# unrelated commits stay fast. Installed via `git config core.hooksPath .githooks` (the root
+# package.json `prepare` script does this on install).
+node .agents/okf/topics/_generate.mjs --check --staged

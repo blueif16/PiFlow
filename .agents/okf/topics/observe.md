@@ -38,16 +38,16 @@ RAW `.pi` → READ (lean snapshot)
 - `packages/core/src/observe/read.ts:82` — `readRunModel()` — folds run.json + io.json into RunModel (resolveStructure for stages/edges)
 - `packages/core/src/observe/read.ts:62` — `deriveStatus()` — verified-not-trusted status downgrade
 DISTILL (rich per-node reducer)
-- `packages/core/src/observe/distill.ts:140` — `createNodeAccumulator()` — the shared events.jsonl reducer (per-node tokens + cost + contextPeak)
+- `packages/core/src/observe/distill.ts:179` — `createNodeAccumulator()` — the shared events.jsonl reducer (per-node tokens + cost + contextPeak)
 - `packages/core/src/observe/distill.ts:271` — `snapshot()` — the NON-DESTRUCTIVE live twin of `finalize()` (frozen copy, open spans read-only) — what the live fold consumes
 - `packages/core/src/observe/distill.ts:281` — `finalize()` — the DESTRUCTIVE terminal read (synth-closes open spans); buildRunView only
 - `packages/core/src/observe/distill.ts:169` — `costScalar` — coerces pi's `usage.cost` into the per-node cost tally (the COST number the GUI shows is COMPUTED here, not in gui)
 - `packages/core/src/observe/models.ts:66` — `contextWindowFor()` — pi-native context-window stamp
 RUNVIEW (the contract + builder + the SHARED assembly)
-- `packages/core/src/observe/runView.ts:354` — `buildRunView()` — superset run-view (replays events, prefers workflow.json DAG, stamps deriveNode)
-- `packages/core/src/observe/runView.ts:240` — `nodeTokenSpine()` — the `rec.usage`-first-vs-event-replay token precedence (the AgentDriver seam — Thrust 3)
-- `packages/core/src/observe/runView.ts:297` — `assembleNode()` — the whole per-node build (reads/writes/tokens/spine), then `node.derived = deriveNode(node)` — SHARED by buildRunView + watchRun
-- `packages/core/src/observe/types.ts:135` — `RunModel` — the shared snapshot contract (stages+edges+nodes)
+- `packages/core/src/observe/runView.ts:397` — `buildRunView()` — superset run-view (replays events, prefers workflow.json DAG, stamps deriveNode)
+- `packages/core/src/observe/runView.ts:274` — `nodeTokenSpine()` — the `rec.usage`-first-vs-event-replay token precedence (the AgentDriver seam — Thrust 3)
+- `packages/core/src/observe/runView.ts:335` — `assembleNode()` — the whole per-node build (reads/writes/tokens/spine), then `node.derived = deriveNode(node)` — SHARED by buildRunView + watchRun
+- `packages/core/src/observe/types.ts:139` — `RunModel` — the shared snapshot contract (stages+edges+nodes)
 - `packages/core/src/observe/types.ts:177` — the `node-enriched` `RunUpdate` kind (the FULL node delta — must also be in cli/remote.ts RUN_UPDATE_KINDS)
 DERIVE (the display projection) + STRUCTURE (parity)
 - `packages/core/src/observe/derive.ts:74` — `deriveNode()` — cache/tool-error/dominance/context/time/retries zones + topTools + unified outputs (the ONE threshold oracle)
@@ -59,7 +59,7 @@ LIVE (the single enriched SSE source)
 - `packages/server/src/handlers.ts:35` — `piflowRunStream` — `GET /__piflow/stream/<run>` pipes the exact `watchRun` stream as SSE (feeds it the SAME historyDirs/workspaceRoot as /run-view)
 - `packages/server/src/handlers.ts:103` — `piflowRunView` — `GET /__piflow/run-view/<run>` = one-shot `buildRunView` (loads + the DR6 reconcile net)
 PROJECT + CONSUMED
-- `packages/core/src/observe/telemetry.ts:294` — `projectRunDigest()` — the agent-facing RunDigest lens over the view (NOT a second collector)
+- `packages/core/src/observe/telemetry.ts:326` — `projectRunDigest()` — the agent-facing RunDigest lens over the view (NOT a second collector)
 - `packages/cli/src/status.ts:35` — `renderStatus()` — CLI renders a `readRunModel` snapshot (thin renderer; `:87` reads it)
 - `gui/vite.config.ts:21` — the Vite dev middleware wires `@piflow/server` `createApiMiddleware` (the SSE + run-view handlers)
 
@@ -143,10 +143,17 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `9f75bb8` 2026-07-01 — feat(observe): watchRun folds telemetry incrementally + node-enriched deltas — the server-side single source
 - `f8e9865` 2026-07-01 — fix(observe): the live SSE fold byte-matches /run-view (P4-live parity)
 - `9f535ec` 2026-07-01 — Merge branch 'main' into feat/observe-live-sse-source
+- `f1d8a81` 2026-07-02 — test(P4): failing tests + stubs for driverFits + schema agent + drivers catalog (RED)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `865bc2d` 2026-07-02 — test(P5): failing tests + real claude stream-json fixture (RED)
+- `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `80aafdb` 2026-07-02 — test(P6): failing tests + stubs for cost-spike + loopScore (RED)
+- `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -168,6 +175,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
+- [[merge-workspace-token-bug]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
@@ -179,6 +187,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
@@ -186,5 +195,13 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
 
-<sub>derived 2026-07-02 · arc=54 commits · files=13 · lessons=38</sub>
+### Code anchors / blast radius (codegraph)
+
+- `deriveNode` (packages/core/src/observe/derive.ts:74) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/index.ts`; tests: `packages/core/test/derive.test.ts`
+- `assembleNode` (packages/core/src/observe/runView.ts:335) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/watch.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
+- `NodeTokenSpine` (packages/core/src/observe/runView.ts:255) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
+- `nodeTokenSpine` (packages/core/src/observe/runView.ts:274) — 2 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/node-token-spine.test.ts`
+- `RunView` (packages/core/src/observe/runView.ts:113) — 13 callers in `packages/core/src/index.ts`, `packages/core/src/observe/assess.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts` +1 more; tests: `packages/core/test/assess-probe.test.ts`, `packages/core/test/observe-assess.test.ts`
+
+<sub>derived 2026-07-02 · arc=60 commits · files=13 · lessons=41</sub>
 <!-- okf:auto-end -->

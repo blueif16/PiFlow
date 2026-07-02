@@ -29,14 +29,14 @@ BIN
 - `packages/cli/src/cli.ts:166` — `main()` switch — the flat-argv subcommand dispatcher (new/add-node/memory/run/…)
 - `packages/core/src/cli.ts:38` — second bin — a SEPARATE `@piflow/core` entry that handles only `logs` (re-exported into the one `piflowctl` bin)
 NEW
-- `packages/cli/src/scaffold.ts:697` — `runNewCli` — parses argv, calls `scaffoldNew`
-- `packages/cli/src/scaffold.ts:391` — `scaffoldNew` — writes meta.json (via `buildMeta`) + seeds system `memory.md`
+- `packages/cli/src/scaffold.ts:702` — `runNewCli` — parses argv, calls `scaffoldNew`
+- `packages/cli/src/scaffold.ts:396` — `scaffoldNew` — writes meta.json (via `buildMeta`) + seeds system `memory.md`
 ADD-NODE
-- `packages/cli/src/scaffold.ts:717` — `runAddNodeCli` — parses the repeatable flags, calls `scaffoldAddNode`
-- `packages/cli/src/scaffold.ts:196` — `buildNode` — PURE: id/phase/deps/contract + optional blocks + derives folded into `op[]`
+- `packages/cli/src/scaffold.ts:722` — `runAddNodeCli` — parses the repeatable flags, calls `scaffoldAddNode`
+- `packages/cli/src/scaffold.ts:201` — `buildNode` — PURE: id/phase/deps/contract + optional blocks + derives folded into `op[]`
 - `packages/cli/src/scaffold.ts:236` — `seedNodeMemory`/`seedNodeCodeMap` — seed memory.md + code-map.md create-if-absent (never clobbers prompt.md)
 RUN
-- `packages/cli/src/run.ts:354` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
+- `packages/cli/src/run.ts:444` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
 - `packages/core/src/runner/entry.ts:150` — `runFromTemplate` — the core template-run join the CLI delegates to
 
 # Freshness (anti-drift)
@@ -157,30 +157,66 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `859c767` 2026-06-30 — feat(cli): skills install add-ons + wizard + per-project manifest
 - `ed90d7c` 2026-06-30 — feat(tui): scope the terminal fleet view to the launched project + add `piflowctl tui`
 - `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
+- `eb81f3e` 2026-06-30 — feat(cli): piflowctl understand — user-facing name for the code slices
+- `e82e2b3` 2026-07-01 — feat(core): run-start executor override (pick pi|claude-code per node/run without editing the template)
+- `10ea496` 2026-07-01 — feat(server): @piflow/server + piflowctl serve — host the control plane (control API + GUI) on any host
+- `1c00da0` 2026-07-01 — feat(cli): piflowctl context — switch the CLI/GUI between local & cloud serve endpoints
+- `e7a62b2` 2026-07-01 — feat(cli): P7 — the active context redirects observe/start to a remote serve
+- `d9cfd63` 2026-07-01 — feat(cli): piflowctl cloud up|down — deploy the control plane to Fly (A3)
+- `d123539` 2026-07-01 — feat(cli): activate the optimizer — optimize --rounds N loop + single-shot MEMORIZE (v1.5 §6)
+- `0c9762f` 2026-07-01 — Merge branch 'main' into worktree-control-plane-serve-context
+- `62a9c03` 2026-07-01 — feat(docker): local Docker container sandbox backend (--sandbox docker)
+- `4376c2b` 2026-07-01 — feat(optimize): physical adopt/LAND step — the explicit out-of-loop `optimize --adopt`
+- `8517442` 2026-07-01 — feat(optimize): activate the fix-cycle ceiling with a default file-backed counter
+- `368ea00` 2026-07-01 — feat(docker): zero-setup auto-build + live-verified end to end
+- `ed89b62` 2026-07-01 — feat(cli): piflowctl memory find|check — surface standing lessons + ride the OKF freshness gate
+- `89036c4` 2026-07-01 — feat(cli): piflowctl memory compact — the out-of-band cap/retire pass
+- `f56b9e4` 2026-07-01 — Merge branch 'main' into feat/optimize-loop-tail-wiring
+- `b3cf9b5` 2026-07-01 — refactor(cloud): HostAdapter seam + fly adapter (uniform hosting foundation)
+- `a1ccf33` 2026-07-01 — feat(hosts): wire railway/selfhost/docker into the registry — 4 hosting pathways live
+- `f43f3de` 2026-07-01 — feat(cloud): default `cloud up|down` --host to railway (managed, first month free)
+- `6c73eec` 2026-07-01 — feat(run): merge --sandbox into context worker (one setting; --sandbox = legacy override)
+- `0760909` 2026-07-01 — feat(blueprints): blueprint list|show — the agent's discover→understand surface
+- `c358ceb` 2026-07-01 — fix(context): baseUrl is the ONE authoritative predicate for remote-ness
+- `226a579` 2026-07-01 — merge: land optimize-loop-tail-wiring base (memory verbs + optimizer B-cluster handoff)
+- `a913828` 2026-07-01 — merge: land composable-blueprint-layer (blueprint verb + topology recipes)
+- `95d5ce1` 2026-07-02 — fix(core): node-level sandbox.output passthrough — N-breach output-path parity
+- `7a3ee69` 2026-07-02 — fix(cli): fail loud on --sandbox e2b without E2B_TEMPLATE (no silent exit-127)
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
+- [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
+- [[design-at-init-architecture]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
+- [[memory-legs-coordination]]
+- [[merge-workspace-token-bug]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
 - [[op-consumption-two-layer]]
+- [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
@@ -191,20 +227,23 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[swarm-consensus-deferred]]
+- [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `buildNode` (packages/cli/src/scaffold.ts:196) — 2 callers in `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
+- `buildNode` (packages/cli/src/scaffold.ts:201) — 2 callers in `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
-- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `runNewCli` (packages/cli/src/scaffold.ts:697) — 4 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; tests: `packages/cli/test/scaffold.test.ts`
-- `scaffoldNew` (packages/cli/src/scaffold.ts:391) — 4 callers in `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; tests: `packages/cli/test/scaffold-memory.test.ts`, `packages/cli/test/scaffold.test.ts`
+- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
+- `runNewCli` (packages/cli/src/scaffold.ts:702) — 3 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
+- `scaffoldNew` (packages/cli/src/scaffold.ts:396) — 4 callers in `packages/cli/src/blueprint-stamp.ts`, `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-01 · arc=97 commits · files=8 · lessons=36</sub>
+<sub>derived 2026-07-02 · arc=125 commits · files=8 · lessons=47</sub>
 <!-- okf:auto-end -->

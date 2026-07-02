@@ -48,7 +48,7 @@ FUSION — config + expand
 FUSION — expand-then-compile (terminal)
 - `packages/core/src/runner/entry.ts:116` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromConfig path)
 - `packages/core/src/runner/entry.ts:177` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromTemplate path)
-- `packages/core/src/dag.ts:177` — `compile` — folds the expanded siblings+judge into stages/edges (the DAG the author never wrote)
+- `packages/core/src/dag.ts:206` — `compile` — folds the expanded siblings+judge into stages/edges (the DAG the author never wrote)
 
 # Freshness (anti-drift)
 anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an `effectiveModel` front door — there is none, the single resolver is `resolveNodeModel`) · scope = the seeds above · re-derive when `model-routing.ts`'s precedence or `expand.ts`'s shape changes. DRIFT NOTE: precedence is resolved in ONE place per concern (`model-routing.ts` for routing; `expand.ts`/`fusion-config.ts` for fusion params) — the spec (`docs/specs/per-node-routing-and-fusion.md` §2) is the override contract. Fusion is a PORT of the DAG-expansion idea, not the vendor `pi-fusion`. `FUSION_PRESETS` (presets.ts:24) is shared with the `base-agent-types` slice (preset SHAPE) — this slice owns the EXPANSION, that one owns the preset lifecycle. The CLI dry-run also calls `expandFusion` (`packages/cli/src/run.ts:436`) so previews show the real expanded DAG + resolved models.
@@ -114,6 +114,9 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `1adbe3f` 2026-06-29 — feat(executor): robust §7.2 credential model for claude-code (env token, API-key strip, isolated CLAUDE_CONFIG_DIR)
 - `4415ae9` 2026-06-29 — feat(core): per-node fullAccess flag — open the fs jail for one node
 - `a935280` 2026-06-29 — merge: claude-code 2nd node executor + interactive piflowctl init wizard
+- `9e7a20c` 2026-07-01 — fix(core): compile carries sandbox execCwd/execReads (E10 drop)
+- `2efc3f3` 2026-07-02 — test(P2): failing golden tests + claudeCodeDriver stub (RED)
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 
 ### Lessons — memory cluster
 
@@ -121,35 +124,43 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
+- [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
+- [[design-at-init-architecture]]
+- [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
 - [[gui-nodehud-redesign]]
+- [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
+- [[memory-legs-coordination]]
 - [[observe-single-data-path]]
 - [[op-consumption-two-layer]]
+- [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[per-node-routing-fusion]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
+- [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
 - [[swarm-consensus-deferred]]
+- [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `judgePresetId` (packages/core/src/workflow/fusion/presets.ts:43) — 3 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `expandNode` (packages/core/src/workflow/fusion/expand.ts:69) — 1 caller in `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
-- `loadModelTiers` (packages/core/src/runner/model-routing.ts:171) — 20 callers in `gui/vite.config.ts`, `packages/cli/src/init/steps/claude-code.ts`, `packages/cli/src/init/steps/model-tiers.ts`, `packages/cli/src/model.ts` +5 more; tests: `packages/core/test/agent-base.test.ts`, `packages/core/test/model-routing.test.ts`, `packages/core/test/piflow-home.test.ts`
-- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
-- `loadModelsIndex` (packages/core/src/runner/model-routing.ts:272) — 7 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/model-routing.test.ts`
+- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `loadModelTiers` (packages/core/src/runner/model-routing.ts:171) — 20 callers in `packages/cli/src/init/steps/claude-code.ts`, `packages/cli/src/init/steps/model-tiers.ts`, `packages/cli/src/model.ts`, `packages/cli/src/run.ts` +5 more; tests: `packages/core/test/agent-base.test.ts`, `packages/core/test/model-routing.test.ts`, `packages/core/test/piflow-home.test.ts`
+- `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-01 · arc=41 commits · files=10 · lessons=24</sub>
+<sub>derived 2026-07-02 · arc=44 commits · files=10 · lessons=32</sub>
 <!-- okf:auto-end -->

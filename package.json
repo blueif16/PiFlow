@@ -7,6 +7,7 @@
   "description": "Pi Flow — a self-designing, durable, self-improving orchestration substrate (TypeScript SDK).",
   "license": "MIT",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "build": "tsc -b",
     "typecheck": "tsc -b",
     "lint": "biome check .",
