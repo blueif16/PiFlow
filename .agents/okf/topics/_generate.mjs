@@ -18,10 +18,14 @@
 //                                           anchors may be wrong). Auto-region DRIFT (a stale git/
 //                                           memory/blast block) is ADVISORY: reported, non-blocking
 //                                           — run --write to refresh it.
+//   --staged (with --check)                 scope the gate to cards whose seeds/anchors (or the card
+//                                           file itself) intersect the git-staged files — the
+//                                           pre-commit hook's fast path.
+//   OKF_NO_SYNC=1                           skip the automatic `codegraph sync` of a stale index.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { join, resolve, dirname, basename } from 'node:path';
+import { join, resolve, relative, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
@@ -34,7 +38,9 @@ const START = '<!-- okf:auto-start -->';
 const END = '<!-- okf:auto-end -->';
 
 const mode = process.argv.includes('--check') ? 'check' : process.argv.includes('--write') ? 'write' : null;
-if (!mode) { console.error('usage: _generate.mjs --write|--check [<key>...]'); process.exit(2); }
+if (!mode) { console.error('usage: _generate.mjs --write|--check [--staged] [<key>...]'); process.exit(2); }
+const STAGED = process.argv.includes('--staged');
+if (STAGED && mode !== 'check') { console.error('--staged only applies to --check'); process.exit(2); }
 const only = process.argv.slice(2).filter(a => !a.startsWith('--'));
 
 // ---- substrate helpers (all best-effort; a dead substrate degrades, never crashes) ----
@@ -53,6 +59,10 @@ const anchorRe = () => /`([\w./@-]+\.[A-Za-z0-9]+):(\d+)`\s*[—-]+\s*`([^`]+)`/
 // codegraph exact-name lookup (memoized) — used ONLY to explain WHERE a missing anchor symbol moved;
 // degrades to null when codegraph is unavailable, so the line:symbol gate still runs deterministically.
 const NO_CG = !!process.env.OKF_NO_CODEGRAPH || !CFG.codegraph;
+// DRIFT (next !== text) is only an honest signal when this run derives the same way the committed
+// region was derived. When the env flag disables a codegraph the config DECLARES (CI has no index),
+// the re-render is guaranteed to differ — report HEALTH only, never that vacuous DRIFT.
+const DRIFT_COMPARABLE = !(process.env.OKF_NO_CODEGRAPH && CFG.codegraph);
 const _symCache = new Map();
 function cgFind(name) {
   if (NO_CG || !name) return null;
@@ -255,20 +265,38 @@ const gMemory = (() => {
 })();
 const gCg = (() => {
   if (NO_CG) return 'off';
-  try { const j = JSON.parse(sh(CFG.codegraph, ['status', '--json'])); return `${j.lastIndexed}:${j.nodeCount}:${j.edgeCount}`; }
-  catch { return 'cg-unknown'; }
+  try {
+    let j = JSON.parse(sh(CFG.codegraph, ['status', '--json']));
+    // Self-sync: the span checks resolve against the INDEX, so a stale index makes the gate lie.
+    // pendingChanges is an object ({added, modified, removed}), not a count.
+    const pending = Object.values(j.pendingChanges || {}).reduce((a, n) => a + (n || 0), 0);
+    if (pending > 0 && !process.env.OKF_NO_SYNC) {
+      console.error(`codegraph: ${pending} pending change(s) — syncing so the gate checks the current graph`);
+      sh(CFG.codegraph, ['sync', '-q'], { timeout: 180000 });
+      j = JSON.parse(sh(CFG.codegraph, ['status', '--json']));
+    }
+    return `${j.lastIndexed}:${j.nodeCount}:${j.edgeCount}`;
+  } catch { return 'cg-unknown'; }
 })();
+
+// A card's dependency set — seeds + structured-anchor paths. ONE source of truth shared by the
+// fingerprint and the --staged filter, so they can never disagree about what a card depends on.
+function depPaths(curated, spec) {
+  const deps = new Set();
+  for (const s of spec.seeds || []) if (!isNoise(s)) deps.add(s);
+  for (const m of curated.matchAll(anchorRe())) {
+    const p = m[1];
+    if (!p.startsWith('http') && !p.startsWith('~') && !isNoise(p)) deps.add(p);
+  }
+  return deps;
+}
 
 // PER-CARD fingerprint: the curated half (frontmatter + anchors + prose) + the stat-signature of
 // every file it points at (seeds + structured anchors) + the three globals. Any of these moving — a
 // code edit (committed or not), a new commit, a memory note, a codegraph re-sync — misses the cache.
 function fingerprint(curated, spec) {
   const deps = {};
-  for (const s of spec.seeds || []) if (!isNoise(s)) deps[s] = statSig(s);
-  for (const m of curated.matchAll(anchorRe())) {
-    const p = m[1];
-    if (!p.startsWith('http') && !p.startsWith('~') && !isNoise(p)) deps[p] = statSig(p);
-  }
+  for (const p of depPaths(curated, spec)) deps[p] = statSig(p);
   // trimEnd the curated half: splice() normalizes trailing whitespace when it first appends the auto
   // block, so a fresh card's pre-write vs post-write curated differ only in trailing newlines — that
   // must not miss the cache. Trailing whitespace never affects a health/derive verdict.
@@ -281,7 +309,11 @@ const unknown = only.filter(k => !allKeys.includes(k));
 if (unknown.length) { console.error(`unknown card key(s): ${unknown.join(', ')} — known: ${allKeys.join(', ')}`); process.exit(2); }
 const cards = readdirSync(HERE).filter(f => f.endsWith('.md') && (!only.length || only.includes(f.replace(/\.md$/, ''))));
 const cache = loadCache();
-let drift = 0, healthFail = 0;
+// --staged: the file-level rung of the blast ladder, applied at pre-commit — only cards whose
+// dependency set (or own card file) intersects the staged files are checked; the rest can't have
+// drifted from THIS commit. Full sweeps stay `--check` (post-merge, CI).
+const STAGED_FILES = STAGED ? new Set(sh('git', ['diff', '--cached', '--name-only']).split('\n').filter(Boolean)) : null;
+let drift = 0, healthFail = 0, skipped = 0;
 for (const file of cards) {
   const path = join(HERE, file);
   const text = readFileSync(path, 'utf8');
@@ -289,6 +321,11 @@ for (const file of cards) {
   const spec = { key: fm.key || file.replace(/\.md$/, ''), aliases: fm.aliases || [], seeds: fm.seeds || [], symbols: fm.symbols || [], memoryHub: fm.memoryHub };
   const tag = `[${spec.key}]`;
   const curated = text.split(START)[0]; // splice never touches this half → curated == next's curated half
+  if (STAGED_FILES) {
+    const deps = depPaths(curated, spec);
+    deps.add(relative(REPO, path));
+    if (![...STAGED_FILES].some(f => deps.has(f))) { skipped++; continue; }
+  }
   const fp = fingerprint(curated, spec);
 
   // INCREMENTAL SKIP: a cache entry exists ONLY for a fully-clean card, so a fingerprint match proves
@@ -310,13 +347,14 @@ for (const file of cards) {
     else console.log(`${tag} unchanged`);
     for (const h of health) console.log(`  ⚠ ${h}`);
   } else { // check
-    if (next !== text) { console.error(`${tag} DRIFT: auto region is stale — run --write`); drift++; }
+    if (next !== text && DRIFT_COMPARABLE) { console.error(`${tag} DRIFT: auto region is stale — run --write`); drift++; }
     for (const h of health) { console.error(`${tag} HEALTH: ${h}`); healthFail++; }
-    if (next === text && !health.length) console.log(`${tag} ok`);
+    if ((next === text || !DRIFT_COMPARABLE) && !health.length) console.log(`${tag} ok`);
   }
 }
 saveCache(cache); // persist before any exit, so a failing --check still records the clean cards
 if (mode === 'check') {
+  if (STAGED_FILES) console.log(`--staged: checked ${cards.length - skipped} of ${cards.length} card(s) touching staged files`);
   // DRIFT is advisory (the auto region is regenerable); only a HEALTH failure means the
   // curated anchors may be WRONG — that is what blocks the commit.
   if (drift) console.error(`\n${drift} advisory DRIFT (auto region stale — non-blocking; run --write to refresh).`);
