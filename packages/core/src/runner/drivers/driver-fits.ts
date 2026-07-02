@@ -7,8 +7,9 @@
 // Loadout/tool/skill fit continues to flow through the shipped `resolveSkillLoadout` + `preflightSkills`;
 // `driverFits` deliberately does NOT re-answer it (the §2.4 reviewer note). PURE — no I/O, no catalog access.
 //
-// P4 STUB: currently returns {ok:true, problems:[]} UNCONDITIONALLY (no axis is checked yet). The failing
-// tests in test/driver-fits.test.ts pin the real 2-axis behavior; the real bodies replace this stub.
+// It reads ONLY `driver.describe()` (the static card) + the node's `sandbox.provider` / `tier`, and returns
+// a list of human-readable problems (each names the offending value AND the driver's allowed envelope so an
+// author can self-correct). The advisory-warn wiring (node-lifecycle.ts) surfaces these; `--strict` blocks.
 
 import type { AgentDriver } from './types.js';
 import type { SandboxSpec } from '../../types.js';
@@ -29,9 +30,27 @@ export function driverFits(
   node: NodeRouting & { sandbox?: Partial<SandboxSpec>; tier?: string },
   driver: AgentDriver,
 ): FitResult {
-  // STUB — no axis checked yet (always "fits"). The real 2-axis logic replaces this.
-  void node;
-  void driver;
+  const card = driver.describe();
   const problems: string[] = [];
+
+  // AXIS 1 — SANDBOX. A node's declared sandbox provider MUST be one the executor can actually run on
+  // (`describe().sandbox.providers`). Name both the offending provider and the allowed set so the author
+  // can self-correct. Undefined provider ⇒ no assertion (the loader picks a backend the driver supports).
+  const nodeProvider = node.sandbox?.provider;
+  if (nodeProvider && !card.sandbox.providers.includes(nodeProvider)) {
+    problems.push(
+      `driver "${card.id}" cannot run on sandbox provider "${nodeProvider}" ` +
+        `(it supports: ${card.sandbox.providers.join(', ')})`,
+    );
+  }
+
+  // AXIS 2 — TIER-VS-PIN. A model-PINNING driver (`describe().model.tierAware === false`) cannot honor a
+  // node's `tier` class — the tier would be silently ignored. Flag it (naming the ignored tier).
+  if (node.tier && card.model.tierAware === false) {
+    problems.push(
+      `driver "${card.id}" pins its own model (tierAware:false) and cannot honor node tier "${node.tier}"`,
+    );
+  }
+
   return { ok: problems.length === 0, problems };
 }

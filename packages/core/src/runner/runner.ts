@@ -99,6 +99,13 @@ export interface RunOptions {
    * EXISTS; the runner does NOT yet dispatch through it (that is P2/P3) — behavior is unchanged.
    */
   drivers?: DriverTable;
+  /**
+   * (AgentDriver registry — P4, §2.4/§8 Q2) Author-time driver-fit ENFORCEMENT. `driverFits` (the 2 axes a
+   * driver adds — sandbox provider · tier-vs-model-pin) runs per node at run construction. DEFAULT (omit /
+   * false) is ADVISORY: a misfit is `console.warn`ed and the run proceeds (the executor may still cope).
+   * `strict:true` (opt-in, `--strict`) BLOCKS instead — a misfit HALTs the node with a loud error record.
+   */
+  strict?: boolean;
   /** The exec primitive (carries the watchdog + kill seam). Default `defaultExecRunner`. */
   execRunner?: ExecRunner;
   /** Provider name passed to the command builder (`pi --provider`). Default 'cp'. */
@@ -388,6 +395,8 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     // (AgentDriver registry — P3) The per-run executor→strategy lookup. Forks B (model), C (sandbox/cred),
     // D (verdict/telemetry) now dispatch through THIS table at the node-lifecycle call sites.
     drivers,
+    // (P4, §2.4) Author-time driver-fit enforcement — advisory-warn by default, blocking under `--strict`.
+    strict: opts.strict,
     execRunner: opts.execRunner ?? defaultExecRunner,
     providerName: opts.providerName ?? 'cp',
     model: opts.model,

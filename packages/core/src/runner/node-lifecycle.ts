@@ -33,6 +33,7 @@ import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, type ResolvedPromote } from '../workflow/ops/promote.js';
 import { derivesFromOp, gatesFromOp, runOpsFromOp } from './op-dispatch.js';
+import { driverFits } from './drivers/driver-fits.js';
 import {
   type NodeStatusRecord,
   type ArtifactState,
@@ -247,6 +248,19 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // method ⇒ `{}` (byte-identical). Only `add.env` is consumed in P3 — `read`/`write` additions are reserved
   // (unused) for a later phase. `claudeEnv` flows UNCHANGED into the env-merge below.
   const drv = ctx.drivers.get(node.executor);
+  // (P4, §2.4/§8 Q2) Author-time DRIVER-FIT preflight — the earliest run-construction point that has BOTH
+  // the node and its resolved driver. Checks EXACTLY the 2 axes a driver adds (sandbox provider ·
+  // tier-vs-model-pin); loadout/skill fit stays on the shipped `preflightSkills`. DEFAULT is ADVISORY: a
+  // misfit is `console.warn`ed and the run PROCEEDS (the executor may still cope) — it NEVER throws.
+  // `ctx.strict` (opt-in `--strict`) BLOCKS instead: the node HALTs with a loud error record.
+  const fit = driverFits(node, drv);
+  if (!fit.ok) {
+    const msg = `driver "${drv.id}" does not fit node "${node.id}": ${fit.problems.join('; ')}`;
+    if (ctx.strict) {
+      return finishNode(ctx, node, rec, t0, 'error', `driver-fit (strict): ${msg}`, [], fit.problems);
+    }
+    console.warn(`[driver-fit] ${msg}`);
+  }
   const add = drv.augmentSandbox
     ? await drv.augmentSandbox({
         node,

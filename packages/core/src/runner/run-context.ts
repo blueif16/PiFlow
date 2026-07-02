@@ -39,6 +39,12 @@ export interface RunContext {
    * `builtinDrivers()`. Present so the default EXISTS; the runner does NOT yet dispatch through it (P2/P3).
    */
   drivers: DriverTable;
+  /**
+   * (P4, §2.4) Author-time driver-fit enforcement mode. false/absent ⇒ ADVISORY (misfit ⇒ `console.warn`,
+   * run proceeds); true ⇒ STRICT (misfit HALTs the node). Consumed at the per-node run-construction seam
+   * (node-lifecycle.ts) via `driverFits(node, ctx.drivers.get(node.executor))`.
+   */
+  strict?: boolean;
   execRunner: ExecRunner;
   providerName: string;
   model?: string;

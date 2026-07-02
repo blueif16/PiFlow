@@ -399,9 +399,14 @@ export const piflowCheckpointReply: Middleware = async (req, res, next) => {
 export const piflowAgents: Middleware = async (req, res, next) => {
   if (!req.url?.match(/^\/__piflow\/agents\.json(?:\?.*)?$/)) return next();
   const mod = findCore("workflow/agent-preset.js");
-  if (!mod) return sendJson(res, 500, { error: "@piflow/core agent-preset dist not found — run: npm run build (at repo root)" });
+  const core = findCore("index.js");
+  if (!mod || !core) return sendJson(res, 500, { error: "@piflow/core agent-preset dist not found — run: npm run build (at repo root)" });
   try {
     const { defaultAgentsDir, loadAgentPreset } = await import(pathToFileURL(mod).href);
+    // (P4, §2.5) The built-in DRIVER catalog is joined OUTSIDE core: the server calls the pure static
+    // `describe()` on each built-in driver (core still enumerates nothing). Presets do NOT carry an executor
+    // (decision #3), so this is a FLAT catalog surface, not a per-preset mapping.
+    const { builtinDrivers } = await import(pathToFileURL(core).href);
     const dir = defaultAgentsDir();
     const catalog: Record<string, { label?: string; icon?: string; color?: string }> = {};
     let files: string[] = [];
@@ -410,9 +415,10 @@ export const piflowAgents: Middleware = async (req, res, next) => {
       const preset = loadAgentPreset(f.slice(0, -3), dir);
       if (preset) catalog[preset.id] = preset.display ?? {};
     }
-    // STUB (P4) — the driver catalog is NOT yet joined onto the response. The real handler imports
-    // `builtinDrivers` from @piflow/core and appends `drivers: builtinDrivers().list().map(d => d.describe())`.
-    sendJson(res, 200, catalog);
+    // Widen the response: the preset rows stay top-level keys (GUI per-agentType lookup unchanged); the
+    // additive `drivers` array is each built-in driver's static descriptor card (§2.5 discovery surface).
+    const drivers = builtinDrivers().list().map((d: { describe: () => unknown }) => d.describe());
+    sendJson(res, 200, { ...catalog, drivers });
   } catch (e) {
     sendJson(res, 500, { error: `agents catalog build failed (${String(e)})` });
   }
