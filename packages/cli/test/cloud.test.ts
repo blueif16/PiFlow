@@ -487,8 +487,9 @@ describe('runCloudCli default host (no --host) → railway', () => {
       switchContext: async (name: string) => { switched.push(name); },
       print: () => {},
     });
-    // railway plan = its upSteps + the invariant smoke: NO fly `apps-create`; HAS railway's `domain`.
-    expect(ran).toEqual(['copy-dockerignore', 'secrets-set', 'deploy', 'domain', 'rm-dockerignore', 'smoke']);
+    // railway plan = its upSteps + the invariant smoke: NO fly `apps-create`; HAS railway's `dockerfile-path`
+    // (the SERVICE var pointing the server-side builder at our Dockerfile) + `domain`.
+    expect(ran).toEqual(['copy-dockerignore', 'secrets-set', 'dockerfile-path', 'deploy', 'domain', 'rm-dockerignore', 'smoke']);
     expect(switched).toEqual(['cloud']);
   });
 

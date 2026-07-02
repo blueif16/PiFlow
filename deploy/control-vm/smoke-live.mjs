@@ -38,25 +38,32 @@ function record(id, label, pass, evidence) {
 const authHeaders = { Authorization: `Bearer ${TOKEN}` };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Readiness pre-wait — poll the origin until it ANSWERS (any HTTP status, incl. 401) before the ordered checks.
-// A just-deployed control plane (or the host's edge/domain routing) can take seconds to a minute to accept
-// connections; the ordered A→E checks are single-shot with no retry, so without this a live-but-warming service
-// would falsely red check A. Returns true once reachable, false on timeout (the checks then report the real error).
+// Readiness pre-wait — poll until OUR control plane answers (200 or 401), not merely until the origin replies.
+// A just-deployed control plane (or the host's edge/domain routing) takes seconds-to-minutes to go live, and the
+// ordered A→E checks are single-shot with no retry, so without this a warming service would falsely red check A.
+// CRITICAL: a host edge with no live deployment returns 404 (Railway: {"message":"Application not found"}) / 502 /
+// 503 — those are NOT ready, so we keep polling through them; only our bearer gate's 401 (or a 200) means the app
+// is up. Returns true once ready, false on timeout (the checks then report the real error).
+const READY_STATUSES = new Set([200, 401]);
 async function waitForOrigin() {
   const deadline = Date.now() + READY_TIMEOUT_MS;
-  let lastErr = "";
+  let last = "";
   for (let attempt = 1; ; attempt++) {
     try {
       const r = await fetch(`${BASE}/`, { redirect: "manual" });
-      console.log(`\n[ready] origin ${BASE} answered HTTP ${r.status} (attempt ${attempt})`);
-      return true;
+      if (READY_STATUSES.has(r.status)) {
+        console.log(`\n[ready] control plane ${BASE} is live — HTTP ${r.status} (attempt ${attempt})`);
+        return true;
+      }
+      last = `HTTP ${r.status} (edge up, no live deployment yet)`;
     } catch (e) {
-      lastErr = e?.message ?? String(e);
+      last = e?.message ?? String(e);
     }
     if (Date.now() >= deadline) {
-      console.log(`\n[ready] WARN: origin ${BASE} never answered within ${READY_TIMEOUT_MS}ms (last: ${lastErr}) — running checks anyway`);
+      console.log(`\n[ready] WARN: control plane ${BASE} not live within ${READY_TIMEOUT_MS}ms (last: ${last}) — running checks anyway`);
       return false;
     }
+    if (attempt === 1 || attempt % 5 === 0) console.log(`\n[ready] waiting for ${BASE} … ${last} (attempt ${attempt})`);
     await sleep(2000);
   }
 }

@@ -44,21 +44,33 @@ describe('railwayAdapter.appUrl', () => {
 });
 
 describe('railwayAdapter.upSteps', () => {
-  it('emits the runbook order: copy-dockerignore → secrets-set → deploy → domain → rm-dockerignore', () => {
+  it('emits the runbook order: copy-dockerignore → secrets-set → dockerfile-path → deploy → domain → rm-dockerignore', () => {
     expect(railwayAdapter.upSteps(ctx()).map((s) => s.id)).toEqual([
       'copy-dockerignore',
       'secrets-set',
+      'dockerfile-path',
       'deploy',
       'domain',
       'rm-dockerignore',
     ]);
   });
 
-  it('the secrets-set step shapes each pair as `railway variables --set K=V` (real values in the command)', () => {
+  it('sets RAILWAY_DOCKERFILE_PATH as a SERVICE variable (a local env var never reaches the server-side builder)', () => {
+    const step = railwayAdapter.upSteps(ctx()).find((s) => s.id === 'dockerfile-path')!;
+    // MUST be `railway variables --set` (persisted on the service, read at build time), NOT a process env —
+    // otherwise Railway ignores our monorepo Dockerfile and falls back to Railpack (Node auto-detect) → build fails.
+    expect(step.command).toEqual(['railway', 'variables', '--skip-deploys', '--set', 'RAILWAY_DOCKERFILE_PATH=deploy/control-vm/Dockerfile']);
+    // it precedes the deploy so the builder sees it
+    const ids = railwayAdapter.upSteps(ctx()).map((s) => s.id);
+    expect(ids.indexOf('dockerfile-path')).toBeLessThan(ids.indexOf('deploy'));
+  });
+
+  it('the secrets-set step shapes each pair as `railway variables --skip-deploys --set K=V` (real values, no premature deploy)', () => {
     const set = railwayAdapter.upSteps(ctx()).find((s) => s.id === 'secrets-set')!;
     expect(set.command).toEqual([
       'railway',
       'variables',
+      '--skip-deploys',
       '--set',
       'PIFLOW_TOKEN=BEARER',
       '--set',
@@ -83,16 +95,16 @@ describe('railwayAdapter.upSteps', () => {
     expect(set.display).not.toContain('$MMGW_KEY');
   });
 
-  it('the deploy step is the paid one and WAITS for the build (no --detach) so the smoke never fires mid-build', () => {
+  it('the deploy step is the paid one and WAITS for the build via --ci (streams then exits non-zero on failure)', () => {
     const deploy = railwayAdapter.upSteps(ctx()).find((s) => s.id === 'deploy')!;
     expect(deploy.paid).toBe(true);
     expect(deploy.outward).toBe(true);
-    // NO `--detach`: `railway up` must block until the deploy completes (and exit non-zero on a build failure),
-    // else the immediately-following smoke hits a not-yet-live service. (design: readiness before smoke.)
-    expect(deploy.command).toEqual(['railway', 'up', '--service', 'the-svc']);
+    // `--ci`: stream the build logs then exit with the build's status — so cloud up WAITS for the deploy and
+    // HALTS on a build failure (bare `railway up` returns on upload in a non-TTY spawn; --detach never waits).
+    expect(deploy.command).toEqual(['railway', 'up', '--ci', '--service', 'the-svc']);
     expect(deploy.command).not.toContain('--detach');
-    // the SAME control-vm Dockerfile is targeted via RAILWAY_DOCKERFILE_PATH (no image change across hosts)
-    expect(deploy.env).toEqual({ RAILWAY_DOCKERFILE_PATH: 'deploy/control-vm/Dockerfile' });
+    // the Dockerfile is targeted by the `dockerfile-path` SERVICE-variable step, NOT a process env on deploy.
+    expect(deploy.env?.RAILWAY_DOCKERFILE_PATH).toBeUndefined();
   });
 
   it('the domain step is idempotent (railway domain re-run is safe) and touches the provider', () => {
