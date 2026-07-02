@@ -104,13 +104,19 @@ without the index):**
   card whose inputs are byte-identical to its last clean derive (a gitignored `.gen-cache.json` fingerprint; skipped
   cards print `ok (cached)`), so repeat runs are cheap; `OKF_NO_CACHE=1` forces a full re-derive. Run `--write` then
   re-`--check` to refresh drifted regions before committing.
-- **Post-merge (advisory).** Make the index current FIRST (`codegraph sync -q`). Then re-derive ONLY the cards the
-  merge touched, not all of them: intersect the changed files (`git diff --name-only <base>`) with each card's
-  `seeds:` (the file-level rung), and for the dependency rung run `codegraph impact <anchorSymbol> --json` — a card
-  is affected when a changed file lands in an anchor symbol's `impact.affected[]` even if it is NOT one of its seeds
-  (the case git-log-of-seeds misses). `node _generate.mjs --write <key>…` the affected keys only, review drift
-  flags, and re-author the CURATED half of any flagged card. **NEVER auto-rewrite curated prose** — the machine only
-  refills the region between the `okf:auto` markers.
+- **Post-merge (advisory) — `piflowctl understand --reconcile`.** WHEN: after every merge/pull to main, and BEFORE
+  an optimize pass (the fixer must read judged-fresh cards). The engine emits deterministic TRIGGERS; your job is
+  to JUDGE them — the machine never judges prose:
+  - `SEMANTIC? [card] \`sym\` body changed` (E4 span-hash) → re-read the card's prose against the new behavior;
+    re-author the sentence(s) that now lie. This is the rung that catches anchor-green-but-prose-stale rot.
+  - `IMPACT? [card] change to \`sym\` reaches its dep <file>` (E5, graph-only) → a change OUTSIDE the card's deps
+    reached them through the blast radius; verify the card's claims about that path.
+  - `UNCOVERED-HOT: <file> (n commits, no card)` (coverage) → a hot product file no card owns; add it as a SEED to
+    the nearest true card, or author a card if it's a new vertical. Instrument paths are excluded BY RULE (shared
+    tooling is skill-documented, never card material).
+  Then `--write` the affected keys (it AUTO-REPAIRS same-file line drift — span-verified re-stamps of the
+  `path:line` token only) and re-author the CURATED half where a trigger proved it stale. **The machine may
+  re-stamp an anchor's line number; it NEVER touches words** — prose re-authoring is always yours.
 - **Rolling (discovery / add-retire).** Re-run the §2 procedure: roots → codegraph reachability (MEMBERSHIP) → cluster
   by module → rank by centrality → name by commit-scope → liveness by git RECENCY (not frequency). A cluster that
   LEFT the reachable set → retire (human-gated); a new reachable cluster + fresh scope → add a card; reachable-but-old
@@ -121,12 +127,15 @@ thing; it is a ladder matched to cadence:
 | Rung | Fires when | Cadence | Status |
 |---|---|---|---|
 | file-existence | a seed/anchor file is gone | pre-commit | ✅ built |
-| symbol + line∈span | anchor symbol moved/renamed, or a def-anchor's line left its span | pre-commit (blocking) | ✅ built |
-| method-body AST hash | a tracked function's body changed (formatting-insensitive) | post-merge (advisory) | 🔬 designed (E4) |
-| codegraph impact | a change's blast-radius reaches the slice's anchors via a dep outside its seeds | post-merge (advisory) | 🔬 designed (E5) |
-Match granularity to cadence: coarse (filename) over a 27-file slice cries wolf every commit; fine (method-body) fires
-only on real change. Today the gate is symbol-accurate, not yet paragraph-accurate (E4). Anchor on the SYMBOL, treat
-the line as a hint (the planned E8 stable-symbol-id upgrade).
+| symbol + line∈span | anchor symbol moved/renamed, or a def-anchor's line left its span | pre-commit (blocking, auto-repairable) | ✅ built |
+| normalized span-hash | a def-anchored symbol's body changed (comments/whitespace-insensitive) | post-merge `--reconcile` (SEMANTIC? advisory) | ✅ built (E4 approx) |
+| codegraph impact | a change-site symbol's blast radius reaches a card's deps outside the change set | post-merge `--reconcile` (IMPACT? advisory) | ✅ built (E5) |
+| coverage | a hot product file no card owns | post-merge `--reconcile` (UNCOVERED-HOT advisory) | ✅ built |
+Match granularity to cadence: coarse (filename) over a 27-file slice cries wolf every commit; fine (span-hash) fires
+only on real change. Anchor on the SYMBOL, treat the line as a hint (the planned E8 stable-symbol-id upgrade). The
+retrieval side has its own gate: `.agents/okf/eval/_eval.mjs` scores FIND against a golden set with `codegraph
+explore` as the honest baseline — run it after any ranker or card-frontmatter change; never edit a golden
+expectation to make a run pass.
 
 **To ADD a card:** create `.agents/okf/topics/<key>.md` with frontmatter (`key`, `title`, `description`, `resource:`
 = the one canonical primary file the card owns, `seeds:`, `symbols:`, `aliases:`, `tags:`) + a one-paragraph "Why /
@@ -144,8 +153,9 @@ relative fragments.
 - **Pointers + semantics, never a copy.** A slice points at code and explains it; it does not duplicate it.
 - **Validate after retrieval (JIT), don't front-load.** Pull the slice when needed and `--check` it before trusting;
   stale context is actively harmful.
-- **Deterministic-first; never auto-rewrite curated prose.** The gate is deterministic; an advisory/LLM signal is a
-  hint to a human/agent glance, never an auto-edit of the understanding.
+- **Deterministic-first; never auto-rewrite curated prose.** The gate is deterministic; an advisory signal is a
+  hint to a human/agent glance, never an auto-edit of the understanding. ONE machine exception, bounded: `--write`
+  may re-stamp a drifted anchor's LINE NUMBER (span-verified against the graph) — it never touches words.
 - **Anchors are the contract.** The `path:line — symbol` anchors (+ seeds) are what the gate validates and what FIND
   returns; prose is commentary.
 
@@ -159,11 +169,13 @@ relative fragments.
 ## Pointers
 - Design + rationale: `docs/research/memory/code-understanding-and-anti-drift.md` (§2 discovery · §4.1 blast ladder · §5 backlog E0–E8).
 - External SOTA verification: `docs/research/memory/sota-verification-2026-06-30.md`.
-- The generator: `.agents/okf/topics/_generate.mjs` (`--write` / `--check [--staged] [key]`), fronted by
-  `piflowctl understand --rebuild`/`--check`; config: `.agents/okf/okf.config.json`.
+- The generator: `.agents/okf/topics/_generate.mjs` (`--write` / `--check [--staged] [key]` / `--reconcile` /
+  `--owns <path>`), fronted by `piflowctl understand --rebuild`/`--check`/`--reconcile`/`--owns`; config:
+  `.agents/okf/okf.config.json`.
   Incremental via a per-card input fingerprint (gitignored `.gen-cache.json`); `OKF_NO_CACHE=1` forces a full pass,
   `OKF_NO_CODEGRAPH=1` runs the deterministic line-check without the index (HEALTH only), `OKF_NO_SYNC=1` skips the
   automatic index sync, `--staged` scopes to cards touching the git-staged files (the pre-commit hook's mode).
+- The retrieval eval: `.agents/okf/eval/_eval.mjs` + `golden.json` (E6) — FIND vs the `codegraph explore` baseline.
 - Codegraph fullest-use (escalate with `explore` · `impact` for blast · `status`→`sync` hygiene): the tool's own
   canonical guidance in `src/mcp/server-instructions.ts` / https://colbymchenry.github.io/codegraph/.
 - Entry verb (SHIPPED): `piflowctl understand [subsystem]` (FIND) · `--check [key]` (this gate) · `--rebuild [key]`
