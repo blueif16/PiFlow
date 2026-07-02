@@ -176,6 +176,8 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
   if (n.def.model) intent.model = n.def.model;
   if (n.def.provider) intent.provider = n.def.provider;
   if (n.def.tier) intent.tier = n.def.tier;
+  // Per-node reasoning cap → NodeSpec.thinking → `pi --thinking` (command.ts). Operator-free over-think guard.
+  if (n.def.thinking) intent.thinking = n.def.thinking;
   // (G5) Carry a HUMAN CHECKPOINT block verbatim onto the spec (the runtime CheckpointSpec) when authored —
   // additive, the same way `op` is carried. A node with no checkpoint behaves exactly as before.
   if (n.def.checkpoint) intent.checkpoint = n.def.checkpoint;

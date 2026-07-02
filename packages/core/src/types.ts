@@ -43,6 +43,13 @@ export interface NodeSpec {
   /** Per-node tier ALIAS resolved to a model via `~/.piflow/model-tiers.json` (when active). Undefined ⇒ none. */
   tier?: string;
   /**
+   * Per-node reasoning-depth cap → `pi --thinking` (and claude `--effort`). One of
+   * off|minimal|low|medium|high|xhigh. OVERRIDES the run-level `--thinking`; undefined ⇒ inherit it. Lets a
+   * producer that must COMMIT a write (not reason forever) pin its own cap WITHOUT an operator flag — the
+   * operator-free fix for the compose-in-thinking over-think stall. Emitted in `runner/command.ts`.
+   */
+  thinking?: string;
+  /**
    * Which agent binary runs this node. Absent/`'pi'` → the pi coding agent (today's path, BYTE-IDENTICAL).
    * `'claude-code'` → a headless `claude -p` session on the LOCAL logged-in subscription (builtins only, for
    * read/write/fix/debug); it resolves its model from the `claude` tier block (`resolveClaudeModel`) and runs
@@ -927,7 +934,7 @@ export interface SubworkflowSpec {
  * metadata (a display label, §5) carried through so a PROFILE predicate can select nodes by it — it
  * NEVER drives ordering/parallelism (deps + owns do).
  */
-export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentType' | 'tools' | 'model' | 'provider' | 'tier' | 'executor'> & {
+export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentType' | 'tools' | 'model' | 'provider' | 'tier' | 'thinking' | 'executor'> & {
   io: NodeIO;
   /** Generic phase label (display metadata; the elision predicate may select by it). Optional/additive. */
   phase?: string;
