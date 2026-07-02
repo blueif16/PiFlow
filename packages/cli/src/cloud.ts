@@ -373,14 +373,26 @@ export function rmDockerignoreStep(): DeployStep {
  */
 export const CONTROL_VM_DEMO_PRODUCT = 'demo';
 
-/** The invariant smoke gate — identical for every host; keys only on the origin + the minted token. */
-export function smokeStep(appUrl: string, token: string): DeployStep {
+/**
+ * The invariant smoke gate — identical for every host; keys only on the origin + the minted token.
+ * When the deploy stages an e2b template, thread it in as `E2B_TEMPLATE`: the smoke defaults SANDBOX=e2b and
+ * FATALS (exit 2) if E2B_TEMPLATE is unset (smoke-live.mjs), so projecting it here makes `cloud up --execute`
+ * HANDS-FREE — the operator no longer has to `export E2B_TEMPLATE` in-shell for the gate to reach the POST.
+ * E2B_TEMPLATE is deploy CONFIG (a public template id), not a secret, so it's shown in-clear in the display.
+ */
+export function smokeStep(appUrl: string, token: string, e2bTemplate?: string): DeployStep {
+  const env: Record<string, string> = {
+    PIFLOW_CLOUD_URL: appUrl,
+    PIFLOW_TOKEN: token,
+    PIFLOW_PRODUCT: CONTROL_VM_DEMO_PRODUCT,
+  };
+  if (e2bTemplate) env.E2B_TEMPLATE = e2bTemplate;
   return {
     id: 'smoke',
     kind: 'smoke',
     command: ['node', 'deploy/control-vm/smoke-live.mjs'],
-    env: { PIFLOW_CLOUD_URL: appUrl, PIFLOW_TOKEN: token, PIFLOW_PRODUCT: CONTROL_VM_DEMO_PRODUCT },
-    display: `PIFLOW_CLOUD_URL=${appUrl} PIFLOW_TOKEN=*** PIFLOW_PRODUCT=${CONTROL_VM_DEMO_PRODUCT} node deploy/control-vm/smoke-live.mjs`,
+    env,
+    display: `PIFLOW_CLOUD_URL=${appUrl} PIFLOW_TOKEN=*** PIFLOW_PRODUCT=${CONTROL_VM_DEMO_PRODUCT}${e2bTemplate ? ` E2B_TEMPLATE=${e2bTemplate}` : ''} node deploy/control-vm/smoke-live.mjs`,
     outward: true,
     note: 'the P5 gate: A(auth)→B(start)→C(SSE done)→D(run-view)→E(in-VM bwrap/OAuth invariants).',
   };
@@ -396,7 +408,7 @@ export function buildDeployPlan(adapter: HostAdapter, ctx: HostPlanContext): Dep
     app: ctx.app,
     appUrl: ctx.appUrl,
     hostId: adapter.id,
-    steps: [...adapter.upSteps(ctx), smokeStep(ctx.appUrl, ctx.token)],
+    steps: [...adapter.upSteps(ctx), smokeStep(ctx.appUrl, ctx.token, ctx.e2bTemplate)],
   };
 }
 
@@ -525,8 +537,11 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
   const adapter = resolveAdapter(opts.host);
   const appUrl = adapter.appUrl(opts.app, { publicUrl: opts.publicUrl, port: opts.port });
 
+  // The e2b template the plane's worker boots (override with E2B_TEMPLATE, else the pi-baked default). Projected
+  // onto the plane by the mint AND into the smoke env by smokeStep, so `--execute` needs no in-shell export.
+  const e2bTemplate = process.env.E2B_TEMPLATE ?? DEFAULT_E2B_TEMPLATE;
   const mint = await mintCloudSecrets(
-    { appUrl, provider: opts.provider, providerSecret: opts.providerSecret, e2bTemplate: process.env.E2B_TEMPLATE ?? DEFAULT_E2B_TEMPLATE },
+    { appUrl, provider: opts.provider, providerSecret: opts.providerSecret, e2bTemplate },
     deps,
   );
   const plan = buildDeployPlan(adapter, {
@@ -539,6 +554,7 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
     token: mint.token,
     modelsJson: mint.modelsJson,
     provider: mint.provider,
+    e2bTemplate,
   });
 
   // Register the row up front (a harmless local write) so `context use cloud` works the moment it's live.

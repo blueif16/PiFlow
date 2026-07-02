@@ -31,6 +31,12 @@ export interface HostPlanContext {
   modelsJson?: string;
   /** Gateway name, for the display label. */
   provider?: string;
+  /**
+   * The e2b template the deploy projects onto the plane — threaded into the smoke env so `--execute` is
+   * hands-free. E2B-specific for now (E2B is the only working cloud worker); generalize to a per-worker
+   * sandbox-image field when other cloud sandbox providers (daytona/…) become first-class.
+   */
+  e2bTemplate?: string;
 }
 
 /**

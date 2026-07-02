@@ -3,6 +3,7 @@ import {
   mintCloudSecrets,
   buildFlyDeployPlan,
   buildDeployPlan,
+  smokeStep,
   renderPlan,
   runCloudUp,
   runCloudDown,
@@ -151,6 +152,14 @@ describe('buildFlyDeployPlan', () => {
     });
     expect(smoke.display).toContain('PIFLOW_TOKEN=***');
     expect(smoke.display).not.toContain('BEARER');
+  });
+
+  // The smoke defaults SANDBOX=e2b and fatals if E2B_TEMPLATE is unset (smoke-live.mjs). For a hands-free
+  // `cloud up --execute`, the plane's e2b template must reach the smoke process WITHOUT the operator having
+  // exported it in-shell — so smokeStep projects it into the step env when the deploy staged one.
+  it('smokeStep projects E2B_TEMPLATE into the smoke env when given (hands-free --execute), absent otherwise', () => {
+    expect(smokeStep('https://u', 'T', 'tmpl-123').env).toMatchObject({ E2B_TEMPLATE: 'tmpl-123' });
+    expect(smokeStep('https://u', 'T').env?.E2B_TEMPLATE).toBeUndefined();
   });
 });
 
