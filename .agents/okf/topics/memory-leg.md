@@ -191,17 +191,39 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `240da26` 2026-06-30 — feat(optimize): Leg-A recurrence reader — fills the deferred SKILL bucket in triage
 - `0450c46` 2026-06-30 — feat(optimize): MEMORIZE writer — auto-records lessons so the recurrence carry needs no human
 - `eb81f3e` 2026-06-30 — feat(cli): piflowctl understand — user-facing name for the code slices
+- `e82e2b3` 2026-07-01 — feat(core): run-start executor override (pick pi|claude-code per node/run without editing the template)
+- `10ea496` 2026-07-01 — feat(server): @piflow/server + piflowctl serve — host the control plane (control API + GUI) on any host
+- `1c00da0` 2026-07-01 — feat(cli): piflowctl context — switch the CLI/GUI between local & cloud serve endpoints
+- `fb1695f` 2026-07-01 — feat(core): P6 migration primitives — run.lock lease + freeze-at-node-boundary + run-dir bundle
 - `fb3b4cb` 2026-07-01 — feat(optimize): resolve a lesson's [[okf-slice]] into the fixer's code-map (resolve-at-read)
 - `992cfa0` 2026-07-01 — feat(optimize): cap/retire compaction — bound memory.md without re-summarizing (v1.5 §5.3)
+- `d9cfd63` 2026-07-01 — feat(cli): piflowctl cloud up|down — deploy the control plane to Fly (A3)
 - `a55668a` 2026-07-01 — feat(optimize): MEMORIZE distillation seam — real Root/Prevention, model injected (v1.5 §6)
 - `56731eb` 2026-07-01 — chore(core): export the loop / compact / distill optimize surface from the package root
 - `d123539` 2026-07-01 — feat(cli): activate the optimizer — optimize --rounds N loop + single-shot MEMORIZE (v1.5 §6)
 - `87bdfc4` 2026-07-01 — feat(optimize): long-horizon outer-loop seam — the counterpart to the multi-round loop (v1.5 §6)
+- `0c9762f` 2026-07-01 — Merge branch 'main' into worktree-control-plane-serve-context
+- `e021934` 2026-07-01 — feat(observe): distill each node's authored gates/policies into the config slice
 - `fefa626` 2026-07-01 — feat(optimize): wire the distiller into MEMORIZE + capture the fixer's root-cause
 - `4376c2b` 2026-07-01 — feat(optimize): physical adopt/LAND step — the explicit out-of-loop `optimize --adopt`
 - `8517442` 2026-07-01 — feat(optimize): activate the fix-cycle ceiling with a default file-backed counter
 - `ed89b62` 2026-07-01 — feat(cli): piflowctl memory find|check — surface standing lessons + ride the OKF freshness gate
 - `89036c4` 2026-07-01 — feat(cli): piflowctl memory compact — the out-of-band cap/retire pass
+- `f56b9e4` 2026-07-01 — Merge branch 'main' into feat/optimize-loop-tail-wiring
+- `b3cf9b5` 2026-07-01 — refactor(cloud): HostAdapter seam + fly adapter (uniform hosting foundation)
+- `a1ccf33` 2026-07-01 — feat(hosts): wire railway/selfhost/docker into the registry — 4 hosting pathways live
+- `f43f3de` 2026-07-01 — feat(cloud): default `cloud up|down` --host to railway (managed, first month free)
+- `6c73eec` 2026-07-01 — feat(run): merge --sandbox into context worker (one setting; --sandbox = legacy override)
+- `0760909` 2026-07-01 — feat(blueprints): blueprint list|show — the agent's discover→understand surface
+- `c358ceb` 2026-07-01 — fix(context): baseUrl is the ONE authoritative predicate for remote-ness
+- `226a579` 2026-07-01 — merge: land optimize-loop-tail-wiring base (memory verbs + optimizer B-cluster handoff)
+- `a913828` 2026-07-01 — merge: land composable-blueprint-layer (blueprint verb + topology recipes)
+- `7c22a76` 2026-07-01 — feat(observe): assessRunView — the falsifiable full-run rubric (sim §5)
+- `4b83d71` 2026-07-02 — Merge docs/full-run-simulation: full-run simulation spec + assessRunView falsifiable rubric
+- `6d87bfe` 2026-07-02 — test(P1): failing tests + stub for piDriver/DriverTable (RED)
+- `2efc3f3` 2026-07-02 — test(P2): failing golden tests + claudeCodeDriver stub (RED)
+- `f1d8a81` 2026-07-02 — test(P4): failing tests + stubs for driverFits + schema agent + drivers catalog (RED)
+- `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 
 ### Lessons — memory cluster
 
@@ -219,11 +241,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
+- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
-- `buildNodeMemory` (packages/core/src/memory/skeleton.ts:15) — 5 callers in `packages/core/src/memory/seed.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`, `packages/core/src/memory/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `scaffoldMemory` (packages/cli/src/scaffold.ts:440) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold-memory.test.ts`
+- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
+- `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-01 · arc=126 commits · files=15 · lessons=10</sub>
+<sub>derived 2026-07-02 · arc=148 commits · files=15 · lessons=10</sub>
 <!-- okf:auto-end -->

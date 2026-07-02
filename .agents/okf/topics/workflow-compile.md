@@ -25,7 +25,7 @@ into extra intents BEFORE this compile (see `per-node-routing-and-fusion`).
 
 # Anchors
 AUTHORED TEMPLATE → LOAD
-- `packages/core/src/workflow/template/loader.ts:210` — `loadTemplate` — fail-closed scan+check → `WorkflowSpec`
+- `packages/core/src/workflow/template/loader.ts:215` — `loadTemplate` — fail-closed scan+check → `WorkflowSpec`
 - `packages/core/src/workflow/template/loader.ts:96` — `toNodeIntent` — authored `TemplateNode` → runtime `NodeIntent`
 CONTRACT CODEC (DRIVER-* markers)
 - `packages/core/src/contract.ts:199` — `markersFromNode` — derive a node's contract markers from its `NodeSpec`/resolve
@@ -33,9 +33,9 @@ CONTRACT CODEC (DRIVER-* markers)
 SCHEMA (authored shape)
 - `packages/core/src/workflow/template/schema/node.schema.ts:55` — `agentType` field — one example of the authored node.json surface `toNodeIntent` reads
 WORKFLOWSPEC → DAG (topo-order)
-- `packages/core/src/dag.ts:177` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
-- `packages/core/src/dag.ts:69` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
-- `packages/core/src/dag.ts:105` — `stagesOf` — longest-path topological stages (parallel lanes per level)
+- `packages/core/src/dag.ts:206` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
+- `packages/core/src/dag.ts:76` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
+- `packages/core/src/dag.ts:112` — `stagesOf` — longest-path topological stages (parallel lanes per level)
 - `packages/core/src/types.ts:1026` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
 
 # Freshness (anti-drift)
@@ -120,6 +120,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `04072fe` 2026-06-30 — fix(core): reject op[] authored alongside inject/hooks (A2 silent-drop guard)
 - `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
 - `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
+- `9e7a20c` 2026-07-01 — fix(core): compile carries sandbox execCwd/execReads (E10 drop)
+- `62a9c03` 2026-07-01 — feat(docker): local Docker container sandbox backend (--sandbox docker)
+- `95d5ce1` 2026-07-02 — fix(core): node-level sandbox.output passthrough — N-breach output-path parity
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 
 ### Lessons — memory cluster
 
@@ -127,14 +132,19 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
+- [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[competitive-gaps-pdw]]
 - [[daytona-cloud-path]]
+- [[design-at-init-architecture]]
+- [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
+- [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
+- [[merge-workspace-token-bug]]
 - [[node-illustration-pipeline]]
 - [[optimize-loop-native-not-adhoc]]
 - [[per-node-routing-fusion]]
@@ -146,16 +156,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[roadmap-bookkeeping-linear]]
 - [[swarm-consensus-deferred]]
+- [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `toNodeIntent` (packages/core/src/workflow/template/loader.ts:97) — 1 caller in `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
-- `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/workflow/template/render.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
-- `loadTemplate` (packages/core/src/workflow/template/loader.ts:204) — 28 callers in `gui/vite.config.ts`, `packages/cli/src/extract.ts`, `packages/cli/src/inspect.ts`, `packages/cli/src/run.ts` +2 more; tests: `packages/cli/test/inspect.test.ts`, `packages/cli/test/run.test.ts`, `packages/cli/test/scaffold-memory.test.ts`, `packages/cli/test/scaffold.test.ts` +11
-- `NodeSpec` (packages/core/src/types.ts:17) — 50 callers in `packages/cli/src/inspect.ts`, `packages/core/src/contract.ts`, `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts` +9 more; tests: `packages/cli/test/inspect.test.ts`, `packages/core/test/build-node-config-fullaccess.test.ts`, `packages/core/test/claude-command.test.ts`, `packages/core/test/command-session.test.ts` +9
+- `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
+- `loadTemplate` (packages/core/src/workflow/template/loader.ts:215) — 12 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/blueprint-goldens.test.ts`, `packages/core/test/load-template.test.ts`, `packages/core/test/sandbox-output-passthrough.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 34 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/drivers/types.ts`, `packages/core/src/runner/env-staging.ts` +3 more; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/driver-runtime.test.ts`, `packages/core/test/execcwd-staging.test.ts`, `packages/core/test/executor-override.test.ts` +2
 
-<sub>derived 2026-07-01 · arc=64 commits · files=5 · lessons=24</sub>
+<sub>derived 2026-07-02 · arc=69 commits · files=5 · lessons=31</sub>
 <!-- okf:auto-end -->

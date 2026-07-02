@@ -38,9 +38,9 @@ SPAWN
 - `packages/core/src/runner/node-lifecycle.ts:398` — `runNode` — `ctx.buildCommand(...)` (dispatch happens here) produces the command
 - `packages/core/src/runner/node-lifecycle.ts:415` — `runNode` — `ctx.execRunner(execSandbox, cmd, …)` spawns claude inside the sandbox jail
 PARSE
-- `packages/core/src/runner/claude-result.ts:21` — `parseClaudeResult` — stream-json stdout → `ClaudeRunResult` (`ok = subtype==='success' && !isError`)
-- `packages/core/src/runner/claude-result.ts:62` — `findResultEvent` — scans EVERY NDJSON line for `type==='result'` (never `tail -1`); skips blank/non-JSON, ignores `rate_limit_event`/assistant/system
-- `packages/core/src/runner/claude-result.ts:9` — `ClaudeRunResult` — the normalized result/telemetry shape (ok, isError, subtype, sessionId, model, cost)
+- `packages/core/src/runner/claude-result.ts:30` — `parseClaudeResult` — stream-json stdout → `ClaudeRunResult` (`ok = subtype==='success' && !isError`)
+- `packages/core/src/runner/claude-result.ts:90` — `findResultEvent` — scans EVERY NDJSON line for `type==='result'` (never `tail -1`); skips blank/non-JSON, ignores `rate_limit_event`/assistant/system
+- `packages/core/src/runner/claude-result.ts:15` — `ClaudeRunResult` — the normalized result/telemetry shape (ok, isError, subtype, sessionId, model, cost)
 VERDICT
 - `packages/core/src/runner/node-lifecycle.ts:571` — `runNode` — `isClaude` branch: `claudeVerdict = parseClaudeResult(result.stdout)`, `parsed = null` (neuters the pi self-report reader on stream-json)
 - `packages/core/src/runner/node-lifecycle.ts:699` — `runNode` — `else if (claudeVerdict?.isError && claudeVerdict.subtype !== undefined) st = 'error'` — the claude self-report clause, gated on an ACTUAL result event
@@ -93,18 +93,32 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `b4152e9` 2026-06-29 — fix(executor): a successful claude-code node reports `ok`, not a spurious `gap`
 - `a935280` 2026-06-29 — merge: claude-code 2nd node executor + interactive piflowctl init wizard
 - `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
+- `e82e2b3` 2026-07-01 — feat(core): run-start executor override (pick pi|claude-code per node/run without editing the template)
+- `81c5e1d` 2026-07-01 — fix(core): staged prompt/extension refs are workdir-absolute under execCwd (E10 bug #2)
+- `0c9762f` 2026-07-01 — Merge branch 'main' into worktree-control-plane-serve-context
+- `e021934` 2026-07-01 — feat(observe): distill each node's authored gates/policies into the config slice
+- `7d7cd1e` 2026-07-01 — feat(observe): parseClaudeResult lifts ttft, stop_reason, and modelUsage contextWindow
+- `76f6f0b` 2026-07-01 — feat(observe): persist Claude's result-event telemetry into the run record (NodeUsage spine)
+- `2efc3f3` 2026-07-02 — test(P2): failing golden tests + claudeCodeDriver stub (RED)
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[blueprints-layer]]
 - [[claude-code-executor]]
+- [[cloud-control-plane-local-cloud-switch]]
 - [[competitive-gaps-pdw]]
+- [[design-at-init-architecture]]
 - [[expert-representations]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[mastra-competitive-analysis]]
+- [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-memory-system-v1]]
@@ -112,16 +126,18 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
 - [[sdk-data-boundaries]]
+- [[telemetry-legibility-tracks]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:9) — 2 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
-- `claudeCommand` (packages/core/src/runner/command.ts:127) — 1 caller; tests: `packages/core/test/claude-command.test.ts`
-- `findResultEvent` (packages/core/src/runner/claude-result.ts:52) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
-- `parseClaudeResult` (packages/core/src/runner/claude-result.ts:21) — 3 callers in `packages/core/src/runner/node-lifecycle.ts`; tests: `packages/core/test/claude-result.test.ts`
-- `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 2 callers in `packages/core/src/runner/claude-executor.ts`; tests: `packages/core/test/claude-executor.test.ts`
+- `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:15) — 3 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
+- `claudeCommand` (packages/core/src/runner/command.ts:127) — 4 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-code-driver.test.ts`
+- `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
+- `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 6 callers in `packages/core/src/runner/drivers/claude-code.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
+- `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 
-<sub>derived 2026-07-01 · arc=20 commits · files=5 · lessons=17</sub>
+<sub>derived 2026-07-02 · arc=30 commits · files=5 · lessons=23</sub>
 <!-- okf:auto-end -->

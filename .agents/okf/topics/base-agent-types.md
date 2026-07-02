@@ -36,7 +36,7 @@ CONSUMED
 PASSED THROUGH
 - `packages/core/src/observe/runView.ts:291` — agentType passthrough into `RunViewNode`
 RENDERED
-- `gui/src/data/runView.ts:383` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
+- `gui/src/data/runView.ts:573` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
 - `gui/src/components/NodeModeStrip.tsx:85` — renders the base-agent chip
 
 # Freshness (anti-drift)
@@ -131,6 +131,33 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `04072fe` 2026-06-30 — fix(core): reject op[] authored alongside inject/hooks (A2 silent-drop guard)
 - `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
 - `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
+- `e82e2b3` 2026-07-01 — feat(core): run-start executor override (pick pi|claude-code per node/run without editing the template)
+- `79ee97e` 2026-07-01 — feat(gui): route every control-server call through one configurable API base (VITE_PIFLOW_API)
+- `81c5e1d` 2026-07-01 — fix(core): staged prompt/extension refs are workdir-absolute under execCwd (E10 bug #2)
+- `94e87e0` 2026-07-01 — feat(gui): runtime-repointable endpoint + bearer auth + one-click migrate button (D1)
+- `0c9762f` 2026-07-01 — Merge branch 'main' into worktree-control-plane-serve-context
+- `e021934` 2026-07-01 — feat(observe): distill each node's authored gates/policies into the config slice
+- `21d824c` 2026-07-01 — feat(gui): render each node's authored gates/policies from observe (the short symbol + HUD detail)
+- `76f6f0b` 2026-07-01 — feat(observe): persist Claude's result-event telemetry into the run record (NodeUsage spine)
+- `3b46ea1` 2026-07-01 — feat(observe): buildRunView sources the token/cost/context spine from rec.usage
+- `7e4fb00` 2026-07-01 — feat(observe): NodeDerived — compute the per-node display zones once in the surface
+- `fe309b4` 2026-07-01 — feat(gui): render node.derived — the HUD re-derives no threshold
+- `b1729d4` 2026-07-01 — refactor(gui): render server `derived` only — delete the dead SSE live-fold + derive mirror
+- `5bd120e` 2026-07-01 — refactor(observe): extract nodeTokenSpine + assembleNode + non-destructive accumulator snapshot()
+- `3881e46` 2026-07-01 — feat(observe): resolveStructure — readRunModel prefers .pi/workflow.json for edge/stage parity with buildRunView
+- `8f1cd7e` 2026-07-01 — feat(gui): render the graph from the enriched live.model behind a liveSource flag (default poll)
+- `67beeb0` 2026-07-01 — fix(gui): liveModelToRunView carries the SSE snapshot stages — shadow-diff parity matches /run-view (P4)
+- `f8e9865` 2026-07-01 — fix(observe): the live SSE fold byte-matches /run-view (P4-live parity)
+- `36ba65e` 2026-07-01 — feat(gui): P5 — RunDigestPanel refetches off SSE deltas, not a 3s idle poll
+- `a06e930` 2026-07-01 — feat(gui): DR6 reconcile net — heal SSE drift on tab return (MODEL REPLACE)
+- `95d5ce1` 2026-07-02 — fix(core): node-level sandbox.output passthrough — N-breach output-path parity
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `865bc2d` 2026-07-02 — test(P5): failing tests + real claude stream-json fixture (RED)
+- `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `80aafdb` 2026-07-02 — test(P6): failing tests + stubs for cost-spike + loopScore (RED)
+- `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
+- `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 
 ### Lessons — memory cluster
 
@@ -138,21 +165,23 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[blueprints-layer]]
 - [[claude-code-executor]]
 - [[competitive-gaps-pdw]]
+- [[design-at-init-architecture]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
+- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 7 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
 - `PresetMergeable` (packages/core/src/workflow/agent-preset.ts:37) — 8 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
-- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `gui/vite.config.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/workflow/template/render.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
-- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `packages/core/src/workflow/template/render.ts`, `packages/cli/src/scaffold.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
 
-<sub>derived 2026-07-01 · arc=71 commits · files=8 · lessons=10</sub>
+<sub>derived 2026-07-02 · arc=98 commits · files=8 · lessons=12</sub>
 <!-- okf:auto-end -->

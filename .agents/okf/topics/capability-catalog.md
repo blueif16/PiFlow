@@ -93,6 +93,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `74f6b08` 2026-06-26 — feat(catalog): real tools/list client in the bridge, wired as introspectMcpServer's default (loop is live)
 - `b5972f2` 2026-06-26 — feat(skills): wire node.skill — stage the skill folder into the sandbox + emit --skill (reuse the seed seam)
 - `7126ce1` 2026-06-28 — feat(core): skill requires/allowed manifest + resolver + preflight (SA-A)
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 
 ### Lessons — memory cluster
 
@@ -100,18 +101,23 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
+- [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[daytona-cloud-path]]
+- [[design-at-init-architecture]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
+- [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
+- [[memory-legs-coordination]]
 - [[node-illustration-pipeline]]
 - [[optimize-loop-native-not-adhoc]]
 - [[piflow-ci-cd-pipeline]]
@@ -122,16 +128,19 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[roadmap-bookkeeping-linear]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[swarm-consensus-deferred]]
+- [[telemetry-legibility-tracks]]
+- [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `resolveRunTools` (packages/core/src/runner/entry.ts:38) — 3 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`
+- `resolveRunTools` (packages/core/src/runner/entry.ts:39) — 2 callers in `packages/core/src/runner/entry.ts`; ⚠ no covering tests found
 - `listServerTools` (packages/tool-bridge/src/index.ts:105) — 2 callers in `packages/core/src/catalog/introspect.ts`; tests: `packages/tool-bridge/test/list-server-tools.test.ts`
-- `seededRegistry` (packages/core/src/tools/catalog.ts:58) — 8 callers in `packages/cli/src/inspect.ts`, `packages/cli/src/run.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog.test.ts`
-- `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/catalog/introspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/runner.test.ts`, `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`
+- `seededRegistry` (packages/core/src/tools/catalog.ts:58) — 8 callers in `packages/cli/src/inspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog.test.ts`
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/tool-config.test.ts`
+- `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/catalog/introspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/runner.test.ts`, `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`
 
-<sub>derived 2026-07-01 · arc=27 commits · files=9 · lessons=27</sub>
+<sub>derived 2026-07-02 · arc=28 commits · files=9 · lessons=35</sub>
 <!-- okf:auto-end -->

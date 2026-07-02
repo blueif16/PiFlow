@@ -135,11 +135,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[blueprints-layer]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[config-is-truth-gui-is-projection]]
 - [[delegate-inspection-to-subagents]]
+- [[design-at-init-architecture]]
 - [[expert-representations]]
 - [[game-omni-reference-product]]
 - [[gui-nodehud-redesign]]
@@ -147,21 +149,24 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[memory-legs-coordination]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
+- [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[roadmap-bookkeeping-linear]]
+- [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `scoreRun` (packages/core/src/optimize/score.ts:93) — 4 callers in `packages/cli/src/optimize.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; ⚠ no covering tests found
-- `runFixGate` (packages/core/src/optimize/driver.ts:124) — 10 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-driver-events.test.ts`, `packages/core/test/optimize-driver.test.ts`, `packages/core/test/optimize-fix-cycle.test.ts`, `packages/core/test/optimize-loop-gs01.test.ts` +2
-- `CheckableTask` (packages/core/src/optimize/replay.ts:34) — 10 callers in `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/optimize/mine.ts`, `packages/core/src/optimize/replay.ts`; tests: `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-root-exports.test.ts`
+- `CheckableTask` (packages/core/src/optimize/replay.ts:34) — 10 callers in `packages/core/src/optimize/mine.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/optimize/replay.ts`; tests: `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-root-exports.test.ts`
+- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `makeReplayStages` (packages/core/src/optimize/replay.ts:87) — 7 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-mine.test.ts`, `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-root-exports.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-01 · arc=24 commits · files=19 · lessons=19</sub>
+<sub>derived 2026-07-02 · arc=24 commits · files=19 · lessons=24</sub>
 <!-- okf:auto-end -->

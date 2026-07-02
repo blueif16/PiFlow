@@ -27,7 +27,7 @@ host mint a scoped token) and crosses EXACTLY that set in via `CreateOpts.env`; 
 
 # Anchors
 SELECT
-- `packages/cli/src/run.ts:194` — `parseRunArgs` (`--sandbox`) — parse the backend choice (typo errors loudly)
+- `packages/cli/src/run.ts:247` — `parseRunArgs` (`--sandbox`) — parse the backend choice (typo errors loudly)
 - `packages/cli/src/run.ts:363` — `makeDaytonaProvider` — dynamic `import('@piflow/daytona')` → `createDaytonaProvider`
 - `packages/cli/src/run.ts:377` — `makeE2bProvider` — dynamic `import('@piflow/e2b')` → `createE2bProvider`
 INSTALL
@@ -35,11 +35,11 @@ INSTALL
 - `packages/e2b/src/e2b.ts:497` — `E2bSandboxProvider.openRun` — boot ONE E2B sandbox per run (open egress default)
 - `deploy/daytona/Dockerfile:45` — `RUN npm install -g @earendil-works/pi-coding-agent` — bake pi into the VM image
 EXECUTE
-- `packages/core/src/runner/env-staging.ts:18` — `CLOUD_KINDS` — `{daytona,e2b}`: the no-host-trust gate
-- `packages/core/src/runner/env-staging.ts:45` — `effectiveSandboxLocation` — per-node workdir/output by kind (isolated for cloud)
+- `packages/core/src/runner/env-staging.ts:23` — `CLOUD_KINDS` — `{daytona,e2b}`: the no-host-trust gate
+- `packages/core/src/runner/env-staging.ts:50` — `effectiveSandboxLocation` — per-node workdir/output by kind (isolated for cloud)
 SECRETS
 - `packages/core/src/types.ts:680` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
-- `packages/core/src/runner/env-staging.ts:141` — `cloudCredEnvAdditions` — resolve the DECLARED cred allowlist into the VM (cloud-only)
+- `packages/core/src/runner/env-staging.ts:146` — `cloudCredEnvAdditions` — resolve the DECLARED cred allowlist into the VM (cloud-only)
 
 # Freshness (anti-drift)
 anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds above · re-derive when run.ts's sandbox dispatch or the provider `openRun`/`stageHome` shape changes. DRIFT NOTE: backends are UNEVEN — E2B is the most complete (full agent-in-sandbox LIVE-proven, `deploy/e2b/smoke-live.mjs` against template `riwrtwrfanz3tewd5pw6`, 2026-06-27); Daytona's image/snapshot is BUILT (`deploy/daytona/`, snapshot `piflow-node-runtime-0-80-2`) but bwrap-jail is blocked inside Daytona VMs (memory). LANGGRAPH IS NOT A CLOUD BACKEND: `@piflow/langgraph` only transports run-status into a LangGraph graph (no Sandbox/SandboxProvider, no `--sandbox` value) — excluded from this slice despite the prompt's starting list. · SELECT is now two-source: `e2b`/`daytona` can be chosen per-run via `--sandbox` OR persistently as a context's `worker` (a cloud context cascades to them) — the effective value is `run.ts:resolveRunSandbox`; see [[context]].
@@ -142,6 +142,10 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `62a9c03` 2026-07-01 — feat(docker): local Docker container sandbox backend (--sandbox docker)
 - `368ea00` 2026-07-01 — feat(docker): zero-setup auto-build + live-verified end to end
 - `6c73eec` 2026-07-01 — feat(run): merge --sandbox into context worker (one setting; --sandbox = legacy override)
+- `7a3ee69` 2026-07-02 — fix(cli): fail loud on --sandbox e2b without E2B_TEMPLATE (no silent exit-127)
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 
 ### Lessons — memory cluster
 
@@ -154,6 +158,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[codebase-memory-mcp-analysis]]
 - [[competitive-gaps-pdw]]
 - [[daytona-cloud-path]]
+- [[design-at-init-architecture]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
@@ -177,5 +182,13 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[sdk-data-boundaries]]
 - [[telemetry-legibility-tracks]]
 
-<sub>derived 2026-07-01 · arc=80 commits · files=8 · lessons=30</sub>
+### Code anchors / blast radius (codegraph)
+
+- `createE2bProvider` (packages/e2b/src/e2b-sdk.ts:217) — 1 caller in `packages/e2b/src/index.ts`; ⚠ no covering tests found
+- `E2bSandboxProvider` (packages/e2b/src/e2b.ts:436) — 6 callers in `packages/e2b/src/e2b-sdk.ts`, `packages/e2b/src/index.ts`; tests: `packages/e2b/test/sandbox-e2b-parity.test.ts`, `packages/e2b/test/n127-negative-twin.test.ts`, `packages/e2b/test/nbreach-parity.test.ts`
+- `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
+- `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
+- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
+
+<sub>derived 2026-07-02 · arc=84 commits · files=8 · lessons=31</sub>
 <!-- okf:auto-end -->

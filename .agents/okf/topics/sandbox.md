@@ -131,10 +131,17 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `62a9c03` 2026-07-01 — feat(docker): local Docker container sandbox backend (--sandbox docker)
 - `368ea00` 2026-07-01 — feat(docker): zero-setup auto-build + live-verified end to end
 - `6c73eec` 2026-07-01 — feat(run): merge --sandbox into context worker (one setting; --sandbox = legacy override)
+- `95d5ce1` 2026-07-02 — fix(core): node-level sandbox.output passthrough — N-breach output-path parity
+- `8a31ce5` 2026-07-02 — fix(core): bwrap no-jail guidance lists the cloud sandbox fallbacks (N-126)
+- `7a3ee69` 2026-07-02 — fix(cli): fail loud on --sandbox e2b without E2B_TEMPLATE (no silent exit-127)
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -148,6 +155,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[game-omni-reference-product]]
+- [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[local-docker-sandbox-mode]]
@@ -162,9 +170,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
-<sub>derived 2026-07-01 · arc=62 commits · files=8 · lessons=30</sub>
+### Code anchors / blast radius (codegraph)
+
+- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
+- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
+- `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+
+<sub>derived 2026-07-02 · arc=68 commits · files=8 · lessons=33</sub>
 <!-- okf:auto-end -->

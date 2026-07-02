@@ -28,12 +28,12 @@ TEMPLATE-RUN JOIN
 - `packages/core/src/runner/entry.ts:150` — `runFromTemplate` — load → instantiate → compile → run
 - `packages/core/src/workflow/template/instantiate.ts:98` — `instantiateRun` — materialize `${RUN}/.pi/nodes/<id>/`
 PER-NODE RUNNER EXEC
-- `packages/core/src/runner/runner.ts:315` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
-- `packages/core/src/runner/node-lifecycle.ts:80` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
+- `packages/core/src/runner/runner.ts:373` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
+- `packages/core/src/runner/node-lifecycle.ts:99` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
 - `packages/core/src/runner/node-lifecycle.ts:490` — artifact host-stat — a node is `ok` only if its declared artifacts exist
-- `packages/core/src/runner/node-lifecycle.ts:795` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
+- `packages/core/src/runner/node-lifecycle.ts:991` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode`/`finishNode` no longer live in `packages/core/src/runner/runner.ts` (the §2.1 split moved the per-node lifecycle to `packages/core/src/runner/node-lifecycle.ts`; runner.ts only re-exports them) — the stage loop is the run-level concern in runner.ts, the per-node concern is in node-lifecycle.ts. This is the DYNAMIC exec spine carved out of the former `runtime-core`; its static sibling (`workflow-compile`) ends at the compiled `Workflow`, which is exactly where this slice begins. Threads that cross this spine each have their own slice: `sandbox` (the jail runNode creates), `per-node-routing-and-fusion` (the model on the pi command), `node-action-protocol` (the gates between exec and finish).
@@ -164,6 +164,19 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `a935280` 2026-06-29 — merge: claude-code 2nd node executor + interactive piflowctl init wizard
 - `132b524` 2026-06-30 — feat(core): optional `note` affordance on op[] and node top-level (A3)
 - `25c4226` 2026-06-30 — feat(core): execCwd/execReads exec-scope for out-of-tree builds (E10)
+- `e82e2b3` 2026-07-01 — feat(core): run-start executor override (pick pi|claude-code per node/run without editing the template)
+- `81c5e1d` 2026-07-01 — fix(core): staged prompt/extension refs are workdir-absolute under execCwd (E10 bug #2)
+- `fb1695f` 2026-07-01 — feat(core): P6 migration primitives — run.lock lease + freeze-at-node-boundary + run-dir bundle
+- `0c9762f` 2026-07-01 — Merge branch 'main' into worktree-control-plane-serve-context
+- `e021934` 2026-07-01 — feat(observe): distill each node's authored gates/policies into the config slice
+- `62a9c03` 2026-07-01 — feat(docker): local Docker container sandbox backend (--sandbox docker)
+- `dcdfb3a` 2026-07-01 — Merge branch 'main' into worktree-feat+observe-policy-legibility
+- `76f6f0b` 2026-07-01 — feat(observe): persist Claude's result-event telemetry into the run record (NodeUsage spine)
+- `6d87bfe` 2026-07-02 — test(P1): failing tests + stub for piDriver/DriverTable (RED)
+- `2efc3f3` 2026-07-02 — test(P2): failing golden tests + claudeCodeDriver stub (RED)
+- `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
+- `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 
 ### Lessons — memory cluster
 
@@ -173,14 +186,16 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[daytona-cloud-path]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
+- [[local-docker-sandbox-mode]]
+- [[telemetry-legibility-tracks]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `runNode` (packages/core/src/runner/node-lifecycle.ts:82) — 3 callers in `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
+- `runNode` (packages/core/src/runner/node-lifecycle.ts:99) — 1 caller in `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 - `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 6 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
-- `RunContext` (packages/core/src/runner/run-context.ts:31) — 17 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/retry.ts` +2 more; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:641) — 17 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts` +5 more; ⚠ no covering tests found
+- `RunContext` (packages/core/src/runner/run-context.ts:32) — 11 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
+- `RunScope` (packages/core/src/types.ts:643) — 11 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/sandbox/local.ts` +2 more; ⚠ no covering tests found
 
-<sub>derived 2026-07-01 · arc=109 commits · files=7 · lessons=5</sub>
+<sub>derived 2026-07-02 · arc=122 commits · files=7 · lessons=7</sub>
 <!-- okf:auto-end -->
