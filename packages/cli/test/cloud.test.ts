@@ -505,3 +505,48 @@ describe('runCloudCli default host (no --host) → railway', () => {
     expect(removed).toEqual(['cloud']);
   });
 });
+
+// ── mintCloudSecrets — N-127 e2b backend projection ─────────────────────────────────────────────────
+//
+// The control plane must PROJECT the e2b worker backend (E2B_API_KEY + E2B_TEMPLATE) so the deployed VM's
+// e2b sandbox boots the pi-baked template instead of a pi-less base image (→ `pi: command not found` → exit
+// 127). E2B_API_KEY is a real SECRET (redacted, mint-not-forward via the cloudCred allowlist seam);
+// E2B_TEMPLATE is deploy CONFIG (staged in-clear via displayValue). These reds against the CURRENT mint,
+// which projects only PIFLOW_TOKEN / <cred> / CLAUDE_CODE_OAUTH_TOKEN.
+describe('mintCloudSecrets — N-127 e2b backend projection', () => {
+  it('projects E2B_API_KEY (redacted secret) and E2B_TEMPLATE (in-clear config) into the staged secrets', async () => {
+    const m = await mintCloudSecrets(
+      { appUrl: flyAppUrl('a'), providerSecret: 'NEBIUS_API_KEY', e2bTemplate: 'riwrtwrfanz3tewd5pw6' },
+      fixedMintDeps(),
+    );
+    expect(m.secrets.map((s) => s.name)).toContain('E2B_API_KEY');
+    const tmpl = m.secrets.find((s) => s.name === 'E2B_TEMPLATE')!;
+    expect(tmpl.value).toBe('riwrtwrfanz3tewd5pw6');
+    expect(tmpl.displayValue).toBe('riwrtwrfanz3tewd5pw6'); // present ⇒ rendered in-clear (config, not a secret)
+    // E2B_API_KEY has no displayValue ⇒ it renders `***` (a real secret, mint-not-forward)
+    expect(m.secrets.find((s) => s.name === 'E2B_API_KEY')!.displayValue).toBeUndefined();
+  });
+
+  it('renders E2B_TEMPLATE in-clear + E2B_API_KEY *** in display, but the real API key value in the command', async () => {
+    const m = await mintCloudSecrets(
+      { appUrl: flyAppUrl('a'), providerSecret: 'NEBIUS_API_KEY', e2bTemplate: 'riwrtwrfanz3tewd5pw6' },
+      fixedMintDeps(),
+    );
+    const plan = buildFlyDeployPlan({ app: 'a', appUrl: m.appUrl, config: 'c', dockerfile: 'd', token: m.token, secrets: m.secrets });
+    const set = plan.steps.find((s) => s.id === 'secrets-set')!;
+    expect(set.display).toContain('E2B_TEMPLATE=riwrtwrfanz3tewd5pw6'); // config: in the clear
+    expect(set.display).toContain('E2B_API_KEY=***'); // secret: redacted in the printable runbook
+    expect(set.command).toContain(`E2B_API_KEY=${PROVIDER_VALUE}`); // execute form carries the real value
+  });
+
+  it('never stages E2B_API_KEY empty: an unresolved key is reported in missing[] and absent from secrets[]', async () => {
+    const m = await mintCloudSecrets(
+      { appUrl: flyAppUrl('a'), providerSecret: 'NEBIUS_API_KEY', e2bTemplate: 'riwrtwrfanz3tewd5pw6' },
+      fixedMintDeps({ cloudCred: (async () => ({})) as MintDeps['cloudCred'] }),
+    );
+    expect(m.missing).toContain('E2B_API_KEY');
+    expect(m.secrets.map((s) => s.name)).not.toContain('E2B_API_KEY');
+    // E2B_TEMPLATE is config, always staged even when the API key does not resolve
+    expect(m.secrets.map((s) => s.name)).toContain('E2B_TEMPLATE');
+  });
+});
