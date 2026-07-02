@@ -5,9 +5,10 @@
   "prompt": { "file": "prompt.md" },
   "tools": { "allow": ["write", "submit_result"], "deny": ["bash"] },
   "contract": {
-    "artifacts": ["greeting.txt"],
+    "artifacts": ["out/greet/greeting.txt"],
     "owns": ["out/**"],
     "readScope": ["{{RUN}}"],
+    "output": ".",
     "returnMode": "optional",
     "fillSentinel": null
   },

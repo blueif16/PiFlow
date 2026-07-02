@@ -189,6 +189,19 @@ export const nodeSchema = {
           type: ['string', 'null'],
           description: 'A sentinel (e.g. "<FILL:") that, if still present, marks an artifact incomplete. null ⇒ off.',
         },
+        output: {
+          // Per-node OUTPUT-COLLECTION ROOT (workdir-relative) → runtime `node.sandbox.output`. An ISOLATED
+          // kind (e2b/daytona/docker) `downloadDir(output → runDir)`s this back; the compile default `out/<id>`
+          // is re-rooted (its prefix stripped) so the node's deliverable lands at the run root. Setting `"."`
+          // makes collection an IDENTITY (nothing stripped), so an artifact authored at a NESTED path (e.g.
+          // `out/greet/greeting.txt`) lands at that SAME run-relative path the contract stats it — the ONLY
+          // config where an in-place (local) node and an isolated (e2b) node agree on where the file lands.
+          // Omitted ⇒ `out/<id>` (byte-identical to today).
+          type: 'string',
+          minLength: 1,
+          description:
+            'Per-node output-collection root (workdir-relative). Omitted ⇒ out/<id> (isolated kinds downloadDir it back). Set "." for identity collection (nothing stripped).',
+        },
       },
     },
     checks: {
