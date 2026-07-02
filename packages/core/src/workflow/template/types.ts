@@ -36,11 +36,13 @@ export interface TemplateNode {
    */
   agentType?: string;
   /**
-   * Which agent ENGINE runs this node: the `pi` fleet (default) or a headless local Claude Code session
-   * (`claude -p`). Omitted ⇒ 'pi' (byte-identical). Carried verbatim onto the dense `NodeSpec.executor`,
-   * which the runner reads at the 3 dispatch seams (command/model/credential). See node.schema.ts `executor`.
+   * Which agent ENGINE runs this node — an OPEN executor id (P3). `pi` (default fleet) or `claude-code`
+   * (headless local Claude, `claude -p`); ANY other string names a THIRD driver registered via
+   * `RunOptions.drivers` and gated at DAG-compile. Omitted ⇒ 'pi' (byte-identical). Carried verbatim onto
+   * the dense `NodeSpec.executor`, which the runner routes through `ctx.drivers.get(executor)` at the
+   * command/model/credential/verdict seams. See node.schema.ts `executor`.
    */
-  executor?: 'pi' | 'claude-code';
+  executor?: string;
   tools?: { allow?: string[]; deny?: string[] };
   mcp?: { servers?: Record<string, unknown>; ref?: string };
   inject?: string[];

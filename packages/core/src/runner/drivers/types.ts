@@ -9,7 +9,7 @@
 // optimizer to score/improve/swap agents without being blind. `conformsToParity` (parity.ts) is the gate.
 
 import type { NodeUsage } from '../status.js';
-import type { NodeSpec, ResolveResult, PiCommandOptions } from '../../types.js';
+import type { NodeSpec, ResolveResult, PiCommandOptions, SecretResolver } from '../../types.js';
 import type { NodeAccumulator } from '../../observe/distill.js';
 import type { ModelCatalog } from '../../observe/models.js';
 import type { CommandContext } from '../command.js';
@@ -32,6 +32,13 @@ export interface AgentVerdict {
   /** the executor's own self-report (pi's `lastJsonBlock`; null for Claude, whose verdict rides isError + gates). */
   selfReport: { status: string; summary?: string; issues?: string[] } | null;
   sessionId?: string;
+  /**
+   * (P3, ADDITIVE — non-parity) An executor's own error report on a formally-clean exit 0 (Claude's
+   * `result` event with `isError && subtype !== undefined`). Populated ONLY by drivers whose verdict rides a
+   * result event (claude); pi/echo leave it undefined. The status ladder maps it to `error`, reproducing the
+   * claude self-reported-error clause byte-identically. Does NOT change the frozen parseResult contract.
+   */
+  selfReportedError?: { subtype?: string; text?: string };
 }
 
 /** The static "what this driver brings" card — product-agnostic, a-priori, node-independent (§2.5). */
@@ -69,8 +76,24 @@ export interface AgentDriverDescriptor {
 //    byte-identically (design §2.3). The P0 minimal Driver* placeholders lacked resolved.piTools and
 //    ctx.promptFile, so buildCommand could not call defaultPiCommand — corrected here. Only the sandbox
 //    coupling keeps a driver-local shape (finalized in P2). ──
-/** The pre-spawn sandbox/credential coupling input. */
-export interface DriverSandboxSpec { node: NodeSpec; env: Record<string, string | undefined>; }
+/**
+ * The pre-spawn sandbox/credential coupling input. (P3) Widened from `{node,env}` to carry exactly what the
+ * run-side wrapper needs — the SAME inputs the node-lifecycle:242 call site supplies to
+ * `claudeExecutorEnvAdditions` (`nodeId`/`configDir`/`resolver`). A permitted RUN-SIDE alignment (like the
+ * earlier `buildCommand`/CommandContext coupling), NOT a parity-contract change. `env` = the host env the
+ * additions merge over.
+ */
+export interface DriverSandboxSpec {
+  node: NodeSpec;
+  /** the node id (= `claudeExecutorEnvAdditions` `nodeId`). */
+  nodeId: string;
+  /** the per-node config dir under the run dir (= `CLAUDE_CONFIG_DIR`). */
+  configDir: string;
+  /** the host env the additions merge over (never mutated). */
+  env: Record<string, string | undefined>;
+  /** the per-node secret resolver (scoped-token / sealing broker seam). Undefined ⇒ `defaultSecretResolver`. */
+  resolver?: SecretResolver;
+}
 export interface DriverSandboxAdditions { read?: string[]; write?: string[]; env?: Record<string, string | undefined>; }
 
 /**

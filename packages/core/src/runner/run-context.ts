@@ -45,11 +45,11 @@ export interface RunContext {
   /**
    * Run-start executor selection (run-level default + per-node override), applied at each node run by
    * `resolveExecutor` (node-lifecycle.ts): `executorOverride[node.id] ?? executorDefault ?? node.executor`.
-   * Lets a caller (CLI/GUI) pick `pi` vs `claude-code` WITHOUT editing the template. Both absent ⇒ every
-   * node keeps its authored `executor` (today's behavior).
+   * Lets a caller (CLI/GUI) pick the executor WITHOUT editing the template. Both absent ⇒ every node keeps
+   * its authored `executor` (today's behavior). (P3) OPEN driver ids, gated at the runtime `drivers.get`.
    */
-  executorDefault?: 'pi' | 'claude-code';
-  executorOverride?: Record<string, 'pi' | 'claude-code'>;
+  executorDefault?: string;
+  executorOverride?: Record<string, string>;
   /**
    * G1 — global routing config (the activatable tier map + pi's models.json index), loaded ONCE at run start.
    * The per-node effective model/provider is resolved from this via `resolveNodeModel` at the build call.

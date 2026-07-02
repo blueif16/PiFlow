@@ -64,8 +64,11 @@ export const nodeSchema = {
     executor: {
       // Which agent ENGINE runs this node: the `pi` fleet (default) or a headless local Claude Code
       // session (`claude -p`). Omitted ⇒ 'pi' (byte-identical to today). A 'claude-code' node dispatches
-      // via the claudeCommand builder + the host-resolved OAuth credential (runner/claude-executor.ts);
-      // see docs/design/agent-executor-interface.md.
+      // via the claudeCommand builder + the host-resolved OAuth credential (runner/claude-executor.ts).
+      // (P3) The NodeSpec.executor TYPE is open (a THIRD driver is registered via RunOptions.drivers and
+      // gated at DAG-compile against drivers.ids()), but a TEMPLATE-authored node.json still validates
+      // against the two BUILT-IN engines here — a third executor rides the programmatic `compile()` path
+      // (RunOptions.drivers), not a template enum. See docs/design/agent-driver-registry.md.
       type: 'string',
       enum: ['pi', 'claude-code'],
       description: "Agent engine for this node: 'pi' (default fleet) or 'claude-code' (headless local Claude). Omitted ⇒ pi.",

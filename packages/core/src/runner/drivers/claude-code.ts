@@ -16,6 +16,7 @@ import type { AgentDriver } from './types.js';
 import { claudeCommand, CLAUDE_TOOL_BY_PI_NAME } from '../command.js';
 import { resolveClaudeModel } from '../model-routing.js';
 import { parseClaudeResult, nodeUsageFromClaude } from '../claude-result.js';
+import { claudeExecutorEnvAdditions } from '../claude-executor.js';
 import { contextWindowFor } from '../../observe/models.js';
 
 /**
@@ -74,15 +75,36 @@ export const claudeCodeDriver: AgentDriver = {
     return claudeCommand(node, resolved, ctx, opts);
   },
 
+  // (P3) The pre-spawn credential coupling — a THIN WRAPPER over the shipped `claudeExecutorEnvAdditions`
+  // (§7.2 model): inject CLAUDE_CODE_OAUTH_TOKEN, strip the API-key vars, point CLAUDE_CONFIG_DIR at the
+  // per-node jail dir. Byte-identical to the node-lifecycle:242 call site it replaces — same inputs, same
+  // additions. `read`/`write` are reserved (unused in P3); only `env` is consumed by the run-side merge.
+  async augmentSandbox(spec) {
+    const env = await claudeExecutorEnvAdditions({
+      executor: spec.node.executor,
+      nodeId: spec.nodeId,
+      configDir: spec.configDir,
+      resolver: spec.resolver,
+    });
+    return { env };
+  },
+
   // Claude's verdict + usage ride the ONE authoritative `result` event: ok/sessionId from the parsed result,
   // usage the NodeUsage spine (token/cost/context) the observe surface reads. selfReport is null (Claude's
-  // verdict rides isError + the artifact-stat gates, not a self-reported JSON block).
+  // verdict rides isError + the artifact-stat gates, not a self-reported JSON block). (P3) `selfReportedError`
+  // carries the result-event error (isError && subtype present) so the status ladder reproduces the claude
+  // self-reported-error clause without a claude-specific fork.
   parseResult(raw) {
     const cv = parseClaudeResult(raw.stdout);
-    return {
-      verdict: { ok: cv.ok, selfReport: null, sessionId: cv.sessionId },
-      usage: nodeUsageFromClaude(cv),
-    };
+    const verdict: import('./types.js').AgentVerdict = { ok: cv.ok, selfReport: null, sessionId: cv.sessionId };
+    // Populate ONLY when the result event was PRESENT (subtype !== undefined) and reported a failure —
+    // the EXACT guard the old ladder clause used. `subtype`/`text` are carried verbatim so the ladder's
+    // issue string is byte-identical (a result-less isError has subtype undefined ⇒ left unset ⇒ the
+    // driver gates own the produced-nothing case, exactly as before).
+    if (cv.isError && cv.subtype !== undefined) {
+      verdict.selfReportedError = { subtype: cv.subtype, ...(cv.text !== undefined ? { text: cv.text } : {}) };
+    }
+    return { verdict, usage: nodeUsageFromClaude(cv) };
   },
 
   // The streaming Claude stream-json accumulator is P5 (net-new) — absent for now, so no event decode.

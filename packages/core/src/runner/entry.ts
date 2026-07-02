@@ -18,6 +18,7 @@ import { expandFusion, type FusionExpandOpts } from '../workflow/fusion/expand.j
 import { expandReroute } from '../workflow/reroute/expand.js';
 import { expandSubworkflow, SubworkflowConfigError } from '../workflow/subworkflow/expand.js';
 import { loadFusionConfig } from './fusion-config.js';
+import { builtinDrivers } from './drivers/table.js';
 import { loadModelTiers } from './model-routing.js';
 import { assembleRunTools } from './tool-config.js';
 import { catalogForSpec } from '../catalog/client.js';
@@ -121,7 +122,9 @@ export async function runFromConfig(config: ResolvedRunConfig): Promise<RunResul
   // (G11) Seed the tool catalog into the run AFTER the expand passes (so judge/sibling/reroute nodes are
   // seen), honoring an explicit caller's registry/mcpConfig. `secretResolver` is forwarded as-is (host seam).
   const tools = resolveRunTools(spec, runOpts as RunOptions);
-  const workflow = compile(spec);
+  // (P3) Gate each node's executor against the run's ACTUAL driver ids (the SAME table runWorkflow resolves
+  // `drivers.get` against) so a template naming an unregistered executor fails EARLY + legibly at compile.
+  const workflow = compile(spec, ((runOpts as RunOptions).drivers ?? builtinDrivers()).ids());
   return runWorkflow(workflow, { ...(runOpts as RunOptions), registry: tools.registry, mcpConfig: tools.mcpConfig });
 }
 
@@ -184,7 +187,8 @@ export async function runFromTemplate(templateDir: string, opts: RunFromTemplate
   // declaring `oc.*`/`mcp.*` now binds instead of falling through to a bare DefaultToolRegistry.
   const tools = resolveRunTools(spec, runOpts as RunOptions);
   // (3) build the DAG + (4) run it, collecting into the SAME run root. `secretResolver` rides the spread.
-  const workflow = compile(spec);
+  // (P3) Gate each node's executor against the run's ACTUAL driver ids (see runFromConfig above).
+  const workflow = compile(spec, ((runOpts as RunOptions).drivers ?? builtinDrivers()).ids());
   return runWorkflow(workflow, {
     ...(runOpts as RunOptions),
     outDir: path.resolve(runDir),

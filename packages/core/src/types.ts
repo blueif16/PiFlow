@@ -43,12 +43,14 @@ export interface NodeSpec {
   /** Per-node tier ALIAS resolved to a model via `~/.piflow/model-tiers.json` (when active). Undefined ⇒ none. */
   tier?: string;
   /**
-   * Which agent binary runs this node. Absent/`'pi'` → the pi coding agent (today's path, BYTE-IDENTICAL).
-   * `'claude-code'` → a headless `claude -p` session on the LOCAL logged-in subscription (builtins only, for
-   * read/write/fix/debug); it resolves its model from the `claude` tier block (`resolveClaudeModel`) and runs
-   * with no provider gateway. See docs/design/agent-executor-interface.md.
+   * Which agent binary runs this node — an OPEN executor id resolved against the per-run `DriverTable`
+   * (P3). Absent/`'pi'` → the pi coding agent (today's path, BYTE-IDENTICAL). `'claude-code'` → a headless
+   * `claude -p` session on the LOCAL logged-in subscription (builtins only, for read/write/fix/debug); it
+   * resolves its model from the `claude` tier block (`resolveClaudeModel`) and runs with no provider gateway.
+   * ANY other string names a THIRD driver registered via `RunOptions.drivers`; the DAG-compile executor gate
+   * (dag.ts, `knownExecutors`) fail-closes an unregistered id. See docs/design/agent-driver-registry.md.
    */
-  executor?: 'pi' | 'claude-code';
+  executor?: string;
 
   /** 1. Where it runs. */
   sandbox: SandboxSpec;
