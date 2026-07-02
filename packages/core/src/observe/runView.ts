@@ -199,23 +199,33 @@ function replayEvents(runDir: string, id: string, drivers: DriverTable, driverId
 // diverges between the live stream and the loaded view — the shadow-diff parity break P4-live caught).
 export function buildHistory(historyDirs: string[]) {
   const dur: Record<string, number[]> = {};
+  // (P6) IN-PLACE extension: per node, gather billable (input+output) + cost samples from the SAME run.json
+  // set the durationMs fold reads — no new persistence file. Only runs that carried usage contribute.
+  const bill: Record<string, number[]> = {}, cost: Record<string, number[]> = {};
   for (const r of historyDirs) {
     const rjFile = path.join(r, '.pi', 'run.json');
     if (!fssync.existsSync(rjFile)) continue;
-    let rj: { nodes?: Record<string, { durationMs?: number }> };
+    let rj: { nodes?: Record<string, { durationMs?: number; usage?: NodeUsage }> };
     try { rj = JSON.parse(fssync.readFileSync(rjFile, 'utf8')); } catch { continue; }
     for (const [id, rec] of Object.entries(rj.nodes || {})) {
       if (typeof rec.durationMs === 'number') (dur[id] = dur[id] || []).push(rec.durationMs);
+      const u = rec.usage;
+      if (u && (typeof u.inputTokens === 'number' || typeof u.outputTokens === 'number')) {
+        (bill[id] = bill[id] || []).push((u.inputTokens ?? 0) + (u.outputTokens ?? 0));
+        (cost[id] = cost[id] || []).push(u.cost ?? 0);
+      }
     }
   }
+  const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
   const expected: Record<string, number> = {}, samples: Record<string, number> = {};
   for (const [id, arr] of Object.entries(dur)) {
-    expected[id] = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+    expected[id] = Math.round(mean(arr));
     samples[id] = arr.length;
   }
   // (P6) cross-run COST/BILLABLE mean per node — the cost-spike denominator, from the SAME run.json fold.
-  // STUB: not yet folded from usage.cost / (inputTokens+outputTokens), so both maps are empty (no cost-spike).
   const expectedCost: Record<string, number> = {}, expectedBillable: Record<string, number> = {};
+  for (const [id, arr] of Object.entries(bill)) expectedBillable[id] = mean(arr);
+  for (const [id, arr] of Object.entries(cost)) expectedCost[id] = mean(arr);
   return { expected, samples, expectedCost, expectedBillable };
 }
 

@@ -187,10 +187,22 @@ function detectAnomalies(m: NodeMetrics, th: TelemetryThresholds): Anomaly[] {
   if (m.retries >= th.retries) {
     out.push({ kind: 'retries', nodeId: m.id, detail: `${m.retries} provider retries`, value: m.retries, threshold: th.retries });
   }
-  // STUB (P6): cost-spike (tokens-first, sibling of slow) + loop-score anomalies not implemented yet — they
-  // never fire, so the P6 tests go RED here for the missing-behavior reason. The threshold fields
-  // (costSpikeRatio/loopRepeat) + the NodeMetrics inputs (billable/expectedBillable/expectedCost/loopScore)
-  // are already wired so the real bodies drop in with no signature change.
+  // (P6) cost-spike — sibling of slow, but TOKENS-FIRST: cost is 0 on Max-subscription providers, so the
+  // billable-token spike is the primary signal (needs a real cross-run mean, expectedBillable>0), and the
+  // $ spike is only reported as a secondary detail when a cost history exists.
+  if (m.priorSamples > 0 && m.expectedBillable && m.expectedBillable > 0) {
+    const ratio = m.billable / m.expectedBillable;
+    if (ratio >= th.costSpikeRatio) {
+      const costRatio = m.expectedCost && m.expectedCost > 0 ? m.cost / m.expectedCost : null;
+      const costDetail = costRatio != null ? `, $${m.cost.toFixed(4)} vs $${m.expectedCost!.toFixed(4)} mean (${costRatio.toFixed(1)}×)` : '';
+      out.push({ kind: 'cost-spike', nodeId: m.id, detail: `${m.billable} billable tokens vs ${Math.round(m.expectedBillable)} mean (${ratio.toFixed(1)}×)${costDetail}`, value: ratio, threshold: th.costSpikeRatio });
+    }
+  }
+  // (P6) loop-score — the CONSECUTIVE back-to-back near-identical (first-100) tool loop the full-args
+  // tool-loop peak misses. Distinct anomaly, distinct threshold (loopRepeat).
+  if (m.loopScore >= th.loopRepeat) {
+    out.push({ kind: 'loop-score', nodeId: m.id, detail: `${m.loopScore} consecutive near-identical tool calls`, value: m.loopScore, threshold: th.loopRepeat });
+  }
   return out;
 }
 

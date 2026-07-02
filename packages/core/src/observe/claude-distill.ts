@@ -21,6 +21,7 @@
 // slimmed projection decode identically. Defensive throughout — a missing/absent block never throws.
 
 import type { PiEvent } from '../runner/events.js';
+import { createLoopCounter, loopFingerprint } from './distill.js';
 import type {
   NodeAccumulator,
   NodeStatusRecordLike,
@@ -72,6 +73,9 @@ export function createClaudeAccumulator(): NodeAccumulator {
   // tool-loop fingerprint: `name|<args-json>` → times seen (identical to distill.ts:231-235).
   const fpCounts = new Map<string, number>();
   let maxToolRepeat = 0, repeatedTool: string | null = null;
+  // (P6) loopScore: longest run of CONSECUTIVE tool_use blocks sharing the canonical (first-100) fingerprint
+  // — the SAME shared helper the pi accumulator uses, so the signal is per-executor-consistent.
+  const loop = createLoopCounter();
   let firstRt: string | null = null, lastRt: string | null = null;
   let eventsSeen = 0;
   const byType: Record<string, number> = {};
@@ -105,6 +109,9 @@ export function createClaudeAccumulator(): NodeAccumulator {
             const seen = (fpCounts.get(fp) ?? 0) + 1;
             fpCounts.set(fp, seen);
             if (seen > maxToolRepeat) { maxToolRepeat = seen; repeatedTool = name; }
+            // (P6) fold the CANONICAL (first-100) fingerprint into the consecutive-run tracker — DISTINCT
+            // from maxToolRepeat's full-args global peak (same shared helper as the pi accumulator).
+            loop.see(loopFingerprint(name, block.input ?? {}));
             const id = block.id;
             if (typeof id === 'string') open.set(id, { name });
           }
@@ -135,7 +142,7 @@ export function createClaudeAccumulator(): NodeAccumulator {
       return {
         model: null, provider: null,
         modelCalls: 0, toolCalls, maxToolRepeat, repeatedTool,
-        loopScore: 0, // STUB (P6): real consecutive-first-100 fold not implemented yet.
+        loopScore: loop.value,
         retries: 0, stopReason: null,
         truncated: false,
         tokens: { ...ZERO_TOKENS },
@@ -174,7 +181,7 @@ export function createClaudeAccumulator(): NodeAccumulator {
       tokens: { ...ZERO_TOKENS },
       retries: 0, stopReason: null, truncated: false, thinkingChars: 0,
       modelCalls: 0, maxToolRepeat, repeatedTool,
-      loopScore: 0, // STUB (P6): real consecutive-first-100 fold not implemented yet.
+      loopScore: loop.value,
       coverage: { eventsSeen, usageEvents: 0, byType: { ...byType } },
       startedAt, endedAt, durationMs,
     };
