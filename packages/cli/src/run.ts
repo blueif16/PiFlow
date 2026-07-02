@@ -60,6 +60,7 @@ import {
   type ContextEntry,
   type WorkerKind,
 } from './context-store.js';
+import { resolveE2bTemplate } from './e2b-template.js';
 
 /**
  * List the run-NAME basenames already present under a runs home (the canonical `.piflow/<wf>/runs/`), so
@@ -646,7 +647,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // the sandbox so pi resolves --provider there, and read the cred var(s) from that entry's $VAR refs.
     const pi = loadPiProviderConfig(parsed.provider);
     const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
-    const template = process.env.E2B_TEMPLATE;
+    const template = resolveE2bTemplate(process.env);
     provider = await makeE2bProvider({
       ...(template ? { template } : {}),
       apiKey: process.env.E2B_API_KEY,
