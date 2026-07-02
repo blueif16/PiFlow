@@ -174,7 +174,7 @@ wrong). The hand-trace in §1 is our **ground truth** for base-agent-types. Stat
 - [ ] **E2 · Derivation substrate.** git-only (`OKF_NO_CODEGRAPH`) vs codegraph-anchored. Build the
   base-agent-types slice both ways; diff derived file-set + anchors against §1 ground truth. **Win:**
   precision/recall of files surfaced; quantifies what codegraph adds for a *lifecycle thread* (def→use).
-- [~] **E3 · Tier-0 detector.** `_generate.mjs --check` was UPGRADED from filename-existence to line:symbol
+- [x] **E3 · Tier-0 detector.** SHIPPED as `piflowctl understand --check` (pre-commit `--staged` blocking + CI no-index HEALTH pass). `_generate.mjs --check` was UPGRADED from filename-existence to line:symbol
   resolution (def-anchor `line ∈ codegraph span`; call-site/field symbol-in-file; degrades to symbol-in-file
   without codegraph). **Win demonstrated:** ZERO false positives on the 14 real cards (incl. the semantic-anchor
   convention where the cited line is a body line), and synthetic drift caught in all three classes — renamed symbol
@@ -182,11 +182,12 @@ wrong). The hand-trace in §1 is our **ground truth** for base-agent-types. Stat
   Cost: a full `--check` ≈ 30s (a codegraph `query` per significant token, memoized). REMAINING: reproduce a real
   historical drift (`run.mjs→legacy/`), decide pre-commit-hook vs CI placement, and whether to adopt `Staleguard`
   for tier-1 rather than extend this. The "run --write" advice is wrong for a stale curated anchor (re-author it).
-- [ ] **E4 · Tier-1 granularity.** file-level `slice@sha` vs tree-sitter **method-body hash** (docdrift).
+- [x] **E4 · Tier-1 granularity.** SHIPPED (commit `272e29d`) as the `--reconcile` **SEMANTIC?** rung — an anchored symbol's body span-hash changed → re-read the prose; live-fired cleanly on a real body edit. file-level `slice@sha` vs tree-sitter **method-body hash** (docdrift).
   Formatting-only change vs semantic change to `mergePreset`. **Win:** method-body hash fires ONLY on the
   semantic change (fewer false re-derive triggers). SOTA note (audit P4): compute the hash at the AST-NODE level with
   incremental subtree reuse (symtrace BLAKE3 / tree-sitter `InputEdit`), NOT a from-scratch pass — cheaper than the
-  current ~30s `--check`.
+  current ~30s `--check`. *(The shipped rung is a symbol-span/body-hash; the AST-node-level incremental form remains
+  an OPEN refinement.)*
 - [ ] **E8 · Stable-symbol anchors (the headline SOTA upgrade — audit P5).** Anchor each card entry on a STABLE
   symbol id (SCIP/LSIF descriptor, or codegraph's qualified name) and DERIVE `:line` as a re-rendered hint, instead of
   storing+validating `file:line`. **Why:** line numbers are the fragile part — the whole `line ∈ span` gate exists to
@@ -195,10 +196,14 @@ wrong). The hand-trace in §1 is our **ground truth** for base-agent-types. Stat
   tracking). **Win:** zero line-drift near-FPs + rename detection, measured against the current `line ∈ span` gate on a
   refactor that moves a symbol's lines without changing its body. Mature tooling exists (scip-typescript/python/java,
   rust-analyzer emits SCIP natively).
-- [ ] **E5 · Tier-2 dependency.** change an UPSTREAM type `mergePreset` depends on (outside the slice's seeds);
+- [x] **E5 · Tier-2 dependency.** SHIPPED (commit `272e29d`) as the `--reconcile` **IMPACT?** rung — diff-hunk
+  change-site symbols traced through codegraph `impact` into card deps outside the change set; live-fire-proofed on a
+  real `RunModel` change → 3 correct traces. change an UPSTREAM type `mergePreset` depends on (outside the slice's seeds);
   run `codegraph impact`. **Win:** the base-agent-types slice is flagged — proving git-log-of-seeds would miss it
   and the graph catches it.
-- [ ] **E6 · Retrieval eval (the real quality bar).** ~8 real questions per vertical ("how does the Claude-
+- [x] **E6 · Retrieval eval (the real quality bar).** SHIPPED — FIND-vs-EXPLORE harness + golden set in
+  `.agents/okf/eval/` (commit `bc2204c`); ranker work (`3ffbdc6`) moved phrase-query pass 0/5→3/5 and total positive
+  77%→91%. See also the hand-run `e6-retrieval-eval.md`. ~8 real questions per vertical ("how does the Claude-
   executor node work — which files, what contract?"). **Win:** an agent answers correctly from the slice ALONE
   vs needing the repo. Graded eval, not an assertion.
 - [ ] **E7 · Codegraph proof-before-promote** (`v1 §10.6`). Measure tokens/tool-calls to answer E6 with Tier-0
@@ -210,10 +215,12 @@ wrong). The hand-trace in §1 is our **ground truth** for base-agent-types. Stat
    `piflowctl understand --check|--rebuild` into `@piflow/core` with tests? (RESOLVED: shipped `piflowctl understand`
    as a THIN CLI wrapper over the repo-local `_generate.mjs` — one engine, no TS port to drift from the hook.)
 2. **Build vs adopt** the drift gate: port `_generate.mjs --check`, or take `docdrift`/`Staleguard` as deps
-   (E3/E4 decides).
+   (E3/E4 decides). (RESOLVED: BUILT — our own `_generate.mjs --check`/`--reconcile`, no `docdrift`/`Staleguard` dep.)
 3. **Codegraph on piflow:** `codegraph init` over this repo to unlock E2/E5/E7 (one command; ~100MB index).
+   (RESOLVED: codegraph is init'd as a LOCAL gitignored artifact; E5 IMPACT? rides it, degrades gracefully when absent.)
 4. **Who consumes the slice:** wire Leg B as the fixer's scope-context in `v1.5 §6` FIX stage (today Leg B has no
-   reader). This is the bridge back to the optimizer loop.
+   reader). This is the bridge back to the optimizer loop. (RESOLVED: shipped `3ffbdc6` — `findSliceForDefect`/
+   `resolveSlice` inject the owning slice at ownership strength ≥45, explicit lesson pointers win.)
 
 ## References
 - `piflow-memory-v1.md §5b` — the original Leg-B / Tier-0↔Tier-1 definition (this doc supersedes its design depth).
