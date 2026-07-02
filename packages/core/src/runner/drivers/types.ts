@@ -9,9 +9,11 @@
 // optimizer to score/improve/swap agents without being blind. `conformsToParity` (parity.ts) is the gate.
 
 import type { NodeUsage } from '../status.js';
-import type { NodeSpec } from '../../types.js';
+import type { NodeSpec, ResolveResult, PiCommandOptions } from '../../types.js';
 import type { NodeAccumulator } from '../../observe/distill.js';
 import type { ModelCatalog } from '../../observe/models.js';
+import type { CommandContext } from '../command.js';
+import type { NodeRouting, RunRouting } from '../model-routing.js';
 
 /** The raw output of one node's executor run, as the runner has it at the spawn seam. */
 export interface RawRun {
@@ -61,13 +63,12 @@ export interface AgentDriverDescriptor {
   costModel: 'per-token' | 'subscription-flat' | 'unknown';
 }
 
-// ── run-side contract surfaces (minimal; P1/P2 map the real runner values onto these when wrapping) ──
-/** Routing inputs `resolveModel` reads (P1/P2 pass the node/run routing view). */
-export interface DriverRunRouting { model?: string; provider?: string; tier?: string; }
-/** The already-resolved model `buildCommand` consumes (produced by resolveModel earlier in the fixed order). */
-export interface DriverResolvedModel { model?: string; provider?: string; }
-/** The run-scoped context `buildCommand` needs (paths + the resolved model). */
-export interface DriverCommandContext { model?: string; provider?: string; runDir: string; nodeDir: string; }
+// ── run-side contract surfaces. These reuse the REAL runner types (NodeRouting/RunRouting from
+//    model-routing.ts; ResolveResult/PiCommandOptions from types.ts; CommandContext = the CommandBuilder
+//    seam, command.ts:20) so a driver's run-side methods WRAP defaultPiCommand / resolveNodeModel
+//    byte-identically (design §2.3). The P0 minimal Driver* placeholders lacked resolved.piTools and
+//    ctx.promptFile, so buildCommand could not call defaultPiCommand — corrected here. Only the sandbox
+//    coupling keeps a driver-local shape (finalized in P2). ──
 /** The pre-spawn sandbox/credential coupling input. */
 export interface DriverSandboxSpec { node: NodeSpec; env: Record<string, string | undefined>; }
 export interface DriverSandboxAdditions { read?: string[]; write?: string[]; env?: Record<string, string | undefined>; }
@@ -86,12 +87,14 @@ export interface AgentDriver {
   describe(): AgentDriverDescriptor;
 
   // ── run-side (wired P1–P3; each wraps an existing function) ──
-  /** SELECTS the resolver; never re-encodes precedence (that stays in model-routing.ts, the one home). */
-  resolveModel(node: NodeSpec, run: DriverRunRouting): { model?: string; provider?: string };
+  /** SELECTS the resolver; never re-encodes precedence (that stays in model-routing.ts, the one home).
+   *  Wraps resolveNodeModel / resolveClaudeModel — same (NodeRouting, RunRouting) inputs they take. */
+  resolveModel(node: NodeRouting, run: RunRouting): { model?: string; provider?: string };
   /** the sandbox/credential coupling before spawn (pi: none — byte-identical; claude: inject/strip tokens). */
   augmentSandbox?(spec: DriverSandboxSpec): Promise<DriverSandboxAdditions>;
-  /** the CommandBuilder seam (command.ts:20) — consumes the already-resolved model. */
-  buildCommand(node: NodeSpec, resolved: DriverResolvedModel, ctx: DriverCommandContext): string;
+  /** the CommandBuilder seam (command.ts:20) — consumes the runner's resolved toolset + staged prompt,
+   *  so piDriver.buildCommand IS defaultPiCommand and claudeCodeDriver.buildCommand IS claudeCommand. */
+  buildCommand(node: NodeSpec, resolved: ResolveResult, ctx: CommandContext, opts?: PiCommandOptions): string;
 
   // ── parity-side (the load-bearing contract — frozen + tested in P0 via conformsToParity) ──
   /** parse THIS executor's stdout → the agent-neutral verdict + the NodeUsage spine (undefined ⇒ event fold wins). */
