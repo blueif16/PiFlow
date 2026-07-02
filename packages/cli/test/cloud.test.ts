@@ -9,6 +9,7 @@ import {
   runCloudCli,
   flyAppUrl,
   MODELS_JSON_ENV,
+  CONTROL_VM_DEMO_PRODUCT,
   type MintDeps,
   type CloudDeps,
   type DeployStep,
@@ -138,10 +139,16 @@ describe('buildFlyDeployPlan', () => {
     expect(set.display).not.toContain('$MMGW_KEY');
   });
 
-  it('the smoke step carries the app url + token in its env (redacted in display)', () => {
+  it('the smoke step carries the app url + token + the baked demo product id in its env (redacted in display)', () => {
     const plan = buildFlyDeployPlan(base);
     const smoke = plan.steps.find((s) => s.id === 'smoke')!;
-    expect(smoke.env).toEqual({ PIFLOW_CLOUD_URL: 'https://the-app.fly.dev', PIFLOW_TOKEN: 'BEARER' });
+    // PIFLOW_PRODUCT MUST be the baked demo's PRODUCT id (its root dir name `demo`), NOT the `greet`
+    // workflow inside it — else POST /api/runs/start 400s ("no product in scope") and the gate never passes.
+    expect(smoke.env).toEqual({
+      PIFLOW_CLOUD_URL: 'https://the-app.fly.dev',
+      PIFLOW_TOKEN: 'BEARER',
+      PIFLOW_PRODUCT: CONTROL_VM_DEMO_PRODUCT,
+    });
     expect(smoke.display).toContain('PIFLOW_TOKEN=***');
     expect(smoke.display).not.toContain('BEARER');
   });
@@ -336,11 +343,15 @@ describe('buildDeployPlan(flyAdapter, …)', () => {
     expect(set.display).not.toContain('=NK'); // the value never leaks into the printable runbook
   });
 
-  it('the smoke env is always {PIFLOW_CLOUD_URL, PIFLOW_TOKEN} regardless of the ctx', () => {
+  it('the smoke env is always {PIFLOW_CLOUD_URL, PIFLOW_TOKEN, PIFLOW_PRODUCT} regardless of the ctx', () => {
     const plan = buildDeployPlan(flyAdapter, flyCtx({ app: 'zz', appUrl: 'https://zz.fly.dev' }));
     const smoke = plan.steps.at(-1)!;
     expect(smoke.id).toBe('smoke');
-    expect(smoke.env).toEqual({ PIFLOW_CLOUD_URL: 'https://zz.fly.dev', PIFLOW_TOKEN: 'BEARER' });
+    expect(smoke.env).toEqual({
+      PIFLOW_CLOUD_URL: 'https://zz.fly.dev',
+      PIFLOW_TOKEN: 'BEARER',
+      PIFLOW_PRODUCT: CONTROL_VM_DEMO_PRODUCT,
+    });
     expect(smoke.display).not.toContain('BEARER');
   });
 });

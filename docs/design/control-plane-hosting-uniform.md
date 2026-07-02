@@ -45,7 +45,7 @@ which is exactly what the `HostAdapter` abstracts.
 | pathway | how the image runs | stable HTTPS origin | `--execute` cost |
 |---|---|---|---|
 | **fly** | `fly deploy --dockerfile deploy/control-vm/Dockerfile` (builds server-side) | `https://<app>.fly.dev` (auto) | **paid** |
-| **railway** | `railway up --detach` builds the SAME Dockerfile server-side | `https://<app>.up.railway.app` or `--public-url` from `railway domain` | **paid** |
+| **railway** | `railway up` (blocking — waits for the build) builds the SAME Dockerfile server-side | `https://<app>.up.railway.app` or `--public-url` from `railway domain` | **paid** |
 | **selfhost** | `piflowctl serve` on the always-on host (no container), fronted by `cloudflared` | the `cloudflared` HTTPS URL → `--public-url` | **free** |
 | **docker** | `docker build -f deploy/control-vm/Dockerfile … && docker run -p 8080:8080` | user-supplied `--public-url` (their reverse proxy) | **free** |
 
@@ -236,10 +236,10 @@ export const railwayAdapter: HostAdapter = {
     copyDockerignoreStep(),                                          // railway up reads a repo-root Dockerfile+.dockerignore
     // railway variables --set K=V stages each secret as env (same {name,value} shape as fly secrets set)
     secretsSetStep(c, (pairs) => ['railway','variables',...pairs.flatMap(p=>['--set',p])]),
-    { id:'deploy', kind:'host', command:['railway','up','--detach','--service',c.app],
-      display:`railway up --detach --service ${c.app}`, outward:true, paid:true,
+    { id:'deploy', kind:'host', command:['railway','up','--service',c.app],  // NO --detach: block until deploy is live
+      display:`railway up --service ${c.app}`, outward:true, paid:true,
       env:{ RAILWAY_DOCKERFILE_PATH: c.dockerfile },                 // point railway at deploy/control-vm/Dockerfile
-      note:'builds the SAME deploy/control-vm/Dockerfile on Railway + deploys (paid).' },
+      note:'builds the SAME deploy/control-vm/Dockerfile on Railway + deploys, waiting for it (paid).' },
     { id:'domain', kind:'host', command:['railway','domain'], display:'railway domain', outward:true, idempotent:true,
       note:'ensures a public https domain; copy it into --public-url if the smoke URL was a guess.' },
     rmDockerignoreStep(),
@@ -392,7 +392,7 @@ input via the wrapper path (its own test passes `appUrl` through the same `https
 `mintCloudSecrets` test call sites pass `appUrl: flyAppUrl('my-app')` instead of `app: 'my-app'`.
 
 **New offline tests (test-first):**
-1. Per-adapter `upSteps`/`downSteps` argv + redaction: `railwayAdapter` emits `railway up --detach` as `paid:true`;
+1. Per-adapter `upSteps`/`downSteps` argv + redaction: `railwayAdapter` emits `railway up` (no --detach) as `paid:true`;
    `dockerAdapter` inlines `-e PIFLOW_TOKEN=<real>` in `command` but `***` in `display` and never leaks the value;
    `selfhostAdapter` emits no `downSteps` and its `serve` step redacts the token. Each is a "fails if wrong" test — a
    mutation that leaks a secret into `display` MUST fail (mirrors `cloud.test.ts:117-123`).

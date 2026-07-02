@@ -1,7 +1,7 @@
 // The Railway host adapter — the SAME control-VM image on Railway's builder (design:
-// docs/design/control-plane-hosting-uniform.md §4-railway). `railway up --detach` builds the identical
-// `deploy/control-vm/Dockerfile` server-side; the host only supplies secrets (as env variables) + a public
-// domain, exactly like fly. It owns the same four leaks the MAP found: the `.up.railway.app` URL shape
+// docs/design/control-plane-hosting-uniform.md §4-railway). `railway up` (blocking, no --detach) builds the
+// identical `deploy/control-vm/Dockerfile` server-side; the host only supplies secrets (as env variables) + a
+// public domain, exactly like fly. It owns the same four leaks the MAP found: the `.up.railway.app` URL shape
 // (`appUrl`), the argv of its provider-CLI steps, and its render tag (`id`/`label`).
 //
 // Everything else — the .dockerignore copy/rm dance (railway's builder reads a repo-root Dockerfile +
@@ -35,13 +35,17 @@ export const railwayAdapter: HostAdapter = {
     {
       id: 'deploy',
       kind: 'host',
-      command: ['railway', 'up', '--detach', '--service', c.app],
-      display: `railway up --detach --service ${c.app}`,
+      // NO `--detach`: `railway up` must BLOCK until the deploy completes (streaming build logs) and exit
+      // non-zero on a build failure. With `--detach` it returns the moment the upload is accepted — before the
+      // ~minutes-long server-side build — so the immediately-following smoke (cloud.ts execute loop has no
+      // readiness wait) would hit a not-yet-live service and falsely red the gate. Waiting = parity with `fly deploy`.
+      command: ['railway', 'up', '--service', c.app],
+      display: `railway up --service ${c.app}`,
       outward: true,
       paid: true,
       // Point railway's builder at the SAME control-VM Dockerfile (no image change across hosts).
       env: { RAILWAY_DOCKERFILE_PATH: c.dockerfile },
-      note: 'the operator\'s paid step — builds the SAME deploy/control-vm/Dockerfile on Railway + deploys.',
+      note: 'the operator\'s paid step — builds the SAME deploy/control-vm/Dockerfile on Railway + deploys (waits for it).',
     },
     {
       id: 'domain',

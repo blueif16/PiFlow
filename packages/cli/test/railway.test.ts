@@ -83,11 +83,14 @@ describe('railwayAdapter.upSteps', () => {
     expect(set.display).not.toContain('$MMGW_KEY');
   });
 
-  it('the deploy step is the paid one, builds the SAME Dockerfile via `railway up --detach --service <app>`', () => {
+  it('the deploy step is the paid one and WAITS for the build (no --detach) so the smoke never fires mid-build', () => {
     const deploy = railwayAdapter.upSteps(ctx()).find((s) => s.id === 'deploy')!;
     expect(deploy.paid).toBe(true);
     expect(deploy.outward).toBe(true);
-    expect(deploy.command).toEqual(['railway', 'up', '--detach', '--service', 'the-svc']);
+    // NO `--detach`: `railway up` must block until the deploy completes (and exit non-zero on a build failure),
+    // else the immediately-following smoke hits a not-yet-live service. (design: readiness before smoke.)
+    expect(deploy.command).toEqual(['railway', 'up', '--service', 'the-svc']);
+    expect(deploy.command).not.toContain('--detach');
     // the SAME control-vm Dockerfile is targeted via RAILWAY_DOCKERFILE_PATH (no image change across hosts)
     expect(deploy.env).toEqual({ RAILWAY_DOCKERFILE_PATH: 'deploy/control-vm/Dockerfile' });
   });

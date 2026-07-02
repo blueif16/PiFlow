@@ -96,7 +96,7 @@ Asserts, in order (non-zero exit on any failure):
 
 - **A** — `GET /` without the token → **401**; with the bearer token → **200 + GUI html**; `?token=`
   (the SSE query form) → **200**.
-- **B** — `POST /api/runs/start` for the baked `greet` product (`sandbox=local`) → **202 `{run}`**.
+- **B** — `POST /api/runs/start` for the baked `demo` product (its `greet` workflow, `sandbox=local`) → **202 `{run}`**.
 - **C** — the SSE stream `/__piflow/stream/<run>?token=…` reaches `{kind:"done"}`.
 - **D** — `GET /__piflow/run-view/<run>` shows the greet artifact (`out/greet/greeting.txt`).
 - **E** — the in-VM invariants: a `sandbox=local` run reaching `done` proves the jail didn't fail
@@ -164,4 +164,4 @@ fallback for what the verb does.
   only; the secrets block lists what `fly secrets set` must supply.
 - `smoke-live.mjs` — the live post-deploy smoke (checks A–E above).
 - `.dockerignore` — prunes the build context (node_modules, dist, worktrees, env/secrets, runs).
-- `e2e-template/` — the baked `greet` demo product (a §D9 product root the smoke launches).
+- `e2e-template/` — the baked `demo` product (a §D9 product root, workflow `greet`, that the smoke launches).

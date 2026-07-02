@@ -341,14 +341,23 @@ export function rmDockerignoreStep(): DeployStep {
   };
 }
 
+/**
+ * The baked demo's PRODUCT id. The control-VM Dockerfile bakes `deploy/control-vm/e2e-template` to
+ * `/home/piflow/demo` and scopes the serve there (deploy/control-vm/Dockerfile), so the LIVE index
+ * discovers it as product id `demo` (a product id = its root dir name) with the `greet` WORKFLOW inside.
+ * The smoke's `POST /api/runs/start` must target THIS product id — passing the `greet` workflow id there
+ * 400s ("no product in scope") and the gate can never pass. Keep in lockstep with the Dockerfile bake dir.
+ */
+export const CONTROL_VM_DEMO_PRODUCT = 'demo';
+
 /** The invariant smoke gate — identical for every host; keys only on the origin + the minted token. */
 export function smokeStep(appUrl: string, token: string): DeployStep {
   return {
     id: 'smoke',
     kind: 'smoke',
     command: ['node', 'deploy/control-vm/smoke-live.mjs'],
-    env: { PIFLOW_CLOUD_URL: appUrl, PIFLOW_TOKEN: token },
-    display: `PIFLOW_CLOUD_URL=${appUrl} PIFLOW_TOKEN=*** node deploy/control-vm/smoke-live.mjs`,
+    env: { PIFLOW_CLOUD_URL: appUrl, PIFLOW_TOKEN: token, PIFLOW_PRODUCT: CONTROL_VM_DEMO_PRODUCT },
+    display: `PIFLOW_CLOUD_URL=${appUrl} PIFLOW_TOKEN=*** PIFLOW_PRODUCT=${CONTROL_VM_DEMO_PRODUCT} node deploy/control-vm/smoke-live.mjs`,
     outward: true,
     note: 'the P5 gate: A(auth)→B(start)→C(SSE done)→D(run-view)→E(in-VM bwrap/OAuth invariants).',
   };

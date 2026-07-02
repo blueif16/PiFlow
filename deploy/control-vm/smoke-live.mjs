@@ -8,17 +8,21 @@
 // Env consumed:
 //   PIFLOW_CLOUD_URL  the deployed origin (required), e.g. https://piflow-control-plane.fly.dev
 //   PIFLOW_TOKEN      the bearer token the VM was deployed with (required — same value as `fly secrets set`)
-//   PIFLOW_PRODUCT    product to launch (default: greet — the baked demo)
+//   PIFLOW_PRODUCT    product id to launch (default: demo — the baked demo's PRODUCT id, i.e. its root dir
+//                     name /home/piflow/demo; the `greet` WORKFLOW lives inside it. Passing `greet` here 400s
+//                     ("no product in scope") — POST /api/runs/start keys on the product id, not the workflow.)
 //   PIFLOW_EXECUTOR   pi | claude-code (default: pi). Use claude-code to exercise check E's OAuth note.
 //   SMOKE_TIMEOUT_MS  overall per-run wait cap for the SSE done (default 240000 = 4m).
+//   READY_TIMEOUT_MS  how long to poll for the origin to answer before the ordered checks (default 90000 = 90s).
 //
 // Exit: non-zero if ANY ordered check (A→E) fails. Prints one PASS/FAIL line per check + a summary.
 
 const BASE = (process.env.PIFLOW_CLOUD_URL ?? "").replace(/\/+$/, "");
 const TOKEN = process.env.PIFLOW_TOKEN ?? "";
-const PRODUCT = process.env.PIFLOW_PRODUCT ?? "greet";
+const PRODUCT = process.env.PIFLOW_PRODUCT ?? "demo";
 const EXECUTOR = process.env.PIFLOW_EXECUTOR ?? "pi";
 const RUN_TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS) || 240_000;
+const READY_TIMEOUT_MS = Number(process.env.READY_TIMEOUT_MS) || 90_000;
 
 if (!BASE || !TOKEN) {
   console.error("FATAL: set PIFLOW_CLOUD_URL (https://<app>.fly.dev) and PIFLOW_TOKEN (the deploy bearer token).");
@@ -34,7 +38,32 @@ function record(id, label, pass, evidence) {
 const authHeaders = { Authorization: `Bearer ${TOKEN}` };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Readiness pre-wait — poll the origin until it ANSWERS (any HTTP status, incl. 401) before the ordered checks.
+// A just-deployed control plane (or the host's edge/domain routing) can take seconds to a minute to accept
+// connections; the ordered A→E checks are single-shot with no retry, so without this a live-but-warming service
+// would falsely red check A. Returns true once reachable, false on timeout (the checks then report the real error).
+async function waitForOrigin() {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  let lastErr = "";
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const r = await fetch(`${BASE}/`, { redirect: "manual" });
+      console.log(`\n[ready] origin ${BASE} answered HTTP ${r.status} (attempt ${attempt})`);
+      return true;
+    } catch (e) {
+      lastErr = e?.message ?? String(e);
+    }
+    if (Date.now() >= deadline) {
+      console.log(`\n[ready] WARN: origin ${BASE} never answered within ${READY_TIMEOUT_MS}ms (last: ${lastErr}) — running checks anyway`);
+      return false;
+    }
+    await sleep(2000);
+  }
+}
+
 async function main() {
+  await waitForOrigin();
+
   // ── A. bearer gate: no token → 401; with token → 200 + GUI html ─────────────────────────────
   {
     let noTokCode = -1;
