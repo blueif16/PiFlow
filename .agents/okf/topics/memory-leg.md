@@ -45,7 +45,7 @@ SEEDED (at scaffold time)
 - `packages/cli/src/scaffold.ts:445` — `scaffoldMemory()` — backfill engine for `piflowctl memory scaffold`
 CONSUMED (the out-of-band optimizer reads the legs; NEVER a worker node)
 - `packages/core/src/optimize/recurrence.ts:49` — `deriveRecurrence` — reads `memory.md` lesson blocks → RecurrenceIndex (the Leg-A reader; `triage` flips LAPSE→SKILL on it)
-- `packages/cli/src/understand.ts:136` — `resolveSlice` — dereference a lesson's `[[okf-slice]]` link to the linked slice's curated body (the Leg-A → Leg-B join)
+- `packages/cli/src/understand.ts:157` — `resolveSlice` — dereference a lesson's `[[okf-slice]]` link to the linked slice's curated body (the Leg-A → Leg-B join)
 - `packages/cli/src/optimize-fix.ts:124` — `enrichCodeMap` — the CLI seam inlines the resolved code-map into `DefectScope.codeMap` at fix time (resolve-at-read)
 
 # Freshness (anti-drift)

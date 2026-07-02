@@ -11,12 +11,12 @@
 //
 // Run: npx vitest run packages/cli/test/optimize-fix-cli.test.ts
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs, existsSync as existsSyncNode } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseOptimizeFixArgs, loadBinding, runOptimizeFixCli, enrichCodeMap, makeDefaultFixCyclesPort } from '../src/optimize-fix.js';
+import { parseOptimizeFixArgs, loadBinding, runOptimizeFixCli, enrichCodeMap, findSliceForDefect, makeDefaultFixCyclesPort } from '../src/optimize-fix.js';
 import { scoreNodes, triage, deriveRecurrence } from '@piflow/core';
 import type { RunDigest, NodeDigest, Tier1Result, Tier1Check, Defect } from '@piflow/core';
 
@@ -104,6 +104,66 @@ describe('enrichCodeMap — resolve each SKILL lesson\'s [[okf-slice]] pointer t
     enrichCodeMap([lapse], () => { calls++; return 'X'; });
     expect(lapse.scope).toBeUndefined();
     expect(calls).toBe(0);
+  });
+});
+
+describe('enrichCodeMap — FIND fallback (the fixer wire: a pointer-less defect still gets the owning slice)', () => {
+  const lapse = (): Defect => ({
+    node: 'gameplay', bucket: 'LAPSE', symptom: 'artifact missing', evidence: ['packages/core/src/sandbox/scope.ts'], confidence: 'low',
+  });
+
+  it('fills scope.codeMap via find() for a defect with no lesson pointer, marking the weaker provenance', () => {
+    const defects = [lapse()];
+    enrichCodeMap(defects, () => null, () => ({ slice: 'sandbox', body: 'THE JAIL MAP' }));
+    expect(defects[0].scope?.codeMap?.[0].slice).toBe('sandbox');
+    expect(defects[0].scope?.codeMap?.[0].body).toContain('FIND-matched');
+    expect(defects[0].scope?.codeMap?.[0].body).toContain('THE JAIL MAP');
+  });
+
+  it('an explicit lesson pointer WINS — find() is never consulted once the pointer resolved', () => {
+    const withPointer: Defect = {
+      node: 'flaky', bucket: 'SKILL', symptom: '', evidence: [], confidence: 'medium',
+      scope: { recurrence: 2, okfSlice: 'runner' },
+    };
+    let findCalls = 0;
+    enrichCodeMap([withPointer], () => 'LINKED BODY', () => { findCalls++; return { slice: 'x', body: 'y' }; });
+    expect(withPointer.scope?.codeMap?.[0].body).toBe('LINKED BODY');
+    expect(findCalls).toBe(0);
+  });
+
+  it('find() returning null leaves the defect untouched (no scope invented)', () => {
+    const d = lapse();
+    enrichCodeMap([d], () => null, () => null);
+    expect(d.scope).toBeUndefined();
+  });
+});
+
+describe('findSliceForDefect — rank the defect\'s structured signals against the real card set', () => {
+  let ROOT: string;
+  let topics: string;
+  const cardText = (key: string, seeds: string[]): string =>
+    `---\nkey: ${key}\ntitle: ${key}\nseeds: [${seeds.join(', ')}]\n---\n\n# Why\n${key} owns these files.\n\n<!-- okf:auto-start -->\nauto\n<!-- okf:auto-end -->\n`;
+
+  beforeEach(async () => {
+    ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-find-slice-'));
+    topics = path.join(ROOT, '.agents', 'okf', 'topics');
+    await fs.mkdir(topics, { recursive: true });
+    await fs.writeFile(path.join(topics, '_generate.mjs'), '// engine\n');
+    await fs.writeFile(path.join(topics, 'sandbox.md'), cardText('sandbox', ['packages/core/src/sandbox/scope.ts']));
+    await fs.writeFile(path.join(topics, 'runner.md'), cardText('runner', ['packages/core/src/runner/runner.ts']));
+  });
+  afterEach(async () => void (await fs.rm(ROOT, { recursive: true, force: true })));
+
+  it('a defect whose evidence names a seed file resolves to that card at ownership strength', () => {
+    const d: Defect = { node: 'n1', bucket: 'LAPSE', symptom: '', confidence: 'low', evidence: ['packages/core/src/sandbox/scope.ts missing'] };
+    const hit = findSliceForDefect(topics, d);
+    expect(hit?.slice).toBe('sandbox');
+    expect(hit?.body).toContain('sandbox owns these files');
+  });
+
+  it('a defect with no ownership-strength signal returns null (never a weak-mention crown)', () => {
+    const d: Defect = { node: 'n2', bucket: 'LAPSE', symptom: '', confidence: 'low', evidence: ['files mentioned nowhere'] };
+    expect(findSliceForDefect(topics, d)).toBeNull();
   });
 });
 

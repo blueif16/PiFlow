@@ -89,6 +89,27 @@ describe('rankCards — ownership beats mention (deterministic)', () => {
   });
 });
 
+describe('rankCards — tokenized PHRASE fallback (a natural-language question still finds its owner)', () => {
+  const cards = [
+    parseCard('sandbox', card({ key: 'sandbox', aliases: ['jail', 'seatbelt'], seeds: ['packages/core/src/sandbox/scope.ts'] })),
+    parseCard('runner', card({ key: 'runner', symbols: ['runWorkflow'], prose: 'one pi per node, artifacts on disk.' })),
+  ];
+
+  it('a multi-word question whose TOKENS hit ownership fields resolves to the owning card', () => {
+    // The whole phrase matches nothing as a substring; the token "jail" is sandbox's alias.
+    expect(rankCards(cards, 'jail reads and writes inside the box')[0].card.key).toBe('sandbox');
+  });
+
+  it('a phrase whose tokens hit nothing still returns [] (uncovered, never a noise crown)', () => {
+    expect(rankCards(cards, 'stripe payment webhook retries')).toEqual([]);
+  });
+
+  it('a phrase grazing only PROSE stays below the ownership floor (weak mentions cannot crown an owner)', () => {
+    // "artifacts disk" only appear in runner's prose (8 points each < the 20-point floor).
+    expect(rankCards(cards, 'artifacts written straight onto disk')).toEqual([]);
+  });
+});
+
 describe('resolveTopicsDir — walk up to the .agents/okf/topics engine', () => {
   let ROOT: string;
   beforeEach(async () => {
@@ -204,6 +225,26 @@ describe('runUnderstandCli — the three modes', () => {
     };
     await runUnderstandCli(['--rebuild', 'sandbox'], { cwd: topics, runGate });
     expect(calls).toEqual([{ mode: 'write', keys: ['sandbox'] }]);
+  });
+
+  it('`understand --reconcile` routes to the post-merge advisory pass on the same engine', async () => {
+    const calls: Array<{ mode: string; keys: string[] }> = [];
+    const runGate = (mode: string, _dir: string, keys: string[]): number => {
+      calls.push({ mode, keys });
+      return 0;
+    };
+    await runUnderstandCli(['--reconcile'], { cwd: topics, runGate });
+    expect(calls).toEqual([{ mode: 'reconcile', keys: [] }]);
+  });
+
+  it('`understand --owns <path>` routes the reverse lookup with the path as the key', async () => {
+    const calls: Array<{ mode: string; keys: string[] }> = [];
+    const runGate = (mode: string, _dir: string, keys: string[]): number => {
+      calls.push({ mode, keys });
+      return 0;
+    };
+    await runUnderstandCli(['--owns', 'packages/core/src/sandbox/scope.ts'], { cwd: topics, runGate });
+    expect(calls).toEqual([{ mode: 'owns', keys: ['packages/core/src/sandbox/scope.ts'] }]);
   });
 
   it('errors clearly (exit != 0) when there is no .agents/okf substrate', async () => {

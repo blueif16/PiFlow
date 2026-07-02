@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { scoreRun as coreScoreRun, triage, deriveRecurrence, memorize, distillLesson, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
 import type { ReplayOracle, CopyScope, Fixer, LiveRootFor, LessonDistiller, MemorizeLesson, FixGateRecord, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect, FixGateResult } from '@piflow/core';
-import { resolveTopicsDir, resolveSlice } from './understand.js';
+import { resolveTopicsDir, resolveSlice, loadCards, rankCards } from './understand.js';
 
 /** The product binding the CLI dynamic-imports — the LIVE stages that stay product-side (out of @piflow/core). */
 export interface OptimizeBinding {
@@ -121,13 +121,53 @@ export async function loadBinding(spec: string): Promise<OptimizeBinding> {
  * pointer leaves `codeMap` unset so the lesson's root/prevention still reach the fixer. Mutates in place;
  * defects without a pointer are untouched (the resolver is never called for them). Pure but for `resolve`.
  */
-export function enrichCodeMap(defects: Defect[], resolve: (key: string) => string | null): void {
+export function enrichCodeMap(
+  defects: Defect[],
+  resolve: (key: string) => string | null,
+  find?: (d: Defect) => { slice: string; body: string } | null,
+): void {
   for (const d of defects) {
     const key = d.scope?.okfSlice;
-    if (!key) continue;
-    const body = resolve(key);
-    if (body) d.scope!.codeMap = [{ slice: key, body }];
+    if (key) {
+      const body = resolve(key);
+      if (body) {
+        d.scope!.codeMap = [{ slice: key, body }];
+        continue; // an explicit lesson pointer WINS — find() is never consulted for a resolved defect
+      }
+    }
+    // FIND fallback (the fixer wire): a pointer-less (or dangling-pointer) defect still gets the
+    // owning slice when its STRUCTURED signals rank a card at ownership strength. The provenance
+    // marker keeps the weaker basis visible to the fixer, and the budget keeps the prompt bounded.
+    if (!find || d.scope?.codeMap) continue;
+    const hit = find(d);
+    if (!hit) continue;
+    const provenance = `(FIND-matched from the defect's signals, not an explicit lesson link — validate with \`piflowctl understand --check ${hit.slice}\`)\n\n`;
+    const body = hit.body.length > 6000 ? `${hit.body.slice(0, 6000)}\n… (truncated at the fixer budget)` : hit.body;
+    (d.scope ??= {}).codeMap = [{ slice: hit.slice, body: provenance + body }];
   }
+}
+
+/**
+ * Rank a defect's STRUCTURED signals (node id, evidence strings, and any path/symbol tokens embedded
+ * in them) against the real card set — the FIND half of the fixer wire. Auto-injection into a fixer
+ * prompt demands PRECISION over recall, so only an OWNERSHIP-strength match (>= the seeds rung, 45)
+ * qualifies; title/tag/prose matches never do. Returns the first qualifying slice or null.
+ */
+export function findSliceForDefect(topicsDir: string, defect: Defect): { slice: string; body: string } | null {
+  const cards = loadCards(topicsDir);
+  if (!cards.length) return null;
+  const OWNERSHIP_FLOOR = 45;
+  for (const signal of [defect.node, ...defect.evidence]) {
+    if (!signal) continue;
+    for (const q of [signal, ...(signal.match(/[\w@$./-]{6,}/g) ?? [])]) {
+      const top = rankCards(cards, q)[0];
+      if (top && top.score >= OWNERSHIP_FLOOR) {
+        const body = resolveSlice(topicsDir, top.card.key);
+        if (body) return { slice: top.card.key, body };
+      }
+    }
+  }
+  return null;
 }
 
 /** Where the product template lives relative to a canonical run dir (`.piflow/<wf>/runs/<id>` → …/template). */
@@ -162,7 +202,12 @@ export async function scoreTriageEnrich(
   // a stored copy (so it reads the CURRENT drift-gated slice). Degrades silently if the repo has no `.agents/
   // okf/` or the linked slice is absent; the pointer + root/prevention still reach the fixer.
   const topicsDir = resolveTopicsDir(runDir);
-  if (topicsDir) enrichCodeMap(defects, (key) => resolveSlice(topicsDir, key));
+  if (topicsDir)
+    enrichCodeMap(
+      defects,
+      (key) => resolveSlice(topicsDir, key),
+      (d) => findSliceForDefect(topicsDir, d), // the FIND wire: pointer-less defects still get the owning slice
+    );
 
   return { scores, digest, defects, templateDir };
 }
