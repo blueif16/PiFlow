@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { scoreRun as coreScoreRun, triage, deriveRecurrence, memorize, distillLesson, mineTaskFromTrace, makeReplayStages, runFixGate, writeStagingManifest, renderOptimizeEvent } from '@piflow/core';
 import type { ReplayOracle, CopyScope, Fixer, LiveRootFor, LessonDistiller, MemorizeLesson, FixGateRecord, MineOpts, NodeScore, RunDigest, OptimizeEventSink, Defect, FixGateResult } from '@piflow/core';
-import { resolveTopicsDir, resolveSlice, loadCards, rankCards } from './understand.js';
+import { resolveTopicsDir, resolveSlice, runFind, type RunFind } from './understand.js';
 
 /** The product binding the CLI dynamic-imports — the LIVE stages that stay product-side (out of @piflow/core). */
 export interface OptimizeBinding {
@@ -153,17 +153,15 @@ export function enrichCodeMap(
  * prompt demands PRECISION over recall, so only an OWNERSHIP-strength match (>= the seeds rung, 45)
  * qualifies; title/tag/prose matches never do. Returns the first qualifying slice or null.
  */
-export function findSliceForDefect(topicsDir: string, defect: Defect): { slice: string; body: string } | null {
-  const cards = loadCards(topicsDir);
-  if (!cards.length) return null;
+export function findSliceForDefect(topicsDir: string, defect: Defect, find: RunFind = runFind): { slice: string; body: string } | null {
   const OWNERSHIP_FLOOR = 45;
   for (const signal of [defect.node, ...defect.evidence]) {
     if (!signal) continue;
     for (const q of [signal, ...(signal.match(/[\w@$./-]{6,}/g) ?? [])]) {
-      const top = rankCards(cards, q)[0];
+      const top = find(topicsDir, q)[0];
       if (top && top.score >= OWNERSHIP_FLOOR) {
-        const body = resolveSlice(topicsDir, top.card.key);
-        if (body) return { slice: top.card.key, body };
+        const body = resolveSlice(topicsDir, top.key);
+        if (body) return { slice: top.key, body };
       }
     }
   }

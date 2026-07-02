@@ -71,64 +71,39 @@ export function parseCard(fallbackKey: string, text: string): Card {
   };
 }
 
-/**
- * Rank cards for `query`, OWNERSHIP over mention (the MODE-A rule): a card that declares the query in its
- * frontmatter (key/resource/seeds/symbols/aliases/tags) scores far above one that merely name-drops it in
- * prose. Deterministic: score desc, ties broken by key asc. Only positive scores are returned (`[]` =
- * uncovered). Pure — no I/O, so the heart of FIND is unit-testable without a filesystem.
- */
-export function rankCards(cards: Card[], query: string): { card: Card; score: number }[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-
-  // OWNERSHIP score — the frontmatter rungs only (key/symbols/aliases/resource/seeds/tags/title).
-  // Kept separate from the prose bonus so the phrase fallback can enforce the law structurally.
-  const scoreOwnership = (card: Card, term: string): number => {
-    const eq = (s: string): boolean => s.toLowerCase() === term;
-    const has = (s: string): boolean => s.toLowerCase().includes(term);
-    const pathHit = (p: string): boolean => {
-      const pl = p.toLowerCase();
-      return pl.includes(term) || term.includes(pl); // a file query may be longer OR shorter than the stored path
-    };
-    let score = 0;
-    if (eq(card.key)) score += 100;
-    else if (has(card.key)) score += 50; // partial key (a broader/narrower name)
-    if (card.symbols.some(eq)) score += 70;
-    else if (card.symbols.some(has)) score += 35;
-    if (card.aliases.some(eq)) score += 55;
-    else if (card.aliases.some(has)) score += 20;
-    if (card.resource && pathHit(card.resource)) score += 60;
-    if (card.seeds.some(pathHit)) score += 45;
-    if (card.tags.some(eq)) score += 30;
-    if (has(card.title)) score += 25;
-    return score;
-  };
-  const proseBonus = (card: Card, term: string): number => (card.curatedLower.includes(term) ? 8 : 0); // WEAK — a bare mention
-
-  let scored = cards
-    .map((card) => ({ card, score: scoreOwnership(card, q) + proseBonus(card, q) }))
-    .filter((r) => r.score > 0);
-
-  // PHRASE fallback: a natural-language question never matches as one substring, so when the whole
-  // query scores nothing, re-score per TOKEN and sum — gated STRUCTURALLY by the ownership law:
-  // English glue words ("how", "does", "that") live in every card's PROSE but never in frontmatter,
-  // so requiring at least one OWNERSHIP hit neutralizes them with no hardcoded stopword list, and a
-  // card grazed only by prose mentions stays uncovered rather than masquerading as an owner.
-  if (scored.length === 0) {
-    const toks = [...new Set(q.split(/[^a-z0-9_$./-]+/).filter((t) => t.length >= 4))];
-    if (toks.length >= 2) {
-      scored = cards
-        .map((card) => {
-          const own = toks.reduce((s, t) => s + scoreOwnership(card, t), 0);
-          return { card, score: own > 0 ? own + toks.reduce((s, t) => s + proseBonus(card, t), 0) : 0 };
-        })
-        .filter((r) => r.score > 0);
-    }
-  }
-
-  scored.sort((a, b) => b.score - a.score || a.card.key.localeCompare(b.card.key));
-  return scored;
+/** One ranked FIND hit — a row of the engine's `--find --json` (the ONE ranker: `.agents/okf/topics/_rank.mjs`). */
+export interface FindHit {
+  key: string;
+  title: string;
+  resource: string;
+  score: number;
 }
+
+/** Source ranking from the engine — injectable so tests (and the reader) don't shell out. */
+export type RunFind = (topicsDir: string, query: string) => FindHit[];
+
+/**
+ * The default FIND runner: shell the repo-local engine's ranked `--find --json`, which scores via the ONE
+ * vendored `_rank.mjs` — the SAME ranker `node _generate.mjs --find` uses standalone. So the CLI reader and
+ * the optimizer's fixer wire never re-implement scoring (one source, no drift; docs/design/portable-
+ * understanding-library.md M1). SYNCHRONOUS (execFileSync) so callers stay sync; returns [] on ANY engine
+ * error (an unseeded/parse failure degrades to uncovered, never throws into the caller).
+ */
+export const runFind: RunFind = (topicsDir, query) => {
+  const words = query.split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  try {
+    const out = execFileSync('node', [path.join(topicsDir, '_generate.mjs'), '--find', '--json', ...words], {
+      encoding: 'utf8',
+      cwd: topicsDir,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    const parsed = JSON.parse(out.trim() || '[]') as unknown;
+    return Array.isArray(parsed) ? (parsed as FindHit[]) : [];
+  } catch {
+    return [];
+  }
+};
 
 /**
  * Walk up from `startDir` to the `.agents/okf/topics` dir that holds the engine (`_generate.mjs`). Handles
@@ -207,6 +182,7 @@ export async function runUnderstandCli(
   deps: {
     cwd?: string;
     runGate?: (mode: GateMode, topicsDir: string, keys: string[]) => number;
+    runFind?: RunFind;
   } = {},
 ): Promise<void> {
   const cwd = deps.cwd ?? process.cwd();
@@ -236,8 +212,8 @@ export async function runUnderstandCli(
   }
 
   // READER mode — FIND.
-  const cards = loadCards(topicsDir);
   if (positionals.length === 0) {
+    const cards = loadCards(topicsDir); // the index listing stays in-process (no ranking needed)
     out(`piflowctl understand — ${cards.length} subsystem slice(s) in ${topicsDir}:\n`);
     for (const c of cards) out(`  ${c.key}  —  ${c.title}\n`);
     out(`\nask about one:  piflowctl understand <subsystem>\n`);
@@ -245,7 +221,7 @@ export async function runUnderstandCli(
   }
 
   const query = positionals.join(' ');
-  const ranked = rankCards(cards, query);
+  const ranked = (deps.runFind ?? runFind)(topicsDir, query);
   if (ranked.length === 0) {
     out(
       `piflowctl understand: no slice owns "${query}" — UNCOVERED.\n` +
@@ -254,11 +230,11 @@ export async function runUnderstandCli(
     return;
   }
 
-  const top = ranked[0].card;
+  const top = ranked[0];
   out(`# ${top.key}  —  ${top.title}\n`);
   if (top.resource) out(`owns: ${top.resource}\n`);
-  out(`\n${top.curated}\n`);
-  const related = ranked.slice(1, 4).map((r) => r.card.key);
+  out(`\n${resolveSlice(topicsDir, top.key) ?? ''}\n`); // curated body via the same resolve-at-read path
+  const related = ranked.slice(1, 4).map((r) => r.key);
   if (related.length) out(`\nrelated slices: ${related.join(', ')}\n`);
   out(`\nvalidate freshness:  piflowctl understand --check ${top.key}\n`);
 }

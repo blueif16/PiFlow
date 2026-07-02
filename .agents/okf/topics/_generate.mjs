@@ -37,6 +37,7 @@ import { execFileSync } from 'node:child_process';
 import { join, resolve, relative, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
+import { parseCardForRank, rankCards } from './_rank.mjs'; // the ONE ranker — shared by --find and the CLI
 
 const HERE = process.env.OKF_TOPICS_DIR ? resolve(process.env.OKF_TOPICS_DIR) : dirname(fileURLToPath(import.meta.url));
 const CFG = JSON.parse(readFileSync(join(HERE, '..', 'okf.config.json'), 'utf8'));
@@ -47,11 +48,45 @@ const START = '<!-- okf:auto-start -->';
 const END = '<!-- okf:auto-end -->';
 
 const mode = process.argv.includes('--check') ? 'check' : process.argv.includes('--write') ? 'write'
-  : process.argv.includes('--reconcile') ? 'reconcile' : process.argv.includes('--owns') ? 'owns' : null;
-if (!mode) { console.error('usage: _generate.mjs --write|--check [--staged]|--reconcile|--owns <path> [<key>...]'); process.exit(2); }
+  : process.argv.includes('--reconcile') ? 'reconcile' : process.argv.includes('--owns') ? 'owns'
+  : process.argv.includes('--find') ? 'find' : null;
+if (!mode) { console.error('usage: _generate.mjs --write|--check [--staged]|--reconcile|--owns <path>|--find [--json] <query…> [<key>...]'); process.exit(2); }
 const STAGED = process.argv.includes('--staged');
 if (STAGED && mode !== 'check') { console.error('--staged only applies to --check'); process.exit(2); }
 const only = process.argv.slice(2).filter(a => !a.startsWith('--'));
+
+// ---- MODE: --find (query → owning card; the standalone ranked reader — `node` only, no piflowctl) ----
+// Placed BEFORE the heavy git/codegraph globals and the known-card-key validation: FIND is a pure,
+// fast read over the card frontmatter (via the vendored `_rank.mjs`), and its positionals are a free-text
+// QUERY, not card keys. This is what makes `.agents/okf/` a self-contained retrieval tool on `node` alone.
+if (mode === 'find') {
+  const JSON_OUT = process.argv.includes('--json');
+  const query = only.join(' ');
+  const cards = readdirSync(HERE).filter(f => f.endsWith('.md') && !f.startsWith('_'))
+    .map(f => parseCardForRank(f.replace(/\.md$/, ''), readFileSync(join(HERE, f), 'utf8')));
+  const ranked = rankCards(cards, query);
+  if (JSON_OUT) { // machine surface: the CLI reader + the optimizer's fixer wire source ranking from here
+    console.log(JSON.stringify(ranked.map(r => ({ key: r.card.key, title: r.card.title, resource: r.card.resource, score: r.score }))));
+    process.exit(0);
+  }
+  if (!query) { // bare --find lists the covered slices (the index), never the `_`-prefixed engine files
+    console.log(`${cards.length} subsystem slice(s) in ${HERE}:`);
+    for (const c of [...cards].sort((a, b) => a.key.localeCompare(b.key))) console.log(`  ${c.key}  —  ${c.title}`);
+    process.exit(0);
+  }
+  if (!ranked.length) {
+    console.log(`no slice owns "${query}" — UNCOVERED (a gap to author, or explore the code directly).`);
+    process.exit(0);
+  }
+  const top = ranked[0].card;
+  console.log(`# ${top.key}  —  ${top.title}`);
+  if (top.resource) console.log(`owns: ${top.resource}`);
+  console.log(`\n${top.curated}\n`);
+  const related = ranked.slice(1, 4).map(r => r.card.key);
+  if (related.length) console.log(`related slices: ${related.join(', ')}`);
+  console.log(`\nvalidate freshness:  node _generate.mjs --check ${top.key}`);
+  process.exit(0);
+}
 
 // ---- substrate helpers (all best-effort; a dead substrate degrades, never crashes) ----
 const sh = (cmd, args, opts = {}) => {

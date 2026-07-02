@@ -45,7 +45,7 @@ SEEDED (at scaffold time)
 - `packages/cli/src/scaffold.ts:445` — `scaffoldMemory()` — backfill engine for `piflowctl memory scaffold`
 CONSUMED (the out-of-band optimizer reads the legs; NEVER a worker node)
 - `packages/core/src/optimize/recurrence.ts:49` — `deriveRecurrence` — reads `memory.md` lesson blocks → RecurrenceIndex (the Leg-A reader; `triage` flips LAPSE→SKILL on it)
-- `packages/cli/src/understand.ts:157` — `resolveSlice` — dereference a lesson's `[[okf-slice]]` link to the linked slice's curated body (the Leg-A → Leg-B join)
+- `packages/cli/src/understand.ts:132` — `resolveSlice` — dereference a lesson's `[[okf-slice]]` link to the linked slice's curated body (the Leg-A → Leg-B join)
 - `packages/cli/src/optimize-fix.ts:124` — `enrichCodeMap` — the CLI seam inlines the resolved code-map into `DefectScope.codeMap` at fix time (resolve-at-read)
 
 # Freshness (anti-drift)
@@ -224,6 +224,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `2efc3f3` 2026-07-02 — test(P2): failing golden tests + claudeCodeDriver stub (RED)
 - `f1d8a81` 2026-07-02 — test(P4): failing tests + stubs for driverFits + schema agent + drivers catalog (RED)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `3ffbdc6` 2026-07-02 — feat(cli): understand --reconcile/--owns + phrase-fallback ranker + fixer FIND wire
 
 ### Lessons — memory cluster
 
@@ -232,11 +233,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[expert-representations]]
 - [[game-omni-reference-product]]
 - [[memory-legs-coordination]]
+- [[merge-workspace-token-bug]]
 - [[node-illustration-pipeline]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[telemetry-first-node-diagnosis]]
 - [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
@@ -246,5 +249,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-02 · arc=148 commits · files=15 · lessons=10</sub>
+<sub>derived 2026-07-02 · arc=149 commits · files=15 · lessons=12</sub>
 <!-- okf:auto-end -->

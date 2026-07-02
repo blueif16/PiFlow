@@ -131,6 +131,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `4376c2b` 2026-07-01 — feat(optimize): physical adopt/LAND step — the explicit out-of-loop `optimize --adopt`
 - `8517442` 2026-07-01 — feat(optimize): activate the fix-cycle ceiling with a default file-backed counter
 - `89036c4` 2026-07-01 — feat(cli): piflowctl memory compact — the out-of-band cap/retire pass
+- `3ffbdc6` 2026-07-02 — feat(cli): understand --reconcile/--owns + phrase-fallback ranker + fixer FIND wire
 
 ### Lessons — memory cluster
 
@@ -168,5 +169,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `makeReplayStages` (packages/core/src/optimize/replay.ts:87) — 7 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-mine.test.ts`, `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-root-exports.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-02 · arc=24 commits · files=19 · lessons=24</sub>
+<sub>derived 2026-07-02 · arc=25 commits · files=19 · lessons=24</sub>
 <!-- okf:auto-end -->

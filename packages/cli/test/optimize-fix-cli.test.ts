@@ -12,11 +12,12 @@
 // Run: npx vitest run packages/cli/test/optimize-fix-cli.test.ts
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { promises as fs, existsSync as existsSyncNode } from 'node:fs';
+import { promises as fs, existsSync as existsSyncNode, readdirSync, readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseOptimizeFixArgs, loadBinding, runOptimizeFixCli, enrichCodeMap, findSliceForDefect, makeDefaultFixCyclesPort } from '../src/optimize-fix.js';
+import { parseCardForRank, rankCards } from '../../../.agents/okf/topics/_rank.mjs';
 import { scoreNodes, triage, deriveRecurrence } from '@piflow/core';
 import type { RunDigest, NodeDigest, Tier1Result, Tier1Check, Defect } from '@piflow/core';
 
@@ -144,11 +145,21 @@ describe('findSliceForDefect — rank the defect\'s structured signals against t
   const cardText = (key: string, seeds: string[]): string =>
     `---\nkey: ${key}\ntitle: ${key}\nseeds: [${seeds.join(', ')}]\n---\n\n# Why\n${key} owns these files.\n\n<!-- okf:auto-start -->\nauto\n<!-- okf:auto-end -->\n`;
 
+  // The finder is injected so the test stays hermetic (no subprocess), but it uses the REAL vendored ranker
+  // (`_rank.mjs`) over the fixture's card files — the same scoring `node _generate.mjs --find` runs — so this
+  // exercises findSliceForDefect's ownership FLOOR + signal loop + resolve-at-read against genuine rankings.
+  const inProcessFind = (topicsDir: string, query: string) =>
+    rankCards(
+      readdirSync(topicsDir)
+        .filter((f) => f.endsWith('.md') && !f.startsWith('_'))
+        .map((f) => parseCardForRank(f.replace(/\.md$/, ''), readFileSync(path.join(topicsDir, f), 'utf8'))),
+      query,
+    ).map((r) => ({ key: r.card.key, title: r.card.title, resource: r.card.resource, score: r.score }));
+
   beforeEach(async () => {
     ROOT = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-find-slice-'));
     topics = path.join(ROOT, '.agents', 'okf', 'topics');
     await fs.mkdir(topics, { recursive: true });
-    await fs.writeFile(path.join(topics, '_generate.mjs'), '// engine\n');
     await fs.writeFile(path.join(topics, 'sandbox.md'), cardText('sandbox', ['packages/core/src/sandbox/scope.ts']));
     await fs.writeFile(path.join(topics, 'runner.md'), cardText('runner', ['packages/core/src/runner/runner.ts']));
   });
@@ -156,14 +167,14 @@ describe('findSliceForDefect — rank the defect\'s structured signals against t
 
   it('a defect whose evidence names a seed file resolves to that card at ownership strength', () => {
     const d: Defect = { node: 'n1', bucket: 'LAPSE', symptom: '', confidence: 'low', evidence: ['packages/core/src/sandbox/scope.ts missing'] };
-    const hit = findSliceForDefect(topics, d);
+    const hit = findSliceForDefect(topics, d, inProcessFind);
     expect(hit?.slice).toBe('sandbox');
     expect(hit?.body).toContain('sandbox owns these files');
   });
 
   it('a defect with no ownership-strength signal returns null (never a weak-mention crown)', () => {
     const d: Defect = { node: 'n2', bucket: 'LAPSE', symptom: '', confidence: 'low', evidence: ['files mentioned nowhere'] };
-    expect(findSliceForDefect(topics, d)).toBeNull();
+    expect(findSliceForDefect(topics, d, inProcessFind)).toBeNull();
   });
 });
 

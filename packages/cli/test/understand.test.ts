@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseCard, rankCards, resolveTopicsDir, resolveSlice, runUnderstandCli } from '../src/understand.js';
+import { parseCard, resolveTopicsDir, resolveSlice, runUnderstandCli } from '../src/understand.js';
 
 // `piflowctl understand` is the user-facing name for the OKF code-understanding slices: FIND the slice that
 // owns a subsystem, and run the drift gate (--check) / regenerate (--rebuild). The RANKER is the heart — a
@@ -60,55 +60,9 @@ describe('parseCard — frontmatter + curated split', () => {
   });
 });
 
-describe('rankCards — ownership beats mention (deterministic)', () => {
-  const cards = [
-    parseCard('runner', card({ key: 'runner', symbols: ['runNode'], prose: 'the runner also calls computeScopeRoots at exec.' })),
-    parseCard('sandbox', card({ key: 'sandbox', resource: 'packages/core/src/sandbox/scope.ts', symbols: ['computeScopeRoots'], seeds: ['packages/core/src/sandbox/scope.ts'] })),
-    parseCard('optimize', card({ key: 'optimize', symbols: ['scoreRun'] })),
-  ];
-
-  it('an exact key match ranks first for that query', () => {
-    expect(rankCards(cards, 'runner')[0].card.key).toBe('runner');
-  });
-
-  it('a card that OWNS a symbol outranks one that only MENTIONS it in prose', () => {
-    // sandbox declares `computeScopeRoots` in symbols:; runner merely name-drops it in its prose.
-    const ranked = rankCards(cards, 'computeScopeRoots');
-    expect(ranked[0].card.key).toBe('sandbox');
-    const runnerRank = ranked.findIndex((r) => r.card.key === 'runner');
-    const sandboxRank = ranked.findIndex((r) => r.card.key === 'sandbox');
-    expect(sandboxRank).toBeLessThan(runnerRank); // ownership strictly above mention
-  });
-
-  it('a FILE query resolves to the card that owns the file', () => {
-    expect(rankCards(cards, 'packages/core/src/sandbox/scope.ts')[0].card.key).toBe('sandbox');
-  });
-
-  it('a query no card owns or mentions returns nothing (uncovered)', () => {
-    expect(rankCards(cards, 'totally-unrelated-xyz')).toEqual([]);
-  });
-});
-
-describe('rankCards — tokenized PHRASE fallback (a natural-language question still finds its owner)', () => {
-  const cards = [
-    parseCard('sandbox', card({ key: 'sandbox', aliases: ['jail', 'seatbelt'], seeds: ['packages/core/src/sandbox/scope.ts'] })),
-    parseCard('runner', card({ key: 'runner', symbols: ['runWorkflow'], prose: 'one pi per node, artifacts on disk.' })),
-  ];
-
-  it('a multi-word question whose TOKENS hit ownership fields resolves to the owning card', () => {
-    // The whole phrase matches nothing as a substring; the token "jail" is sandbox's alias.
-    expect(rankCards(cards, 'jail reads and writes inside the box')[0].card.key).toBe('sandbox');
-  });
-
-  it('a phrase whose tokens hit nothing still returns [] (uncovered, never a noise crown)', () => {
-    expect(rankCards(cards, 'stripe payment webhook retries')).toEqual([]);
-  });
-
-  it('a phrase grazing only PROSE stays below the ownership floor (weak mentions cannot crown an owner)', () => {
-    // "artifacts disk" only appear in runner's prose (8 points each < the 20-point floor).
-    expect(rankCards(cards, 'artifacts written straight onto disk')).toEqual([]);
-  });
-});
+// The RANKER unit tests — ownership-over-mention + the tokenized phrase fallback — moved to `rank.test.ts`,
+// which exercises the ONE vendored ranker (`_rank.mjs`) directly. `runUnderstandCli`'s reader now sources
+// ranking from the engine via an injectable `runFind` (mirroring the `runGate` seam), exercised below.
 
 describe('resolveTopicsDir — walk up to the .agents/okf/topics engine', () => {
   let ROOT: string;
@@ -194,14 +148,18 @@ describe('runUnderstandCli — the three modes', () => {
     expect(out).not.toContain('_generate'); // `_`-prefixed files are engine, not slices
   });
 
-  it('`understand <subsystem>` prints the owning card body', async () => {
-    await runUnderstandCli(['runner'], { cwd: topics });
-    expect(out).toContain('Runner spine');
-    expect(out).toContain('drives the DAG one pi per node');
+  it('`understand <subsystem>` renders the ranked top card (title from the finder, body via resolve-at-read)', async () => {
+    // The engine ranker is injected (the fixture engine is a stub); the reader still resolves the REAL
+    // curated body from the card file, so this proves routing + rendering, not the ranking (that's rank.test.ts).
+    const runFind = (_d: string, q: string) =>
+      q === 'runner' ? [{ key: 'runner', title: 'Runner spine', resource: '', score: 100 }] : [];
+    await runUnderstandCli(['runner'], { cwd: topics, runFind });
+    expect(out).toContain('Runner spine'); // title from the ranked hit
+    expect(out).toContain('drives the DAG one pi per node'); // curated body via resolveSlice
   });
 
   it('`understand <uncovered>` reports the gap and does NOT invent a slice', async () => {
-    await runUnderstandCli(['nonexistent-subsystem'], { cwd: topics });
+    await runUnderstandCli(['nonexistent-subsystem'], { cwd: topics, runFind: () => [] });
     expect(out + err).toMatch(/uncovered|no slice|no match/i);
     expect(out).not.toContain('Runner spine');
   });
