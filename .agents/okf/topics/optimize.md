@@ -67,7 +67,7 @@ REPLAY
 - `packages/core/src/optimize/replay.ts:87` — `makeReplayStages` — fold a product oracle into baseScore/replayScore/prepareCandidate (abstain→null, VAL-only)
 - `packages/core/src/optimize/mine.ts:45` — `mineTaskFromTrace` — the MINING half: read the incumbent's recorded report → a CheckableTask
 CLI SEAM
-- `packages/cli/src/optimize-fix.ts:291` — `runOptimizeFixCli` — dynamic-import the product `--binding` → compose the core pieces → stage a manifest
+- `packages/cli/src/optimize-fix.ts:336` — `runOptimizeFixCli` — dynamic-import the product `--binding` → compose the core pieces → stage a manifest
 - `packages/cli/src/optimize-fix.ts:124` — `enrichCodeMap` — resolve-at-read: dereference each SKILL lesson's [[okf-slice]] → inline the curated code-map into `DefectScope.codeMap`
 STREAM (`--fix --watch`)
 - `packages/core/src/optimize/events.ts:12` — `OptimizeEvent` — the typed event union the driver emits (one per lifecycle step); the stream is a PROJECTION, never load-bearing

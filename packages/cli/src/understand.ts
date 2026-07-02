@@ -80,30 +80,51 @@ export function parseCard(fallbackKey: string, text: string): Card {
 export function rankCards(cards: Card[], query: string): { card: Card; score: number }[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  const eq = (s: string): boolean => s.toLowerCase() === q;
-  const has = (s: string): boolean => s.toLowerCase().includes(q);
-  const pathHit = (p: string): boolean => {
-    const pl = p.toLowerCase();
-    return pl.includes(q) || q.includes(pl); // a file query may be longer OR shorter than the stored path
-  };
 
-  const scored = cards
-    .map((card) => {
-      let score = 0;
-      if (eq(card.key)) score += 100;
-      else if (has(card.key)) score += 50; // partial key (a broader/narrower name)
-      if (card.symbols.some(eq)) score += 70;
-      else if (card.symbols.some(has)) score += 35;
-      if (card.aliases.some(eq)) score += 55;
-      else if (card.aliases.some(has)) score += 20;
-      if (card.resource && pathHit(card.resource)) score += 60;
-      if (card.seeds.some(pathHit)) score += 45;
-      if (card.tags.some(eq)) score += 30;
-      if (has(card.title)) score += 25;
-      if (card.curatedLower.includes(q)) score += 8; // WEAK — a bare prose mention
-      return { card, score };
-    })
+  // OWNERSHIP score — the frontmatter rungs only (key/symbols/aliases/resource/seeds/tags/title).
+  // Kept separate from the prose bonus so the phrase fallback can enforce the law structurally.
+  const scoreOwnership = (card: Card, term: string): number => {
+    const eq = (s: string): boolean => s.toLowerCase() === term;
+    const has = (s: string): boolean => s.toLowerCase().includes(term);
+    const pathHit = (p: string): boolean => {
+      const pl = p.toLowerCase();
+      return pl.includes(term) || term.includes(pl); // a file query may be longer OR shorter than the stored path
+    };
+    let score = 0;
+    if (eq(card.key)) score += 100;
+    else if (has(card.key)) score += 50; // partial key (a broader/narrower name)
+    if (card.symbols.some(eq)) score += 70;
+    else if (card.symbols.some(has)) score += 35;
+    if (card.aliases.some(eq)) score += 55;
+    else if (card.aliases.some(has)) score += 20;
+    if (card.resource && pathHit(card.resource)) score += 60;
+    if (card.seeds.some(pathHit)) score += 45;
+    if (card.tags.some(eq)) score += 30;
+    if (has(card.title)) score += 25;
+    return score;
+  };
+  const proseBonus = (card: Card, term: string): number => (card.curatedLower.includes(term) ? 8 : 0); // WEAK — a bare mention
+
+  let scored = cards
+    .map((card) => ({ card, score: scoreOwnership(card, q) + proseBonus(card, q) }))
     .filter((r) => r.score > 0);
+
+  // PHRASE fallback: a natural-language question never matches as one substring, so when the whole
+  // query scores nothing, re-score per TOKEN and sum — gated STRUCTURALLY by the ownership law:
+  // English glue words ("how", "does", "that") live in every card's PROSE but never in frontmatter,
+  // so requiring at least one OWNERSHIP hit neutralizes them with no hardcoded stopword list, and a
+  // card grazed only by prose mentions stays uncovered rather than masquerading as an owner.
+  if (scored.length === 0) {
+    const toks = [...new Set(q.split(/[^a-z0-9_$./-]+/).filter((t) => t.length >= 4))];
+    if (toks.length >= 2) {
+      scored = cards
+        .map((card) => {
+          const own = toks.reduce((s, t) => s + scoreOwnership(card, t), 0);
+          return { card, score: own > 0 ? own + toks.reduce((s, t) => s + proseBonus(card, t), 0) : 0 };
+        })
+        .filter((r) => r.score > 0);
+    }
+  }
 
   scored.sort((a, b) => b.score - a.score || a.card.key.localeCompare(b.card.key));
   return scored;
@@ -139,19 +160,23 @@ export function resolveSlice(topicsDir: string, key: string): string | null {
   return parseCard(key, readFileSync(p, 'utf8')).curated || null;
 }
 
-/** Load every slice card in `topicsDir` — the `*.md` files, EXCLUDING `_`-prefixed engine files. */
-function loadCards(topicsDir: string): Card[] {
+/** Load every slice card in `topicsDir` — the `*.md` files, EXCLUDING `_`-prefixed engine files.
+ *  EXPORTED for the fixer wire (`findSliceForDefect`) so FIND has ONE loader, never a fork. */
+export function loadCards(topicsDir: string): Card[] {
   return readdirSync(topicsDir)
     .filter((f) => f.endsWith('.md') && !f.startsWith('_'))
     .sort()
     .map((f) => parseCard(f.replace(/\.md$/, ''), readFileSync(path.join(topicsDir, f), 'utf8')));
 }
 
+/** Engine modes the verb can route to — all four live in the ONE `_generate.mjs`. */
+export type GateMode = 'check' | 'write' | 'reconcile' | 'owns';
+
 /** The default gate runner: shell to the repo-local engine, inheriting stdio, returning its exit code.
  *  EXPORTED so `memory check` shells to the SAME OKF engine path (no duplicate shell; the two gates can
  *  never drift). */
-export function defaultRunGate(mode: 'check' | 'write', topicsDir: string, keys: string[]): number {
-  const flag = mode === 'check' ? '--check' : '--write';
+export function defaultRunGate(mode: GateMode, topicsDir: string, keys: string[]): number {
+  const flag = { check: '--check', write: '--write', reconcile: '--reconcile', owns: '--owns' }[mode];
   try {
     execFileSync('node', [path.join(topicsDir, '_generate.mjs'), flag, ...keys], {
       stdio: 'inherit',
@@ -168,23 +193,27 @@ const out = (s: string): void => void process.stdout.write(s);
 const err = (s: string): void => void process.stderr.write(s);
 
 /**
- * `piflowctl understand [subsystem] [--check|--rebuild] [key…]`.
+ * `piflowctl understand [subsystem] [--check|--rebuild|--reconcile|--owns] [key…]`.
  *   • bare            → list the covered subsystems (the index)
  *   • <subsystem>     → the owning card (Why/how + Anchors + Freshness)
  *   • --check [key…]  → the drift gate (blocks on HEALTH; auto-region staleness is advisory)
- *   • --rebuild [key…]→ regenerate the cards' auto regions
- * `deps.runGate` lets tests exercise --check/--rebuild routing without shelling; `deps.cwd` sets the search root.
+ *   • --rebuild [key…]→ regenerate the cards' auto regions (auto-repairs same-file line drift)
+ *   • --reconcile     → the post-merge advisory pass (E4 body-hash · E5 impact · coverage rungs)
+ *   • --owns <path>   → reverse lookup: which card(s) own this file
+ * `deps.runGate` lets tests exercise engine routing without shelling; `deps.cwd` sets the search root.
  */
 export async function runUnderstandCli(
   argv: string[],
   deps: {
     cwd?: string;
-    runGate?: (mode: 'check' | 'write', topicsDir: string, keys: string[]) => number;
+    runGate?: (mode: GateMode, topicsDir: string, keys: string[]) => number;
   } = {},
 ): Promise<void> {
   const cwd = deps.cwd ?? process.cwd();
   const doCheck = argv.includes('--check');
   const doRebuild = argv.includes('--rebuild') || argv.includes('--write');
+  const doReconcile = argv.includes('--reconcile');
+  const doOwns = argv.includes('--owns');
   const positionals = argv.filter((a) => !a.startsWith('-'));
 
   const topicsDir = resolveTopicsDir(cwd);
@@ -198,9 +227,10 @@ export async function runUnderstandCli(
   }
 
   // MAINTENANCE modes — delegate to the single engine (never re-implemented here).
-  if (doCheck || doRebuild) {
+  if (doCheck || doRebuild || doReconcile || doOwns) {
     const gate = deps.runGate ?? defaultRunGate;
-    const code = gate(doCheck ? 'check' : 'write', topicsDir, positionals);
+    const mode: GateMode = doCheck ? 'check' : doRebuild ? 'write' : doReconcile ? 'reconcile' : 'owns';
+    const code = gate(mode, topicsDir, positionals);
     if (code !== 0) process.exitCode = code;
     return;
   }

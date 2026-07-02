@@ -21,6 +21,15 @@
 //   --staged (with --check)                 scope the gate to cards whose seeds/anchors (or the card
 //                                           file itself) intersect the git-staged files — the
 //                                           pre-commit hook's fast path.
+//   node _generate.mjs --reconcile          the POST-MERGE advisory pass (never blocks): the E4 rung
+//                                           (normalized span-hash of every def-anchored symbol — a
+//                                           body change is a SEMANTIC? trigger to re-read the card's
+//                                           prose), the E5 rung (change-site symbols from diff hunk
+//                                           headers → codegraph impact → card deps reached OUTSIDE
+//                                           the change set), and the coverage rung (hot product files
+//                                           no card owns). State in gitignored .reconcile-state.json;
+//                                           first run stamps the baseline.
+//   node _generate.mjs --owns <path>        reverse lookup: which card(s) own this file (seeds/anchors).
 //   OKF_NO_SYNC=1                           skip the automatic `codegraph sync` of a stale index.
 
 import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
@@ -37,8 +46,9 @@ const NOISE = CFG.noise || [];
 const START = '<!-- okf:auto-start -->';
 const END = '<!-- okf:auto-end -->';
 
-const mode = process.argv.includes('--check') ? 'check' : process.argv.includes('--write') ? 'write' : null;
-if (!mode) { console.error('usage: _generate.mjs --write|--check [--staged] [<key>...]'); process.exit(2); }
+const mode = process.argv.includes('--check') ? 'check' : process.argv.includes('--write') ? 'write'
+  : process.argv.includes('--reconcile') ? 'reconcile' : process.argv.includes('--owns') ? 'owns' : null;
+if (!mode) { console.error('usage: _generate.mjs --write|--check [--staged]|--reconcile|--owns <path> [<key>...]'); process.exit(2); }
 const STAGED = process.argv.includes('--staged');
 if (STAGED && mode !== 'check') { console.error('--staged only applies to --check'); process.exit(2); }
 const only = process.argv.slice(2).filter(a => !a.startsWith('--'));
@@ -165,30 +175,33 @@ function deriveAnchors(spec) {
 // lines (line drift) or files (moved); without codegraph the line check alone still catches it.
 // Free prose paths are intentionally NOT scanned — anchors + seeds are the slice's contract, and
 // scanning prose produced benign false positives on abbreviated/negative references.
+// Issues are structured: `{ msg, repair? }` — `repair` is present ONLY for same-file line drift
+// (the span is known, the symbol unchanged), the one class the machine may fix itself by re-stamping
+// the `path:line` token. Moves and unresolved symbols stay manual (they change the card's meaning).
 function healthCheck(card, spec) {
   const issues = [];
   const WINDOW = 3;
-  for (const s of spec.seeds || []) if (!isNoise(s) && !existsSync(join(REPO, s))) issues.push(`seed missing: ${s}`);
+  for (const s of spec.seeds || []) if (!isNoise(s) && !existsSync(join(REPO, s))) issues.push({ msg: `seed missing: ${s}` });
   const rx = anchorRe();
   for (const m of card.matchAll(rx)) {
     const [, path, lineStr, sym] = m;
     if (path.startsWith('http') || path.startsWith('~') || isNoise(path)) continue;
     const line = parseInt(lineStr, 10);
     const lines = fileLines(path);
-    if (!lines) { issues.push(`anchor path missing: ${path} (\`${sym}\`)`); continue; }
+    if (!lines) { issues.push({ msg: `anchor path missing: ${path} (\`${sym}\`)` }); continue; }
     const toks = [...new Set((sym.match(/[A-Za-z_$][\w$]*/g) || []).filter(t => t.length >= 3))];
     const nearLine = t => { for (let d = 0; d <= WINDOW; d++) { const a = lines[line - 1 - d], b = lines[line - 1 + d]; if ((a && a.includes(t)) || (b && b.includes(t))) return true; } return false; };
     const blob = lines.join('\n');
     const inFile = t => new RegExp(`\\b${reEsc(t)}\\b`).test(blob);
     // (1) DEFINITION anchor: a significant token is DEFINED in this file (codegraph span) — validate line ∈ span.
-    let drift = null; // a line-drift issue string if a def anchor's line is wrong
+    let drift = null; // a line-drift issue (with repair info) if a def anchor's line is wrong
     let pass = false;
     for (const t of toks.filter(t => t.length >= 5)) {
       const nodes = (cgFind(t) || []).filter(n => n.filePath === path && n.startLine);
       if (!nodes.length) continue;
       if (nodes.some(n => line >= n.startLine && line <= n.endLine) || nearLine(t)) { pass = true; break; }
       const n = nodes[0];
-      drift = drift || `anchor line drift: ${path}:${line} \`${t}\` — defined :${n.startLine}-${n.endLine} (re-author the anchor)`;
+      drift = drift || { msg: `anchor line drift: ${path}:${line} \`${t}\` — defined :${n.startLine}-${n.endLine}`, repair: { path, line, newLine: n.startLine } };
     }
     if (pass) continue;
     if (drift) { issues.push(drift); continue; }
@@ -197,7 +210,7 @@ function healthCheck(card, spec) {
     // (3) Not in the file → renamed/moved/deleted. codegraph (if present) says where it went.
     let moved = null;
     for (const t of toks.filter(t => t.length >= 5)) { const e = (cgFind(t) || []).find(n => n.filePath !== path); if (e) { moved = `anchor moved: \`${t}\` cited ${path}:${line}, now ${e.filePath}:${e.startLine}`; break; } }
-    issues.push(moved || `anchor unresolved: ${path}:${line} \`${sym}\` — symbol not found in file`);
+    issues.push({ msg: moved || `anchor unresolved: ${path}:${line} \`${sym}\` — symbol not found in file` });
   }
   return issues;
 }
@@ -303,11 +316,134 @@ function fingerprint(curated, spec) {
   return sha(JSON.stringify({ curated: curated.replace(/\s+$/, ''), deps, head: gHead, memory: gMemory, cg: gCg }));
 }
 
+// ---- RECONCILE substrate (post-merge, advisory) ----
+// E4 approximation: a formatting-insensitive-ish hash of a symbol's codegraph span — comments
+// stripped, whitespace collapsed (a normalized-text span hash, not a true AST hash; zero-dep).
+// A changed hash is a SEMANTIC? trigger for the MAINTAIN agent to re-read prose — never a block.
+const RECON_FILE = join(HERE, '.reconcile-state.json');
+const loadRecon = () => { try { return JSON.parse(readFileSync(RECON_FILE, 'utf8')); } catch { return { head: null, bodyHashes: {} }; } };
+const saveRecon = s => { try { writeFileSync(RECON_FILE, JSON.stringify(s) + '\n'); } catch { /* best-effort */ } };
+function spanHash(p, startLine, endLine) {
+  const lines = fileLines(p); if (!lines) return null;
+  return sha(lines.slice(startLine - 1, endLine).join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '').replace(/\s+/g, ' ').trim());
+}
+// shared leading path segments — the coverage rung's "nearest card" heuristic.
+const sharedSegs = (a, b) => { const A = a.split('/'), B = b.split('/'); let i = 0; while (i < A.length && i < B.length && A[i] === B[i]) i++; return i; };
+
 // ---- main ----
 const allKeys = readdirSync(HERE).filter(f => f.endsWith('.md')).map(f => f.replace(/\.md$/, ''));
 const unknown = only.filter(k => !allKeys.includes(k));
-if (unknown.length) { console.error(`unknown card key(s): ${unknown.join(', ')} — known: ${allKeys.join(', ')}`); process.exit(2); }
-const cards = readdirSync(HERE).filter(f => f.endsWith('.md') && (!only.length || only.includes(f.replace(/\.md$/, ''))));
+if (mode !== 'owns' && unknown.length) { console.error(`unknown card key(s): ${unknown.join(', ')} — known: ${allKeys.join(', ')}`); process.exit(2); }
+const cards = readdirSync(HERE).filter(f => f.endsWith('.md') && (mode === 'owns' || !only.length || only.includes(f.replace(/\.md$/, ''))));
+
+const readCardFile = file => {
+  const p = join(HERE, file);
+  const text = readFileSync(p, 'utf8');
+  const { fm } = parseCard(text);
+  return {
+    file, path: p, text,
+    spec: { key: fm.key || file.replace(/\.md$/, ''), aliases: fm.aliases || [], seeds: fm.seeds || [], symbols: fm.symbols || [], memoryHub: fm.memoryHub },
+    curated: text.split(START)[0],
+  };
+};
+
+// ---- MODE: --owns (reverse lookup, code → card; FIND already has the doc → code direction) ----
+if (mode === 'owns') {
+  const target = (only[0] || '').replace(/^\.\//, '');
+  if (!target) { console.error('usage: _generate.mjs --owns <repo-relative-path>'); process.exit(2); }
+  const owners = cards.map(readCardFile).filter(c => {
+    const d = depPaths(c.curated, c.spec); d.add(relative(REPO, c.path)); return d.has(target);
+  });
+  if (owners.length) for (const c of owners) console.log(`${c.spec.key}${c.spec.seeds.includes(target) ? ' (seed)' : ''}`);
+  else console.log(`(no card owns ${target} — uncovered)`);
+  process.exit(0);
+}
+
+// ---- MODE: --reconcile (the post-merge advisory cadence — deterministic FACTS for the MAINTAIN
+// agent to judge; the machine never judges prose, and this mode never blocks) ----
+if (mode === 'reconcile') {
+  const state = loadRecon();
+  const parsed = cards.map(readCardFile);
+  const baseline = !state.head;
+  let triggers = 0;
+
+  // RUNG E4 — span-hash every def-anchored symbol; a changed body is a SEMANTIC? re-read trigger.
+  const nextHashes = {};
+  if (!NO_CG) {
+    for (const c of parsed) {
+      const fired = new Set();
+      for (const m of c.curated.matchAll(anchorRe())) {
+        const [, p, lineStr, symTxt] = m;
+        if (p.startsWith('http') || p.startsWith('~') || isNoise(p)) continue;
+        const line = parseInt(lineStr, 10);
+        for (const t of [...new Set((symTxt.match(/[A-Za-z_$][\w$]*/g) || []).filter(t => t.length >= 5))]) {
+          const n = (cgFind(t) || []).find(n => n.filePath === p && n.startLine <= line && line <= n.endLine);
+          if (!n) continue;
+          const key = `${p}#${n.name}`;
+          if (!(key in nextHashes)) nextHashes[key] = spanHash(p, n.startLine, n.endLine);
+          if (!baseline && state.bodyHashes[key] && nextHashes[key] && state.bodyHashes[key] !== nextHashes[key] && !fired.has(key)) {
+            fired.add(key); triggers++;
+            console.log(`SEMANTIC? [${c.spec.key}] \`${n.name}\` (${p}) body changed since last reconcile — re-read the card's prose against the new behavior`);
+          }
+          break; // the first containing definition is the anchor's symbol
+        }
+      }
+    }
+  } else console.log('(codegraph unavailable — E4 body-hash + E5 impact rungs skipped; coverage rung only)');
+
+  // RUNG E5 — the graph-only rung: symbols actually edited in the range (git prints the enclosing
+  // definition on each hunk header) → confirmed defined in a changed file → `codegraph impact` →
+  // does the blast radius reach a card's dep files from OUTSIDE the change set?
+  const changed = !baseline && state.head !== gHead
+    ? sh('git', ['diff', '--name-only', `${state.head}..HEAD`]).split('\n').map(s => s.trim()).filter(f => f && !isNoise(f))
+    : [];
+  if (changed.length && !NO_CG) {
+    const changedSet = new Set(changed);
+    const hunkSyms = new Set();
+    for (const hm of sh('git', ['diff', `${state.head}..HEAD`, '--unified=0']).matchAll(/^@@[^@]*@@\s*(.*)$/gm))
+      for (const t of (hm[1].match(/[A-Za-z_$][\w$]{4,}/g) || []).slice(0, 3)) hunkSyms.add(t);
+    let ran = 0;
+    for (const g of hunkSyms) {
+      if (ran >= 25) { console.log(`(impact rung capped at 25 change-site symbols — ${hunkSyms.size - ran} more not traced)`); break; }
+      const defs = (cgFind(g) || []).filter(n => changedSet.has(n.filePath));
+      if (!defs.length) continue;
+      ran++;
+      let aff;
+      try { aff = new Set((JSON.parse(sh(CFG.codegraph, ['impact', g, '--json'], { timeout: 60000 })).affected || []).map(a => a.filePath).filter(Boolean)); }
+      catch { continue; }
+      if (aff.size > 200) { console.log(`(impact of \`${g}\` too hot — ${aff.size} affected files; not traced)`); continue; }
+      for (const c of parsed) {
+        const deps = depPaths(c.curated, c.spec);
+        const hits = [...deps].filter(d => aff.has(d) && !changedSet.has(d));
+        if (hits.length) { triggers++; console.log(`IMPACT? [${c.spec.key}] change to \`${g}\` (${defs[0].filePath}) reaches its dep ${hits[0]} via blast radius — verify the card's prose/anchors`); }
+      }
+    }
+  }
+
+  // COVERAGE rung — hot product files no card owns. Instrument paths are excluded BY RULE (they are
+  // skill-documented shared tooling, not card material — the per-product boundary decision).
+  const excl = CFG.coverageExclude || ['.agents/', '.claude/', '.githooks/', '.github/', '.changeset/', 'scripts/', 'vendor/'];
+  const freq = new Map();
+  for (const f of sh('git', ['log', '-80', '--name-only', '--pretty=format:']).split('\n').map(s => s.trim()).filter(Boolean)) {
+    if (isNoise(f) || excl.some(e => f.startsWith(e))) continue;
+    freq.set(f, (freq.get(f) || 0) + 1);
+  }
+  const union = new Set();
+  for (const c of parsed) { for (const d of depPaths(c.curated, c.spec)) union.add(d); union.add(relative(REPO, c.path)); }
+  for (const [f, n] of [...freq.entries()].filter(([f, n]) => n >= 2 && !union.has(f) && existsSync(join(REPO, f))).sort((a, b) => b[1] - a[1]).slice(0, 10)) {
+    let best = null, bestLen = 1;
+    for (const c of parsed) for (const s of c.spec.seeds || []) { const k = sharedSegs(f, s); if (k > bestLen) { bestLen = k; best = c.spec.key; } }
+    triggers++;
+    console.log(`UNCOVERED-HOT: ${f} (${n} recent commits, no card)${best ? ` — nearest card: ${best}` : ''}`);
+  }
+
+  saveRecon({ head: gHead, bodyHashes: NO_CG ? state.bodyHashes : nextHashes });
+  console.log(baseline
+    ? `\nreconcile baseline stamped at ${gHead.slice(0, 7)} — ${Object.keys(nextHashes).length} anchored symbol span(s) across ${parsed.length} card(s)`
+    : `\nreconcile: ${triggers} advisory trigger(s) since ${String(state.head).slice(0, 7)} — judge each per okf-slices MAINTAIN (advisory, never blocking)`);
+  process.exit(0);
+}
 const cache = loadCache();
 // --staged: the file-level rung of the blast ladder, applied at pre-commit — only cards whose
 // dependency set (or own card file) intersects the staged files are checked; the rest can't have
@@ -326,16 +462,31 @@ for (const file of cards) {
     deps.add(relative(REPO, path));
     if (![...STAGED_FILES].some(f => deps.has(f))) { skipped++; continue; }
   }
-  const fp = fingerprint(curated, spec);
+  let fp = fingerprint(curated, spec);
 
   // INCREMENTAL SKIP: a cache entry exists ONLY for a fully-clean card, so a fingerprint match proves
   // the card is still fresh + healthy (identical inputs → identical deterministic derive). Skip the
   // costly deriveArc/Files/Lessons/Anchors + healthCheck entirely.
   if (cache[spec.key] === fp) { console.log(`${tag} ${mode === 'write' ? 'unchanged (cached)' : 'ok (cached)'}`); continue; }
 
+  // AUTO-REPAIR (--write only): same-file line drift is mechanical — the span is known, the symbol
+  // unchanged — so --write re-stamps the `path:line` token itself (every occurrence of the exact
+  // token in the card, prose citations included). The machine never touches words; moved/unresolved
+  // anchors stay manual (they change the card's MEANING).
+  let body = text, cur = curated;
+  let health = healthCheck(curated, spec);
+  if (mode === 'write' && health.some(h => h.repair)) {
+    for (const { repair: r } of health.filter(h => h.repair)) {
+      body = body.split(`\`${r.path}:${r.line}\``).join(`\`${r.path}:${r.newLine}\``);
+      console.log(`${tag} anchor repaired: ${r.path}:${r.line} → :${r.newLine} (span-verified)`);
+    }
+    cur = body.split(START)[0];
+    health = healthCheck(cur, spec); // residual issues only — repaired anchors must now pass
+    fp = fingerprint(cur, spec);
+  }
+
   const data = { arc: deriveArc(spec), files: deriveFiles(spec), lessons: deriveLessons(spec), anchors: process.env.OKF_NO_CODEGRAPH ? null : deriveAnchors(spec) };
-  const next = splice(text, render(spec, data));
-  const health = healthCheck(next.split(START)[0], spec); // curated region only — the auto block's exists-column IS the data
+  const next = splice(body, render(spec, data));
 
   // Cache a card ONLY when it is fully clean at this fingerprint: healthy, and (for --check, which
   // doesn't rewrite) not drifted. --write refreshes the region, so post-write clean == healthy. A
@@ -345,10 +496,10 @@ for (const file of cards) {
   if (mode === 'write') {
     if (next !== text) { writeFileSync(path, next); console.log(`${tag} regenerated (arc=${data.arc.length}, files=${data.files.length})`); }
     else console.log(`${tag} unchanged`);
-    for (const h of health) console.log(`  ⚠ ${h}`);
+    for (const h of health) console.log(`  ⚠ ${h.msg}`);
   } else { // check
     if (next !== text && DRIFT_COMPARABLE) { console.error(`${tag} DRIFT: auto region is stale — run --write`); drift++; }
-    for (const h of health) { console.error(`${tag} HEALTH: ${h}`); healthFail++; }
+    for (const h of health) { console.error(`${tag} HEALTH: ${h.msg}${h.repair ? ' — auto-repairable: run --write' : ''}`); healthFail++; }
     if ((next === text || !DRIFT_COMPARABLE) && !health.length) console.log(`${tag} ok`);
   }
 }

@@ -1,2 +1,4 @@
 # Derived local freshness cache for the incremental --check/--write gate (regenerable, not shared).
 .gen-cache.json
+# Reconcile state (post-merge advisory rungs) — derived local, regenerable.
+.reconcile-state.json
