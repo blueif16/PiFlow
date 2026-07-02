@@ -389,7 +389,13 @@ export const piflowCheckpointReply: Middleware = async (req, res, next) => {
   }
 };
 
-/** `GET /__piflow/agents.json` — the global agent-preset catalog (icons/colors) via core loadAgentPreset. */
+/**
+ * `GET /__piflow/agents.json` — the global agent-preset catalog (icons/colors) via core loadAgentPreset,
+ * WIDENED (P4, §2.5) to ALSO carry the built-in DRIVER catalog: the discovery-card surface joined OUTSIDE
+ * core (core still enumerates nothing — the server calls the pure static `describe()`). The preset rows are
+ * kept intact (each agentType id stays a top-level key so the GUI's per-agentType lookup is unchanged); the
+ * `drivers` array is additive — `builtinDrivers().list().map(d => d.describe())`.
+ */
 export const piflowAgents: Middleware = async (req, res, next) => {
   if (!req.url?.match(/^\/__piflow\/agents\.json(?:\?.*)?$/)) return next();
   const mod = findCore("workflow/agent-preset.js");
@@ -404,6 +410,8 @@ export const piflowAgents: Middleware = async (req, res, next) => {
       const preset = loadAgentPreset(f.slice(0, -3), dir);
       if (preset) catalog[preset.id] = preset.display ?? {};
     }
+    // STUB (P4) — the driver catalog is NOT yet joined onto the response. The real handler imports
+    // `builtinDrivers` from @piflow/core and appends `drivers: builtinDrivers().list().map(d => d.describe())`.
     sendJson(res, 200, catalog);
   } catch (e) {
     sendJson(res, 500, { error: `agents catalog build failed (${String(e)})` });

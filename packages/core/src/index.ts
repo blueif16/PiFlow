@@ -252,6 +252,11 @@ export { piDriver } from './runner/drivers/pi.js';
 export { claudeCodeDriver } from './runner/drivers/claude-code.js';
 export { DriverTable, builtinDrivers } from './runner/drivers/table.js';
 export { conformsToParity } from './runner/drivers/parity.js';
+// (P4) Author-time driver fit-preflight (§2.4) — the 2 axes a driver adds (sandbox provider · tier-vs-pin).
+export { driverFits } from './runner/drivers/driver-fits.js';
+export type { FitResult } from './runner/drivers/driver-fits.js';
+// (P4) The JSON Schema for AgentDriverDescriptor (§2.5) — emitted by `piflowctl schema --json agent`.
+export { agentDriverDescriptorSchema } from './runner/drivers/descriptor.schema.js';
 export type {
   AgentDriver,
   AgentDriverDescriptor,

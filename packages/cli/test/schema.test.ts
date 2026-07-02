@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { nodeSchema } from '@piflow/core';
+import { nodeSchema, agentDriverDescriptorSchema } from '@piflow/core';
 import { runSchemaCli, CLI_TOPICS, renderAddNodeHelp } from '../src/schema.js';
 
 // `piflowctl schema <topic>` is a TOPIC-SEGMENTED, concise CLI-syntax reference for the add-node
@@ -159,5 +159,37 @@ describe('piflowctl schema — topic-segmented CLI-syntax reference', () => {
     const { stdout, exitCode } = capture(['--json']);
     expect(exitCode).toBe(0);
     expect(JSON.parse(stdout)).toEqual(nodeSchema);
+  });
+
+  // ── P4: the AgentDriverDescriptor JSON Schema (§2.5) is the `--json agent` escape hatch. It is a NEW
+  //    key in the SCHEMAS map; the existing plain-text `schema agent` TOPIC (add-node flag reference) must
+  //    stay untouched. ──
+  it('`schema --json agent` prints a JSON Schema for AgentDriverDescriptor (properties incl. id/telemetry/sandbox)', () => {
+    const { stdout, exitCode } = capture(['--json', 'agent']);
+    expect(exitCode).toBe(0);
+    const parsed = JSON.parse(stdout) as { $schema?: string; type?: string; properties?: Record<string, unknown> };
+    // It is a JSON Schema OBJECT describing the descriptor — anti-drift by construction (deep-equals the
+    // re-exported @piflow/core schema, never a copy).
+    expect(parsed).toEqual(agentDriverDescriptorSchema);
+    expect(parsed.$schema).toContain('json-schema.org');
+    expect(parsed.type).toBe('object');
+    // The load-bearing descriptor fields MUST be described (id + telemetry + sandbox at minimum — the card's
+    // spine). The STUB schema declares none, so this bites RED until the real schema enumerates them.
+    expect(parsed.properties).toBeDefined();
+    expect(parsed.properties).toHaveProperty('id');
+    expect(parsed.properties).toHaveProperty('telemetry');
+    expect(parsed.properties).toHaveProperty('sandbox');
+  });
+
+  it('the plain-text `schema agent` topic is UNCHANGED (still the add-node flag reference)', () => {
+    const { stdout, exitCode } = capture(['agent']);
+    expect(exitCode).toBe(0);
+    // The flag-reference topic — NOT the descriptor schema. Its load-bearing lines survive.
+    expect(stdout).toContain('--agent-type');
+    expect(stdout).toContain('--executor');
+    expect(stdout).toContain('--skill');
+    // It is a plain-text page, never JSON.
+    expect(stdout).not.toContain('$schema');
+    expect(() => JSON.parse(stdout)).toThrow();
   });
 });
