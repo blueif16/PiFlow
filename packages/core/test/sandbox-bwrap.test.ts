@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
@@ -273,6 +273,81 @@ describe('bwrapExecPlan — graceful fallback when bubblewrap is unavailable', (
       }
     } finally {
       restoreProbe();
+      if (origPlatform) Object.defineProperty(process, 'platform', origPlatform);
+    }
+  });
+});
+
+// ── 2b. N-126: the no-bwrap guidance names the CLOUD sandbox fallbacks, not just danger-full-access ───
+//
+// When the bwrap jail is unavailable on a linux host, the fail-closed warn is the operator's ONLY
+// guidance. A trusted single-tenant box CAN opt into --sandbox danger-full-access — but on a shared /
+// multi-tenant host that is unsafe; the honest escape is a CLOUD sandbox (e2b / docker / daytona), which
+// keeps isolation while giving up the in-VM bwrap jail. The message MUST name those three cloud fallbacks
+// so an operator on a userns-clamped box (Railway, an AppArmor-locked runner) is pointed at a safe path,
+// not just the unsandboxed one. These are code-emitted diagnostics (the run's own output), NOT config text.
+
+describe('warnNoBwrapOnce — the no-bwrap guidance lists the cloud sandbox fallbacks (N-126)', () => {
+  it('the emitted warn names all three cloud fallbacks (--sandbox e2b, --sandbox docker, --sandbox daytona)', async () => {
+    // Force the not-available branch (platform=linux, probe=false) and capture the SINGLE warn the plan
+    // emits, then assert on the message CONTENT: it must point the operator at the cloud sandboxes, not
+    // only danger-full-access. Against the current message (bwrap.ts:138-142, names only
+    // danger-full-access) the `--sandbox e2b` substring is ABSENT → this reds until the guidance is fixed.
+    const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    const restoreProbe = __setBwrapAvailableForTest(false);
+    __resetBwrapWarningForTest();
+    const warnings: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...a: unknown[]): void => { warnings.push(a.join(' ')); };
+    try {
+      const { workdir, readDir, cleanup } = await tmpScope('n126-cloud');
+      try {
+        const plan = bwrapExecPlan('echo x', { workdir, readScope: [readDir], profileDir: os.tmpdir() });
+        expect(plan).toBeNull(); // the not-available branch fired (so a warn was emitted)
+        const bwrapWarns = warnings.filter((w) => w.includes('[bwrap]'));
+        expect(bwrapWarns.length).toBe(1);
+        const msg = bwrapWarns[0];
+        // The three cloud fallbacks the operator on a userns-clamped host should be pointed at.
+        expect(msg).toContain('--sandbox e2b');
+        expect(msg).toContain('--sandbox docker');
+        expect(msg).toContain('--sandbox daytona');
+      } finally {
+        await cleanup();
+      }
+    } finally {
+      console.warn = origWarn;
+      restoreProbe();
+      __resetBwrapWarningForTest();
+      if (origPlatform) Object.defineProperty(process, 'platform', origPlatform);
+    }
+  });
+
+  it('the guidance warn fires EXACTLY ONCE across two no-bwrap plan calls (warn-once latch)', async () => {
+    // The message must not spam: the warn-once latch must hold across repeated no-bwrap plan attempts, so a
+    // busy fleet emits the cloud-fallback guidance a single time. Trigger the not-available branch TWICE and
+    // assert the spy fired exactly once. (Independent of the message content above — this pins the latch.)
+    const origPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
+    const restoreProbe = __setBwrapAvailableForTest(false);
+    __resetBwrapWarningForTest();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { workdir, readDir, cleanup } = await tmpScope('n126-once');
+      try {
+        bwrapExecPlan('echo x', { workdir, readScope: [readDir], profileDir: os.tmpdir() });
+        bwrapExecPlan('echo y', { workdir, readScope: [readDir], profileDir: os.tmpdir() });
+        const bwrapWarnCalls = warnSpy.mock.calls.filter(
+          (c) => typeof c[0] === 'string' && c[0].includes('[bwrap]'),
+        );
+        expect(bwrapWarnCalls.length).toBe(1);
+      } finally {
+        await cleanup();
+      }
+    } finally {
+      warnSpy.mockRestore();
+      restoreProbe();
+      __resetBwrapWarningForTest();
       if (origPlatform) Object.defineProperty(process, 'platform', origPlatform);
     }
   });

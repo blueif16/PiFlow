@@ -137,9 +137,11 @@ function warnNoBwrapOnce(): void {
   // eslint-disable-next-line no-console
   console.warn(
     `[bwrap] --sandbox local wants the bubblewrap filesystem jail on linux, but \`bwrap\` is not on PATH ` +
-      `or cannot build a user namespace (e.g. an AppArmor unprivileged-userns clamp) — the jail is ` +
-      `UNAVAILABLE, so the run will REFUSE this node (fail-closed). Install bubblewrap and allow ` +
-      `unprivileged user namespaces, or pass --sandbox danger-full-access to run unsandboxed.`,
+      `or cannot build a user namespace (e.g. an AppArmor unprivileged-userns clamp, or a hosted CI/PaaS ` +
+      `runner that blocks userns like Railway) — the jail is UNAVAILABLE, so the run will REFUSE this node ` +
+      `(fail-closed). Install bubblewrap and allow unprivileged user namespaces, or run this node in a cloud ` +
+      `sandbox instead: --sandbox e2b, --sandbox docker, or --sandbox daytona (or, as a last resort on a ` +
+      `trusted single-tenant host, --sandbox danger-full-access to run unsandboxed).`,
   );
 }
 
