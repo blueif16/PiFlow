@@ -1,25 +1,43 @@
-// LIVE control-plane smoke — targets an ALREADY-DEPLOYED Fly control VM over its public HTTPS origin and
+// LIVE control-plane smoke — targets an ALREADY-DEPLOYED control VM over its public HTTPS origin and
 // exercises the full born-in-cloud path: the bearer gate, POST /api/runs/start, the SSE run-stream, and the
-// run-view read-back. Application-layer only (real HTTP status + real response bodies / SSE frames), never
-// raw TCP. Mirrors deploy/e2b/smoke-live.mjs in shape + rigor, retargeted from an E2B sandbox to a Fly URL.
+// run-view read-back HONESTLY (assessRunView rubric + an INDEPENDENT on-disk artifact probe, NOT a JSON-blob
+// regex). Application-layer only (real HTTP status + real response bodies / SSE frames), never raw TCP.
+// Mirrors deploy/e2b/smoke-live.mjs in shape + rigor, retargeted from an E2B sandbox to a control-VM URL.
 //
-//   PIFLOW_CLOUD_URL=https://<app>.fly.dev PIFLOW_TOKEN=<secret> node deploy/control-vm/smoke-live.mjs
+//   PIFLOW_CLOUD_URL=https://<app> PIFLOW_TOKEN=<secret> E2B_TEMPLATE=<id> node deploy/control-vm/smoke-live.mjs
+//
+// OPERATIONAL PRECONDITION (Review 3 #5): this smoke asserts the DEPLOYED plane's behavior, so run it ONLY
+//   against a plane deployed at or after the N-127 commit (the commit that projects the E2B worker backend —
+//   E2B_API_KEY + E2B_TEMPLATE — into the control plane). A stale plane 127s (pi-less base image → 'pi: command
+//   not found' → exit 127) or falls through to a non-e2b backend, and the assess gate then reds with a confusing
+//   signal. The control plane on Railway can NEVER run nodes in-VM under bwrap (userns blocked), so `e2b` is the
+//   only honest backend choice here (§4: local × Railway = N/A).
+//
+// COST CAP: this drives ONE real paid e2b session. Keep it off the release critical path — run it nightly +
+//   on dispatch + as a manual pre-publish sanity only (see docs/design/full-run-e2e-LOCKED.md Target 1). In CI
+//   use timeout-minutes: 12, ZERO retries on the ordered checks (a retry = a NEW paid e2b session), and NO
+//   continue-on-error. One run = one session; there is no per-assertion retry here by design.
 //
 // Env consumed:
-//   PIFLOW_CLOUD_URL  the deployed origin (required), e.g. https://piflow-control-plane.fly.dev
+//   PIFLOW_CLOUD_URL  the deployed origin (required), e.g. https://piflow-control-plane.up.railway.app
 //   PIFLOW_TOKEN      the bearer token the VM was deployed with (required — same value as `fly secrets set`)
+//   E2B_TEMPLATE      the pi-baked E2B template id (required when SANDBOX=e2b — fail-loud before the POST if unset)
 //   PIFLOW_PRODUCT    product id to launch (default: demo — the baked demo's PRODUCT id, i.e. its root dir
 //                     name /home/piflow/demo; the `greet` WORKFLOW lives inside it. Passing `greet` here 400s
 //                     ("no product in scope") — POST /api/runs/start keys on the product id, not the workflow.)
+//   PIFLOW_SANDBOX    sandbox backend the run executes under (default: e2b — the only honest Railway choice).
 //   PIFLOW_EXECUTOR   pi | claude-code (default: pi). Use claude-code to exercise check E's OAuth note.
 //   SMOKE_TIMEOUT_MS  overall per-run wait cap for the SSE done (default 240000 = 4m).
 //   READY_TIMEOUT_MS  how long to poll for the origin to answer before the ordered checks (default 90000 = 90s).
 //
 // Exit: non-zero if ANY ordered check (A→E) fails. Prints one PASS/FAIL line per check + a summary.
 
+import { assessRunView } from "@piflow/core";
+
 const BASE = (process.env.PIFLOW_CLOUD_URL ?? "").replace(/\/+$/, "");
 const TOKEN = process.env.PIFLOW_TOKEN ?? "";
 const PRODUCT = process.env.PIFLOW_PRODUCT ?? "demo";
+const SANDBOX = process.env.PIFLOW_SANDBOX ?? "e2b";
 const EXECUTOR = process.env.PIFLOW_EXECUTOR ?? "pi";
 const RUN_TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS) || 240_000;
 const READY_TIMEOUT_MS = Number(process.env.READY_TIMEOUT_MS) || 90_000;
@@ -111,10 +129,20 @@ async function main() {
       qCode === 200, `HTTP ${qCode} (expect 200)`);
   }
 
+  // ── Missing-key FAIL-LOUD (before the POST) — mirrors the run.ts N-127 fail-loud ──────────────
+  // If we ask the plane to run under e2b but E2B_TEMPLATE is not set in THIS smoke's environment, the
+  // deployed plane almost certainly has no template projected either (same N-127 gap) → the worker boots a
+  // pi-less base image → exit 127 → the assess gate reds with a confusing "artifact missing" signal instead
+  // of the real config error. Abort loud, NOW, before a paid VM boots.
+  if (SANDBOX === "e2b" && !process.env.E2B_TEMPLATE) {
+    console.error("FATAL: E2B backend not projected — set E2B_TEMPLATE (see deploy/e2b/build.md)");
+    process.exit(2);
+  }
+
   // ── B. POST /api/runs/start for the baked greet product → 202 {run} ─────────────────────────
   let run = null, streamUrl = null, runViewUrl = null;
   {
-    const body = { product: PRODUCT, sandbox: "local", executor: EXECUTOR, args: {} };
+    const body = { product: PRODUCT, sandbox: SANDBOX, executor: EXECUTOR, args: {} };
     let code = -1, json = null;
     try {
       const r = await fetch(`${BASE}/api/runs/start`, {
@@ -130,7 +158,7 @@ async function main() {
     run = json?.run ?? null;
     streamUrl = json?.streamUrl ?? (run ? `/__piflow/stream/${encodeURIComponent(run)}` : null);
     runViewUrl = json?.runViewUrl ?? (run ? `/__piflow/run-view/${encodeURIComponent(run)}` : null);
-    record("B", `POST /api/runs/start (product=${PRODUCT}, sandbox=local, executor=${EXECUTOR}) → 202 {run}`,
+    record("B", `POST /api/runs/start (product=${PRODUCT}, sandbox=${SANDBOX}, executor=${EXECUTOR}) → 202 {run}`,
       code === 202 && typeof run === "string" && run.length > 0,
       `HTTP ${code}; run=${run}; streamUrl=${streamUrl}; resolved=${json?.resolved}`);
   }
@@ -179,18 +207,29 @@ async function main() {
       clearTimeout(deadline);
       ac.abort();
     }
-    record("C", "SSE run-stream reaches {kind:\"done\"} (run completed live)",
+    record("C", "SSE reached done (necessary, not sufficient — the honest verdict is D)",
       sawDone, `sawMeta=${sawMeta} sawDone=${sawDone}; kinds=[${lastKinds.slice(-12).join(", ")}]`);
   } else {
-    record("C", "SSE run-stream reaches {kind:\"done\"}", false, "no run id from check B — skipped");
+    record("C", "SSE reached done (necessary, not sufficient — the honest verdict is D)", false, "no run id from check B — skipped");
   }
 
-  // ── D. run-view shows the greet artifact ────────────────────────────────────────────────────
+  // ── D. HONEST verdict: assessRunView rubric + an INDEPENDENT on-disk artifact probe ───────────
+  // Two gates, both required. (D1) the run-view JSON, fed to the SHARED assessRunView rubric (assess.ts):
+  // it rejects a non-proving `inmemory` backend, requires view.ok + done, and requires the greet node's
+  // declared artifact to EXIST on disk with bytes>0 (a.exists / a.bytes read verbatim from run.json). That
+  // is a run-level verdict, NOT an independent probe. So (D2) an INDEPENDENT probe re-reads the deliverable
+  // through a DIFFERENT code path than the runner: GET /__piflow/file/<run>?path=out/greet/greeting.txt is a
+  // fresh readFile off host disk (realpath-jailed, 404-on-miss), asserting the EXACT bytes CONTROL-VM-OK. The
+  // ?path is out/greet/greeting.txt because the N-breach fix declares AND lands the artifact there under both
+  // kinds — it equals view.nodes.find(n=>n.id==='greet').artifacts[0].displayPath.
+  let assessPass = false, probeMatched = false;
   if (run) {
     // brief settle: the run-view distills the on-disk .pi tree; the SSE `done` fires as the run closes,
     // give the final flush a moment before reading back.
     await sleep(1500);
-    let code = -1, view = null;
+
+    // D1 — the rubric gate.
+    let code = -1, view = null, assessment = { pass: false, failures: ["run-view fetch failed"] };
     try {
       const r = await fetch(`${BASE}${runViewUrl}`, { headers: authHeaders });
       code = r.status;
@@ -198,43 +237,57 @@ async function main() {
     } catch (e) {
       code = `ERR ${e?.message ?? e}`;
     }
-    // Evidence that the greet node produced its artifact: the run-view mentions greeting.txt / out/greet,
-    // OR the node's status is terminal-ok. We assert on the serialized view (shape-tolerant).
-    const blob = JSON.stringify(view ?? {});
-    const hasArtifact = /greeting\.txt/.test(blob) || /out\/greet/.test(blob);
-    const greetOk = /"(status|state)"\s*:\s*"(ok|done|complete|completed|success|passed)"/i.test(blob);
-    record("D", "GET /__piflow/run-view/<run> shows the greet artifact",
-      code === 200 && (hasArtifact || greetOk),
-      `HTTP ${code}; artifactSeen=${hasArtifact}; nodeOk=${greetOk}; view(head)=${blob.slice(0, 220)}`);
+    if (code === 200 && view) {
+      try {
+        assessment = assessRunView(view, { expectNodes: ["greet"] });
+      } catch (e) {
+        assessment = { pass: false, failures: [`assessRunView threw: ${e?.message ?? e}`] };
+      }
+    }
+    assessPass = assessment.pass === true;
+    record("D1", "run-view passes the assessRunView rubric (backend≠inmemory · run.ok · greet artifact on disk)",
+      code === 200 && assessPass,
+      `HTTP ${code}; assess.pass=${assessPass}; failures=[${assessment.failures.join("; ")}]`);
+
+    // D2 — INDEPENDENT probe: a fresh host-disk readFile via /__piflow/file, asserting the exact bytes.
+    const probeUrl = `${BASE}/__piflow/file/${encodeURIComponent(run)}?path=${encodeURIComponent("out/greet/greeting.txt")}`;
+    let pCode = -1, pBody = "";
+    try {
+      const r = await fetch(probeUrl, { headers: authHeaders });
+      pCode = r.status;
+      pBody = await r.text();
+    } catch (e) {
+      pCode = `ERR ${e?.message ?? e}`;
+    }
+    probeMatched = pCode === 200 && pBody.trim() === "CONTROL-VM-OK";
+    record("D2", "independent probe: GET /__piflow/file?path=out/greet/greeting.txt → 200 + body === CONTROL-VM-OK",
+      probeMatched,
+      `HTTP ${pCode}; body(trim)="${pBody.trim().slice(0, 60)}"`);
   } else {
-    record("D", "GET /__piflow/run-view/<run> shows the greet artifact", false, "no run id from check B — skipped");
+    record("D1", "run-view passes the assessRunView rubric", false, "no run id from check B — skipped");
+    record("D2", "independent probe: GET /__piflow/file?path=out/greet/greeting.txt → CONTROL-VM-OK", false, "no run id from check B — skipped");
   }
 
-  // ── E. hardening NOTES — in-VM jail + subscription billing (asserted where remotely observable) ──
-  // These are properties of the run that executed INSIDE the VM. From an external HTTP smoke we can
-  // observe the RESULT (the run reached done + produced its artifact under sandbox=local); the two
-  // in-VM invariants below are NOT externally probeable, so this check documents HOW the lead verifies
-  // them in the VM and PASSES on the observable proxy (a local-sandbox run completed) rather than
-  // silently claiming the unobservable. To prove them directly, shell into the VM (`fly ssh console`):
+  // ── E. HONEST composite verdict — the run genuinely produced its deliverable ──────────────────
+  // PASS iff BOTH the rubric gate (D1) and the independent on-disk probe (D2) held: assessPass proves the
+  // run-level verdict (real backend, run.ok, greet artifact stat'd present), and probeMatched proves the
+  // deliverable's EXACT bytes via a fresh readFile off host disk through a different code path than the
+  // runner. Neither alone is sufficient — the composite is the non-hackable spine (§5 rubric).
   //
-  //   • bwrap jail (MUST pass or `--sandbox local` fails closed):
-  //       bwrap --ro-bind / / --proc /proc --dev /dev true; echo $?      # 0 = namespace buildable (PROBE_CURRENT)
-  //     This is the exact probe @piflow/core's probeBwrapUsable() runs (deploy/e2b/bwrap-proof-driver.mjs
-  //     PROBE_CURRENT). Exit 0 ⇒ the jail is real; non-zero ⇒ local sandbox degrades and this VM must NOT
-  //     serve runs as jailed. For the FULL in/out-of-scope read+write proof, run that driver in the VM.
+  // NOT externally probeable (verify by shelling into the VM, `fly ssh console` / `railway ssh`):
   //   • claude-code subscription (NOT API billing): a claude-code node runs `claude -p` with
   //     CLAUDE_CODE_OAUTH_TOKEN injected and ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN stripped empty
-  //     (@piflow/core claudeExecutorEnvAdditions). Confirm the VM has CLAUDE_CODE_OAUTH_TOKEN set and NO
+  //     (@piflow/core claudeExecutorEnvAdditions). Confirm CLAUDE_CODE_OAUTH_TOKEN set and NO
   //     ANTHROPIC_API_KEY: `fly ssh console -C 'printenv | grep -E "CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY"'`
   //     (the OAuth var present, the API-key var absent ⇒ the subscription guarantee holds).
   {
-    const jailedRunLanded = sawDone; // the smoke launched with sandbox=local; a done run proves the jail didn't fail closed
+    const composite = assessPass && probeMatched;
     const note = EXECUTOR === "claude-code"
       ? "executor=claude-code: verify CLAUDE_CODE_OAUTH_TOKEN present + ANTHROPIC_API_KEY absent via `fly ssh console`"
       : "executor=pi (default): re-run with PIFLOW_EXECUTOR=claude-code to exercise the OAuth path";
-    record("E", "in-VM invariants: --sandbox local jailed the run (observable) + subscription/bwrap probes (see comment)",
-      jailedRunLanded,
-      `sandbox=local run reached done=${jailedRunLanded}; ${note}; bwrap probe: run in-VM \`bwrap --ro-bind / / --proc /proc --dev /dev true\``);
+    record("E", "HONEST verdict: assessRunView rubric PASSED and the independent artifact probe matched",
+      composite,
+      `assessPass=${assessPass} && probeMatched=${probeMatched}; ${note}`);
   }
 
   // ── summary ─────────────────────────────────────────────────────────────────────────────────
