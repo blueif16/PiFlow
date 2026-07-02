@@ -32,13 +32,21 @@
 //
 // Exit: non-zero if ANY ordered check (A→E) fails. Prints one PASS/FAIL line per check + a summary.
 
-import { assessRunView } from "@piflow/core";
+// The @piflow scope isn't hoisted to the repo-root node_modules (pnpm strict), and this driver runs as a
+// standalone script from the repo root (locally via `cloud up` step 7 + in CI), so we import the ONE reusable
+// assessor from the built dist by a file-relative path (dist is built before this runs, locally + in CI).
+import { assessRunView } from "../../packages/core/dist/index.js";
 
 const BASE = (process.env.PIFLOW_CLOUD_URL ?? "").replace(/\/+$/, "");
 const TOKEN = process.env.PIFLOW_TOKEN ?? "";
 const PRODUCT = process.env.PIFLOW_PRODUCT ?? "demo";
 const SANDBOX = process.env.PIFLOW_SANDBOX ?? "e2b";
 const EXECUTOR = process.env.PIFLOW_EXECUTOR ?? "pi";
+// The pi node needs a resolvable model credential in the worker: `cloud up --provider nebius` stages the
+// nebius gateway + NEBIUS_API_KEY on the plane, so the run must select nebius (the default provider `cp`
+// needs an ANTHROPIC key the billing guard forbids → pi would boot with no model → exit 1). Env-overridable.
+const PROVIDER = process.env.PIFLOW_PROVIDER ?? "nebius";
+const MODEL = process.env.PIFLOW_MODEL ?? "zai-org/GLM-5.2";
 const RUN_TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS) || 240_000;
 const READY_TIMEOUT_MS = Number(process.env.READY_TIMEOUT_MS) || 90_000;
 
@@ -142,7 +150,7 @@ async function main() {
   // ── B. POST /api/runs/start for the baked greet product → 202 {run} ─────────────────────────
   let run = null, streamUrl = null, runViewUrl = null;
   {
-    const body = { product: PRODUCT, sandbox: SANDBOX, executor: EXECUTOR, args: {} };
+    const body = { product: PRODUCT, sandbox: SANDBOX, executor: EXECUTOR, provider: PROVIDER, model: MODEL, thinking: "low", args: {} };
     let code = -1, json = null;
     try {
       const r = await fetch(`${BASE}/api/runs/start`, {
