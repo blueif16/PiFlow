@@ -25,6 +25,7 @@ import {
   readRunModel as coreReadRunModel,
   buildSnapshot,
   loadScopedRegistry,
+  templateLayout,
   type RunModel,
 } from '@piflow/core';
 import {
@@ -241,10 +242,12 @@ export async function migrateRun(opts: MigrateOpts, deps: MigrateDeps = {}): Pro
   if (targetLocal) {
     const tpl = await resolveLocalTemplate(product, workflow);
     if (!tpl) throw new Error(`no local template for product "${product}"${workflow ? ` workflow "${workflow}"` : ''} — cannot resume the downloaded run here`);
-    // `.piflow/<wf>/template` ⇒ runs live at the sibling `.piflow/<wf>/runs/<id>` (the D9 layout the runner resolves).
-    const destRunDir = path.join(path.dirname(tpl.templateDir), 'runs', opts.run);
+    // `.piflow/<wf>/template` ⇒ runs live at the sibling `.piflow/<wf>/runs/<id>` (the D9 layout the runner
+    // resolves) — derived via the shared `templateLayout`; a loose template keeps the sibling-`runs` fallback.
+    const runsHome = templateLayout(tpl.templateDir)?.runsHome ?? path.join(path.dirname(tpl.templateDir), 'runs');
+    const destRunDir = path.join(runsHome, opts.run);
     await unpackRunDir(bundle, destRunDir);
-    spawnResume(tpl.templateDir, opts.run, sandbox, tpl.productRoot ?? process.cwd(), launch);
+    spawnResume(tpl.templateDir, opts.run, sandbox, tpl.productRoot ?? templateLayout(tpl.templateDir)?.productRoot ?? process.cwd(), launch);
   } else {
     const qs = new URLSearchParams({ sandbox });
     if (opts.product ?? localRef?.product) qs.set('product', product);

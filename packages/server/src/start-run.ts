@@ -8,7 +8,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { generateRunName } from "@piflow/core";
+import { generateRunName, templateLayout } from "@piflow/core";
 import { findUp, findLib, pathToFileURL, readBody, resolveRunDir, sendJson, type Middleware } from "./resolve.js";
 
 export interface StartBody {
@@ -68,9 +68,10 @@ export function isTemplateAllowed(templateDir: string, allowlist: string[] | und
   return allowlist.some((entry) => path.resolve(entry) === target);
 }
 
-/** The canonical runs home for a template dir (`.piflow/<wf>/template` ⇒ `.piflow/<wf>/runs`), else null. */
+/** The canonical runs home for a template dir (`.piflow/<wf>/template` ⇒ `.piflow/<wf>/runs`), else null.
+ *  Thin wrapper over the shared `templateLayout` so the runs-home derivation lives in ONE place. */
 export function runsHomeFor(templateDir: string): string | null {
-  return path.basename(templateDir) === "template" ? path.join(path.dirname(templateDir), "runs") : null;
+  return templateLayout(templateDir)?.runsHome ?? null;
 }
 
 function existingRunNames(runsHome: string | null): string[] {
@@ -127,7 +128,9 @@ export function makePiflowStartRun(allowedTemplates?: string[] | null): Middlewa
     const argv = buildStartRunArgv(tpl.templateDir, runId, body);
 
     const cliBin = findUp("packages/cli/dist/cli.js");
-    const cwd = tpl.productRoot ?? process.cwd();
+    // Spawn the runner FROM the product root so a run kicked off via the control API anchors at the product,
+    // never the server's cwd: the index-resolved productRoot wins, else derive it from the template layout.
+    const cwd = tpl.productRoot ?? templateLayout(tpl.templateDir)?.productRoot ?? process.cwd();
     try {
       const child = cliBin
         ? spawn(process.execPath, [cliBin, ...argv], { cwd, detached: true, stdio: "ignore" })

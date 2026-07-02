@@ -15,7 +15,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { requestFreeze, packRunDir, unpackRunDir, readRunJson } from "@piflow/core";
+import { requestFreeze, packRunDir, unpackRunDir, readRunJson, templateLayout } from "@piflow/core";
 import { findUp, resolveRunDir, sendJson, type Middleware } from "./resolve.js";
 import { resolveTemplateDir, runsHomeFor, isTemplateAllowed, buildStartRunArgv, type StartBody } from "./start-run.js";
 
@@ -110,7 +110,9 @@ export function makePiflowMigrate(allowedTemplates?: string[] | null): Middlewar
       // (just unpacked) drives reuse of the completed nodes and runs only the tail. No --from needed.
       const argv = buildStartRunArgv(tpl.templateDir, run, body);
       const cliBin = findUp("packages/cli/dist/cli.js");
-      const cwd = tpl.productRoot ?? process.cwd();
+      // Resume FROM the product root (never the server's cwd): the index-resolved productRoot wins, else
+      // derive it from the template layout.
+      const cwd = tpl.productRoot ?? templateLayout(tpl.templateDir)?.productRoot ?? process.cwd();
       // PIN the resume to the LOCAL context: it must run HERE (this serve just unpacked the run-dir), never
       // redirect. `piflowctl run` redirects to a REMOTE active context (P7); a stray `current` on this host
       // would send the adopted run's own resume back out over HTTP → a redirect loop instead of finishing it.
