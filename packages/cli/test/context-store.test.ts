@@ -23,6 +23,11 @@ import {
   contextsFile,
   LOCAL_CONTEXT,
   LOCAL_BASE_URL,
+  isCloudHost,
+  isCloudEntry,
+  isWorkerCompatible,
+  defaultWorkerFor,
+  resolveWorker,
 } from '../src/context-store.js';
 
 let home: string;
@@ -130,5 +135,66 @@ describe('add → use → ls (read) → rm round-trip', () => {
     const reread = readContexts();
     expect(reread.current).toBe('cloud'); // untouched — we removed the OTHER one
     expect(reread.contexts.staging).toBeUndefined();
+  });
+});
+
+// ── the host/worker cascade (PURE) ─────────────────────────────────────────────────────────────────
+// The load-bearing new logic: a CLOUD control plane can't reach a laptop's local sandbox, so the worker
+// cascades off the host. Mutation targets: the compat rule (cloud rejects `local`), the precedence ORDER
+// (e2b before daytona), and the promote-on-incompatible branch. These are pure — no fs, no env.
+describe('host/worker cascade (pure)', () => {
+  it('isCloudHost: only `local` is not a cloud plane', () => {
+    expect(isCloudHost('local')).toBe(false);
+    expect(isCloudHost('railway')).toBe(true);
+    expect(isCloudHost('fly')).toBe(true);
+    expect(isCloudHost('selfhost')).toBe(true);
+  });
+
+  it('compat: a LOCAL host drives every worker', () => {
+    for (const w of ['local', 'e2b', 'daytona'] as const) expect(isWorkerCompatible('local', w)).toBe(true);
+  });
+  it('compat: a CLOUD host rejects the `local` worker but accepts cloud workers', () => {
+    expect(isWorkerCompatible('railway', 'local')).toBe(false);
+    expect(isWorkerCompatible('fly', 'local')).toBe(false);
+    expect(isWorkerCompatible('railway', 'e2b')).toBe(true);
+    expect(isWorkerCompatible('fly', 'daytona')).toBe(true);
+  });
+
+  it('defaultWorkerFor: a LOCAL host → `local`, regardless of what cloud workers are configured', () => {
+    expect(defaultWorkerFor('local', new Set())).toBe('local');
+    expect(defaultWorkerFor('local', new Set(['e2b']))).toBe('local');
+  });
+  it('defaultWorkerFor: a CLOUD host → the highest-precedence CONFIGURED cloud worker', () => {
+    expect(defaultWorkerFor('railway', new Set(['daytona']))).toBe('daytona'); // e2b unconfigured → skipped
+    expect(defaultWorkerFor('railway', new Set(['e2b', 'daytona']))).toBe('e2b'); // e2b wins by precedence
+  });
+  it('defaultWorkerFor: a CLOUD host with NOTHING configured → the top cloud worker (setup-on-miss signal)', () => {
+    expect(defaultWorkerFor('railway', new Set())).toBe('e2b');
+  });
+
+  it('isCloudEntry: baseUrl is authoritative (== the local serve ⇒ local); the host label is ignored', () => {
+    // baseUrl IS the local serve → local, no matter the host LABEL (which is display/provisioning only).
+    expect(isCloudEntry({ baseUrl: LOCAL_BASE_URL })).toBe(false);
+    expect(isCloudEntry({ baseUrl: LOCAL_BASE_URL, host: 'railway' })).toBe(false); // host label does NOT flip cloud-ness
+    // Any baseUrl that is NOT the exact local serve is a remote control plane.
+    expect(isCloudEntry({ baseUrl: 'https://app.up.railway.app' })).toBe(true);
+    expect(isCloudEntry({ baseUrl: 'http://localhost:9000' })).toBe(true); // different host:port than the local serve
+  });
+
+  it('resolveWorker: an explicit COMPATIBLE worker is kept (no promotion)', () => {
+    expect(resolveWorker({ baseUrl: 'https://a.up.railway.app', host: 'railway', worker: 'daytona' }, new Set(['e2b', 'daytona'])))
+      .toEqual({ worker: 'daytona', promoted: false, cloud: true });
+  });
+  it('resolveWorker: a cloud context with an INCOMPATIBLE `local` worker is PROMOTED to the cascade default', () => {
+    expect(resolveWorker({ baseUrl: 'https://a.up.railway.app', host: 'railway', worker: 'local' }, new Set(['e2b'])))
+      .toEqual({ worker: 'e2b', promoted: true, cloud: true });
+  });
+  it('resolveWorker: a local context defaults to the `local` worker (no promotion)', () => {
+    expect(resolveWorker({ baseUrl: LOCAL_BASE_URL, host: 'local' }, new Set()))
+      .toEqual({ worker: 'local', promoted: false, cloud: false });
+  });
+  it('resolveWorker: a cloud context with NO stored worker defaults (defaulting is not a promotion)', () => {
+    expect(resolveWorker({ baseUrl: 'https://a.fly.dev', host: 'fly' }, new Set(['e2b'])))
+      .toEqual({ worker: 'e2b', promoted: false, cloud: true });
   });
 });

@@ -7,7 +7,38 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 // GET /api/contexts reflects ~/.piflow/contexts.json (names + baseUrls, NEVER tokens); POST /api/migrate
 // validates run+target then spawns `piflowctl context migrate` and returns the target endpoint to re-point to.
 
-const { spawnSpy } = vi.hoisted(() => ({ spawnSpy: vi.fn(() => ({ on: () => {}, unref: () => {} })) }));
+// A controllable fake child: it records the handlers the handler attaches (`close`, and `stderr`'s `data`)
+// so a test can DRIVE a post-spawn failure — a non-zero exit with stderr — the way the real child would emit
+// it. Default (no driving) leaves the child "still running", so the happy-path 202 tests are unaffected.
+type FakeChild = {
+  on: (ev: string, cb: (...a: unknown[]) => void) => FakeChild;
+  stderr: { on: (ev: string, cb: (c: Buffer) => void) => void };
+  unref: () => void;
+  emitStderr: (s: string) => void;
+  emitClose: (code: number | null) => void;
+  emitError: (e: Error) => void;
+};
+function makeFakeChild(): FakeChild {
+  const closeCbs: ((code: number | null) => void)[] = [];
+  const errCbs: ((e: Error) => void)[] = [];
+  const stderrDataCbs: ((c: Buffer) => void)[] = [];
+  const child: FakeChild = {
+    on(ev, cb) {
+      if (ev === "close") closeCbs.push(cb as (code: number | null) => void);
+      if (ev === "error") errCbs.push(cb as (e: Error) => void);
+      return child;
+    },
+    stderr: { on: (ev, cb) => { if (ev === "data") stderrDataCbs.push(cb); } },
+    unref: () => {},
+    emitStderr: (s) => stderrDataCbs.forEach((cb) => cb(Buffer.from(s))),
+    emitClose: (code) => closeCbs.forEach((cb) => cb(code)),
+    emitError: (e) => errCbs.forEach((cb) => cb(e)),
+  };
+  return child;
+}
+
+let lastChild: FakeChild;
+const { spawnSpy } = vi.hoisted(() => ({ spawnSpy: vi.fn() }));
 vi.mock("node:child_process", () => ({ spawn: spawnSpy }));
 
 // resolveRunDir gates the migrate success path (the run must exist on this serve) — settable per test.
@@ -17,13 +48,17 @@ vi.mock("../src/resolve.js", async () => {
   return { ...actual, resolveRunDir: vi.fn(async () => runDirStub) };
 });
 
-const { piflowContexts, piflowMigrateRun, readServerContexts } = await import("../src/contexts.js");
+const { piflowContexts, piflowMigrateRun, piflowMigrateStatus, readServerContexts } = await import("../src/contexts.js");
 
 let home: string;
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "piflow-ctx-"));
   process.env.PIFLOW_HOME = home;
-  spawnSpy.mockClear();
+  spawnSpy.mockReset();
+  spawnSpy.mockImplementation(() => {
+    lastChild = makeFakeChild();
+    return lastChild;
+  });
   runDirStub = null;
 });
 afterEach(() => {
@@ -147,5 +182,51 @@ describe("POST /api/migrate", () => {
     // `context use`/migrate makes source==target and the migration silently no-ops behind the 202.
     const opts = (spawnSpy.mock.calls[0] as [unknown, unknown, { env?: Record<string, string> }])[2];
     expect(opts.env?.PIFLOW_CONTEXT).toBe("local");
+  });
+});
+
+describe("migrate failure is observable (not a silent 202-then-nothing)", () => {
+  const startMigrate = async () => {
+    writeContexts({ current: null, contexts: { cloud: { baseUrl: "https://x.fly.dev", token: "t" } } });
+    runDirStub = { runDir: "/p/.piflow/greet/runs/r1", workspaceRoot: "/p" };
+    const { status } = await call(piflowMigrateRun, { method: "POST", url: "/api/migrate", body: JSON.stringify({ run: "r1", target: "cloud" }) });
+    expect(status).toBe(202); // happy-path 202 is preserved
+  };
+  const pollStatus = (run: string) => call(piflowMigrateStatus, { method: "GET", url: `/api/migrate/status?run=${run}` });
+
+  it("a child that exits non-zero with stderr is surfaced as ok:false via GET /api/migrate/status", async () => {
+    await startMigrate();
+    // the migration process fails AFTER the 202 (the freeze never lands / adopt 403s / spawn errors downstream)
+    lastChild.emitStderr("piflowctl context migrate: adopt failed (403) on cloud: forbidden\n");
+    lastChild.emitClose(1);
+
+    const { status, json } = await pollStatus("r1");
+    expect(status).toBe(200);
+    const body = json as { run: string; ok: boolean; code: number | null; stderr: string };
+    expect(body.ok).toBe(false); // the failure is NO LONGER silent
+    expect(body.code).toBe(1);
+    expect(body.stderr).toContain("adopt failed (403)");
+  });
+
+  it("a clean exit (code 0) is surfaced as ok:true", async () => {
+    await startMigrate();
+    lastChild.emitClose(0);
+    const { json } = await pollStatus("r1");
+    expect((json as { ok: boolean }).ok).toBe(true);
+  });
+
+  it("a spawn `error` event is surfaced as ok:false", async () => {
+    await startMigrate();
+    lastChild.emitError(new Error("ENOENT: piflowctl not found"));
+    const { json } = await pollStatus("r1");
+    const body = json as { ok: boolean; stderr: string };
+    expect(body.ok).toBe(false);
+    expect(body.stderr).toContain("ENOENT");
+  });
+
+  it("status of a run with no recorded migrate is `pending` (still in flight or never started)", async () => {
+    const { status, json } = await pollStatus("never-migrated");
+    expect(status).toBe(200);
+    expect((json as { run: string; status: string }).status).toBe("pending");
   });
 });

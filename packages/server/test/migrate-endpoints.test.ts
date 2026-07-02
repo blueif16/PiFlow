@@ -129,6 +129,35 @@ describe("migrate endpoints", () => {
     expect(opts.env?.PIFLOW_CONTEXT).toBe("local");
   });
 
+  it("POST adopt recovers the source run's launch config (provider + model) from the bundled .pi/run.json into the resume argv", async () => {
+    // The source run persisted its launch config in .pi/run.json (RunStatus.provider / .model). On resume the
+    // migrated tail MUST keep them (regression: it ran on provider "cp" instead of the source's "mmgw" and
+    // dropped the model), so the unpacked run.json is read back and threaded onto the resume flags.
+    const tplDir = join(scratch, "wf", "template");
+    mkdirSync(tplDir, { recursive: true });
+    writeFileSync(join(tplDir, "meta.json"), JSON.stringify({ name: "wf" }));
+
+    // A real bundle whose .pi/run.json records the source launch config.
+    const src = join(scratch, "src");
+    mkdirSync(join(src, ".pi"), { recursive: true });
+    writeFileSync(join(src, ".pi", "run.json"), JSON.stringify({ run: "mig1", provider: "mmgw", model: "deepseek", nodes: {} }));
+    writeFileSync(join(src, ".pi", "journal.json"), '{"version":3,"nodes":{"a":{}}}');
+    const bundle = await packRunDir(src);
+
+    const url = `/__piflow/migrate/mig1/adopt?templateDir=${encodeURIComponent(tplDir)}`;
+    const { status } = await call(makePiflowMigrate(), { method: "POST", url, body: bundle });
+
+    expect(status).toBe(202);
+    expect(spawnSpy).toHaveBeenCalledTimes(1);
+    // The spawned argv is [cliBin, ...argv] or [argv]; grab the argv array (it contains "run").
+    const spawnArgs = spawnSpy.mock.calls[0] as unknown[];
+    const argv = (spawnArgs.find((a) => Array.isArray(a) && (a as string[]).includes("run")) as string[]) ?? [];
+    expect(argv).toContain("--provider");
+    expect(argv[argv.indexOf("--provider") + 1]).toBe("mmgw");
+    expect(argv).toContain("--model");
+    expect(argv[argv.indexOf("--model") + 1]).toBe("deepseek");
+  });
+
   it("POST adopt is allow-list gated: a non-listed template ⇒ 403 and NO resume spawn", async () => {
     const tplDir = join(scratch, "wf", "template");
     mkdirSync(tplDir, { recursive: true });

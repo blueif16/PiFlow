@@ -8,17 +8,21 @@
 // Env consumed:
 //   PIFLOW_CLOUD_URL  the deployed origin (required), e.g. https://piflow-control-plane.fly.dev
 //   PIFLOW_TOKEN      the bearer token the VM was deployed with (required — same value as `fly secrets set`)
-//   PIFLOW_PRODUCT    product to launch (default: greet — the baked demo)
+//   PIFLOW_PRODUCT    product id to launch (default: demo — the baked demo's PRODUCT id, i.e. its root dir
+//                     name /home/piflow/demo; the `greet` WORKFLOW lives inside it. Passing `greet` here 400s
+//                     ("no product in scope") — POST /api/runs/start keys on the product id, not the workflow.)
 //   PIFLOW_EXECUTOR   pi | claude-code (default: pi). Use claude-code to exercise check E's OAuth note.
 //   SMOKE_TIMEOUT_MS  overall per-run wait cap for the SSE done (default 240000 = 4m).
+//   READY_TIMEOUT_MS  how long to poll for the origin to answer before the ordered checks (default 90000 = 90s).
 //
 // Exit: non-zero if ANY ordered check (A→E) fails. Prints one PASS/FAIL line per check + a summary.
 
 const BASE = (process.env.PIFLOW_CLOUD_URL ?? "").replace(/\/+$/, "");
 const TOKEN = process.env.PIFLOW_TOKEN ?? "";
-const PRODUCT = process.env.PIFLOW_PRODUCT ?? "greet";
+const PRODUCT = process.env.PIFLOW_PRODUCT ?? "demo";
 const EXECUTOR = process.env.PIFLOW_EXECUTOR ?? "pi";
 const RUN_TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS) || 240_000;
+const READY_TIMEOUT_MS = Number(process.env.READY_TIMEOUT_MS) || 90_000;
 
 if (!BASE || !TOKEN) {
   console.error("FATAL: set PIFLOW_CLOUD_URL (https://<app>.fly.dev) and PIFLOW_TOKEN (the deploy bearer token).");
@@ -34,7 +38,39 @@ function record(id, label, pass, evidence) {
 const authHeaders = { Authorization: `Bearer ${TOKEN}` };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Readiness pre-wait — poll until OUR control plane answers (200 or 401), not merely until the origin replies.
+// A just-deployed control plane (or the host's edge/domain routing) takes seconds-to-minutes to go live, and the
+// ordered A→E checks are single-shot with no retry, so without this a warming service would falsely red check A.
+// CRITICAL: a host edge with no live deployment returns 404 (Railway: {"message":"Application not found"}) / 502 /
+// 503 — those are NOT ready, so we keep polling through them; only our bearer gate's 401 (or a 200) means the app
+// is up. Returns true once ready, false on timeout (the checks then report the real error).
+const READY_STATUSES = new Set([200, 401]);
+async function waitForOrigin() {
+  const deadline = Date.now() + READY_TIMEOUT_MS;
+  let last = "";
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const r = await fetch(`${BASE}/`, { redirect: "manual" });
+      if (READY_STATUSES.has(r.status)) {
+        console.log(`\n[ready] control plane ${BASE} is live — HTTP ${r.status} (attempt ${attempt})`);
+        return true;
+      }
+      last = `HTTP ${r.status} (edge up, no live deployment yet)`;
+    } catch (e) {
+      last = e?.message ?? String(e);
+    }
+    if (Date.now() >= deadline) {
+      console.log(`\n[ready] WARN: control plane ${BASE} not live within ${READY_TIMEOUT_MS}ms (last: ${last}) — running checks anyway`);
+      return false;
+    }
+    if (attempt === 1 || attempt % 5 === 0) console.log(`\n[ready] waiting for ${BASE} … ${last} (attempt ${attempt})`);
+    await sleep(2000);
+  }
+}
+
 async function main() {
+  await waitForOrigin();
+
   // ── A. bearer gate: no token → 401; with token → 200 + GUI html ─────────────────────────────
   {
     let noTokCode = -1;

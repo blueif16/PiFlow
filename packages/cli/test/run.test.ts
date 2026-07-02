@@ -8,6 +8,7 @@ import {
   dryRunPlan,
   runTemplate,
   runFailureReport,
+  resolveRunSandbox,
   type RunDeps,
 } from '../src/run.js';
 import {
@@ -32,6 +33,33 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await fs.rm(TEMPLATE_MIN, { recursive: true, force: true });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (A0) THE MERGE — resolveRunSandbox: a context's `worker` IS the sandbox, `--sandbox` is the legacy override.
+// Precedence flag > context-worker > inmemory-default. Pure — no fs. Mutation targets: the override branch, the
+// cloud cascade, and the back-compat inmemory fallback for a plain local context.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('resolveRunSandbox — context worker ⇄ --sandbox (flag > context > default)', () => {
+  const NONE = new Set<never>(); // no cloud-worker creds configured
+  const railway = { baseUrl: 'https://x.up.railway.app', host: 'railway' as const };
+
+  it('an explicit --sandbox is the LEGACY override — wins over the context worker (even inmemory)', () => {
+    expect(resolveRunSandbox({ sandbox: 'local', sandboxExplicit: true }, railway, NONE)).toBe('local');
+    expect(resolveRunSandbox({ sandbox: 'inmemory', sandboxExplicit: true }, railway, NONE)).toBe('inmemory');
+  });
+  it('no active context → the historical inmemory default', () => {
+    expect(resolveRunSandbox({ sandbox: 'inmemory' }, undefined, NONE)).toBe('inmemory');
+  });
+  it('an explicit context worker drives the sandbox when no --sandbox is passed', () => {
+    expect(resolveRunSandbox({ sandbox: 'inmemory' }, { baseUrl: 'http://127.0.0.1:5273', worker: 'daytona' }, NONE)).toBe('daytona');
+  });
+  it('a CLOUD context with no explicit worker cascades to its worker (e2b)', () => {
+    expect(resolveRunSandbox({ sandbox: 'inmemory' }, railway, NONE)).toBe('e2b');
+  });
+  it('a plain local context (no worker) KEEPS inmemory — back-compat (the in-process default)', () => {
+    expect(resolveRunSandbox({ sandbox: 'inmemory' }, { baseUrl: 'http://127.0.0.1:5273' }, NONE)).toBe('inmemory');
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

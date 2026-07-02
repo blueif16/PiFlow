@@ -75,18 +75,24 @@ USAGE
                                             built GUI) on THIS machine — the \`local\` context's server, the SAME
                                             binary a cloud control VM runs. Long-lived; Ctrl-C stops. Serves gui/dist
                                             (build it: cd gui && npm run build) + POST /api/runs/start.
-  piflowctl context [use <name> | ls | add <name> --url <baseUrl> [--token <t>] | rm <name> | current]
+  piflowctl context [use <name> | host use <kind> | worker use <kind> | ls | add <name> --url <baseUrl>
+                    [--token <t>] | rm <name> | current]
                                             switch the CLI/GUI between named control-plane endpoints
-                                            (local ⇄ cloud \`serve\`), stored in ~/.piflow/contexts.json.
+                                            (local ⇄ cloud \`serve\`), stored in ~/.piflow/contexts.json. Two
+                                            axes: \`host\` (where the plane runs) + \`worker\` (where nodes run =
+                                            the sandbox); \`worker use <local|e2b|daytona>\` replaces \`--sandbox\`.
                                             Active-context ladder: --context flag > PIFLOW_CONTEXT env >
                                             the \`use\` pointer > the implicit \`local\` (${'http://127.0.0.1:5273'}).
-  piflowctl cloud   up [--app <n>] [--provider <gw>] [--execute] | down [--execute]  stand up (or tear
-                                            down) the SAME control plane on a durable Fly.io VM. Bare \`up\`
-                                            = a PLAN (mint the bearer token, register a \`cloud\` context,
-                                            print the fly runbook — spends nothing). \`--execute\` runs it
-                                            (secrets set → deploy → smoke) + switches context on a green
-                                            smoke. Projects the pi gateway (models.json entry + cred vars)
-                                            + Claude OAuth as Fly secrets, the same way a node sandbox does.
+  piflowctl cloud   up [--host <railway|fly|selfhost|docker>] [--app <n>] [--public-url <url>] [--provider <gw>]
+                    [--execute] | down [--host <...>] [--execute]  stand up (or tear down) the SAME control
+                                            plane over any host pathway from ONE image (default \`railway\`;
+                                            fly/selfhost/docker also available). Bare \`up\` = a PLAN (mint the bearer token, register
+                                            a \`cloud\` context, print the runbook — spends nothing).
+                                            \`--execute\` runs it (secrets set → deploy → smoke) + switches
+                                            context on a green smoke. Host-derived origins (railway/fly) are automatic;
+                                            docker/selfhost need \`--public-url\` before \`--execute\`. Projects
+                                            the pi gateway (models.json entry + cred vars) + Claude OAuth as
+                                            host secrets, the same way a node sandbox does.
   piflowctl tui     [<rundir>] [--every <s>]  launch the terminal run viewer, scoped to the project at cwd
   piflowctl skills  install [targetDir] [--force] [--with <id>|--all|--wizard]  install the authoring skills (+ add-ons) into a repo
   piflowctl understand [subsystem] [--check|--rebuild]  how a subsystem works / where to change it (code slices)
@@ -98,7 +104,11 @@ RUN
   --run <id>    the instance id (keys out/<id>); aliases --id. Required for a live run.
   --arg k=v     a workflow arg → {{arg.k}} (repeatable).
   --workspace <p>  the read-only {{WORKSPACE}} root (skills/templates/registry); default cwd.
-  --sandbox <inmemory|local|danger-full-access|daytona>  exec backend. inmemory (default) = no model;
+  --sandbox <inmemory|local|danger-full-access|daytona|e2b|docker>  exec backend = WHERE nodes run. LEGACY
+                   per-run override of the persistent \`context worker\` (which is the same axis) — set it once
+                   with \`piflowctl context worker use <local|e2b|daytona>\` and omit this flag. When omitted, the
+                   active context's worker drives it (a cloud context ⇒ its cloud sandbox); a plain local
+                   context ⇒ inmemory. inmemory = no model (in-process);
                    local = real in-place pi, read-scope-jailed per node (seatbelt on macOS);
                    danger-full-access = local with the jail OFF (agent reads the whole filesystem);
                    daytona = real pi in a remote CLOUD VM (full isolation). Boots the promoted
