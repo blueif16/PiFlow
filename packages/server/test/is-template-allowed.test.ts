@@ -54,3 +54,35 @@ describe("isTemplateAllowed — the start-run template gate", () => {
     expect(isTemplateAllowed(rel, [abs])).toBe(true);
   });
 });
+
+// Dynamic template PUSH: an uploaded template lands under the plane's uploads root, and that root is an
+// allow-list entry. So the gate must allow a templateDir that lives UNDER an allow-listed DIRECTORY, not only
+// one that equals a listed entry — while still rejecting a `../` escape and a sibling that merely shares a
+// string prefix (the classic `startsWith` boundary bug). This is what makes "push a template, then run it"
+// work without a rebuild, and it is a SECURITY gate, so the negatives are the teeth.
+describe("isTemplateAllowed — uploads-root prefix (dynamic template push)", () => {
+  const UPLOADS = "/home/piflow/uploads";
+  const UPLOADED = "/home/piflow/uploads/acad/.piflow/example-academy/template";
+
+  it("a template UNDER an allow-listed uploads root is allowed (the push seam)", () => {
+    expect(isTemplateAllowed(UPLOADED, [UPLOADS])).toBe(true);
+  });
+
+  it("a template NOT under the uploads root (and not exact) is rejected", () => {
+    expect(isTemplateAllowed("/somewhere/else/.piflow/wf/template", [UPLOADS])).toBe(false);
+  });
+
+  it("a ../ escape out of the uploads root is rejected (path boundary, not string match)", () => {
+    expect(isTemplateAllowed("/home/piflow/uploads/../evil/.piflow/wf/template", [UPLOADS])).toBe(false);
+  });
+
+  it("a sibling sharing a STRING prefix ('uploads-evil') is rejected (not a path child)", () => {
+    // '/home/piflow/uploads-evil' string-startsWith '/home/piflow/uploads' but is NOT a child of it.
+    expect(isTemplateAllowed("/home/piflow/uploads-evil/.piflow/wf/template", [UPLOADS])).toBe(false);
+  });
+
+  it("exact baked-template match still works alongside a prefix root", () => {
+    expect(isTemplateAllowed(TPL, [UPLOADS, TPL])).toBe(true);
+    expect(isTemplateAllowed(UPLOADED, [UPLOADS, TPL])).toBe(true);
+  });
+});
