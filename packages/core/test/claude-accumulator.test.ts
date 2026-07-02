@@ -1,0 +1,206 @@
+// claude-accumulator.test.ts — P5 of the AgentDriver registry (docs/design/agent-driver-registry.md §4/§4.1/§6 P5).
+//
+// FAILING tests (written BEFORE the real bodies exist) for the driver-selected observe fold that makes a
+// Claude node stop rendering blank while pi stays byte-identical. Four behaviors, one per test class:
+//   1. claudeCodeDriver.eventAccumulator() DECODES a real claude stream-json capture into a tool SEQUENCE +
+//      toolBreakdown + maxToolRepeat that MATCH a hand-count; every span durMs===0 (the §4.1 count-only ceiling).
+//   2. pi's accumulator path is UNCHANGED (guard) — a driver-selected pi node folds identically to today.
+//   3. SSE=BATCH parity: feeding the SAME fixture line-by-line (tail/stream style) yields a snapshot() that
+//      DEEP-EQUALS the finalize()-built (batch) rich for the same fixture (settled node).
+//   4. `executor` is folded onto the assembled wire node (was absent) from the stamped rec.driverId.
+//
+// THE FIXTURE (packages/core/test/fixtures/claude-stream-json-tools.ndjson) is a REAL-shaped claude
+// `--output-format stream-json --verbose` NDJSON capture — same block grammar as the shipped
+// claude-stream-json-sample.ndjson (assistant `message.content[].tool_use` paired with the following
+// user `message.content[].tool_result`), extended to FOUR tool calls with a REPEATED Grep so
+// maxToolRepeat>1. The accumulator reads only the fields the post-slim events.jsonl preserves (`type`,
+// tool_use `id`/`name`/`input`, tool_result `tool_use_id`/`is_error`), so this raw capture and the slimmed
+// projection decode identically.
+//
+// Run: npx vitest run packages/core/test/claude-accumulator.test.ts
+import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { claudeCodeDriver } from '../src/runner/drivers/claude-code.js';
+import { piDriver } from '../src/runner/drivers/pi.js';
+import { builtinDrivers } from '../src/runner/drivers/table.js';
+import { createNodeAccumulator, type NodeAccumulator } from '../src/observe/distill.js';
+import { assembleNode, type AssembleNodeCtx, type NodeIoLedger } from '../src/observe/runView.js';
+import { loadModelCatalog } from '../src/observe/models.js';
+import type { PiEvent } from '../src/runner/events.js';
+import type { NodeUsage } from '../src/runner/status.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const catalog = loadModelCatalog();
+
+/** The REAL claude stream-json capture, parsed one already-parsed object per NDJSON line — EXACTLY what
+ *  both replayEvents (batch) and tailEvents (live) hand each accumulator. */
+function fixtureLines(name: string): PiEvent[] {
+  const text = fs.readFileSync(path.join(here, 'fixtures', name), 'utf8');
+  return text.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as PiEvent);
+}
+const CLAUDE_TOOLS = 'claude-stream-json-tools.ndjson';
+
+// ── HAND-COUNT ORACLE (independently justified from the fixture, NOT copied from any output) ──────────────
+// The fixture pairs one assistant `tool_use` with the next user `tool_result`, in this order:
+//   line 3  assistant tool_use  Read  {file_path:"/tmp/cc-run/in.txt"}         → call #1
+//   line 5  assistant tool_use  Grep  {pattern:"TODO",path:"/tmp/cc-run/in.txt"} → call #2
+//   line 7  assistant tool_use  Grep  {pattern:"TODO",path:"/tmp/cc-run/in.txt"} → call #3  (IDENTICAL input to #2)
+//   line 10 assistant tool_use  Write {file_path:"/tmp/cc-run/out.txt",content:"TODO fix"} → call #4
+// So, by hand:
+//   • ordered SEQUENCE of tool names       = ['Read','Grep','Grep','Write']
+//   • toolBreakdown (name→count)           = { Read:1, Grep:2, Write:1 }
+//   • toolCalls (total)                    = 4
+//   • maxToolRepeat (SAME name+args)       = 2   (Grep run twice with the identical {pattern,path})
+//   • repeatedTool                         = 'Grep'
+//   • every tool_result closes its span with durMs 0 (claude stream has NO per-tool end timestamp — §4.1 count-only)
+const EXPECTED_SEQUENCE = ['Read', 'Grep', 'Grep', 'Write'];
+const EXPECTED_BREAKDOWN = { Read: 1, Grep: 2, Write: 1 };
+const EXPECTED_TOOL_CALLS = 4;
+const EXPECTED_MAX_REPEAT = 2;
+const EXPECTED_REPEATED = 'Grep';
+
+/** Push every fixture line through a fresh accumulator; return its finalize() rich. */
+function foldAll(acc: NodeAccumulator, events: PiEvent[]) {
+  for (const e of events) acc.push(e);
+  return acc.finalize().rich;
+}
+
+describe('claudeCodeDriver.eventAccumulator() — decodes claude stream-json tool blocks (P5, behavior 1)', () => {
+  it('folds the fixture into the hand-counted SEQUENCE + toolBreakdown + maxToolRepeat, all spans durMs 0', () => {
+    const acc = claudeCodeDriver.eventAccumulator();
+    // Today eventAccumulator() returns undefined (P5 deferred) ⇒ this assertion is the RED anchor.
+    expect(acc).toBeDefined();
+    const rich = foldAll(acc!, fixtureLines(CLAUDE_TOOLS));
+
+    // ordered SEQUENCE — the timeline names in call order (the tool list a blank Claude node was missing).
+    expect(rich.timeline.map((s) => s.name)).toEqual(EXPECTED_SEQUENCE);
+    // per-tool counts + total.
+    expect(rich.toolBreakdown).toEqual(EXPECTED_BREAKDOWN);
+    expect(rich.toolCalls).toBe(EXPECTED_TOOL_CALLS);
+    // loop signal — the identical-args Grep repeat.
+    expect(rich.maxToolRepeat).toBe(EXPECTED_MAX_REPEAT);
+    expect(rich.repeatedTool).toBe(EXPECTED_REPEATED);
+    // count-only ceiling: claude carries NO per-tool end timestamp, so EVERY span is durMs 0 (never a faked duration).
+    expect(rich.timeline).toHaveLength(EXPECTED_TOOL_CALLS);
+    for (const span of rich.timeline) expect(span.durMs).toBe(0);
+  });
+
+  it('is selected from the driver table by executor id — get("claude-code").eventAccumulator() decodes, get("pi") does NOT', () => {
+    const drivers = builtinDrivers();
+    // the claude driver yields a real, tool-decoding accumulator…
+    const cAcc = drivers.get('claude-code').eventAccumulator?.();
+    expect(cAcc).toBeDefined();
+    const cRich = foldAll(cAcc!, fixtureLines(CLAUDE_TOOLS));
+    expect(cRich.toolBreakdown).toEqual(EXPECTED_BREAKDOWN);
+
+    // …while the pi accumulator switches on pi vocab (tool_execution_*), so the SAME claude lines decode NO
+    // tools through it — proving the two accumulators are genuinely different reducers (not one shared path).
+    const pAcc = drivers.get('pi').eventAccumulator?.();
+    expect(pAcc).toBeDefined();
+    const pRich = foldAll(pAcc!, fixtureLines(CLAUDE_TOOLS));
+    expect(pRich.toolCalls).toBe(0);
+    expect(pRich.toolBreakdown).toEqual({});
+  });
+});
+
+describe('pi accumulator path is UNCHANGED — byte-identical guard (P5, behavior 2)', () => {
+  // GUARD (may be green — pi is not touched by P5): piDriver.eventAccumulator() must remain the SAME factory
+  // as the hardcoded createNodeAccumulator today folds, so a pi node stays byte-identical. Feeding the SAME
+  // pi-vocab stream through both yields deep-equal rich. If P5 ever repoints pi at a different reducer, this RED-flags.
+  const PI_EVENTS: PiEvent[] = [
+    { type: 'message_start', message: { role: 'assistant', model: 'MiniMax-M3', provider: 'mmgw', api: 'anthropic-messages' } },
+    { type: 'tool_execution_start', toolName: 'read', toolCallId: 'a', args: { path: '/p/a' }, _t: 0 },
+    { type: 'tool_execution_end', toolCallId: 'a', _t: 5 },
+    { type: 'tool_execution_start', toolName: 'bash', toolCallId: 'b', args: { command: 'ls' }, _t: 10 },
+    { type: 'tool_execution_end', toolCallId: 'b', _t: 25 },
+    { type: 'message_end', message: { role: 'assistant', usage: { input: 30, output: 6, totalTokens: 120 }, stopReason: 'end_turn' } },
+  ];
+
+  it('piDriver.eventAccumulator() folds a pi stream IDENTICALLY to the hardcoded createNodeAccumulator', () => {
+    const viaDriver = piDriver.eventAccumulator?.();
+    expect(viaDriver).toBeDefined();
+    const driverRich = foldAll(viaDriver!, PI_EVENTS);
+
+    const hardcodedRich = foldAll(createNodeAccumulator(), PI_EVENTS);
+    // deep-equal — the driver-selected pi fold is the SAME reducer (real durMs preserved: bash span = 15ms).
+    expect(driverRich).toEqual(hardcodedRich);
+    expect(driverRich.timeline.find((s) => s.name === 'bash')?.durMs).toBe(15); // pi keeps REAL durations
+    expect(driverRich.toolBreakdown).toEqual({ read: 1, bash: 1 });
+  });
+});
+
+describe('SSE=BATCH parity — the claude accumulator snapshot() deep-equals finalize().rich (P5, behavior 3)', () => {
+  // The live tail feeds acc.snapshot(rec) (non-destructive); buildRunView feeds acc.finalize(rec) (destructive).
+  // On a SETTLED node (every tool_result seen) the two MUST deep-equal — else the live graph and the loaded
+  // view disagree for a Claude node (the shadow-diff break). snapshot on one acc, finalize on a fresh IDENTICAL one.
+  it('a settled Claude node: snapshot() deep-equals finalize().rich for the identical fixture line sequence', () => {
+    const rec = { startedAt: 's', endedAt: 'e', durationMs: 42 };
+    const events = fixtureLines(CLAUDE_TOOLS);
+
+    const snapAcc = claudeCodeDriver.eventAccumulator();
+    expect(snapAcc).toBeDefined();
+    for (const e of events) snapAcc!.push(e);
+    const snap = snapAcc!.snapshot(rec);
+
+    const finAcc = claudeCodeDriver.eventAccumulator();
+    for (const e of events) finAcc!.push(e);
+    const fin = finAcc!.finalize(rec).rich;
+
+    expect(snap).toEqual(fin);
+    // and it is the REAL populated shape (not a coincidental empty deep-equal).
+    expect(snap.timeline.map((s) => s.name)).toEqual(EXPECTED_SEQUENCE);
+    expect(snap.maxToolRepeat).toBe(EXPECTED_MAX_REPEAT);
+  });
+
+  it('incremental (line-by-line) folding equals whole-batch folding — the tail can never diverge from replay', () => {
+    const events = fixtureLines(CLAUDE_TOOLS);
+
+    // BATCH: push all, then finalize.
+    const batchAcc = claudeCodeDriver.eventAccumulator();
+    expect(batchAcc).toBeDefined();
+    const batch = foldAll(batchAcc!, events);
+
+    // STREAM: push one line at a time (as tailEvents hands them), then finalize. The reducer is order-driven,
+    // so the terminal rich must be identical to the batch fold.
+    const streamAcc = claudeCodeDriver.eventAccumulator();
+    for (const e of events) streamAcc!.push(e);
+    const stream = streamAcc!.finalize().rich;
+
+    expect(stream).toEqual(batch);
+  });
+});
+
+describe('executor is folded onto the assembled wire node (P5, behavior 4)', () => {
+  // assembleNode is the ONE shared assembler for BOTH buildRunView (batch) and watchRun (live). P5 folds the
+  // stamped rec.driverId onto node.executor (beside the already-flowing agentType). Today it is ABSENT.
+  const ctx: AssembleNodeCtx = {
+    toAbs: (p) => (p.startsWith('/') ? p : `/run/${p}`),
+    underRun: (abs) => abs.startsWith('/run/'),
+    displayPath: (abs) => String(abs).replace(/^.*\//, ''),
+    catalog,
+    expected: {},
+    samples: {},
+    ckJournal: {},
+    readMarkerSync: () => null,
+  };
+  const io: NodeIoLedger = { phase: 'author', reads: [], writes: [] };
+  const blankRich = () => createNodeAccumulator().finalize().rich;
+
+  it('a claude-code node folds executor="claude-code" from rec.driverId', () => {
+    const rec = {
+      id: 'cx', label: 'Claude Node', status: 'ok' as const, driverId: 'claude-code',
+      usage: { inputTokens: 18, outputTokens: 337, contextWindow: 200000, numTurns: 2 } as NodeUsage,
+      artifacts: [], issues: [],
+    };
+    const node = assembleNode(rec, blankRich(), io, ctx);
+    expect(node.executor).toBe('claude-code');
+  });
+
+  it('a pi node folds executor="pi" (additive; pi wire node stays byte-identical otherwise)', () => {
+    const rec = { id: 'p0', label: 'Pi Node', status: 'ok' as const, driverId: 'pi', artifacts: [], issues: [] };
+    const node = assembleNode(rec, blankRich(), io, ctx);
+    expect(node.executor).toBe('pi');
+  });
+});

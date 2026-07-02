@@ -37,6 +37,9 @@ export interface RunViewNode {
   phase: string | null;
   /** (G6) The agent-PRESET label (branding) — the GUI maps it to {icon,label,color} from ~/.piflow/agents/. */
   agentType?: string;
+  /** (P5) The stamped executor/driver id this node ran under (pi/claude-code/third) — the GUI badge source,
+   *  folded verbatim from the record's `driverId` (separate from agentType branding). Absent ⇒ pi default. */
+  executor?: string;
   /** (SKIN channel) The curated per-node config slice (model/tools/scoping/programmatic) — verbatim from the record. */
   config?: NodeConfig;
   status: string;
@@ -208,6 +211,9 @@ interface RunJsonNode {
   model?: string | null;
   /** (agent-neutral spine) authoritative token/cost rollup from the executor's final report. See NodeUsage. */
   usage?: NodeUsage;
+  /** (P5) the stamped driver/executor id (P3, `NodeStatusRecord.driverId`) — the observe fold selects the
+   *  per-node accumulator by this and folds it onto the wire node's `executor`. Absent ⇒ pi default. */
+  driverId?: string;
 }
 interface RunJson {
   run: string; source?: string; provider?: string; model?: string | null;
