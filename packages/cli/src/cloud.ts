@@ -86,6 +86,15 @@ const FORBIDDEN_SECRETS = new Set(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'])
 const MINT_NODE_ID = 'piflowctl-cloud-up';
 
 /**
+ * (N-127) The pre-built E2B template id baked WITH pi (see deploy/e2b/build.md). This is DEPLOY config — it
+ * lives in the CLI deploy layer, NEVER in `@piflow/core` (the SDK stays product-agnostic). The control plane
+ * PROJECTS it onto the VM (via `mintCloudSecrets`) so the deployed plane's e2b worker boots THIS template
+ * instead of the E2B base image (which has no pi → `pi: command not found` → exit 127). Override per-deploy
+ * with `E2B_TEMPLATE` in the environment.
+ */
+export const DEFAULT_E2B_TEMPLATE = 'riwrtwrfanz3tewd5pw6';
+
+/**
  * The public HTTPS origin Fly gives an app — the `cloud` context's baseUrl. The URL shape now LIVES in
  * `flyAdapter.appUrl`; this is a thin re-export so back-compat callers (and the fly tests) keep one name.
  */
@@ -161,7 +170,7 @@ function resolveProviderDefault(provider: string): ProviderResolution {
  * API-key var — a non-empty API key silently wins in `claude -p` (per-token billing).
  */
 export async function mintCloudSecrets(
-  opts: { appUrl: string; provider?: string; providerSecret: string },
+  opts: { appUrl: string; provider?: string; providerSecret: string; e2bTemplate?: string },
   deps: MintDeps = {},
 ): Promise<MintedSecrets> {
   const randomToken = deps.randomToken ?? (() => randomBytes(32).toString('hex'));
@@ -211,6 +220,20 @@ export async function mintCloudSecrets(
   const oauth = await resolveOAuth({ resolver, nodeId: MINT_NODE_ID });
   if (oauth) secrets.push({ name: OAUTH_SECRET, value: oauth });
   else missing.push(OAUTH_SECRET);
+
+  // (N-127) When this deploy targets an e2b WORKER (a template was supplied — the Railway/e2b default; a
+  // daytona-worker deploy supplies none), PROJECT the e2b backend so the deployed control plane can spin up a
+  // pi-baked sandbox per node. Without these the plane's e2b worker boots the E2B base image (no pi) →
+  // `pi: command not found` → exit 127. E2B_API_KEY is a real SECRET, resolved through the SAME isCloud:true
+  // allowlist seam the provider creds use (mint-not-forward → redacted as `***`); E2B_TEMPLATE is deploy CONFIG,
+  // staged in-clear via `displayValue` so the runbook shows the id. Neither is an ANTHROPIC_* var, so neither
+  // hits the billing guard. Gating on `e2bTemplate` keeps a non-e2b (e.g. daytona) mint byte-identical.
+  if (opts.e2bTemplate) {
+    const e2bEnv = await cloudCred(['E2B_API_KEY'], true, MINT_NODE_ID, resolver);
+    if (e2bEnv.E2B_API_KEY) secrets.push({ name: 'E2B_API_KEY', value: e2bEnv.E2B_API_KEY });
+    else missing.push('E2B_API_KEY');
+    secrets.push({ name: 'E2B_TEMPLATE', value: opts.e2bTemplate, displayValue: opts.e2bTemplate });
+  }
 
   // Defense-in-depth: never let a forbidden API-key var ride along, whatever a broker returned.
   for (const s of secrets) {
@@ -502,7 +525,10 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
   const adapter = resolveAdapter(opts.host);
   const appUrl = adapter.appUrl(opts.app, { publicUrl: opts.publicUrl, port: opts.port });
 
-  const mint = await mintCloudSecrets({ appUrl, provider: opts.provider, providerSecret: opts.providerSecret }, deps);
+  const mint = await mintCloudSecrets(
+    { appUrl, provider: opts.provider, providerSecret: opts.providerSecret, e2bTemplate: process.env.E2B_TEMPLATE ?? DEFAULT_E2B_TEMPLATE },
+    deps,
+  );
   const plan = buildDeployPlan(adapter, {
     app: opts.app,
     appUrl: mint.appUrl,

@@ -102,6 +102,60 @@ jobs:
       - name: Test
         run: pnpm test
 
+  # L2 full-run REPLAY tier (full-run-e2e §6): the honest, free, no-model tier that would have caught the
+  # Railway false-green. Runs the L0/L1/L2 falsifiable negatives + the HTTP replay (POST→SSE→run-view→byte
+  # probe, sandbox≠inmemory) — Targets 2a/2b/2c, 3-parity, 4, 5, 6, 7, 8, 10-budgetGuard, 12, 13 — all live
+  # in the `default` vitest project (`pnpm test`), so this job is `pnpm test` on one ubuntu runner, path-scoped
+  # to the code that can move a full-run assertion. The paid live tier (e2b) is e2e-live.yml, NOT this job.
+  l2-replay:
+    # PR→main only. Path-scoped to the code that can move a full-run assertion (packages, gui, any .piflow
+    # template). A per-job `paths:` filter is not expressible at the trigger level without narrowing the whole
+    # workflow, so the scope is enforced in-job via dorny/paths-filter: when none of the scoped paths changed,
+    # the vitest step is skipped and the job still reports green (a docs-only PR need not re-run the full tier).
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Detect full-run-relevant changes
+        id: changes
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        with:
+          filters: |
+            code:
+              - 'packages/**'
+              - 'gui/**'
+              - '**/.piflow/**'
+
+      # action-setup MUST run before setup-node so `cache: pnpm` can find pnpm on PATH.
+      - name: Set up pnpm
+        if: steps.changes.outputs.code == 'true'
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Set up Node
+        if: steps.changes.outputs.code == 'true'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        if: steps.changes.outputs.code == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        if: steps.changes.outputs.code == 'true'
+        run: pnpm run build
+
+      # `pnpm test` == `vitest run --project default` — the L0/L1/L2 tier (no model, no paid VM). This is the
+      # free full-run gate: force-sandbox replay + every N-* negative twin. NO retries on a full-run assertion
+      # (a green here must be earned, not flaked into). NO continue-on-error — a red must fail the PR loud.
+      - name: L0/L1/L2 full-run replay tier
+        if: steps.changes.outputs.code == 'true'
+        run: pnpm test
+
   # End-to-end pack + install + run of the piflowctl CLI on each OS.
   smoke:
     strategy:

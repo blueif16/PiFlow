@@ -64,6 +64,18 @@ jobs:
       - name: Build
         run: pnpm run build
 
+      # RELEASE GATE (full-run-e2e Target 1 release decision): a publish is gated on the FREE, deterministic
+      # full-run tier + a fresh nightly-live HEARTBEAT — NOT an uncapped live-e2b call on the critical path.
+      # A fresh paid e2b VM per release is both a cost and a flake surface; the paid live tier (e2e-live.yml)
+      # runs nightly + on dispatch and records a heartbeat, and THAT green is what release trusts.
+      #   - free full-run gate = `pnpm test` (== vitest --project default: the L0/L1/L2 replay tier, the same
+      #     force-sandbox honest suite the PR `l2-replay` job runs). Runs here before publish.
+      #   - live coverage = the nightly `e2e-live.yml` heartbeat (paid e2b, cost-capped via budgetGuard +
+      #     PIFLOW_RUN_BUDGET_USD). Release never boots a fresh uncapped live VM.
+      # NEVER gate release on a label-skippable check.
+      - name: Free full-run gate (L0/L1/L2 replay tier)
+        run: pnpm test
+
       # Opens/updates the "Version Packages" PR when changesets are pending;
       # when that PR merges (changesets already consumed), runs `pnpm release`
       # to publish via OIDC. Private packages are auto-skipped by changeset publish.

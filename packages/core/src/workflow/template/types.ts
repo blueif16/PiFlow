@@ -72,6 +72,13 @@ export interface TemplateNode {
      * LOCAL-only (a no-op in a cloud VM). Sits with `readScope`/`owns` (the fs-scope axis). Omitted ⇒ jailed.
      */
     fullAccess?: boolean;
+    /**
+     * Per-node OUTPUT-COLLECTION ROOT (workdir-relative) → runtime `node.sandbox.output`. Omitted ⇒ the
+     * compile default `out/<id>` (an isolated kind `downloadDir`s that back, stripping its prefix). Set `"."`
+     * for IDENTITY collection so a nested artifact (e.g. `out/greet/greeting.txt`) lands at the SAME
+     * run-relative path the contract stats it under BOTH an in-place (local) and an isolated (e2b) kind.
+     */
+    output?: string;
     schema?: string;
     returnMode?: 'optional' | 'required';
     fillSentinel?: string | null;

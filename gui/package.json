@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "data:index": "node scripts/build-index.mjs",
     "data:demo": "node scripts/build-demo-data.mjs",
-    "data": "pnpm run data:index"
+    "data": "pnpm run data:index",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@xyflow/react": "^12.3.5",

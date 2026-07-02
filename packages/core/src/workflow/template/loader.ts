@@ -158,6 +158,11 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
       // local fs jail (scope.create passes enforceReadScope:false). Threaded like read/write (sits with the
       // fs-scope axis); OMITTED when absent so a normal node's sandbox is byte-identical to today.
       ...(c.fullAccess ? { fullAccess: true } : {}),
+      // per-node OUTPUT-COLLECTION ROOT (`contract.output`) → `sandbox.output`. `materialize` (dag.ts:32)
+      // defaults an unset value to `out/<id>`; an authored `"."` makes the isolated-kind `downloadDir` an
+      // IDENTITY (no prefix strip) so a nested artifact lands where the contract stats it under BOTH in-place
+      // and isolated kinds (the N-breach parity fix). OMITTED when absent ⇒ the `out/<id>` default (unchanged).
+      ...(c.output ? { output: c.output } : {}),
     },
   };
   // (M5 · G13) Carry the lowered op[] envelope onto the intent → the dense NodeSpec. `op[]` is the SOLE
