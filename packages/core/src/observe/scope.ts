@@ -58,19 +58,23 @@ export function findProductRoot(start: string): string | null {
 }
 
 /**
- * The canonical run layout DERIVED from a template's OWN location. Given a
- * `<product>/.piflow/<wf>/template` dir, return the product root (= `{{WORKSPACE}}`) and the runs
- * home (`<wf>/runs`, the `{{RUN}}` parent). PURE path logic (no fs) — the template's PLACEMENT is
- * the contract, so a run roots itself off the template it runs, NEVER off `process.cwd()`. Returns
- * `null` when `templateDir` is not on that D9 path (a loose template); the caller then falls back to
- * `findProductRoot` and WARNS rather than silently rooting at cwd.
+ * The canonical run layout DERIVED from a template's OWN location — PURE path logic (no fs), so a run
+ * roots itself off the template it runs, NEVER off `process.cwd()`. Two fields with DIFFERENT strictness:
+ *   - `runsHome`: where runs land — the sibling `runs/` of any `<…>/template` dir. LOOSE (it does NOT
+ *     require the `.piflow` ancestor) so even a template outside the `.piflow/<wf>/` layout lands runs
+ *     next to itself, NEVER at `out/<id>` under cwd (self-contained beats cwd-scatter).
+ *   - `productRoot`: the `{{WORKSPACE}}` root — the parent of `.piflow`, requiring the full
+ *     `<product>/.piflow/<wf>/template` shape. `null` for a loose template; the caller then falls back to
+ *     `findProductRoot` and WARNS rather than silently rooting `{{WORKSPACE}}`/the read-jail at cwd.
+ * Both fields are `null` when `templateDir` is not a `template` dir at all.
  */
-export function templateLayout(templateDir: string): { productRoot: string; runsHome: string } | null {
+export function templateLayout(templateDir: string): { productRoot: string | null; runsHome: string | null } {
   const dir = path.resolve(templateDir);
-  if (path.basename(dir) !== 'template') return null;
-  const wfDir = path.dirname(dir); // `<product>/.piflow/<wf>`
-  if (path.basename(path.dirname(wfDir)) !== '.piflow') return null; // not on the D9 path → loose template
-  return { productRoot: path.dirname(path.dirname(wfDir)), runsHome: path.join(wfDir, 'runs') };
+  if (path.basename(dir) !== 'template') return { productRoot: null, runsHome: null };
+  const wfDir = path.dirname(dir); // `<…>/<wf>`
+  const runsHome = path.join(wfDir, 'runs'); // LOOSE — never out/<id> at cwd
+  const onD9Path = path.basename(path.dirname(wfDir)) === '.piflow';
+  return { productRoot: onD9Path ? path.dirname(path.dirname(wfDir)) : null, runsHome };
 }
 
 /**

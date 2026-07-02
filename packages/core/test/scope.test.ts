@@ -104,13 +104,20 @@ describe('templateLayout', () => {
   it('resolves a relative template path to an absolute productRoot (never cwd-relative)', () => {
     const abs = path.join(projA2, '.piflow', 'wf', 'template');
     const rel = path.relative(process.cwd(), abs);
-    expect(templateLayout(rel)?.productRoot).toBe(projA2);
+    expect(templateLayout(rel).productRoot).toBe(projA2);
   });
 
-  it('returns null when the path is not a <product>/.piflow/<wf>/template shape', () => {
-    expect(templateLayout(path.join(projA, 'src', 'foo'))).toBeNull(); // basename not "template"
-    expect(templateLayout(path.join(projA, '.piflow', 'wf1'))).toBeNull(); // the <wf> dir, not its template
-    expect(templateLayout('/tmp/loose/template')).toBeNull(); // "template" but not under a .piflow
+  it('a loose template (not under .piflow) still gets a sibling runsHome, but null productRoot', () => {
+    // runsHome stays loose so a run never falls back to out/<id> at cwd; productRoot is strict (needs .piflow).
+    expect(templateLayout('/tmp/loose/template')).toEqual({
+      productRoot: null,
+      runsHome: path.join('/tmp', 'loose', 'runs'),
+    });
+  });
+
+  it('returns all-null when the path is not a template dir at all', () => {
+    expect(templateLayout(path.join(projA, 'src', 'foo'))).toEqual({ productRoot: null, runsHome: null });
+    expect(templateLayout(path.join(projA, '.piflow', 'wf1'))).toEqual({ productRoot: null, runsHome: null });
   });
 });
 
