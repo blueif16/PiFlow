@@ -21,6 +21,7 @@ import type {
 import type { SchemaValidator } from './schema.js';
 import type { EventSink } from './events.js';
 import type { CommandBuilder } from './command.js';
+import type { DriverTable } from './drivers/table.js';
 import type { ModelTiers } from './model-routing.js';
 import type { FailureSignals } from '../checks.js';
 import type { NodeUpdate } from '../workflow/ops/promote.js';
@@ -33,6 +34,11 @@ export interface RunContext {
   outDir: string;
   registry: ToolRegistry;
   buildCommand: CommandBuilder;
+  /**
+   * (AgentDriver registry — P1) The per-run executor→strategy lookup, defaulted at ctx construction to
+   * `builtinDrivers()`. Present so the default EXISTS; the runner does NOT yet dispatch through it (P2/P3).
+   */
+  drivers: DriverTable;
   execRunner: ExecRunner;
   providerName: string;
   model?: string;

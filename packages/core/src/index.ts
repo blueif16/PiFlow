@@ -245,6 +245,21 @@ export {
   DEFAULT_TIERS_SEED,
 } from './runner/index.js';
 export type { ModelTiers, NodeRouting, RunRouting, EffectiveModel } from './runner/index.js';
+// The AgentDriver registry (Thrust 3) — the per-node RUNTIME STRATEGY for one executor, keyed in an open
+// DriverTable. P0 froze the parity contract (AgentDriver + descriptor + RawRun/AgentVerdict + conformsToParity);
+// P1 adds the first real driver (`piDriver`, wrapping the shipped pi functions) + the table + its factory.
+export { piDriver } from './runner/drivers/pi.js';
+export { DriverTable, builtinDrivers } from './runner/drivers/table.js';
+export { conformsToParity } from './runner/drivers/parity.js';
+export type {
+  AgentDriver,
+  AgentDriverDescriptor,
+  RawRun,
+  AgentVerdict,
+  DriverSandboxSpec,
+  DriverSandboxAdditions,
+} from './runner/drivers/types.js';
+export type { ParityReport } from './runner/drivers/parity.js';
 // loadConfig — the env layer (D5): PI_RUNNER_* env + parsed args → the run-opts object runFromConfig
 // consumes (arg > env > default; timeouts seconds→ms). The ONLY place env is parsed; runFromConfig is pure.
 export { loadConfig, parseArgFlags } from './runner/index.js';

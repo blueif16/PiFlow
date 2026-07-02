@@ -30,6 +30,7 @@ import { InMemorySandboxProvider } from '../sandbox/index.js';
 import { defaultSchemaValidator, type SchemaValidator } from './schema.js';
 import { type EventSink } from './events.js';
 import { dispatchCommand, type CommandBuilder } from './command.js';
+import { DriverTable, builtinDrivers } from './drivers/table.js';
 import { loadModelTiers, loadModelsIndex, type ModelTiers } from './model-routing.js';
 import { resolveTokens, type ResolveCtx } from '../workflow/resolver.js';
 import { barrierMerge, type NodeUpdate } from '../workflow/ops/promote.js';
@@ -92,6 +93,12 @@ export interface RunOptions {
   registry?: ToolRegistry;
   /** Agent-command builder. Default the production headless `pi` command; tests inject a stub. */
   buildCommand?: CommandBuilder;
+  /**
+   * (AgentDriver registry — P1) The per-run executor→strategy lookup. Default `builtinDrivers()` (a FRESH
+   * table each run — hermetic, no global mutation; in P1 it holds only `piDriver`). Wired here so the default
+   * EXISTS; the runner does NOT yet dispatch through it (that is P2/P3) — behavior is unchanged.
+   */
+  drivers?: DriverTable;
   /** The exec primitive (carries the watchdog + kill seam). Default `defaultExecRunner`. */
   execRunner?: ExecRunner;
   /** Provider name passed to the command builder (`pi --provider`). Default 'cp'. */
@@ -367,6 +374,9 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     outDir,
     registry: opts.registry ?? new DefaultToolRegistry(),
     buildCommand: opts.buildCommand ?? dispatchCommand, // per-node executor routing (pi | claude-code)
+    // (AgentDriver registry — P1) Default the per-run driver table. Present but NOT yet dispatched through
+    // (P2/P3 rewires dispatchCommand/effectiveModel/verdict onto it); behavior is unchanged.
+    drivers: opts.drivers ?? builtinDrivers(),
     execRunner: opts.execRunner ?? defaultExecRunner,
     providerName: opts.providerName ?? 'cp',
     model: opts.model,
