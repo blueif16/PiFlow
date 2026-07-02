@@ -20,10 +20,21 @@ export interface CreateServerOptions {
   allowedTemplates?: string[] | null;
 }
 
-/** Require the bearer token on every request. EventSource can't set headers, so `?token=` is also accepted. */
+/**
+ * Require the bearer token on every request EXCEPT the content-hashed static bundle under `/assets/**`.
+ * EventSource can't set headers, so `?token=` is also accepted.
+ *
+ * Why the `/assets/**` exemption (found via the L4 browser journey): a browser does NOT inherit the document
+ * URL's query string onto sub-resource requests, so after `page.goto('/?token=…')` loads index.html through the
+ * gate, its `<script src="/assets/*.js">` / `<link href="/assets/*.css">` requests carry NO token → they'd 401,
+ * the JS bundle never runs, and the GUI never mounts. Those files are content-hashed and DATA-FREE (the app's own
+ * JS/CSS); ALL real data stays behind the still-gated `/__piflow/*` + `/api/*`, and the `/` shell stays gated too
+ * (so `GET / → 401` remains the honest "control plane is authenticated" proof). Only `/assets/**` opens up.
+ */
 function bearerGate(token: string): Middleware {
   return (req, res, next) => {
     const url = new URL(req.url ?? "/", "http://localhost");
+    if (url.pathname.startsWith("/assets/")) return next();
     const header = req.headers.authorization ?? "";
     const presented = header.startsWith("Bearer ") ? header.slice(7) : (url.searchParams.get("token") ?? "");
     if (presented !== token) return sendJson(res, 401, { error: "unauthorized" });
