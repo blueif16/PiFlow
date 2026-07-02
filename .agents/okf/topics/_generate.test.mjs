@@ -94,3 +94,37 @@ test('a cached card given a broken anchor is still caught (no false-green)', () 
   writeFileSync(card('h.md'), t.replace(START, '`src/ghost.ts:1` — `Ghost`\n\n' + START));
   assert.equal(run(topics, '--check'), 1, 'a new anchor to a missing file must invalidate and block');
 });
+
+// ---- 3. --find: the standalone ranked reader (node only, no piflowctl) — the portability primitive ----
+// The scoring itself is unit-tested in packages/cli/test/rank.test.ts (the pure `_rank.mjs`); these prove
+// the ENGINE wiring — that `.agents/okf/` alone answers a query end-to-end as a subprocess.
+
+function find(topics, args) {
+  const env = { ...process.env, OKF_TOPICS_DIR: topics, OKF_NO_CODEGRAPH: '1' };
+  try { return { code: 0, out: execFileSync('node', [SCRIPT, '--find', ...args], { env, encoding: 'utf8', stdio: 'pipe' }) }; }
+  catch (e) { return { code: e.status ?? 1, out: (e.stdout || '') + (e.stderr || '') }; }
+}
+
+test('--find --json ranks the card that OWNS the query first', () => {
+  const { topics } = fixture({
+    'sandbox.md': CARD('key: sandbox\ntitle: The jail\naliases: [jail, seatbelt]'),
+    'runner.md': CARD('key: runner\ntitle: Runner\nsymbols: [runWorkflow]'),
+  });
+  const ranked = JSON.parse(find(topics, ['--json', 'jail']).out.trim());
+  assert.equal(ranked[0].key, 'sandbox', 'the card owning the alias "jail" ranks first');
+});
+
+test('bare --find lists the slices and never the _-prefixed engine files', () => {
+  const { topics } = fixture({ 'sandbox.md': CARD('key: sandbox'), 'runner.md': CARD('key: runner'), '_engine.md': CARD('key: _engine') });
+  const { out } = find(topics, []);
+  assert.match(out, /sandbox/);
+  assert.match(out, /runner/);
+  assert.doesNotMatch(out, /_engine/, '_-prefixed files are engine, not slices');
+});
+
+test('--find on an uncovered query reports the gap, never invents a slice', () => {
+  const { topics } = fixture({ 'sandbox.md': CARD('key: sandbox\naliases: [jail]') });
+  const { out } = find(topics, ['stripe', 'payment', 'webhooks']);
+  assert.match(out, /UNCOVERED/i);
+  assert.doesNotMatch(out, /# sandbox/, 'an uncovered query must not crown a card');
+});
