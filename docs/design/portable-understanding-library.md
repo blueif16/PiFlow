@@ -86,21 +86,21 @@ After seeding, a repo contains only `.agents/okf/` (+ the installed skill). Then
 Ordered by dependency. Each names its **falsifiable acceptance bar** and its **gate** (per
 `test-discipline` §0). BUILT/OPEN reflects today.
 
-### M1 — Vendor the ranker into the engine `--find` mode  · OPEN · the decided spine
-- **What:** add `--find "<query>" [--json]` to `_generate.mjs`, reusing the engine's existing card
-  parser; port the ownership + phrase-fallback scoring verbatim. Rewire the CLI reader
-  (`runUnderstandCli`, `understand.ts:238`) and `findSliceForDefect` to shell to `--find --json`
-  (returns `[{key, score}]`); the `OWNERSHIP_FLOOR ≥ 45` check now reads the engine's score; delete the
-  TS `rankCards`.
-- **Acceptance bar (behavior-preserving refactor):** the E6 golden eval (`.agents/okf/eval/`) produces
-  **identical verdicts and scores** — phrase pass stays **3/5**, the recorded negative
-  ("kubernetes reconcile overlord loop") stays failing, positive % unchanged. Iron Law: the golden is
-  the oracle — if the port changes ranking, **fix the port, never the golden**.
-- **Gate:** deterministic golden eval as characterization oracle + the §4 hand-mutation drill (flip a
-  `+`→`-` in a score rung → the golden must go red). Consider isolating the test-writer (§2a) since the
-  ranker is a rubric the optimizer trusts.
-- **RED first:** a failing test that `node _generate.mjs --find --json "sandbox jail"` returns
-  `sandbox` as rank-1 (the mode doesn't exist yet → errors, then fails for the right reason once stubbed).
+### M1 — Vendor the ranker into the engine `--find` mode  · ✅ SHIPPED (merge `ec52580`) · the decided spine
+- **What (as built):** the ranker was extracted to a pure, zero-dep, side-effect-free `_rank.mjs` (the ONE
+  scoring source, vendored alongside `_generate.mjs`); the engine gained `--find [--json]` using it. The CLI
+  reader (`runUnderstandCli`) and `findSliceForDefect` now source ranking from the engine via an injectable
+  `runFind` (sync `execFileSync 'node _generate.mjs --find --json'`, mirroring the `runGate` seam); the TS
+  `rankCards` is deleted. `resolveSlice` still supplies the curated body (resolve-at-read).
+- **Acceptance bar — MET:** the E6 golden eval is **byte-identical** to the pre-refactor baseline — FIND
+  20/22 (91%) vs EXPLORE 77%, file/symbol/concept 100%, phrase 3/5, the recorded negative ("kubernetes
+  reconcile overlord loop") still crowns optimize. Behavior-preserving.
+- **Gate — DONE:** ranker unit tests (`packages/cli/test/rank.test.ts`, vitest, gated) went RED on a stub →
+  GREEN → a reversed-sort mutant was caught; engine `--find` integration tests in `_generate.test.mjs`
+  (node --test); full suite 1881 green; typecheck clean. Live-proven standalone on `node` alone.
+- **Dogfood note:** the refactor moved `resolveSlice`, so the pre-commit gate correctly blocked on the
+  `memory-leg` card's anchor drift → auto-repaired (`understand.ts:157 → :132`, span-verified). The
+  self-maintaining loop fired on its own construction.
 
 ### M2 — Promote the skills to GLOBAL + make them portable-complete  · OPEN · the portability primitive
 - **What:** move `okf-slices` + `memory-slices` to `~/.claude/skills/` (the portable brain). Edit them
