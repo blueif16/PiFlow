@@ -53,8 +53,8 @@ it from the repo. **Procedure (stop at the first step that resolves):**
    them as leads to VERIFY, never as authoritative, and prefer curated prose links and the card's Anchors over them.
 5. **VALIDATE before you trust it** (just-in-time; a stale slice is worse than none): run the gate for that one card —
    `cd .agents/okf/topics && node _generate.mjs --check <key>`. (The gate resolves anchors against the codegraph
-   index, so if you just pulled/merged code, make the index current FIRST — `codegraph status --json`, then
-   `codegraph sync -q` when `pendingChanges>0` — else `--check` validates against a stale graph and can lie.) Read
+   index and SELF-SYNCS a stale one — `status --json` → `sync -q` when changes are pending — so no manual sync step
+   precedes it; `OKF_NO_SYNC=1` opts out. A stale index once hid 17 real anchor drifts here.) Read
    WHICH signal it returns — they mean DIFFERENT things, and only one affects whether you can trust the anchors:
    - `HEALTH: anchor …` / `seed missing` → an anchor's symbol/line moved or a file is gone — the anchors you'd return
      may be WRONG. First rule out **branch skew**: a HEALTH failure on a branch that is BEHIND the one the slice was
@@ -89,7 +89,10 @@ and reported its verdict; you did NOT present a stale or invented slice as autho
 ## MODE B — MAINTAIN the slice set
 
 Use when adding/updating slices, after a merge, before a commit that touches anchored code, or when asked "is this
-stale / what's the blast scope." **Three cadences (only the first is wired today):**
+stale / what's the blast scope." **Three cadences (the first is WIRED — `.githooks/pre-commit` runs
+`--check --staged` on every commit, scoped to cards whose seeds/anchors intersect the staged files, and CI's
+`okf-gate` job runs the full `OKF_NO_CODEGRAPH=1` pass, where only HEALTH is reported — DRIFT isn't computable
+without the index):**
 
 - **Pre-commit (blocking) — the gate.** `cd .agents/okf/topics && node _generate.mjs --check`. It emits TWO signal
   kinds and BLOCKS (exit 1) on only ONE: `HEALTH:` = a seed/anchor file or symbol/line moved → the anchors may be
@@ -156,9 +159,11 @@ relative fragments.
 ## Pointers
 - Design + rationale: `docs/research/memory/code-understanding-and-anti-drift.md` (§2 discovery · §4.1 blast ladder · §5 backlog E0–E8).
 - External SOTA verification: `docs/research/memory/sota-verification-2026-06-30.md`.
-- The generator: `.agents/okf/topics/_generate.mjs` (`--write` / `--check [key]`), fronted by `piflowctl understand --rebuild`/`--check`; config: `.agents/okf/okf.config.json`.
+- The generator: `.agents/okf/topics/_generate.mjs` (`--write` / `--check [--staged] [key]`), fronted by
+  `piflowctl understand --rebuild`/`--check`; config: `.agents/okf/okf.config.json`.
   Incremental via a per-card input fingerprint (gitignored `.gen-cache.json`); `OKF_NO_CACHE=1` forces a full pass,
-  `OKF_NO_CODEGRAPH=1` runs the deterministic line-check without the index.
+  `OKF_NO_CODEGRAPH=1` runs the deterministic line-check without the index (HEALTH only), `OKF_NO_SYNC=1` skips the
+  automatic index sync, `--staged` scopes to cards touching the git-staged files (the pre-commit hook's mode).
 - Codegraph fullest-use (escalate with `explore` · `impact` for blast · `status`→`sync` hygiene): the tool's own
   canonical guidance in `src/mcp/server-instructions.ts` / https://colbymchenry.github.io/codegraph/.
 - Entry verb (SHIPPED): `piflowctl understand [subsystem]` (FIND) · `--check [key]` (this gate) · `--rebuild [key]`
