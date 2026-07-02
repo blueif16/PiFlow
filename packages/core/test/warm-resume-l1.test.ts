@@ -115,11 +115,12 @@ describe('warm-resume L1 — same-model retry resumes the per-node session', () 
     expect(attempts[0].session!.id).toBe('producer');
     expect(attempts[0].cmd).toContain("--session-id 'producer'");
     expect(attempts[0].cmd).not.toContain('--no-session');
-    // The session dir is the DETERMINISTIC `<runDir>/.pi-sessions` (= piSessionsDir(outDir)), the dedicated
-    // tree under the RUN dir — NEVER the sandbox workspace, NEVER pi's `.pi/` journal tree. This exact equality
-    // is the CLI contract: a future `node <run> <id> --resume` resolves the session by this path alone.
+    // The session dir is the DETERMINISTIC `<runDir>/.pi/sessions` (= piSessionsDir(outDir)) — a DEDICATED
+    // subdir UNDER `.pi/` (a sibling of the journal/state files, never MIXED INTO them), NEVER the sandbox
+    // workspace. This exact equality is the CLI contract: a future `node <run> <id> --resume` resolves the
+    // session by this path alone; and sessions now live UNDER `.pi/` so the run stays self-contained.
     expect(attempts[0].session!.dir).toBe(piSessionsDir(outDir));
-    expect(attempts[0].session!.dir).not.toMatch(/(^|\/)\.pi(\/|$)/);
+    expect(attempts[0].session!.dir).toMatch(/(^|\/)\.pi(\/|$)/);
 
     // ── attempt 2: RESUME the SAME session (--session), warm (behavior 4) ──────────────────────────
     expect(attempts[1].session, 'attempt 2 must resume a session').toBeDefined();

@@ -329,7 +329,7 @@ export function bundleExtension(source: string, opts: BundleOpts = {}): string {
   if (!source) return '';
   const resolveDir = opts.resolveDir ?? detectRepoRoot();
   const result = esbuild.buildSync({
-    stdin: { contents: source, resolveDir, loader: 'ts', sourcefile: '_pi/tools.ts' },
+    stdin: { contents: source, resolveDir, loader: 'ts', sourcefile: '.pi/staged/tools.ts' },
     bundle: true,
     format: 'esm',
     platform: 'node',

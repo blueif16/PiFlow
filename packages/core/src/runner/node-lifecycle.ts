@@ -124,19 +124,21 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // completed work (MDN "Promise.all fail-fast"; javascript.info "Dangerous Promise.all": an uncaught
   // rejection can crash a Node process). Mark this node `error` and let the run halt cleanly instead.
   // MCP CONFIG STAGING (decided BEFORE create so the env additions reach the `CreateOpts.env` seam):
-  // a node that selected bridge tools (mcp./oc.) + a run-level mcpConfig gets `_pi/mcp.json` (written
+  // a node that selected bridge tools (mcp./oc.) + a run-level mcpConfig gets `.pi/staged/<id>/mcp.json` (written
   // below, after the sandbox exists) and, injected here, `PIFLOW_MCP_CONFIG` (absolute in-sandbox path) +
   // the referenced secret env vars. CLOUD providers forward ONLY the referenced (allowlisted) vars — never
   // the host env.
   // Per-node staging dir: the prompt, the generated tool extension, and the MCP config all land under
-  // `_pi/<id>/` so parallel nodes that SHARE a workspace (the in-place local case) never clobber each
-  // other's staged files. This is the root fix for the OPEN-1 prompt-clobber that a consumer otherwise
+  // `.pi/staged/<id>/` so parallel nodes that SHARE a workspace (the in-place local case) never clobber
+  // each other's staged files. This is the root fix for the OPEN-1 prompt-clobber that a consumer otherwise
   // works around three ways (an execCwd split + an absolute @prompt ref + a per-node `wf.nodes` mutation).
-  const nodeStage = path.posix.join('_pi', node.id);
+  // Staged inputs live UNDER the ONE `.pi/` machinery dir (a sibling of `.pi/nodes`/`.pi/sessions`), so a
+  // run stays SELF-CONTAINED — no stray `_pi/` at the run root.
+  const nodeStage = path.posix.join('.pi', 'staged', node.id);
   const MCP_CONFIG_FILE = path.posix.join(nodeStage, 'mcp.json');
   // The in-sandbox ROOT that staged files resolve under (for the absolute paths advertised to pi). An
   // IN-PLACE provider's per-node sandbox is rooted at the RUN DIR (the cwd-anchoring at scope.create below),
-  // so `_pi/<id>/mcp.json` and `.pi/skills/<name>` live under `outDir` — NOT `scope.root` (LocalRunScope.root
+  // so `.pi/staged/<id>/mcp.json` and `.pi/skills/<name>` live under `outDir` — NOT `scope.root` (LocalRunScope.root
   // = the host repoRoot, which only coincided with the sandbox root before the in-place anchoring). Isolated/
   // cloud kinds stage relative to the provider scope root, so they keep `scope.root` unchanged.
   const stageRoot = IN_PLACE_KINDS.has(ctx.providerKind) ? ctx.outDir : scope.root;
@@ -211,10 +213,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // (E10 prompt-staging) A node whose build runs from an `execCwd` OUTSIDE the run dir has its process cwd
   // set to execCwd — so the command's `@<prompt>` / `-e <ext>` / `< <prompt>` refs (which pi/claude resolve
   // against the cwd) would look under execCwd, but `writeFile` stages those files under the WORKDIR
-  // (`_pi/<id>/…`). When execCwd is set we therefore hand the command builder the WORKDIR-ABSOLUTE path — the
-  // SAME `stageRoot`(+workspace) base the mcp/skill refs already use — and the jail grants the workdir a
+  // (`.pi/staged/<id>/…`). When execCwd is set we therefore hand the command builder the WORKDIR-ABSOLUTE path —
+  // the SAME `stageRoot`(+workspace) base the mcp/skill refs already use — and the jail grants the workdir a
   // recursive read, so an absolute ref there is readable from execCwd. Absent execCwd the cwd IS the workdir,
-  // so the relative `_pi/<id>/…` ref resolves correctly and every existing run stays BYTE-IDENTICAL. posix
+  // so the relative `.pi/staged/<id>/…` ref resolves correctly and every existing run stays BYTE-IDENTICAL. posix
   // join stays valid in a cloud VM. (skillPath/PIFLOW_MCP_CONFIG are already absolute — this closes the
   // remaining prompt + extension gap, incl. the G8 repair prompt.)
   const stageRef = (rel: string): string =>
@@ -337,10 +339,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       return finishNode(ctx, node, rec, t0, 'error', `prompt token resolution failed: ${(e as Error).message}`, [], [(e as Error).message]);
     }
 
-    // (warm-resume §4) PER-NODE SESSION: mint a stable session id = the node id, persisted under the RUN dir's
-    // DEDICATED `.pi-sessions` tree (`piSessionsDir(ctx.outDir)` = `<runDir>/.pi-sessions` — the runs subfolder
-    // where `.pi/` lives, a SIBLING of `.pi/`, NEVER inside the engine journal/state tree, NEVER the sandbox
-    // workspace — §4d). The session living UNDER THE RUN DIR is what makes resume DETERMINISTICALLY locatable: a
+    // (warm-resume §4) PER-NODE SESSION: mint a stable session id = the node id, persisted in the RUN's
+    // DEDICATED sessions tree (`piSessionsDir(ctx.outDir)` = `<runDir>/.pi/sessions` — a DEDICATED subdir UNDER
+    // `.pi/`, a SIBLING of the engine journal/state files and `.pi/nodes`, never MIXED INTO them, never the
+    // sandbox workspace — §4d). The session living UNDER THE RUN DIR is what makes resume DETERMINISTICALLY locatable: a
     // future `piflowctl node <run> <id> --resume` resolves it by this one absolute path. `ctx.outDir` is already
     // absolute (built via `path.resolve` in runWorkflow), but we `path.resolve` again so the in-sandbox pi and
     // the future CLI agree on ONE absolute path even if a caller ever threads a relative outDir. Scoped to
@@ -382,7 +384,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
 
     // Stage the node's MCP server map VERBATIM (only for MCP-tool nodes with a run-level mcpConfig). It
     // carries `$VAR` refs, never literal secrets — the bridge expands them in-child against PIFLOW_MCP_CONFIG
-    // + the referenced env vars injected at create above. A node with no MCP tools writes NO `_pi/mcp.json`.
+    // + the referenced env vars injected at create above. A node with no MCP tools writes NO `.pi/staged/<id>/mcp.json`.
     if (stageMcp && ctx.mcpConfig) {
       await sandbox.writeFile(MCP_CONFIG_FILE, JSON.stringify(ctx.mcpConfig));
     }
