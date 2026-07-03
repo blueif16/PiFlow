@@ -3,7 +3,7 @@
   "phase": "explore",
   "deps": [],
   "agentType": "explore",
-  "prompt": { "file": "prompt.md" },
+  "prompt": { "file": "prompt.md", "skill": "multi-source-research" },
   "tools": { "allow": ["read", "write", "submit_result"], "deny": [] },
   "inject": ["{{RUN}}/spec/request.json"],
   "contract": {
