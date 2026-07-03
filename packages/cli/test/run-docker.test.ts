@@ -91,6 +91,33 @@ describe('piflowctl run — --sandbox docker constructs a local-container provid
     expect(optsSeen?.secretResolver).toBeDefined();
   });
 
+  // REGRESSION (caught by the live Railway run): with NO --provider, the sandbox staging must resolve the
+  // SYSTEM DEFAULT (loadPiDefaults) and forward ITS gateway — not stage for `parsed.provider` (undefined),
+  // which left the sandbox with no model config → the node errored. The effective provider must flow to the
+  // sandbox, exactly as it flows to the pi command.
+  it('with NO --provider, stages/forwards the SYSTEM-DEFAULT provider gateway (not an empty one)', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      makeDockerProvider: async (o) => fakeDockerProvider(o),
+      loadPiDefaults: () => ({ provider: 'anthropic', model: 'claude-x' }),
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      print: () => {},
+    };
+    await runTemplate(
+      // NO `provider` — the run inherits the system default; the sandbox must still get its gateway/cred.
+      { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gdockdef', args: {}, outDir: OUT, sandbox: 'docker' },
+      deps,
+    );
+    // Without the fix: effProvider was `parsed.provider` (undefined) ⇒ providerCredVar(undefined) ⇒ [] (empty).
+    // With the fix: the system default 'anthropic' ⇒ ANTHROPIC_API_KEY forwarded, and providerName threaded.
+    expect(optsSeen?.cloudSecrets).toContain('ANTHROPIC_API_KEY');
+    expect(optsSeen?.providerName).toBe('anthropic');
+    expect(optsSeen?.model).toBe('claude-x');
+  });
+
   it('an explicit --cloud-secret NAME overrides the provider-derived var', async () => {
     let optsSeen: RunFromTemplateOpts | undefined;
     const deps: RunDeps = {

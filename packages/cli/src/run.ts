@@ -622,7 +622,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // (M1b) A CUSTOM gateway (nebius/mmgw/…) lives ONLY in the host's ~/.pi/agent/models.json; stage its
     // entry into the VM so pi resolves --provider there (the image bakes none), and read the cred var(s)
     // from that entry's $VAR apiKey refs (authoritative). A built-in provider has no entry → no staging.
-    const pi = loadPiProviderConfig(parsed.provider);
+    const pi = loadPiProviderConfig(effProvider);
     const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
     // (M1c) Boot from the promoted SNAPSHOT by default (zero config). A raw `DAYTONA_IMAGE` ref overrides
     // (and suppresses the snapshot); `DAYTONA_SNAPSHOT` picks a different snapshot name.
@@ -637,7 +637,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // Forward the pi gateway credential into the VM: an explicit --cloud-secret wins, else the entry's $VAR(s),
     // else the well-known var for a built-in provider. The runner resolves each through the SAME
     // SecretResolver+allowlist as MCP creds (the raw value never leaves the resolver seam).
-    const fallback = providerCredVar(parsed.provider);
+    const fallback = providerCredVar(effProvider);
     cloudSecrets = parsed.cloudSecret
       ? [parsed.cloudSecret]
       : pi.credVars.length
@@ -650,8 +650,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     print(`piflowctl run: cloud (daytona) — booting from ${bootFrom}.`);
     print(
       cloudSecrets.length
-        ? `piflowctl run: cloud (daytona) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the VM (allowlisted; the raw value never leaves the resolver seam).`
-        : `piflowctl run: ⚠ cloud (daytona) — no provider config/credential resolved for --provider "${parsed.provider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the VM will have no model key.`,
+        ? `piflowctl run: cloud (daytona) — ${stageHome ? `staged ~/.pi/agent/models.json[${effProvider}] + ` : ''}forwarding ${credList} into the VM (allowlisted; the raw value never leaves the resolver seam).`
+        : `piflowctl run: ⚠ cloud (daytona) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the VM will have no model key.`,
     );
   } else if (parsed.sandbox === 'e2b') {
     // Real pi exec inside a remote E2B CLOUD sandbox (open egress by default — the MCP unblock). The
@@ -660,7 +660,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // `makeE2bProvider` — an absent package gives the `npm i @piflow/e2b` install message.
     // (M1b parity) A CUSTOM gateway lives ONLY in the host's ~/.pi/agent/models.json; stage its entry into
     // the sandbox so pi resolves --provider there, and read the cred var(s) from that entry's $VAR refs.
-    const pi = loadPiProviderConfig(parsed.provider);
+    const pi = loadPiProviderConfig(effProvider);
     const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
     const template = resolveE2bTemplate(process.env);
     provider = await makeE2bProvider({
@@ -669,7 +669,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
       ...(stageHome ? { stageHome } : {}),
     });
     // Forward the pi gateway credential into the sandbox (SAME allowlist/resolver path as daytona + MCP).
-    const fallback = providerCredVar(parsed.provider);
+    const fallback = providerCredVar(effProvider);
     cloudSecrets = parsed.cloudSecret
       ? [parsed.cloudSecret]
       : pi.credVars.length
@@ -682,8 +682,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     print(`piflowctl run: cloud (e2b) — booting from ${bootFrom}; egress OPEN by default.`);
     print(
       cloudSecrets.length
-        ? `piflowctl run: cloud (e2b) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the sandbox (allowlisted; the raw value never leaves the resolver seam).`
-        : `piflowctl run: ⚠ cloud (e2b) — no provider config/credential resolved for --provider "${parsed.provider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the sandbox will have no model key.`,
+        ? `piflowctl run: cloud (e2b) — ${stageHome ? `staged ~/.pi/agent/models.json[${effProvider}] + ` : ''}forwarding ${credList} into the sandbox (allowlisted; the raw value never leaves the resolver seam).`
+        : `piflowctl run: ⚠ cloud (e2b) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the sandbox will have no model key.`,
     );
   } else if (parsed.sandbox === 'docker') {
     // Real pi exec inside a LOCAL Docker container — the offline mirror of the cloud path. The managed pi
@@ -693,7 +693,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // A container inherits NO host env (docker is a CLOUD_KIND), so — exactly like daytona/e2b — a CUSTOM
     // gateway from ~/.pi/agent/models.json is staged into the container home and its cred var(s) cross via
     // the allowlist. A built-in provider has no entry → no staging.
-    const pi = loadPiProviderConfig(parsed.provider);
+    const pi = loadPiProviderConfig(effProvider);
     const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
     const image = process.env.DOCKER_IMAGE;
     provider = await makeDockerProvider({
@@ -701,7 +701,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
       ...(stageHome ? { stageHome } : {}),
     });
     // Forward the pi gateway credential into the container (SAME allowlist/resolver path as the cloud backends).
-    const fallback = providerCredVar(parsed.provider);
+    const fallback = providerCredVar(effProvider);
     cloudSecrets = parsed.cloudSecret
       ? [parsed.cloudSecret]
       : pi.credVars.length
@@ -714,8 +714,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     print(`piflowctl run: local (docker) — booting one container per run from ${bootFrom}; egress OPEN by default.`);
     print(
       cloudSecrets.length
-        ? `piflowctl run: local (docker) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the container (allowlisted; the raw value never leaves the resolver seam).`
-        : `piflowctl run: ⚠ local (docker) — no provider config/credential resolved for --provider "${parsed.provider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the container will have no model key.`,
+        ? `piflowctl run: local (docker) — ${stageHome ? `staged ~/.pi/agent/models.json[${effProvider}] + ` : ''}forwarding ${credList} into the container (allowlisted; the raw value never leaves the resolver seam).`
+        : `piflowctl run: ⚠ local (docker) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the container will have no model key.`,
     );
   }
   // (G7) `--detach` ⇒ UNATTENDED: take each (G5) checkpoint's declared default so a backgrounded run never
