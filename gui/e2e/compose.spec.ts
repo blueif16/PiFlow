@@ -1,12 +1,14 @@
-// Compose redesign — Slice 1 browser behavior checks + screenshots (the gate rail, the left-side natural-
-// language authoring overlay, the on-node hexagon icons, and the HUD "Hooks" section). Reuses the journey
-// harness: a REAL local replay run is seeded into the fixture product `serve --roots` scopes to, then the
-// built GUI is driven in a real browser. The template edits land in the DISPOSABLE fixture (wiped in
-// afterAll), never a real product.
+// Compose redesign — browser behavior checks + screenshots. Slice 1 established the rail + the left overlay;
+// Slice 1.5 the run-first write + promotion; Slice 2 makes the card a real CONVERSATION: an agentic-check /
+// execution gate is composed by a dedicated `pi` session (channel=compose), whose reply STREAMS into the
+// transcript and whose emitted chip is LANDED through the same validated run-first bake — the gate is real only
+// from the run's re-read, never from the agent's claim (config is truth). A human checkpoint stays the fast-path
+// direct write.
 //
-// The headline is the acceptance test: dragging AGENTIC CHECK onto the node and creating with a pasted
-// paragraph WRITES the template node.json with that paragraph as the rubric VERBATIM — the path that 400'd on
-// every drop before (compose-gate-audit.md §4.1). Asserted on the RE-READ file, not the response.
+// The agent path is driven against a MOCKED compose session host (a fake SSE that streams one assistant reply
+// carrying a gate chip) so the test is deterministic and needs no pi — exactly the "fake session host" the slice
+// calls for. Everything else (the /node-edit run-first bake, the /run-view re-read) is REAL against a disposable
+// greet fixture (wiped in afterAll). A separate env-gated live smoke (compose-live.spec.ts) exercises a real pi.
 
 import { test, expect, type Locator, type Route } from "@playwright/test";
 import { cp, mkdir, rm, readFile, writeFile } from "node:fs/promises";
@@ -21,9 +23,10 @@ const NODE = "greet";
 const RUN_ID = process.env.PIFLOW_COMPOSE_RUN ?? "compose-fixture";
 const ARTIFACT = "out/greet/greeting.txt";
 const EXPECTED = "CONTROL-VM-OK";
-// A realistic multi-sentence rubric a user pastes into the overlay — asserted byte-for-byte on the template.
-const RUBRIC =
-  "A good greeting is a single friendly line that addresses the reader by name. It contains no placeholder text (no TODO, no TBD) and never leaves the name blank.";
+// The rubric the MOCKED agent emits in its chip — deliberately DIFFERENT from what the user types, to prove the
+// AGENT's authored rubric lands (not the verbatim typed text; that was the Slice 1 direct path).
+const AGENT_RUBRIC =
+  "AGENT RUBRIC — PASS iff: the greeting is one friendly line addressing the reader by name; contains no placeholder (TODO/TBD); the name is never left blank.";
 
 const DEPLOY_TEMPLATE = path.resolve(__dirname, "..", "..", "deploy", "control-vm", "e2e-template", ".piflow", WF, "template");
 const TEMPLATE_DIR = path.join(PRODUCT_ROOT, ".piflow", WF, "template");
@@ -126,6 +129,51 @@ async function dragRailOnto(page: import("@playwright/test").Page, rail: Locator
   return { drop: async () => { await target.dispatchEvent("drop", { dataTransfer: dt }); } };
 }
 
+/**
+ * Install a MOCK compose-session host: the fake SSE streams ONE assistant reply (built by `replyFor`) once a
+ * /message has been posted, after a short delay so the PENDING (composing) state is observable. Everything not
+ * on the compose control channel (the real /node-edit bake, /run-view) is left untouched.
+ */
+async function mockComposeSession(page: import("@playwright/test").Page, replyText: string) {
+  let messageSent = false;
+  let delivered = false;
+  const frame = (o: unknown) => `data: ${JSON.stringify(o)}\n\n`;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  await page.route("**/__piflow/control/**", async (route: Route) => {
+    const url = route.request().url();
+    if (!url.includes("channel=compose")) return route.continue(); // never touch the Companion channel
+    const method = route.request().method();
+
+    if (url.includes("/message")) { messageSent = true; return route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ ok: true }) }); }
+    if (url.includes("/start") || url.includes("/new") || url.includes("/select")) return route.fulfill({ status: method === "POST" ? 202 : 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    if (url.includes("/sessions")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ sessions: [] }) });
+
+    if (url.includes("/stream")) {
+      const sseHeaders = { "content-type": "text/event-stream", "cache-control": "no-cache" };
+      if (delivered) return route.fulfill({ status: 200, headers: sseHeaders, body: "retry: 100000\n\n:idle\n\n" });
+      if (!messageSent) return route.fulfill({ status: 200, headers: sseHeaders, body: "retry: 150\n\n:waiting\n\n" });
+      delivered = true;
+      await sleep(700); // keep the PENDING state on-screen long enough to observe + screenshot
+      const body =
+        "retry: 100000\n\n" +
+        frame({ v: 1, type: "meta", run: RUN_ID }) +
+        frame({ type: "agent_start" }) +
+        frame({ type: "message_start", message: { id: "a1", role: "assistant", content: [{ type: "text", text: "" }] } }) +
+        frame({ type: "message_update", message: { id: "a1", role: "assistant", content: [{ type: "text", text: replyText }] } }) +
+        frame({ type: "message_end", message: { id: "a1", role: "assistant", content: [{ type: "text", text: replyText }] } }) +
+        frame({ type: "agent_end" }) +
+        ":end\n\n"; // a trailing keepalive comment so the browser reliably flushes agent_end before EOF
+      return route.fulfill({ status: 200, headers: sseHeaders, body });
+    }
+    return route.continue();
+  });
+}
+
+/** A realistic agent reply: prose + a fenced json judge chip carrying the AGENT's rubric. */
+const agentJudgeReply = (rubric: string) =>
+  ["I read the node and turned your ask into a concrete rubric:", "", "```json", JSON.stringify({ kind: "judge", rubric, judgeTier: "deep", threshold: "pass", retryMax: 1 }), "```"].join("\n");
+
 test("rail renders ONLY in compose mode, and each hex expands on hover", async ({ page }) => {
   await page.goto(GUI_URL);
   await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
@@ -147,7 +195,8 @@ test("rail renders ONLY in compose mode, and each hex expands on hover", async (
   await expect(page.locator(".ds-gaterail")).toHaveCount(0);
 });
 
-test("ACCEPTANCE — Create applies to THIS RUN first; promote writes the rubric VERBATIM to the template", async ({ page }) => {
+test("ACCEPTANCE — the compose AGENT wires an agentic check: streamed reply → landed on the run → promoted", async ({ page }) => {
+  await mockComposeSession(page, agentJudgeReply(AGENT_RUBRIC));
   // Guard: the template starts with NO judge gate (only the seeded advisory floor).
   expect(JSON.parse(await readFile(NODE_JSON, "utf8")).judgeGate).toBeUndefined();
 
@@ -156,63 +205,60 @@ test("ACCEPTANCE — Create applies to THIS RUN first; promote writes the rubric
   await enterCompose(page);
 
   const target = dropTarget(page);
-
-  // Drag the agentic-check hex onto the node → drag-over affordance → screenshot → drop.
   const gesture = await dragRailOnto(page, page.locator(".ds-gaterail .ds-rail-item").first(), target);
   await page.screenshot({ path: path.join(SHOTS, "03-drag-over.png") });
   await gesture.drop();
 
-  // The drop opens the LEFT overlay bound to the node; the rail yields (hides) while it's open.
   const card = page.locator(".ds-composecard");
   await expect(card).toBeVisible();
-  await expect(page.locator(".ds-gaterail")).toHaveCount(0);
   await expect(card.locator(".ds-composecard__kind")).toHaveText("Agentic check");
   await expect(card.locator(".ds-composecard__node")).toContainText(NODE);
-  await expect(page.locator(`.react-flow__node[data-id="${NODE}"] .ds-node[data-compose-target="true"]`)).toHaveCount(1);
-  await expect(card.locator(".ds-composecard__ta")).toBeFocused();
+  await expect(card.getByRole("button", { name: "Compose gate" })).toBeVisible(); // AGENT path, not "Create gate"
 
-  await card.locator(".ds-composecard__ta").fill(RUBRIC);
+  await card.locator(".ds-composecard__ta").fill("make sure the greeting is friendly and uses the reader's name");
   await page.screenshot({ path: path.join(SHOTS, "04-composecard-open.png") });
+  await card.getByRole("button", { name: "Compose gate" }).click();
 
-  await card.getByRole("button", { name: "Create gate" }).click();
+  // (1) PENDING: the target node shows a ghost/pending hex while the agent composes, and the transcript shows
+  //     the "you" turn — this is the mid-conversation state.
+  await expect(page.locator(`.react-flow__node[data-id="${NODE}"] .ds-gatedrop .ds-hex--pending`)).toBeVisible();
+  await expect(card.locator(".ds-composecard__turn--you")).toContainText("friendly");
+  await page.screenshot({ path: path.join(SHOTS, "11-composecard-pending.png") });
 
-  // (1) RUN-FIRST: the gate lands on THIS RUN's .pi/run.json (config.gates), and the choice turn appears.
-  const youTurn = card.locator(".ds-composecard__turn--you");
-  await expect(youTurn.locator(".ds-composecard__chip")).toContainText(`Agentic check → ${NODE}`);
-  await expect(youTurn).toContainText("addresses the reader by name");
-  const choice = card.locator(".ds-composecard__choice");
-  await expect(choice).toContainText("Applied to this run");
-  await expect(choice).toContainText("Apply to the entire template?");
-  await page.screenshot({ path: path.join(SHOTS, "09-composecard-question.png") });
+  // (2) STREAMED: the agent's reply renders as a markdown turn in the transcript.
+  await expect(card.locator(".ds-composecard__turn--agent")).toContainText("turned your ask into a concrete rubric");
 
-  // assert on the RUN's .pi/ (re-read): the run now carries a judge/reroute gate entry...
+  // (3) LANDED FROM THE RE-READ (not the claim): the RUN's .pi/ now carries a judge/reroute gate entry.
   await expect
     .poll(async () => {
       const run = JSON.parse(await readFile(RUN_PI, "utf8"));
       const entries = run.nodes?.[NODE]?.config?.gates?.entries ?? [];
       return entries.some((e: { kind?: string }) => e.kind === "reroute");
-    }, { message: "run .pi/ must carry the run-first gate", timeout: 5000 })
+    }, { message: "the agent's chip must land on the run's .pi/ via the validated bake", timeout: 8000 })
     .toBe(true);
   // ...while the TEMPLATE is still UNTOUCHED (run-first — not promoted yet).
   expect(JSON.parse(await readFile(NODE_JSON, "utf8")).judgeGate, "template must NOT change on a run-first save").toBeUndefined();
 
-  // the on-node compose row truthfully flags the un-promoted run-only gate once the run-view re-polls.
+  // the on-node row flags the un-promoted run-only gate; the pending hex has solidified (composing cleared).
   await expect(target.locator(".ds-gatedrop__runscoped")).toBeVisible();
+  await expect(page.locator(`.react-flow__node[data-id="${NODE}"] .ds-gatedrop .ds-hex--pending`)).toHaveCount(0);
 
-  // (2) PROMOTE: "Apply to template" writes the rubric VERBATIM into the template node.json (the durable path).
+  // (4) the promotion CHOICE turn appears.
+  const choice = card.locator(".ds-composecard__choice");
+  await expect(choice).toContainText("Applied to this run");
+  await expect(choice).toContainText("Apply to the entire template?");
+  await page.screenshot({ path: path.join(SHOTS, "09-composecard-question.png") });
+
+  // (5) PROMOTE: "Apply to template" writes the AGENT's rubric VERBATIM into the template node.json.
   await card.getByRole("button", { name: "Apply to template" }).click();
   await expect(choice).toContainText("Promoted to the template");
   await page.screenshot({ path: path.join(SHOTS, "10-composecard-promoted.png") });
-
-  const tmpl = JSON.parse(await readFile(NODE_JSON, "utf8"));
-  expect(tmpl.judgeGate?.rubric).toBe(RUBRIC); // byte-for-byte
-
-  await page.keyboard.press("Escape");
-  await expect(card).toHaveCount(0);
-  await page.screenshot({ path: path.join(SHOTS, "06-node-hexes-after.png") });
+  expect(JSON.parse(await readFile(NODE_JSON, "utf8")).judgeGate?.rubric).toBe(AGENT_RUBRIC);
 });
 
-test("dismiss keeps a run-first gate RUN-ONLY — the template is never touched", async ({ page }) => {
+test("honesty — an agent reply with NO gate spec lands nothing (the claim is never trusted)", async ({ page }) => {
+  await mockComposeSession(page, "Done! I've wired up the agentic check for you."); // prose only, no chip
+
   await page.goto(GUI_URL);
   await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
   await enterCompose(page);
@@ -221,7 +267,30 @@ test("dismiss keeps a run-first gate RUN-ONLY — the template is never touched"
   await gesture.drop();
 
   const card = page.locator(".ds-composecard");
-  await card.locator(".ds-composecard__ta").fill("Verify the greeting reads naturally.");
+  await card.locator(".ds-composecard__ta").fill("verify it reads naturally");
+  await card.getByRole("button", { name: "Compose gate" }).click();
+
+  // the agent "claims" success, but no parseable chip ⇒ an honest system turn + the run stays unchanged.
+  await expect(card.locator('.ds-composecard__sys[data-tone="err"]')).toContainText("didn't produce a usable gate spec");
+  const run = JSON.parse(await readFile(RUN_PI, "utf8"));
+  const entries = run.nodes?.[NODE]?.config?.gates?.entries ?? [];
+  expect(entries.some((e: { kind?: string }) => e.kind === "reroute"), "a prose-only claim must NOT land a gate").toBe(false);
+  await expect(page.locator(`.react-flow__node[data-id="${NODE}"] .ds-gatedrop .ds-hex--pending`)).toHaveCount(0);
+});
+
+test("fast path — a HUMAN checkpoint is a direct write (no agent); dismiss keeps it run-only", async ({ page }) => {
+  await page.goto(GUI_URL);
+  await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
+  await enterCompose(page);
+
+  // the human hex is the third rail item; drop it → "Create gate" (fast path), NOT "Compose gate".
+  const gesture = await dragRailOnto(page, page.locator(".ds-gaterail .ds-rail-item").nth(2), dropTarget(page));
+  await gesture.drop();
+
+  const card = page.locator(".ds-composecard");
+  await expect(card.locator(".ds-composecard__kind")).toHaveText("Human");
+  await expect(card.getByRole("button", { name: "Create gate" })).toBeVisible();
+  await card.locator(".ds-composecard__ta").fill("Does this greeting read well?");
   await card.getByRole("button", { name: "Create gate" }).click();
 
   const choice = card.locator(".ds-composecard__choice");
@@ -230,12 +299,13 @@ test("dismiss keeps a run-first gate RUN-ONLY — the template is never touched"
   await expect(choice).toContainText("Kept on this run only");
 
   // The template was NEVER written — dismiss keeps it run-only.
-  expect(JSON.parse(await readFile(NODE_JSON, "utf8")).judgeGate, "dismiss must not promote to the template").toBeUndefined();
+  expect(JSON.parse(await readFile(NODE_JSON, "utf8")).checkpoint, "dismiss must not promote to the template").toBeUndefined();
 });
 
-test("error path — a failed create surfaces the FULL server error (never truncated) as a system turn", async ({ page }) => {
+test("error path — a failed write surfaces the FULL server error (never truncated) as a system turn", async ({ page }) => {
   const LONG_ERROR =
     "edit would make node.json invalid: nodes/greet/node.json — op[1] must match exactly one schema in oneOf (an op carries exactly one body: run | gate | action). Fix the gate and try again.";
+  // the human fast-path writes directly — force the write to 400 to prove the FULL message renders untruncated.
   await page.route("**/__piflow/node-edit/**", (route: Route) =>
     route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: LONG_ERROR }) }),
   );
@@ -244,7 +314,7 @@ test("error path — a failed create surfaces the FULL server error (never trunc
   await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
   await enterCompose(page);
 
-  const gesture = await dragRailOnto(page, page.locator(".ds-gaterail .ds-rail-item").first(), dropTarget(page));
+  const gesture = await dragRailOnto(page, page.locator(".ds-gaterail .ds-rail-item").nth(2), dropTarget(page));
   await gesture.drop();
 
   const card = page.locator(".ds-composecard");
@@ -252,7 +322,6 @@ test("error path — a failed create surfaces the FULL server error (never trunc
   await card.locator(".ds-composecard__ta").fill("anything");
   await card.getByRole("button", { name: "Create gate" }).click();
 
-  // The overlay stays open and shows the WHOLE message (not a 28-char slice) as an error system turn.
   const err = card.locator('.ds-composecard__sys[data-tone="err"]');
   await expect(err).toContainText(LONG_ERROR);
   await expect(err).toContainText("carries exactly one body"); // the tail survives (proves no truncation)
