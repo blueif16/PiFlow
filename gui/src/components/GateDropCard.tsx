@@ -72,7 +72,6 @@ export function GateDropCard({ card, run, onClose, dropChip, onComposingChange }
   // pending hex. `agentComposing` gates the LIVE (un-snapshotted) agent-message block in the transcript.
   const [agentComposing, setAgentComposing] = useState(false);
   const startedRef = useRef(false);        // has this card started its compose conversation?
-  const sawStreamRef = useRef(false);      // have we seen the agent's turn actually begin (agent_start)?
   const processingRef = useRef(false);     // guard so a completed turn is landed once
   const snapshottedRef = useRef<Set<string>>(new Set()); // agent message ids already frozen into local turns
 
@@ -92,7 +91,6 @@ export function GateDropCard({ card, run, onClose, dropChip, onComposingChange }
     setPromoting(false);
     setAgentComposing(false);
     startedRef.current = false;
-    sawStreamRef.current = false;
     processingRef.current = false;
     snapshottedRef.current = new Set();
     onComposingChange(null);
@@ -114,22 +112,21 @@ export function GateDropCard({ card, run, onClose, dropChip, onComposingChange }
   const pushTurn = (t: Omit<Turn, "id">) => setTurns((cur) => [...cur, { id: idRefNext(), ...t }]);
 
   // ── AGENT ROUND COMPLETION ──────────────────────────────────────────────────────────────────────────────
-  // The agent finished a turn (streaming went true→false). Freeze its new reply into the transcript, extract
-  // the gate chip it emitted, and LAND it via the validated run-first bake — never trusting a prose claim.
+  // The agent turn has finished (session no longer streaming) AND a fresh reply is present. Freeze its new
+  // reply into the transcript, extract the gate chip it emitted, and LAND it via the validated run-first bake —
+  // never trusting a prose "I made it" claim. Keyed on the streaming/message edges, guarded so it lands once.
   const nodeId = card?.nodeId;
   const kind = card?.kind;
   useEffect(() => {
-    if (!agentComposing || !nodeId || !kind) return;
-    if (ctrl.streaming) { sawStreamRef.current = true; return; } // the turn is underway
-    if (!sawStreamRef.current || processingRef.current) return;  // not started yet, or already landing
+    if (!agentComposing || !nodeId || !kind || ctrl.streaming || processingRef.current) return;
+    const fresh = ctrl.messages.filter((m) => m.role === "assistant" && !snapshottedRef.current.has(m.id) && m.text.trim() !== "");
+    if (fresh.length === 0) return; // no reply yet (just submitted / still connecting)
     processingRef.current = true;
 
     (async () => {
       // freeze every NEW assistant message (this round) into the transcript, in order.
-      const fresh = ctrl.messages.filter((m) => m.role === "assistant" && !snapshottedRef.current.has(m.id) && m.text.trim() !== "");
       for (const m of fresh) { snapshottedRef.current.add(m.id); pushTurn({ role: "agent", text: m.text }); }
       setAgentComposing(false);
-      sawStreamRef.current = false;
 
       const reply = fresh.map((m) => m.text).join("\n\n");
       const chip = extractGateChip(reply, kind);
@@ -146,8 +143,8 @@ export function GateDropCard({ card, run, onClose, dropChip, onComposingChange }
       processingRef.current = false;
       requestAnimationFrame(() => taRef.current?.focus());
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the streaming edge; ctrl.messages read inside
-  }, [ctrl.streaming, agentComposing, nodeId, kind]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- dropChip is stable per run; landing must fire once
+  }, [ctrl.streaming, ctrl.messages, agentComposing, nodeId, kind]);
 
   if (!card || !spec) return null;
 
