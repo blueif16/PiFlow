@@ -54,7 +54,7 @@ USAGE
                                             find a node's standing lessons + recurrence · check lesson
                                             freshness · compact (retire graduated/code-shifted/over-cap lessons)
   piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
-  piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--stop too)
+  piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--rerun cold re-exec, --stop too)
   piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
   piflowctl extract <templateDir>           free DAG preview (node count + parallel lanes; no model)
   piflowctl schema  [<topic>]               the add-node authoring reference (bare = topic index; --json = JSON Schema)
@@ -144,6 +144,11 @@ NODE
   -m / --message "<msg>"  send one headless message into the resumed session; omit for a LIVE session.
                 A node with no recorded session (cold inmemory/cloud, or never ran --sandbox local) errors,
                 naming the resumable nodes.
+  --rerun       COLD single-node re-execution IN THE EXISTING run dir: force this node to RUN (bypassing the
+                journal's reuse/skip even when it is already ok), reusing every frozen upstream artifact
+                (stat-preflighted — a missing pinned one hard-errors), then agent → merge ops → contract gate
+                + checks → record, exactly as a normal run. Honors --sandbox/--thinking/--provider/--workspace.
+                (This is run's --from <id> --until <id> --no-resume, as the one-node ergonomics the overlord uses.)
   --stop        STOP the run by signalling its controlling process GROUP (SIGTERM→SIGKILL grace). This is a
                 per-RUN stop, not just one node: the runner records the run controller's pid in .pi/run.json
                 and spawns each node detached in that group. A run with no recorded pid (older run) errors.

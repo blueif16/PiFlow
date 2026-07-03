@@ -131,6 +131,38 @@ upstream. You may abort/kill **mid-run ONLY off the critical path** — a candid
 optimize fixer edits a disposable candidate, so killing it never mutates a live run). Before any mid-run kill,
 confirm the target is off the critical path; if it is a live producer, wait for the seam.
 
+## Single-node convergence — the `--rerun` loop (Sentinel mode)
+When you converge ONE node to correctness (not supervising a full run), the loop is: observe its last execution
+→ diagnose → apply ONE fix (SKILL / seed / node.json / a deterministic pre-gate hook) → **`piflowctl node
+<run> <id> --rerun`** → re-observe. `--rerun` COLD-re-executes exactly that node from FROZEN upstream (upstream
+artifacts reused + stat-preflighted; a missing pinned one hard-errors), isolating it even inside a shared
+PARALLEL stage via a `rerunNodes` force-set (RUN this node, force-REUSE its stage-siblings — NOT a `noResume`
+window, which re-runs every sibling). Each retry is thus a controlled experiment: only the node under repair varies.
+
+**Seam-law relaxation (the enabling fact):** a single-node `--rerun` has NOTHING downstream in its window, so
+the re-executing node is **off the critical path** — you MAY abort/kill it mid-rerun (disposable; killing it
+corrupts no downstream state), the same license the optimize fixer has on a candidate. (In a full live run that
+SAME node is on the critical path — touchable only at a seam.)
+
+| # | Signal (observable) | Read from | Predicate → decision |
+|---|---|---|---|
+| 1 | **liveness** — events flowing, no gap > stallMs | `.pi/nodes/<id>/events.jsonl` / `watch` | stall + no terminal → **ABORT** (disposable) → RERUN; first confirm `--thinking low` (the #1 stall cause) |
+| 2 | **authored-the-artifact** — artifact exists + mtime advanced AND the node's events show a `write`/`submit_result` | `contract.artifacts` + `events.jsonl` | present-but-no-write-event ⇒ INHERITED a prior copy, not authored → strip the prior artifact from `{{RUN}}` + rerun; clean-exit-but-absent ⇒ never-wrote → fix SKILL/seed |
+| 3 | **deterministic gate** — the ajv/schema + checks verdict | node gate / `telemetry` | gate RED where a pre-gate hook was meant to guarantee green → the hook/schema is the defect → **ESCALATE**, don't loop |
+| 4 | **semantic quality — the REAL bar** — the node's own quality sidecar, NOT gate-green alone | e.g. a `*-report.json` / verify sidecar | degraded-but-schema-green → the FIX target, not a pass → **RERUN with ONE change**; never identical-rerun |
+| 5 | **efficiency** — duration · tokens · tool-calls · cost vs the node's baseline | `telemetry` digest | anomalous but passing → a SEPARATE optimize defect, don't fail the rerun |
+| 6 | **convergence / circuit-breaker** — consecutive fix→rerun cycles with no gain on (4) | your own count | ≥3 with no improvement → **ESCALATE**: the model hit a ceiling → the documented fallback (a stronger per-node model) or the human, WITH the trace |
+
+**Two rules learned the hard way (both anti-self-deception):**
+- *Schema-green is not the pass bar — the node's semantic sidecar is.* A deterministic pre-gate hook (e.g. a
+  normalizer) can make an artifact schema-valid every time (a total function) while the content is hollow
+  (defaults / nulled / placeholder). Treat signal (4), not the gate, as "done."
+- *Prove a safety net FIRES before trusting a batch — and guard sample independence.* A deterministic net that
+  never triggers across a sample proves NOTHING about itself; the samples only tested the model. Before a batch
+  meant to validate a net, first FORCE the net to fire once on the real failure case and watch it act — a batch
+  where "nothing ever changed" is testing on nothing. And a byte-identical "success" across samples is an
+  INHERITANCE, not a generation (strip any prior artifact the node could copy — signal 2).
+
 ## Verify, don't trust
 Judge from the **stream + artifacts**, never the node's self-report. *"The agent finished" = the VCS diff shows
 the change, not the agent's success line.* A fixer that says "I fixed it" but whose candidate `report.M3.json`
@@ -139,7 +171,9 @@ as a claim to be checked.
 
 ## Your actuator — the piflowctl surface (defer the exact invocation to the sibling skills)
 You act ONLY through the SDK CLI + skills, never ad-hoc bash. Run & monitor → **piflow-start** (`piflowctl run …
---from/--until`, `watch`, `status`, `logs`). Optimize/fix → `piflowctl optimize --fix --binding … --node …
+--from/--until`, `watch`, `status`, `logs`). Converge ONE node (the fix→rerun loop) → **`piflowctl node <run>
+<id> --rerun`** (cold re-exec of exactly that node from frozen upstream; isolates it even in a shared parallel
+stage — see "Single-node convergence"). Optimize/fix → `piflowctl optimize --fix --binding … --node …
 --watch` with `--edit-budget`/`--token-budget` and the watchdog env knobs (`GAME_OMNI_FIXER_*`). Improve a node
 or the chain → **piflow-enhance**. You DECIDE which to invoke and when; those skills hold the canonical command.
 

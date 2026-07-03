@@ -92,11 +92,18 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `7a3ee69` 2026-07-02 — fix(cli): fail loud on --sandbox e2b without E2B_TEMPLATE (no silent exit-127)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
+- `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
+- `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[blueprints-layer]]
+- [[cloud-control-plane-local-cloud-switch]]
+- [[model-provider-single-default-fixture]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
 - [[runs-live-in-product-runs-folder]]
@@ -109,5 +116,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-02 · arc=33 commits · files=7 · lessons=4</sub>
+<sub>derived 2026-07-03 · arc=38 commits · files=7 · lessons=6</sub>
 <!-- okf:auto-end -->

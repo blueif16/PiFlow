@@ -28,7 +28,7 @@ TEMPLATE-RUN JOIN
 - `packages/core/src/runner/entry.ts:150` — `runFromTemplate` — load → instantiate → compile → run
 - `packages/core/src/workflow/template/instantiate.ts:98` — `instantiateRun` — materialize `${RUN}/.pi/nodes/<id>/`
 PER-NODE RUNNER EXEC
-- `packages/core/src/runner/runner.ts:373` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
+- `packages/core/src/runner/runner.ts:374` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
 - `packages/core/src/runner/node-lifecycle.ts:99` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
@@ -177,6 +177,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 
 ### Lessons — memory cluster
 
@@ -186,16 +188,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[daytona-cloud-path]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
+- [[guidance-node-sonnet5-routing]]
 - [[local-docker-sandbox-mode]]
+- [[model-provider-single-default-fixture]]
 - [[telemetry-legibility-tracks]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `runNode` (packages/core/src/runner/node-lifecycle.ts:99) — 1 caller in `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
-- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 6 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run.test.ts`
+- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 6 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
-- `RunContext` (packages/core/src/runner/run-context.ts:32) — 11 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:643) — 11 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/sandbox/local.ts` +2 more; ⚠ no covering tests found
+- `RunContext` (packages/core/src/runner/run-context.ts:32) — 3 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
+- `RunScope` (packages/core/src/types.ts:643) — 11 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/sandbox/local.ts`, `packages/docker/src/docker.ts` +2 more; ⚠ no covering tests found
 
-<sub>derived 2026-07-02 · arc=122 commits · files=7 · lessons=7</sub>
+<sub>derived 2026-07-03 · arc=124 commits · files=7 · lessons=9</sub>
 <!-- okf:auto-end -->

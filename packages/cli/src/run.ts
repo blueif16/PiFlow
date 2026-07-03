@@ -197,6 +197,11 @@ export interface ParsedRunArgs {
    * default advisory `console.warn`. A misfit node then HALTs with a loud error record. Omit ⇒ advisory.
    */
   strict?: boolean;
+  /**
+   * Targeted re-run — force-RUN exactly these node ids, force-REUSE all others (the `node --rerun`
+   * primitive). Spread through `runFromTemplate` to `runWorkflow`; wins over the journal.
+   */
+  rerunNodes?: ReadonlySet<string>;
   /** Active run PROFILE name → resolved against the template's declared `profiles` (elides nodes before compile). */
   profile?: string;
   args: Record<string, string>;
@@ -760,6 +765,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     ...(parsed.noResume ? { noResume: true } : {}),
     // (P4, §2.4) `--strict` flips the author-time driver-fit preflight from advisory-warn to blocking.
     ...(parsed.strict ? { strict: true } : {}),
+    ...(parsed.rerunNodes && parsed.rerunNodes.size ? { rerunNodes: parsed.rerunNodes } : {}),
     profile: parsed.profile,
     providerName: effProvider,
     thinking: parsed.thinking,

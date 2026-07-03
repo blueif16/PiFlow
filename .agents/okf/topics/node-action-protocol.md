@@ -151,6 +151,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[delegate-inspection-to-subagents]]
@@ -163,17 +164,21 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
+- [[model-provider-single-default-fixture]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
+- [[okf-coverage-boundary]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
+- [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
@@ -181,6 +186,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
@@ -197,5 +203,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-02 · arc=75 commits · files=8 · lessons=47</sub>
+<sub>derived 2026-07-03 · arc=75 commits · files=8 · lessons=53</sub>
 <!-- okf:auto-end -->

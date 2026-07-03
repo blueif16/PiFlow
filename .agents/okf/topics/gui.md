@@ -133,6 +133,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[eval-bulk-agents-use-cheaper-model]]
@@ -141,6 +142,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[game-omni-reference-product]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
 - [[observe-single-data-path]]
@@ -158,6 +160,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
+- [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
@@ -165,9 +168,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:157) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:573) — 4 callers in `gui/src/components/WorkflowCanvas.tsx`; tests: `gui/src/data/liveModelToRunView.test.ts`, `gui/src/data/runView.test.ts`
-- `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/observe.test.ts`, `packages/core/test/watch.test.ts`
+- `loadRunView` (gui/src/data/runView.ts:157) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/core/test/observe.test.ts`, `packages/core/test/watch.test.ts`, `packages/cli/test/remote-wiring.test.ts`
 
-<sub>derived 2026-07-02 · arc=62 commits · files=8 · lessons=34</sub>
+<sub>derived 2026-07-03 · arc=62 commits · files=8 · lessons=37</sub>
 <!-- okf:auto-end -->
