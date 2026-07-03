@@ -101,3 +101,16 @@ describe("runViewToLiveModel — base-agent identity survives the reconcile", ()
     expect(roundTripped.nodes[0].agentType).toBe("coder");
   });
 });
+
+// (retrieval completeness) The DR6 reconcile must not STRIP the recorded config either — a reconcile that
+// drops it would blank every hover card's loadout when a backgrounded tab returns.
+describe("runViewToLiveModel — recorded config survives the reconcile", () => {
+  it("round-trips config with ZERO divergence over the shadow-diff field key", () => {
+    const config = { tools: { allow: ["read"] }, skill: "s/SKILL.md", sandbox: { owns: ["out/**"] } };
+    const a = rvNode({ id: "a", status: "ok", config, tokens: tokens(10), derived: derived("ok") });
+    const v = view([a], tokens(10));
+    const roundTripped = liveModelToRunView(runViewToLiveModel(v));
+    expect(shadowDiff(roundTripped, v)).toEqual([]);
+    expect(roundTripped.nodes[0].config).toEqual(config);
+  });
+});

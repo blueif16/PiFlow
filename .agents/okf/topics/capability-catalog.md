@@ -98,6 +98,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -147,5 +148,5 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/tool-config.test.ts`
 - `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/catalog/introspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`, `packages/core/test/runner.test.ts`
 
-<sub>derived 2026-07-03 · arc=28 commits · files=9 · lessons=40</sub>
+<sub>derived 2026-07-03 · arc=28 commits · files=9 · lessons=41</sub>
 <!-- okf:auto-end -->

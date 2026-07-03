@@ -38,7 +38,7 @@ RENDER
 - `gui/src/components/WorkflowNode.tsx:274` — paints `NodeModeStrip` under the card when a view-mode is active
 - `gui/src/components/NodeModeStrip.tsx:31` — `NodeModeStrip()` — the per-node view-mode overlay (status/model/basis)
 COMPANION
-- `gui/src/data/runStream.ts:186` — `useRunStream()` — ONE EventSource over the SSE bridge → live model + richByNode
+- `gui/src/data/runStream.ts:193` — `useRunStream()` — ONE EventSource over the SSE bridge → live model + richByNode
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the memory's "view-mode overlays (T/M/A)" is partly stale — `VIEW_MODES` (ViewModeContext.tsx:34) keys are t/m/a/**b**/f/c (status·model·artifacts·basis·fusion·compose), and fusion/compose are INTERACTIVE editors (preview re-expand · template `op[]` write-back), not passive info strips.
@@ -125,10 +125,12 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 - `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
 - `e25231f` 2026-07-02 — feat(gui): unified agent identity surface — face avatars inherit through agentType + inherent hover card on every agent node
+- `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
@@ -170,8 +172,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:587) — 1 caller; tests: `gui/src/data/liveModelToRunView.test.ts`
+- `toFlowGraph` (gui/src/data/runView.ts:589) — 1 caller; tests: `gui/src/data/liveModelToRunView.test.ts`
 - `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/core/test/observe.test.ts`, `packages/core/test/watch.test.ts`, `packages/cli/test/remote-wiring.test.ts`
 
-<sub>derived 2026-07-03 · arc=64 commits · files=8 · lessons=37</sub>
+<sub>derived 2026-07-03 · arc=65 commits · files=8 · lessons=38</sub>
 <!-- okf:auto-end -->

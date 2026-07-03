@@ -105,6 +105,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 
 ### Lessons — memory cluster
 
@@ -145,5 +146,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 6 callers in `packages/core/src/runner/drivers/claude-code.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 
-<sub>derived 2026-07-03 · arc=32 commits · files=5 · lessons=27</sub>
+<sub>derived 2026-07-03 · arc=33 commits · files=5 · lessons=27</sub>
 <!-- okf:auto-end -->

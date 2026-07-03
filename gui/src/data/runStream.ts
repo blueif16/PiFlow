@@ -6,7 +6,7 @@
 // `/__piflow/run-view/<run>` poll returns (the observe surface stamps every zone). Real data only.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { sse, useEndpoint } from "./apiBase";
-import type { RunTokens, NodeDerived, TimelineSpan, ReadRef, WriteRef, ArtifactRef, RunViewStage } from "./runView";
+import type { RunTokens, NodeDerived, NodeConfig, TimelineSpan, ReadRef, WriteRef, ArtifactRef, RunViewStage } from "./runView";
 
 export type LiveNodeStatus =
   | "pending" | "running" | "ok" | "reused" | "gap" | "blocked" | "error" | "dry";
@@ -37,6 +37,10 @@ export interface LiveNode {
   /** (G6) the base-agent preset id — mirrors core NodeView.agentType (verbatim passthrough, read.ts) so a
    *  LIVE node carries the same identity (face avatar + agent hover card) a settled run-view node does. */
   agentType?: string;
+  /** the RECORDED curated config slice (tools/skill/scope/gates — the loadout) — mirrors core; stamped
+   *  verbatim by assembleNode on the enriched wire node so the hover card shows what the node ACTUALLY
+   *  ran with, live and settled alike. */
+  config?: NodeConfig;
   /** the effective model label the node ran on. */
   model?: string | null;
   /** the PER-NODE provider (detected from the node's own events; null when undeterminable) — mirrors core

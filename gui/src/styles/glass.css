@@ -490,6 +490,33 @@
 .ds-agentcard__val { color: var(--ds-text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .ds-agentcard__val--mono { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); }
 
+/* short-expression TAGS — tools / scope as compact chips, not prose */
+.ds-agentcard__tags { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
+.ds-agentcard__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ds-bg-base, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--ds-border-hairline);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the SKILL chip is a real button — click enters the node's detail view */
+.ds-agentcard__tag--skill {
+  cursor: pointer;
+  color: var(--ds-text-primary);
+  border-color: var(--ds-border-strong);
+  transition: border-color var(--ds-dur-fast), color var(--ds-dur-fast);
+}
+.ds-agentcard__tag--skill:hover { border-color: var(--ds-accent); color: var(--ds-accent); }
+
 /* the defining prompt gets the card's space — generous, scrollable */
 .ds-agentcard__prompt { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--ds-border-hairline); padding-top: var(--ds-space-2); }
 .ds-agentcard__prompttext {

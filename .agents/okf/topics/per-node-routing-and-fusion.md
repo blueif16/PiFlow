@@ -123,6 +123,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -168,5 +169,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 10 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=46 commits · files=10 · lessons=36</sub>
+<sub>derived 2026-07-03 · arc=46 commits · files=10 · lessons=37</sub>
 <!-- okf:auto-end -->

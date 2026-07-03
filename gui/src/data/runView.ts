@@ -455,6 +455,7 @@ function liveNodeToRunViewNode(n: LiveNode): RunViewNode {
     status: n.status,
     ...(n.executor ? { executor: n.executor } : {}), // (P5) stamped executor/driver id → badge
     ...(n.agentType ? { agentType: n.agentType } : {}), // (G6) base-agent identity → face avatar + hover card
+    ...(n.config ? { config: n.config } : {}), // recorded loadout (tools/skill/scope) → hover card, verbatim
     model: n.model ?? null,
     // provider is PER-NODE (detected from the node's own events; null when undeterminable) — carried on the
     // enriched wire node (watch.ts mergeEnriched), so it matches buildRunView's per-node provider EXACTLY. A
@@ -526,6 +527,7 @@ function runViewNodeToLiveNode(n: RunViewNode): LiveNode {
     lane: n.lane ?? 0,
     ...(n.executor ? { executor: n.executor } : {}), // (P5) stamped executor/driver id → badge
     ...(n.agentType ? { agentType: n.agentType } : {}), // (G6) identity survives the DR6 reconcile
+    ...(n.config ? { config: n.config } : {}), // recorded loadout survives the DR6 reconcile
     tokens: n.tokens,
     derived: n.derived,
     model: n.model ?? null,

@@ -92,3 +92,21 @@ describe("liveModelToRunView — base-agent identity on the live path", () => {
     expect(nodes[0].data.agentPreset).toBe(entry);
   });
 });
+
+// (retrieval completeness) The recorded per-node CONFIG — tools · skill · read/write scope · gates — is the
+// agent's loadout; the enriched SSE wire node carries it (core assembleNode stamps rec.config verbatim), so
+// the client adapter must too. If it drops config, a RUNNING node's hover card silently falls back to preset
+// data (wrong: the card must show what the node ACTUALLY ran with). FAILS while the adapter loses config.
+describe("liveModelToRunView — recorded config (the loadout) on the live path", () => {
+  it("carries a live node's config (tools/skill/sandbox scope) through to data.rv.config by reference", () => {
+    const config = {
+      tools: { allow: ["read", "write"] },
+      skill: "{{WORKSPACE}}/packages/skills/harden-blueprint/SKILL.md",
+      sandbox: { workspace: ".", readScope: ["{{RUN}}"], owns: ["spec/**"] },
+    };
+    const node = liveNode({ id: "gameplay", label: "gameplay", status: "running", config });
+    const view = liveModelToRunView(model([node]));
+    const { nodes } = toFlowGraph(view);
+    expect(nodes[0].data.rv?.config).toBe(config); // the SAME object — verbatim, never re-derived
+  });
+});

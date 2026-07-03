@@ -179,6 +179,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 
 ### Lessons — memory cluster
 
@@ -200,5 +201,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 8 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
 - `RunScope` (packages/core/src/types.ts:643) — 11 callers in `packages/core/src/runner/resume.ts`, `packages/core/src/sandbox/local.ts`, `packages/docker/src/docker.ts`, `packages/core/src/runner/runner.ts` +2 more; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=124 commits · files=7 · lessons=9</sub>
+<sub>derived 2026-07-03 · arc=125 commits · files=7 · lessons=9</sub>
 <!-- okf:auto-end -->

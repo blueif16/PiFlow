@@ -316,9 +316,10 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       {mode !== "compose" && <NodeGates variant="card" gates={data.rv?.config?.gates} />}
 
       {/* The UNIFIED agent surface: EVERY agent node — base-adopting or bespoke — carries the same hover
-          identity card (who it is, its base, model, executor, tools/skills, the inherited role prompt).
-          Inherent to the agent class: rendered here once, shown on card hover/focus via glass.css. */}
-      {data.kind === "agent" && <AgentHoverCard data={data} />}
+          definition card (skill · role prompt · tool tags · read/write scope; the skill chip clicks
+          through to the node detail). Inherent to the agent class: rendered here once, CSS-shown on
+          card hover/focus via glass.css. */}
+      {data.kind === "agent" && <AgentHoverCard nodeId={id} data={data} />}
 
       <Handle type="source" position={Position.Right} className="ds-handle" />
 

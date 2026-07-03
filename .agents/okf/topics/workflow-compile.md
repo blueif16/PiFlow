@@ -129,6 +129,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -170,5 +171,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:215) — 12 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/blueprint-goldens.test.ts`, `packages/core/test/load-template.test.ts`, `packages/core/test/sandbox-output-passthrough.test.ts`
 - `NodeSpec` (packages/core/src/types.ts:17) — 38 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/drivers/types.ts`, `packages/core/src/runner/env-staging.ts`, `packages/core/src/runner/resume.ts` +4 more; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/driver-runtime.test.ts`, `packages/core/test/execcwd-staging.test.ts`, `packages/core/test/executor-override.test.ts` +4
 
-<sub>derived 2026-07-03 · arc=69 commits · files=5 · lessons=32</sub>
+<sub>derived 2026-07-03 · arc=69 commits · files=5 · lessons=33</sub>
 <!-- okf:auto-end -->

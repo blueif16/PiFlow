@@ -156,6 +156,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
@@ -211,5 +212,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:274) — 2 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:113) — 13 callers in `packages/core/src/observe/assess.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/assess-probe.test.ts`, `packages/core/test/observe-assess.test.ts`
 
-<sub>derived 2026-07-03 · arc=63 commits · files=13 · lessons=46</sub>
+<sub>derived 2026-07-03 · arc=63 commits · files=13 · lessons=47</sub>
 <!-- okf:auto-end -->
