@@ -159,6 +159,8 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `7a48983` 2026-07-03 — fix(observe): telemetryStream selects the accumulator by driver (Claude ≠ pi)
 - `5946c6e` 2026-07-03 — feat(control): compose gets its own control channel — an isolated pi
 - `3aea9ce` 2026-07-03 — Merge worktree-gui-frontend-fixes: run-first compose (pi session) + driver-selected telemetry
+- `b04be67` 2026-07-03 — feat(server): /__piflow/skill — read + parse a SKILL.md bundle (name/desc/requires/mcp/body)
+- `b9c8fac` 2026-07-03 — refactor(server): agents.json + skill display roots ride core's enumeration seam
 
 ### Lessons — memory cluster
 
@@ -192,6 +194,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
+- [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
@@ -206,6 +209,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
+- [[skill-marketplace-gui-design]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
@@ -217,7 +221,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `assembleNode` (packages/core/src/observe/runView.ts:343) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/watch.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `NodeTokenSpine` (packages/core/src/observe/runView.ts:263) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
-- `RunView` (packages/core/src/observe/runView.ts:114) — 7 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
+- `RunView` (packages/core/src/observe/runView.ts:114) — 8 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-03 · arc=70 commits · files=13 · lessons=47</sub>
+<sub>derived 2026-07-03 · arc=72 commits · files=13 · lessons=49</sub>
 <!-- okf:auto-end -->

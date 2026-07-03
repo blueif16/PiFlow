@@ -7,6 +7,7 @@ import type { DirEntry } from "../components/DirectoryPanel";
 import type { Edge } from "@xyflow/react";
 import type { LiveModel, LiveNode } from "./runStream";
 import type { AgentChip } from "./agentChips";
+import type { SkillChip } from "./skillChips";
 import { apiFetch, apiUrl } from "./apiBase";
 
 export type ScopeKind = "run" | "skill" | "template" | "package" | "repo";
@@ -277,11 +278,13 @@ export async function loadNodeConfig(run: string, nodeId: string): Promise<Autho
  *  `target` defaults to the durable TEMPLATE write; `"run"` (ephemeral) is a server-side stub (501). On
  *  success the server returns the mutated config so the caller can re-render the badge immediately.
  *  An AGENT chip (P1 basis rail — sets `agentType`) rides the SAME endpoint; it is TEMPLATE-ONLY (the
- *  run-bake path rejects it server-side), so callers must only ever send it with target "template". */
+ *  run-bake path rejects it server-side), so callers must only ever send it with target "template". A SKILL
+ *  chip (P2 marketplace — sets `prompt.skill`) also rides it and, unlike the agent chip, is an OVERLAY so it
+ *  bakes run-first too (either target is valid). */
 export async function dropChipOnNode(
   run: string,
   nodeId: string,
-  chip: GateChip | AgentChip,
+  chip: GateChip | AgentChip | SkillChip,
   target: "template" | "run" = "template",
 ): Promise<{ ok: boolean; node?: AuthoredNodeConfig; error?: string; stub?: boolean }> {
   try {
@@ -354,6 +357,47 @@ export async function loadSkill(run: string, skill: string): Promise<SkillBundle
     const res = await apiFetch(`/__piflow/skill/${encodeURIComponent(run)}?skill=${encodeURIComponent(skill)}`);
     if (!res.ok) return null;
     return (await res.json()) as SkillBundle;
+  } catch {
+    return null;
+  }
+}
+
+/** One entry in the skill MARKETPLACE catalog, as `/__piflow/skills/<run>` returns it. `ring` splits the
+ *  WORKSPACE skills (bundled in this repo's `.piflow`/skill dirs) from the globally INSTALLED ones. `provisioned`
+ *  false + a non-empty `mcpRequires` means the skill declares MCP tools its catalog hasn't synced yet (bind after
+ *  a catalog sync). `display`/`shadowed`/`error` are optional presentation/health hints. Mirrors the server
+ *  handler shape; `requires`/`allowed`/`mcpRequires` are EMPTY for a skill that declares no manifest. */
+export interface MarketSkill {
+  id: string;
+  ring: "workspace" | "installed";
+  name: string;
+  description?: string;
+  requires: string[];
+  allowed: string[];
+  mcpRequires: string[];
+  provisioned: boolean;
+  display?: { label?: string; icon?: string; color?: string };
+  /** the id is also declared by a higher-priority skill dir (an installed skill shadows a workspace one). */
+  shadowed?: boolean;
+  /** the SKILL.md failed to parse — surfaced as a card-level warning, never a hard error. */
+  error?: string;
+}
+
+/** The `/__piflow/skills/<run>` response: the marketplace catalog + whether an MCP catalog is wired (so the
+ *  panel can explain "needs catalog sync" honestly). */
+export interface SkillMarket {
+  skills: MarketSkill[];
+  mcpCatalog: boolean;
+}
+
+/** Fetch the skill marketplace for a run (`/__piflow/skills/<run>`). Returns null when the endpoint is
+ *  unavailable (built in parallel — may not exist yet) or errors — the panel shows a graceful empty state
+ *  rather than throwing, exactly like `loadSkill`. */
+export async function loadSkills(run: string): Promise<SkillMarket | null> {
+  try {
+    const res = await apiFetch(`/__piflow/skills/${encodeURIComponent(run)}`);
+    if (!res.ok) return null;
+    return (await res.json()) as SkillMarket;
   } catch {
     return null;
   }

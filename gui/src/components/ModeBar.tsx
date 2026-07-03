@@ -14,10 +14,11 @@ import { GlassSurface } from "./GlassSurface";
 import { useViewMode, VIEW_MODES } from "./ViewModeContext";
 import "../styles/modes.css";
 
-/** Press P to launch the bottom-right pi chat (the companion), D for the left-edge run digest. Owned here
- *  with the view-mode keys so the whole bottom-left key cluster lives in one handler. `muted` silences the
- *  keys while a true modal (Start-run / Migrate-run) is open — a keypress must not act beneath its scrim. */
-export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, muted = false }: { chatOpen: boolean; onToggleChat: () => void; digestOpen: boolean; onToggleDigest: () => void; muted?: boolean }) {
+/** Press P to launch the bottom-right pi chat (the companion), D for the left-edge run digest, S for the
+ *  left-edge skill marketplace. Owned here with the view-mode keys so the whole bottom-left key cluster lives
+ *  in one handler. `muted` silences the keys while a true modal (Start-run / Migrate-run) is open — a keypress
+ *  must not act beneath its scrim. */
+export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, marketOpen, onToggleMarket, muted = false }: { chatOpen: boolean; onToggleChat: () => void; digestOpen: boolean; onToggleDigest: () => void; marketOpen: boolean; onToggleMarket: () => void; muted?: boolean }) {
   const { mode, toggle } = useViewMode();
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, mu
       const k = e.key.toLowerCase();
       if (k === "p") { e.preventDefault(); onToggleChat(); return; }
       if (k === "d") { e.preventDefault(); onToggleDigest(); return; }
+      if (k === "s") { e.preventDefault(); onToggleMarket(); return; }
       const hit = VIEW_MODES.find((m) => m.key === k);
       if (!hit) return;
       e.preventDefault();
@@ -36,7 +38,7 @@ export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, mu
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, onToggleChat, onToggleDigest, muted]);
+  }, [toggle, onToggleChat, onToggleDigest, onToggleMarket, muted]);
 
   return createPortal(
     <div className="ds-modebar-layer">
@@ -55,6 +57,16 @@ export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, mu
           </button>
         ))}
         <span className="ds-modebar__sep" aria-hidden="true" />
+        <button
+          type="button"
+          className={`ds-mode-btn${marketOpen ? " is-active" : ""}`}
+          aria-pressed={marketOpen}
+          title="Skill marketplace — press S"
+          onClick={onToggleMarket}
+        >
+          <span className="ds-mode-btn__cap" aria-hidden="true">S</span>
+          <span className="ds-mode-btn__label">Skills</span>
+        </button>
         <button
           type="button"
           className={`ds-mode-btn${digestOpen ? " is-active" : ""}`}

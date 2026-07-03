@@ -32,7 +32,7 @@ SOURCE
 - `gui/src/data/runIndex.ts:60` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
 SHAPE
 - `gui/src/data/runView.ts:172` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
-- `gui/src/data/runView.ts:633` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
+- `gui/src/data/runView.ts:636` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
 RENDER
 - `gui/src/components/WorkflowCanvas.tsx:139` — index→view→graph wiring (loadRunView+loadAgentCatalog→toFlowGraph)
 - `gui/src/components/WorkflowNode.tsx:274` — paints `NodeModeStrip` under the card when a view-mode is active
@@ -140,6 +140,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `8357625` 2026-07-03 — feat(gui): tool-icon vocabulary + promote/type the telemetry we already collect
 - `fadfaf6` 2026-07-03 — feat(gui): consolidated control-plane chip at bottom + liveness dot
 - `3aea9ce` 2026-07-03 — Merge worktree-gui-frontend-fixes: run-first compose (pi session) + driver-selected telemetry
+- `9641b93` 2026-07-03 — feat(gui): skill side panel — full skill-bundle info on click
+- `d7d9da6` 2026-07-03 — feat(gui): switch-workspace launcher (client)
+- `5eff54c` 2026-07-03 — feat(gui): base-agent rail on Basis mode — drag a preset onto a node to reassign agentType
 
 ### Lessons — memory cluster
 
@@ -164,6 +167,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
 - [[observe-single-data-path]]
+- [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
@@ -178,6 +182,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
+- [[skill-marketplace-gui-design]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
@@ -185,10 +190,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:633) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:172) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `loadIndex` (gui/src/data/runIndex.ts:61) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:636) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `loadRunView` (gui/src/data/runView.ts:173) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
 
-<sub>derived 2026-07-03 · arc=79 commits · files=8 · lessons=38</sub>
+<sub>derived 2026-07-03 · arc=82 commits · files=8 · lessons=40</sub>
 <!-- okf:auto-end -->
