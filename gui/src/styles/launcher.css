@@ -1,0 +1,202 @@
+/* ============================================================================
+   WorkspaceLauncher — the full-screen "switch workspace" launcher. A dim scrim
+   over the whole console (modal tier, above every rail/overlay) + a centered glass
+   window holding a search field and a grid of workspace (folder) cards. Entering a
+   card RE-SCOPES the console (the effect lives in CanvasInner). Recents-first order
+   + the current folder badged come from deriveWorkspaces; this file is only skin.
+   ========================================================================== */
+.ds-wsl-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(40px, 10vh, 120px) 20px 20px;
+  background: color-mix(in srgb, var(--ds-neutral-900, #171717) 22%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.ds-wsl {
+  width: min(92vw, 720px);
+  max-height: min(80vh, 640px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-4);
+  padding: var(--ds-space-5);
+  border-radius: var(--ds-radius-xl);
+  box-shadow: var(--ds-shadow-lg, var(--ds-shadow-md));
+}
+
+/* header — title + subtitle on the left, a close X on the right */
+.ds-wsl__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--ds-space-4); }
+.ds-wsl__titles { display: flex; flex-direction: column; gap: 2px; }
+.ds-wsl__title {
+  margin: 0;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-lg, 18px);
+  font-weight: var(--ds-weight-semibold, 600);
+  color: var(--ds-text-primary);
+  letter-spacing: -0.01em;
+}
+.ds-wsl__sub { margin: 0; font-family: var(--ds-font-sans); font-size: var(--ds-text-sm); color: var(--ds-text-tertiary); }
+.ds-wsl__close {
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px;
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast), border-color var(--ds-dur-fast);
+}
+.ds-wsl__close:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-wsl__close:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* search field — the shell's hairline input skin */
+.ds-wsl__search {
+  height: 38px;
+  padding: 0 var(--ds-space-4);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-md, 15px);
+  color: var(--ds-text-primary);
+  outline: none;
+  transition: border-color var(--ds-dur-fast) var(--ds-ease-standard), box-shadow var(--ds-dur-fast);
+}
+.ds-wsl__search::placeholder { color: var(--ds-text-tertiary); }
+.ds-wsl__search:focus-visible { border-color: var(--ds-accent); box-shadow: 0 0 0 2px var(--ds-accent-ring); }
+
+/* the card grid — scrolls within the window; responsive columns */
+.ds-wsl__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--ds-space-3);
+  overflow-y: auto;
+  padding: 2px;                 /* room for card focus rings */
+  margin: 0 -2px;
+}
+
+/* one workspace (folder) card — a left-aligned button; hover lifts, current is accent-rimmed */
+.ds-wsl-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: var(--ds-space-3) var(--ds-space-4);
+  min-height: 84px;
+  text-align: left;
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-bg-surface);
+  cursor: pointer;
+  transition: transform var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              background var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-wsl-card:hover { transform: translateY(-1px); box-shadow: var(--ds-shadow-md); border-color: var(--ds-border-strong); }
+.ds-wsl-card:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-wsl-card[data-current="true"] {
+  border-color: var(--ds-border-accent);
+  background: linear-gradient(var(--ds-accent-subtle), var(--ds-accent-subtle)), var(--ds-bg-surface);
+}
+.ds-wsl-card[data-unviewable="true"] { opacity: 0.5; cursor: not-allowed; }
+.ds-wsl-card[data-unviewable="true"]:hover { transform: none; box-shadow: none; border-color: var(--ds-border-hairline); }
+
+.ds-wsl-card__top { display: flex; align-items: center; gap: var(--ds-space-2); }
+.ds-wsl-card__name {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-md, 15px);
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* live dot — a folder with a running run (echoes the control-plane liveness dot) */
+.ds-wsl-card__dot {
+  flex: 0 0 auto;
+  width: 7px; height: 7px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-success);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--ds-success) 60%, transparent);
+}
+.ds-wsl-card__badge {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-accent-subtle);
+  color: var(--ds-accent);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+}
+.ds-wsl-card__root {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  direction: rtl; text-align: left;    /* keep the meaningful tail (the folder name) visible when truncated */
+}
+.ds-wsl-card__stats { font-family: var(--ds-font-sans); font-size: var(--ds-text-sm); color: var(--ds-text-secondary); }
+.ds-wsl-card__live { color: var(--ds-success-fg, var(--ds-success)); font-weight: var(--ds-weight-medium); }
+.ds-wsl-card__off { color: var(--ds-text-tertiary); }
+
+.ds-wsl__empty {
+  grid-column: 1 / -1;
+  padding: var(--ds-space-6) var(--ds-space-4);
+  text-align: center;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
+}
+
+/* ── confirm-on-live — a small nested alertdialog over the launcher ─────────────────────────────────────── */
+.ds-wsl-confirm-scrim {
+  position: fixed; inset: 0;
+  z-index: calc(var(--ds-z-modal) + 1);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--ds-neutral-900, #171717) 20%, transparent);
+}
+.ds-wsl-confirm {
+  width: min(90vw, 400px);
+  display: flex; flex-direction: column; gap: var(--ds-space-4);
+  padding: var(--ds-space-5);
+  border-radius: var(--ds-radius-xl);
+  box-shadow: var(--ds-shadow-lg, var(--ds-shadow-md));
+}
+.ds-wsl-confirm__note {
+  margin: 0;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-snug);
+  color: var(--ds-text-secondary);
+}
+.ds-wsl-confirm__note strong { color: var(--ds-text-primary); font-weight: var(--ds-weight-semibold, 600); }
+.ds-wsl-confirm__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--ds-space-2); }
+
+/* shared footer buttons (ghost + accent) — the shell's modal button voice, matching ControlPlaneChip */
+.ds-wsl__btn-ghost,
+.ds-wsl__btn-go {
+  height: 34px;
+  padding: 0 var(--ds-space-4);
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast), border-color var(--ds-dur-fast);
+}
+.ds-wsl__btn-ghost { border: 1px solid var(--ds-border-strong); background: var(--ds-bg-surface); color: var(--ds-text-secondary); }
+.ds-wsl__btn-ghost:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-wsl__btn-go { border: 1px solid var(--ds-accent); background: var(--ds-accent); color: var(--ds-text-inverse); }
+.ds-wsl__btn-go:hover { background: var(--ds-accent-hover); border-color: var(--ds-accent-hover); }
+.ds-wsl__btn-ghost:focus-visible, .ds-wsl__btn-go:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-wsl-card { transition: box-shadow var(--ds-dur-fast), border-color var(--ds-dur-fast); }
+  .ds-wsl-card:hover { transform: none; }
+}

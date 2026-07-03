@@ -1,14 +1,16 @@
 // `piflowctl gui` — launch the run viewer (the monorepo `gui/` Vite app) from ANYWHERE on PATH.
 //
-// The viewer is SCOPED TO THE LAUNCHED PROJECT: it shows the project you're in (or, from a parent dir, every
-// project beneath you) — never the whole accumulated global registry. Flow:
+// The viewer opens FOCUSED on the launched project but can SWITCH across workspaces (the in-app launcher).
+// So it SERVES every registered folder (the global registry, pruned to those still on disk) UNION the launched
+// project(s), while the launched project stays the initial FOCUS. Flow:
 //   (1) locate `gui/` relative to this CLI (so a globally-linked `piflowctl` still finds it),
-//   (2) resolve the DISPLAY SCOPE via the shared `resolveScope` (@piflow/core): the enclosing project (walk up
-//       to the nearest real `.piflow/`) OR, if launched outside a project, cwd; then every product AT/UNDER it,
-//   (3) start the GUI server, passing the scope via `PIFLOW_SCOPE_ROOTS` so the Vite middleware builds its
-//       snapshot from EXACTLY those roots (gui/vite.config.ts → core's `loadScopedRegistry`) — WITHOUT writing
-//       to the global ~/.piflow registry. The env channel is required because the spawned Vite server's own cwd
-//       is `gui/`, not the user's project, so it can't self-resolve the scope.
+//   (2) resolve the FOCUS via the shared `resolveScope` (@piflow/core): the enclosing project (walk up to the
+//       nearest real `.piflow/`) OR, if launched outside a project, cwd; then every product AT/UNDER it,
+//   (3) start the GUI server, passing the SERVED set via `PIFLOW_SCOPE_ROOTS` (focus ∪ pruned global registry)
+//       so the Vite middleware builds its snapshot from those roots (gui/vite.config.ts → core's
+//       `loadScopedRegistry`) — WITHOUT writing to the global ~/.piflow registry — and the FOCUS via
+//       `VITE_PIFLOW_HOME_ROOTS` so the client biases initial focus to the launched folder even after widening.
+//       The env channel is required because the spawned Vite server's own cwd is `gui/`, not the user's project.
 //
 // The viewer is the Vite dev server (it carries the index/products/stream middleware + HMR). It runs in the
 // foreground; Ctrl-C stops it. (`piflowctl tui` is the parallel front door for the terminal viewer.)
@@ -17,7 +19,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveScope } from '@piflow/core';
+import { resolveScope, loadRegistry, isProductRoot } from '@piflow/core';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -64,17 +66,27 @@ export async function runGuiCli(argv: string[]): Promise<void> {
     return;
   }
 
-  // 1) resolve the DISPLAY SCOPE — the launched project (+ nested products), or every product under cwd. Pass
-  //    it to the viewer via PIFLOW_SCOPE_ROOTS so the middleware serves EXACTLY this set (no global-registry write).
+  // 1) resolve the FOCUS (launched project + nested products) and widen the SERVED set to every registered
+  //    folder so the in-app "switch workspace" launcher has somewhere to switch to. The global registry is
+  //    pruned to roots that still exist AND are real product roots (drops dead / non-product junk entries).
+  //    PIFLOW_SCOPE_ROOTS = focus ∪ pruned-global (what the middleware serves, no global-registry write);
+  //    VITE_PIFLOW_HOME_ROOTS = focus (the client biases initial focus here even after widening).
   const { scopeRoot, roots } = resolveScope(process.cwd());
+  const globalRoots = loadRegistry().products.map((p) => p.root).filter((r) => existsSync(r) && isProductRoot(r));
+  const served = Array.from(new Set([...roots, ...globalRoots]));
   const env: NodeJS.ProcessEnv = { ...process.env };
-  if (roots.length) {
-    env.PIFLOW_SCOPE_ROOTS = roots.join(path.delimiter);
-    process.stdout.write(`piflowctl gui: ${roots.length} project(s) in scope under ${scopeRoot}:\n`);
-    for (const r of roots) process.stdout.write(`  • ${r}\n`);
+  if (served.length) {
+    env.PIFLOW_SCOPE_ROOTS = served.join(path.delimiter);
   } else {
-    delete env.PIFLOW_SCOPE_ROOTS; // never inherit a stale scope
-    process.stdout.write(`piflowctl gui: no piflow project at or under ${scopeRoot} — showing the global fleet view.\n`);
+    delete env.PIFLOW_SCOPE_ROOTS; // nothing registered and not in a project → middleware falls back to global
+  }
+  if (roots.length) {
+    env.VITE_PIFLOW_HOME_ROOTS = roots.join('\n'); // newline-joined: safe across OS path delimiters
+    process.stdout.write(`piflowctl gui: focus = ${roots.length} project(s) under ${scopeRoot}; serving ${served.length} workspace(s) (switchable):\n`);
+    for (const r of served) process.stdout.write(`  ${roots.includes(r) ? '▸' : '·'} ${r}\n`);
+  } else {
+    delete env.VITE_PIFLOW_HOME_ROOTS;
+    process.stdout.write(`piflowctl gui: no piflow project at or under ${scopeRoot} — serving ${served.length} registered workspace(s).\n`);
   }
 
   // 2) start the viewer (Vite dev server: serves /__piflow/index|products.json + /__piflow/stream/<run>,

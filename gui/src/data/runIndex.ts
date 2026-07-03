@@ -80,6 +80,16 @@ export function findThread(ix: GlobalIndex, run: string): ActiveThread | null {
   return null;
 }
 
+/** The focus-run ranking, shared by the global picker and the per-workspace picker: a `running` run wins
+ *  (follow what's happening NOW); else the most recently updated; else the last discovered. Null when empty. */
+function pickRunFromThreads(threads: IndexThread[]): string | null {
+  if (!threads.length) return null;
+  const running = threads.find((t) => t.state === "running");
+  if (running) return running.run;
+  const dated = threads.filter((t) => t.updatedAt).sort((a, b) => (a.updatedAt! < b.updatedAt! ? 1 : -1));
+  return (dated[0] ?? threads[threads.length - 1]).run;
+}
+
 /**
  * Pick the run to focus on first: a `running` run wins (follow what's happening NOW); else the most
  * recently updated; else the last discovered. Returns null for an empty index. This is what replaces
@@ -88,11 +98,91 @@ export function findThread(ix: GlobalIndex, run: string): ActiveThread | null {
 export function pickCurrentRun(ix: GlobalIndex): string | null {
   const threads: IndexThread[] = [];
   for (const p of ix.products) for (const ns of p.namespaces) for (const t of ns.threads) threads.push(t);
-  if (!threads.length) return null;
-  const running = threads.find((t) => t.state === "running");
-  if (running) return running.run;
-  const dated = threads.filter((t) => t.updatedAt).sort((a, b) => (a.updatedAt! < b.updatedAt! ? 1 : -1));
-  return (dated[0] ?? threads[threads.length - 1]).run;
+  return pickRunFromThreads(threads);
+}
+
+// ── Workspace (= product / folder) projection — the switch-workspace launcher's data ──────────────────────
+// A "workspace" in the UI is a `product` (a folder/repo). The launcher lists these; entering one re-scopes
+// the console to that folder's runs (+ its live pi session). These selectors are PURE — unit-tested, no I/O.
+
+/** One workspace (product/folder) summarized for the launcher grid. */
+export interface WorkspaceCard {
+  id: string;
+  name: string;
+  root: string;
+  /** number of templates (namespaces) authored in this folder. */
+  templateCount: number;
+  /** number of runs (threads) across all its templates. */
+  runCount: number;
+  /** how many of those runs are currently `running` (drives the live dot). */
+  runningCount: number;
+  /** the most recent thread `updatedAt` in the folder (recency sort key); null when it has no dated runs. */
+  lastUpdatedAt: string | null;
+  /** true when at least one run here is openable by this serve (else the folder is listed but not yet enterable). */
+  viewable: boolean;
+}
+
+/**
+ * Project the index into workspace cards, ordered the way a launcher should lead: folders with a LIVE run
+ * first, then most-recently-active, then alphabetical — i.e. "recents first". Pure.
+ */
+export function deriveWorkspaces(ix: GlobalIndex): WorkspaceCard[] {
+  const cards: WorkspaceCard[] = ix.products.map((p) => {
+    const threads = p.namespaces.flatMap((ns) => ns.threads);
+    const dated = threads.map((t) => t.updatedAt).filter((u): u is string => !!u).sort();
+    return {
+      id: p.id,
+      name: p.name,
+      root: p.root,
+      templateCount: p.namespaces.length,
+      runCount: threads.length,
+      runningCount: threads.filter((t) => t.state === "running").length,
+      lastUpdatedAt: dated.length ? dated[dated.length - 1] : null,
+      viewable: threads.some((t) => t.viewable),
+    };
+  });
+  return cards.sort((a, b) => {
+    if ((b.runningCount > 0 ? 1 : 0) !== (a.runningCount > 0 ? 1 : 0)) return (b.runningCount > 0 ? 1 : 0) - (a.runningCount > 0 ? 1 : 0);
+    if (a.lastUpdatedAt !== b.lastUpdatedAt) return (b.lastUpdatedAt ?? "") < (a.lastUpdatedAt ?? "") ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
+/** The product id (workspace) that owns a run, or null if the run isn't in the index. */
+export function workspaceOfRun(ix: GlobalIndex, run: string): string | null {
+  for (const p of ix.products)
+    for (const ns of p.namespaces)
+      for (const t of ns.threads)
+        if (t.run === run) return p.id;
+  return null;
+}
+
+/** Pick the run to focus when ENTERING a workspace: its running run > its newest > its last. Null if empty. */
+export function pickRunForWorkspace(ix: GlobalIndex, productId: string): string | null {
+  const p = ix.products.find((x) => x.id === productId);
+  if (!p) return null;
+  return pickRunFromThreads(p.namespaces.flatMap((ns) => ns.threads));
+}
+
+/** Parse the launched "home" folder roots the CLI passes to the client (VITE_PIFLOW_HOME_ROOTS, newline-joined).
+ *  Empty in raw dev / when unset — initial focus then falls back to the global running/newest run. */
+export function homeRoots(): string[] {
+  try {
+    const raw = (import.meta.env.VITE_PIFLOW_HOME_ROOTS ?? "") as string;
+    return raw ? raw.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The workspace (product id) whose folder is one of the launched home roots, or null. Biases initial focus to
+ *  the folder `piflowctl gui` was launched in, even after the served scope is widened to every registered folder. */
+export function homeWorkspace(ix: GlobalIndex, roots: string[]): string | null {
+  if (!roots.length) return null;
+  const norm = (p: string) => p.replace(/\/+$/, "");
+  const set = new Set(roots.map(norm));
+  const hit = ix.products.find((p) => set.has(norm(p.root)));
+  return hit ? hit.id : null;
 }
 
 export interface SwitcherEntry { run: string; viewable: boolean; productId: string; nsId: string; }

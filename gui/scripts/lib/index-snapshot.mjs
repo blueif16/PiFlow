@@ -64,8 +64,9 @@ export const loadScopedRegistry = core.loadScopedRegistry;
 /**
  * Build the unified snapshot from a registry, then post-map EVERY thread to add the two GUI-ONLY pointer
  * fields core omits — keeping the `IndexThread` shape src/data/runIndex.ts consumes unchanged:
- *   • viewable: always false — committed `gui/public/runs` is deprecated by the live `/__piflow/run-view`
- *     middleware (a run is streamed/distilled on demand, never served as a static file from the repo).
+ *   • viewable: true when the run has a resolvable on-disk dir — the live `/__piflow/run-view/<run>` middleware
+ *     distills ANY run in the served registry on demand by its absolute `runDir` (across folders alike), so
+ *     every served thread is openable. (The old committed-`gui/public/runs` static path is deprecated.)
  *   • runViewPath: the ABSOLUTE `<runDir>/run-view.json` when that file exists on disk, else null.
  * PURE delegate (no writes, no process.exit) — both the CLI and the live middleware call this.
  */
@@ -76,7 +77,7 @@ export async function buildSnapshot(registry) {
       ns.threads = (ns.threads ?? []).map((row) => {
         const viewFile = path.join(row.runDir, 'run-view.json');
         const runViewPath = fssync.existsSync(viewFile) ? viewFile : null;
-        return { ...row, runViewPath, viewable: false };
+        return { ...row, runViewPath, viewable: Boolean(row.runDir) };
       });
     }
   }
