@@ -97,6 +97,7 @@ export async function seedFromJournal(
   journal: Journal | null,
   fromIdx: number,
   noResume: boolean,
+  rerunNodes?: ReadonlySet<string>,
 ): Promise<{ decisions: Map<string, NodeDecision>; reused: Set<string> }> {
   const wf = ctx.wf;
   // Compute every node's envelope hash (the SAME identity finishNode journals), recorded on ctx so the
@@ -106,7 +107,14 @@ export async function seedFromJournal(
   ctx.journal.envHash = envHash;
 
   let decisions: Map<string, NodeDecision>;
-  if (noResume || !journal) {
+  if (rerunNodes && rerunNodes.size) {
+    // Targeted re-run (node --rerun): RUN exactly these ids, force-REUSE the rest — no journal/descendant/input cascade.
+    decisions = new Map(
+      Object.keys(wf.nodes).map((id) => [id, rerunNodes.has(id)
+        ? { decision: 'RUN' as const, reason: 'rerun-target' }
+        : { decision: 'REUSE' as const, reason: 'rerun-reuse' }]),
+    );
+  } else if (noResume || !journal) {
     // No journal (fresh run) or forced full re-run ⇒ every node RUNs.
     decisions = new Map(
       Object.keys(wf.nodes).map((id) => [id, { decision: 'RUN' as const, reason: noResume ? 'noResume' : 'no journal' }]),

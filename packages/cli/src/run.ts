@@ -189,6 +189,11 @@ export interface ParsedRunArgs {
    * Omit ⇒ the journal decides (reuse provably-unchanged nodes, re-run changed nodes + descendants).
    */
   noResume?: boolean;
+  /**
+   * Targeted re-run — force-RUN exactly these node ids, force-REUSE all others (the `node --rerun`
+   * primitive). Spread through `runFromTemplate` to `runWorkflow`; wins over the journal.
+   */
+  rerunNodes?: ReadonlySet<string>;
   /** Active run PROFILE name → resolved against the template's declared `profiles` (elides nodes before compile). */
   profile?: string;
   args: Record<string, string>;
@@ -739,6 +744,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     from: parsed.from,
     until: parsed.until,
     ...(parsed.noResume ? { noResume: true } : {}),
+    ...(parsed.rerunNodes && parsed.rerunNodes.size ? { rerunNodes: parsed.rerunNodes } : {}),
     profile: parsed.profile,
     providerName: parsed.provider,
     thinking: parsed.thinking,
