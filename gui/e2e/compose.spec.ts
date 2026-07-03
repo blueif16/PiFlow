@@ -222,7 +222,7 @@ for (const vp of [{ w: 1440, h: 900 }, { w: 1100, h: 800 }]) {
     const railBox = await rail.boundingBox();
     expect(railBox).not.toBeNull();
 
-    const chrome = [".ds-dir", ".react-flow__controls", ".ds-modebar", ".ds-epswitch__btn"];
+    const chrome = [".ds-dir", ".react-flow__controls", ".ds-modebar", ".ds-cpchip__btn"];
     for (const sel of chrome) {
       const el = page.locator(sel).first();
       if ((await el.count()) === 0) continue;

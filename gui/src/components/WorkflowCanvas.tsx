@@ -48,7 +48,7 @@ import { NodeExpandOverlay } from "./NodeExpandOverlay";
 import { FileExpandOverlay, openFileFor, type OpenFile } from "./FileExpandOverlay";
 import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
 import { MenuBar } from "./MenuBar";
-import { EndpointSwitcher } from "./EndpointSwitcher";
+import { ControlPlaneChip, type ControlHealth } from "./ControlPlaneChip";
 import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
 import { RunDigestPanel } from "./RunDigestPanel";
@@ -105,6 +105,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const endpointBase = useEndpoint().baseUrl;
 
   const [ix, setIx] = useState<GlobalIndex | null>(null);
+  // control-plane liveness for the ControlPlaneChip dot — driven by the index poll below (ok on a successful
+  // fetch, error on a failed one, connecting until the first result). A pure health signal, not a data input.
+  const [controlHealth, setControlHealth] = useState<ControlHealth>("connecting");
   const [activeRun, setActiveRun] = useState<string>("");
   const [dir, setDir] = useState<{ tree: DirEntry[]; fileToNode: Record<string, string> }>({ tree: [], fileToNode: {} });
   // (P3) the G6 agent-preset catalog for the SSE render path — fetched once per run (it is ~static), so the
@@ -159,8 +162,11 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
         if (!alive) return;
         everLoaded = true;
         setIx(index);
+        setControlHealth("ok"); // the control plane answered → the dot is green
       } catch (err) {
-        if (alive && !everLoaded) setLoadError(String((err as Error)?.message ?? err));
+        if (!alive) return;
+        setControlHealth("error"); // poll failed → the dot is red (a live liveness signal, not just first-load)
+        if (!everLoaded) setLoadError(String((err as Error)?.message ?? err));
       }
     };
     refresh();
@@ -447,7 +453,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             <div
               role="alert"
               style={{
-                // top: 60 clears the top-center EndpointSwitcher chip (chrome floats above content, so content
+                // top: 60 keeps the alert clear of the top chrome band (chrome floats above content, so content
                 // must clear its band — the same law as the palette-row / HUD-caption clearances).
                 position: "absolute", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 200,
                 padding: "10px 14px", borderRadius: 8, fontSize: 13, fontFamily: "var(--ds-font-mono)",
@@ -511,8 +517,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
               scrim (by design), so opening one must close the other or they stack. */}
           <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} />
-          {/* Global running-location indicator (top-center): local ⇄ cloud at a glance, one-click switch via setEndpoint. */}
-          <EndpointSwitcher />
+          {/* Consolidated control-plane control (bottom-right, beside the chat launcher): the local ⇄ cloud
+              switch + connect-a-remote, with a liveness dot (green reachable / red unreachable). */}
+          <ControlPlaneChip health={controlHealth} />
           <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen} />
           <FusionSaveBar active={mode === "fusion"} />
           {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring

@@ -1,0 +1,179 @@
+/* ============================================================================
+   ControlPlaneChip — the consolidated control-plane control, pinned bottom-RIGHT
+   just to the left of the pi chat launcher (a separate component from chat). One
+   angular glass chip = a connection DOT + the local/cloud glyph; its confirm/connect
+   popover opens UPWARD (bottom-anchored). Chrome tier, portaled above the overlay
+   scrim like the MenuBar. The layer wraps its content so canvas clicks fall through
+   around the small chip.
+   ========================================================================== */
+.ds-cpchip-layer {
+  position: fixed;
+  /* clear the 44px chat launcher (bottom-right, inset clamp(10,1.6vw,18)) + a gap */
+  right: calc(clamp(10px, 1.6vw, 18px) + 54px);
+  bottom: calc(clamp(10px, 1.6vh, 18px) + 6px);   /* vertically centred against the 44px launcher */
+  z-index: var(--ds-z-popover);                    /* above the overlay + its scrim, peer of the MenuBar */
+  display: flex;
+  flex-direction: column-reverse;                  /* popover (2nd child) renders ABOVE the chip */
+  align-items: flex-end;                            /* right-align the wider popover to the chip */
+  gap: var(--ds-space-2);
+  pointer-events: none;                             /* only the chip + popover are interactive */
+}
+.ds-cpchip-layer > * { pointer-events: auto; }
+
+/* the resting indicator — an angular glass chip (right-angle language, radius-md). Holds the health dot
+   + the local/cloud glyph. ICON-ONLY: the shape + accent carry local vs cloud, the dot carries liveness. */
+.ds-cpchip__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-glass-bg-strong);
+  box-shadow: var(--ds-shadow-sm);
+  cursor: pointer;
+  transition: transform var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              background var(--ds-dur-fast) var(--ds-ease-standard),
+              color var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-cpchip__btn:hover { transform: translateY(-1px); box-shadow: var(--ds-shadow-md); }
+.ds-cpchip__btn:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* LOCAL — calm, neutral ink. This machine's serve. */
+.ds-cpchip__btn[data-kind="local"] { color: var(--ds-text-secondary); }
+.ds-cpchip__btn[data-kind="local"]:hover { color: var(--ds-text-primary); }
+
+/* CLOUD — the loud state: blue accent glyph + rim + faint tint, echoing the cloud node skin. */
+.ds-cpchip__btn[data-kind="cloud"] {
+  color: var(--ds-accent);
+  border-color: var(--ds-border-accent);
+  background: linear-gradient(var(--ds-cloud-tint), var(--ds-cloud-tint)), var(--ds-glass-bg-strong);
+  box-shadow: var(--ds-shadow-sm), 0 0 0 3px var(--ds-accent-ring);
+}
+.ds-cpchip__btn[data-kind="cloud"]:hover { color: var(--ds-accent-hover); }
+
+/* the connection DOT — before the glyph. green = reachable · red = unreachable · amber = connecting
+   (pulses only while connecting). Signals liveness independent of local/cloud (the glyph carries that). */
+.ds-cpchip__dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-neutral-400);
+}
+.ds-cpchip__dot[data-health="ok"] { background: var(--ds-success); box-shadow: 0 0 5px color-mix(in srgb, var(--ds-success) 60%, transparent); }
+.ds-cpchip__dot[data-health="error"] { background: var(--ds-error, var(--ds-error-fg)); box-shadow: 0 0 5px color-mix(in srgb, var(--ds-error-fg) 55%, transparent); }
+.ds-cpchip__dot[data-health="connecting"] { background: var(--ds-warning-fg); animation: ds-cpchip-pulse 1.2s ease-in-out infinite; }
+@keyframes ds-cpchip-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+
+/* ── the anchored confirm/connect popover (small glass card ABOVE the chip; NOT a scrim modal) ─────────── */
+.ds-cpchip__pop {
+  width: min(84vw, 300px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-3);
+  padding: var(--ds-space-4);
+  border-radius: var(--ds-radius-xl);
+}
+
+/* current → target header, each side an icon + label chip */
+.ds-cpchip__head { display: flex; align-items: center; gap: var(--ds-space-2); }
+.ds-cpchip__state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--ds-space-2);
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-text-secondary);
+}
+.ds-cpchip__state[data-kind="cloud"] {
+  color: var(--ds-accent);
+  border-color: var(--ds-border-accent);
+  background: var(--ds-accent-subtle);
+}
+.ds-cpchip__state[data-current="true"] { opacity: 0.7; }
+.ds-cpchip__arrow { color: var(--ds-text-tertiary); font-family: var(--ds-font-mono); }
+
+.ds-cpchip__note {
+  margin: 0;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-snug);
+  color: var(--ds-text-secondary);
+}
+.ds-cpchip__url { font-family: var(--ds-font-mono); color: var(--ds-text-primary); word-break: break-all; }
+
+/* inline URL/token entry (the local→cloud degrade path) — the shell's hairline field skin */
+.ds-cpchip__field { display: flex; flex-direction: column; gap: var(--ds-space-1); }
+.ds-cpchip__label {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  color: var(--ds-text-tertiary);
+}
+.ds-cpchip__input {
+  height: 32px;
+  padding: 0 var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  outline: none;
+  transition: border-color var(--ds-dur-fast) var(--ds-ease-standard), box-shadow var(--ds-dur-fast);
+}
+.ds-cpchip__input:focus-visible { border-color: var(--ds-accent); box-shadow: 0 0 0 2px var(--ds-accent-ring); }
+
+.ds-cpchip__error {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-error-fg);
+  line-height: var(--ds-leading-snug);
+}
+
+/* footer — cancel (ghost) + the accent action, mirroring the modal button voice */
+.ds-cpchip__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--ds-space-2); }
+.ds-cpchip__btn-ghost,
+.ds-cpchip__btn-go {
+  height: 32px;
+  padding: 0 var(--ds-space-3);
+  border-radius: var(--ds-radius-md);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast), border-color var(--ds-dur-fast);
+}
+.ds-cpchip__btn-ghost {
+  border: 1px solid var(--ds-border-strong);
+  background: var(--ds-bg-surface);
+  color: var(--ds-text-secondary);
+}
+.ds-cpchip__btn-ghost:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-cpchip__btn-go {
+  border: 1px solid var(--ds-accent);
+  background: var(--ds-accent);
+  color: var(--ds-text-inverse);
+  text-transform: capitalize;
+}
+.ds-cpchip__btn-go:not(:disabled):hover { background: var(--ds-accent-hover); border-color: var(--ds-accent-hover); }
+.ds-cpchip__btn-go:disabled { opacity: 0.55; cursor: not-allowed; }
+.ds-cpchip__btn-ghost:focus-visible,
+.ds-cpchip__btn-go:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-cpchip__btn { transition: box-shadow var(--ds-dur-fast), border-color var(--ds-dur-fast), color var(--ds-dur-fast); }
+  .ds-cpchip__btn:hover { transform: none; }
+  .ds-cpchip__dot[data-health="connecting"] { animation: none; opacity: 0.8; }
+}

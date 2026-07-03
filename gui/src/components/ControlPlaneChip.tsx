@@ -1,20 +1,26 @@
 /**
- * EndpointSwitcher — the GLOBAL running-location indicator + one-click local⇄cloud toggle. A small angular
- * glass chip pinned top-CENTER of the viewport (a persistent reminder, clear of the top-left navigator and the
- * top-right MenuBar). Icon-ONLY at rest: a neutral MONITOR glyph = local (same-origin serve), a blue CLOUD
- * glyph = a remote control plane. The URL rides the tooltip, never as visible text (the text label the user
- * disliked is gone).
+ * ControlPlaneChip — the CONSOLIDATED control-plane control, pinned bottom-right beside the pi chat
+ * launcher (extracted from the old top-center EndpointSwitcher). ONE angular glass chip that merges the
+ * two remote actions into a single anchored popover:
+ *   - SWITCH the whole console local ⇄ cloud (one-click, when a remote is known this session), and
+ *   - CONNECT a fresh remote control plane (the degrade path: a URL + optional bearer).
  *
- * Click opens a small ANCHORED confirmation popover (not a modal, no scrim): it names current → target and a
- * single Confirm re-points the WHOLE console via `setEndpoint` — the SAME runtime-repoint the migrate switch
- * uses (apiBase.ts). Escape or a click-away cancels. Switching local → cloud with no remote known this session
- * NEVER fabricates a URL: the popover degrades to a small URL (+ optional token) field, and Connect points there.
+ * At rest it is icon-only: a MONITOR glyph = local (same-origin serve), a CLOUD glyph = a remote control
+ * plane — PLUS a small connection DOT before the glyph that colours the plane's liveness (green = reachable,
+ * red = unreachable, amber = connecting). The URL rides the tooltip, never as a visible label.
+ *
+ * Click opens the popover ABOVE the chip (no scrim): current → target with a single Confirm that re-points
+ * the WHOLE console via `setEndpoint` (the SAME runtime repoint the migrate switch uses). Escape / click-away
+ * cancels. Local → cloud with no remote known this session degrades to a URL (+ token) field.
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { useEndpoint, endpointKind, planEndpointSwitch, getRememberedRemote, setEndpoint } from "../data/apiBase";
-import "../styles/endpoint-switcher.css";
+import "../styles/control-plane-chip.css";
+
+/** liveness of the control plane the console is pointed at (from the canvas index poll). */
+export type ControlHealth = "ok" | "error" | "connecting";
 
 /** local = this machine's serve. A monitor outline (calm, neutral). */
 function MonitorGlyph({ size = 16 }: { size?: number }) {
@@ -43,7 +49,7 @@ function CloudGlyph({ size = 16 }: { size?: number }) {
 const Glyph = ({ kind, size }: { kind: "local" | "cloud"; size?: number }) =>
   kind === "cloud" ? <CloudGlyph size={size} /> : <MonitorGlyph size={size} />;
 
-export function EndpointSwitcher() {
+export function ControlPlaneChip({ health = "connecting" }: { health?: ControlHealth }) {
   const ep = useEndpoint();
   const kind = endpointKind(ep.baseUrl);
   const [open, setOpen] = useState(false);
@@ -66,15 +72,12 @@ export function EndpointSwitcher() {
   // Reset the inline entry each time the popover opens (a fresh remembered-remote read happens in render below).
   useEffect(() => { if (open) { setUrl(""); setToken(""); setErr(null); } }, [open]);
 
-  // Resolve the toggle at render: current endpoint + the last cloud seen this session (module state, changed
-  // only alongside a setEndpoint → useEndpoint re-render, so reading it here stays consistent).
+  // Resolve the toggle at render: current endpoint + the last cloud seen this session.
   const plan = planEndpointSwitch(ep, getRememberedRemote());
 
-  // Confirm the ready toggle — feed the resolved endpoint to the SAME repoint the migrate switch calls.
   function confirmSwitch() {
     if (plan.ready) { setEndpoint(plan.endpoint); setOpen(false); }
   }
-  // Connect to a freshly-entered cloud plane (the degrade path) — never fabricated, always user-supplied.
   function connectRemote() {
     const baseUrl = url.trim();
     if (!baseUrl) { setErr("enter a control-plane URL"); return; }
@@ -83,55 +86,57 @@ export function EndpointSwitcher() {
   }
 
   const detail = ep.baseUrl || "same-origin";
+  const healthLabel = health === "ok" ? "reachable" : health === "error" ? "unreachable" : "connecting";
 
   return createPortal(
-    <div className="ds-epswitch-layer" ref={layerRef}>
+    <div className="ds-cpchip-layer" ref={layerRef}>
       <button
         type="button"
-        className="ds-epswitch__btn"
+        className="ds-cpchip__btn"
         data-kind={kind}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={`Running on ${kind} (${detail}) — switch control plane`}
-        title={`Running on ${kind} · ${detail} — click to switch`}
+        aria-label={`Control plane: ${kind} (${detail}) — ${healthLabel}. Click to switch or connect.`}
+        title={`${kind} · ${detail} · ${healthLabel} — click to switch / connect`}
         onClick={() => setOpen((o) => !o)}
       >
+        <span className="ds-cpchip__dot" data-health={health} aria-hidden="true" />
         <Glyph kind={kind} />
       </button>
 
       {open && (
-        <GlassSurface as="div" variant="window" legibleText role="dialog" aria-label="Switch control plane" className="ds-epswitch__pop">
+        <GlassSurface as="div" variant="window" legibleText role="dialog" aria-label="Control plane" className="ds-cpchip__pop">
           {plan.ready ? (
             <>
-              <div className="ds-epswitch__head">
-                <span className="ds-epswitch__state" data-kind={plan.from} data-current="true">
+              <div className="ds-cpchip__head">
+                <span className="ds-cpchip__state" data-kind={plan.from} data-current="true">
                   <Glyph kind={plan.from} size={14} /> {plan.from}
                 </span>
-                <span className="ds-epswitch__arrow" aria-hidden="true">→</span>
-                <span className="ds-epswitch__state" data-kind={plan.to}>
+                <span className="ds-cpchip__arrow" aria-hidden="true">→</span>
+                <span className="ds-cpchip__state" data-kind={plan.to}>
                   <Glyph kind={plan.to} size={14} /> {plan.to}
                 </span>
               </div>
-              <p className="ds-epswitch__note">
+              <p className="ds-cpchip__note">
                 {plan.to === "local"
                   ? "Point the console at your local serve (same-origin)."
-                  : <>Point the console at <span className="ds-epswitch__url">{plan.endpoint.baseUrl}</span>.</>}
+                  : <>Point the console at <span className="ds-cpchip__url">{plan.endpoint.baseUrl}</span>.</>}
               </p>
-              <div className="ds-epswitch__foot">
-                <button type="button" className="ds-epswitch__btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
-                <button type="button" className="ds-epswitch__btn-go" onClick={confirmSwitch}>Switch to {plan.to}</button>
+              <div className="ds-cpchip__foot">
+                <button type="button" className="ds-cpchip__btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
+                <button type="button" className="ds-cpchip__btn-go" onClick={confirmSwitch}>Switch to {plan.to}</button>
               </div>
             </>
           ) : (
             <>
-              <div className="ds-epswitch__head">
-                <span className="ds-epswitch__state" data-kind="cloud"><CloudGlyph size={14} /> connect a cloud plane</span>
+              <div className="ds-cpchip__head">
+                <span className="ds-cpchip__state" data-kind="cloud"><CloudGlyph size={14} /> connect a cloud plane</span>
               </div>
-              <p className="ds-epswitch__note">No cloud control plane is known yet — enter one to point the console at it.</p>
-              <label className="ds-epswitch__field">
-                <span className="ds-epswitch__label">Control-plane URL</span>
+              <p className="ds-cpchip__note">No cloud control plane is known yet — enter one to point the console at it.</p>
+              <label className="ds-cpchip__field">
+                <span className="ds-cpchip__label">Control-plane URL</span>
                 <input
-                  className="ds-epswitch__input"
+                  className="ds-cpchip__input"
                   value={url}
                   onChange={(e) => { setUrl(e.target.value); setErr(null); }}
                   onKeyDown={(e) => { if (e.key === "Enter") connectRemote(); }}
@@ -141,10 +146,10 @@ export function EndpointSwitcher() {
                   aria-label="Control-plane URL"
                 />
               </label>
-              <label className="ds-epswitch__field">
-                <span className="ds-epswitch__label">Bearer token (optional)</span>
+              <label className="ds-cpchip__field">
+                <span className="ds-cpchip__label">Bearer token (optional)</span>
                 <input
-                  className="ds-epswitch__input"
+                  className="ds-cpchip__input"
                   value={token}
                   onChange={(e) => setToken(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") connectRemote(); }}
@@ -153,10 +158,10 @@ export function EndpointSwitcher() {
                   aria-label="Bearer token"
                 />
               </label>
-              {err && <div className="ds-epswitch__error" role="alert">{err}</div>}
-              <div className="ds-epswitch__foot">
-                <button type="button" className="ds-epswitch__btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
-                <button type="button" className="ds-epswitch__btn-go" onClick={connectRemote} disabled={!url.trim()}>Connect</button>
+              {err && <div className="ds-cpchip__error" role="alert">{err}</div>}
+              <div className="ds-cpchip__foot">
+                <button type="button" className="ds-cpchip__btn-ghost" onClick={() => setOpen(false)}>Cancel</button>
+                <button type="button" className="ds-cpchip__btn-go" onClick={connectRemote} disabled={!url.trim()}>Connect</button>
               </div>
             </>
           )}

@@ -36,6 +36,9 @@ out/
 
 # piflow example workflows: the template is committed; per-run threads are regenerable.
 .piflow/*/runs/
+# same, but for .piflow trees NESTED under a subdir (e.g. deploy/*/e2e-template/.piflow/<wf>/runs/) —
+# run output is regenerable and must never be committed, wherever the .piflow tree lives.
+**/.piflow/*/runs/
 
 # Claude Code harness artifacts: live git worktrees + session-persisted workflow scripts
 # (regenerable, machine-local). Tracked .claude/skills/ stay tracked.

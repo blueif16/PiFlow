@@ -26,8 +26,8 @@ import "../styles/startrun.css";
 // `ix` is owned + LIVE-polled by CanvasInner (single source of truth) and passed down — the switcher
 // list + status chip stay fresh as runs start / progress without the bar holding its own loader.
 // `onStartRun` deploys the StartRunPanel (owned by CanvasInner so it can wire the returned run into
-// the run-select seam). Which control server the GUI talks to is shown by the global EndpointSwitcher
-// (top-center), not here — this bar carries the workspace/run switcher + run actions.
+// the run-select seam). Which control server the GUI talks to is shown by the ControlPlaneChip
+// (bottom-right, beside the chat launcher), not here — this bar carries the workspace/run switcher + run actions.
 export function MenuBar({ activeRun, onSelectRun, onStartRun, onMigrateRun, ix }: { activeRun: string; onSelectRun: (run: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null }) {
   const { expandedId, collapse } = useExpand();
   const { fitView } = useReactFlow();
