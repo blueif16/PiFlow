@@ -105,6 +105,33 @@ describe('piflowctl catalog introspect — dispatch to the injected core seam', 
     expect(r.out).toContain('mcp.everything:add');
   });
 
+  it('--as maps onto { as } so a registry-named server aliases to the local name specs select', async () => {
+    let seen: IntrospectMcpServerOpts | undefined;
+    const r = await run(['introspect', 'ai.exa/exa', '--as', 'exa'], {
+      introspect: async (opts) => {
+        seen = opts;
+        return { server: 'ai.exa/exa', as: 'exa', toolCount: 1, addresses: ['mcp.exa:web_search_exa'] };
+      },
+    });
+    expect(r.code).toBe(0);
+    expect(seen?.server).toBe('ai.exa/exa');
+    expect(seen?.as).toBe('exa');
+    expect(r.out).toContain('mcp.exa:web_search_exa');
+  });
+
+  it('--as without a value is usage: exit 1 and the seam is NEVER called', async () => {
+    let called = false;
+    const r = await run(['introspect', 'ai.exa/exa', '--as'], {
+      introspect: async () => {
+        called = true;
+        return INTROSPECTED;
+      },
+    });
+    expect(r.code).toBe(1);
+    expect(called).toBe(false);
+    expect(r.err).toContain('--as');
+  });
+
   it('--json emits the raw IntrospectResult', async () => {
     const r = await run(['introspect', 'everything', '--json'], { introspect: async () => INTROSPECTED });
     expect(r.code).toBe(0);

@@ -24,7 +24,7 @@ export interface CatalogDeps {
 
 const USAGE =
   `usage: piflowctl catalog sync [--base-url <url>] [--max-pages <n>] [--json]\n` +
-  `       piflowctl catalog introspect <server> [--json]\n`;
+  `       piflowctl catalog introspect <server> [--as <alias>] [--json]\n`;
 
 /** `--name <value>` lookup (the blueprint.ts flag convention). */
 function flag(argv: string[], name: string): string | undefined {
@@ -79,14 +79,22 @@ export async function runCatalogCli(argv: string[], deps: CatalogDeps = {}): Pro
     }
 
     case 'introspect': {
-      const server = rest.find((a) => !a.startsWith('-'));
+      // `--as <alias>` — write under the LOCAL name specs select (registry names never match short names).
+      const asIdx = rest.indexOf('--as');
+      const as = asIdx >= 0 ? rest[asIdx + 1] : undefined;
+      if (asIdx >= 0 && (!as || as.startsWith('-'))) {
+        err(`piflowctl catalog introspect: --as requires an alias value.\n${USAGE}`);
+        return 1;
+      }
+      // The positional server = the first non-flag arg that is NOT the --as value.
+      const server = rest.find((a, i) => !a.startsWith('-') && (asIdx < 0 || i !== asIdx + 1));
       if (!server) {
         err(`piflowctl catalog introspect <server> — a server name is required.\n${USAGE}`);
         return 1;
       }
       let result: IntrospectResult;
       try {
-        result = await introspect({ server });
+        result = await introspect({ server, ...(as ? { as } : {}) });
       } catch (e) {
         err(`piflowctl catalog introspect: ${(e as Error).message}\n`);
         return 1;
