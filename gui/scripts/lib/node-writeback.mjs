@@ -43,6 +43,8 @@ export function nodeJsonPathFor(templateDir, nodeId) {
 //   judge     → op{ when:'on-failure', action:{kind:'rerouteTo', node:<self>, max} } + a PERSISTED judgeGate
 //   human     → the G5 `checkpoint` field on the node (NOT an op[] entry — types.ts CheckpointSpec)
 //   floor     → op{ when:'post', gate:{kind, path?, param?, advisory?}, onFailure }     (structural floor)
+//   agent     → SETS the node's `agentType` (base-agent reassign — P1 basis rail). TEMPLATE-ONLY: the
+//               preset is expanded at author time, so the run bake REJECTS this kind (see bakeNodeEditToRun).
 //
 // JUDGE auto-expansion is REAL (no longer deferred): a judge chip PERSISTS the `judgeGate` descriptor
 // (judgeTier/rubric/threshold/policy — the `JudgeGate` shape, gate-authoring.ts) onto node.json in the
@@ -101,8 +103,14 @@ export function chipToOps(chip, nodeId) {
       if (ckKind === "select" && Array.isArray(chip.choices) && chip.choices.length) checkpointPatch.choices = chip.choices.map(String);
       return { ops: [], checkpointPatch };
     }
+    case "agent": {
+      // Base-agent reassign (P1 basis rail) → SET the node's `agentType` (schema: a plain non-empty string).
+      // Never touches the op[] lane; a second drop OVERWRITES the prior base (one base per node).
+      if (typeof chip.agentType !== "string" || !chip.agentType.trim().length) throw new WritebackError("agent chip requires a non-empty `agentType`");
+      return { ops: [], agentTypePatch: chip.agentType.trim() };
+    }
     default:
-      throw new WritebackError(`unknown gate chip kind "${chip.kind}" (expected execution | floor | judge | human)`);
+      throw new WritebackError(`unknown gate chip kind "${chip.kind}" (expected execution | floor | judge | human | agent)`);
   }
 }
 
@@ -127,13 +135,15 @@ export class WritebackError extends Error {
 export function applyEdit(node, nodeId, edit) {
   if (!node || typeof node !== "object" || Array.isArray(node)) throw new WritebackError("node.json must be a JSON object");
   if (!edit || typeof edit !== "object") throw new WritebackError("edit must be { chip }");
-  const { ops, checkpointPatch, judgeGate } = chipToOps(edit.chip, nodeId);
+  const { ops, checkpointPatch, judgeGate, agentTypePatch } = chipToOps(edit.chip, nodeId);
   const next = { ...node };
   if (ops.length) next.op = [...(Array.isArray(node.op) ? node.op : []), ...ops];
   if (checkpointPatch) next.checkpoint = { ...(node.checkpoint && typeof node.checkpoint === "object" ? node.checkpoint : {}), ...checkpointPatch };
   // PERSIST the judge gate descriptor onto node.json — the loader materializes a real `<id>__judge` node
   // from it (judge/materialize.ts). A second judge chip OVERWRITES the prior gate (one judge per producer).
   if (judgeGate) next.judgeGate = judgeGate;
+  // Base-agent reassign (agent chip) — SET, not append: one base per node, a re-drop overwrites.
+  if (agentTypePatch) next.agentType = agentTypePatch;
   return { node: next, judgeGate };
 }
 
@@ -223,6 +233,12 @@ export async function writeNodeEdit(templateDir, nodeId, edit, validate) {
  */
 export async function bakeNodeEditToRun(runDir, templateDir, nodeId, edit, validate, summarize) {
   if (!isSafeNodeId(nodeId)) return { ok: false, status: 400, body: { error: "missing or unsafe nodeId" } };
+
+  // An AGENT chip is TEMPLATE-ONLY by design: agentType is structural (the preset expands into the node's
+  // tools/prompt at author time), so it cannot be baked onto an already-recorded run — reject it up front.
+  if (edit && typeof edit === "object" && edit.chip && typeof edit.chip === "object" && edit.chip.kind === "agent") {
+    return { ok: false, status: 400, body: { error: "an agent chip is template-only (agentType is structural) — apply it to the template instead" } };
+  }
 
   // 1. the node's CURRENT authored config (template) is the base the edit applies on top of.
   let node;

@@ -1,0 +1,191 @@
+/* AgentRail + NodeAgentDrop + AgentDropCard — the Basis mode's base-agent reassign surfaces. Clones the
+   compose gate-rail idiom (gaterail.css): a body-portal layer with pointer-events:none, so only the rail
+   rows / card take pointer events and nothing ever covers canvas content. */
+
+/* ── The rail: a vertical stack of base-agent avatars on the LEFT edge (the GateRail slot, Basis mode) ── */
+.ds-agentrail-layer {
+  position: fixed;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: var(--ds-z-rail);
+  pointer-events: none; /* only the rail items are interactive */
+}
+.ds-agentrail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* a rail row = a resting circular avatar that EXPANDS in place on hover/focus to reveal name + eyebrow */
+.ds-agentrail__item {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius-lg);
+  background: transparent;
+  cursor: grab;
+  text-align: left;
+  color: inherit;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-agentrail__item:active { cursor: grabbing; }
+
+/* the circular face slot (the ds-basiscard__face idiom, rail-sized) — tinted by the base's color */
+.ds-agentrail__face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border-strong);
+}
+.ds-agentrail__face svg { width: 18px; height: 18px; }
+.ds-agentrail__face .ds-agentface { width: 32px; height: 32px; border: none; }
+
+/* the label reveals on hover/focus — collapsed (0 width) at rest so the rail is just avatars */
+.ds-agentrail__label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition: max-width var(--ds-dur-base) var(--ds-ease-standard),
+              opacity var(--ds-dur-fast) var(--ds-ease-standard),
+              margin-left var(--ds-dur-base) var(--ds-ease-standard);
+}
+.ds-agentrail__item:hover,
+.ds-agentrail__item:focus-visible {
+  background: var(--ds-glass-bg-strong, #fff);
+  border-color: var(--ds-border-hairline);
+  box-shadow: var(--ds-shadow-md);
+  outline: none;
+}
+.ds-agentrail__item:hover .ds-agentrail__label,
+.ds-agentrail__item:focus-visible .ds-agentrail__label {
+  max-width: 300px;
+  opacity: 1;
+  margin-left: 10px;
+  padding-right: 8px;
+}
+.ds-agentrail__name {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-primary);
+}
+.ds-agentrail__desc {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── on-node BASIS drop slot — a slim invisible band over the basis card; a glow on drag-over ── */
+.ds-agentdrop {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  min-height: 34px;
+  pointer-events: auto; /* interactive — accepts a dropped rail avatar */
+  border: 1px solid transparent; /* no container box at rest — the basis card shows through */
+  border-radius: var(--ds-radius-md);
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-agentdrop.is-over {
+  border-color: var(--ds-accent);
+  border-style: dashed;
+  background: var(--ds-accent-subtle, var(--ds-bg-hover));
+  box-shadow: 0 0 0 3px var(--ds-accent-ring, rgba(0, 0, 0, 0.06));
+}
+
+/* the node the open reassign card is bound to — kept highlighted (the compose-target idiom) */
+.ds-node[data-basis-target="true"] { outline: 2px solid var(--ds-accent); outline-offset: 3px; }
+
+/* ── AgentDropCard body — the current → dragged identity comparison + the preset's definition ── */
+.ds-agentconfirm { display: flex; flex-direction: column; gap: var(--ds-space-3); }
+.ds-agentconfirm__vs { display: flex; align-items: center; gap: var(--ds-space-2); }
+.ds-agentconfirm__side {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 3px 11px 3px 4px;
+  border-radius: 999px;
+  background: var(--ds-bg-surface);
+  border: 1px solid var(--ds-border-strong);
+}
+.ds-agentconfirm__side[data-role="next"] { border-color: var(--ds-accent); }
+.ds-agentconfirm__arrow { color: var(--ds-text-tertiary); flex: none; }
+.ds-agentconfirm__face {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ds-bg-base, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--ds-border-strong);
+}
+.ds-agentconfirm__face svg { width: 14px; height: 14px; }
+.ds-agentconfirm__face .ds-agentface { width: 20px; height: 20px; border: none; }
+.ds-agentconfirm__name {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-agentconfirm__key {
+  font-family: var(--ds-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ds-text-tertiary);
+}
+.ds-agentconfirm__prompt {
+  margin: 0;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  line-height: 1.5;
+  color: var(--ds-text-secondary);
+}
+.ds-agentconfirm__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.ds-agentconfirm__tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--ds-border-hairline);
+  background: var(--ds-bg-surface);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-agentrail__item,
+  .ds-agentrail__label,
+  .ds-agentdrop { transition: none; }
+}

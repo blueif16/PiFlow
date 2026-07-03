@@ -352,6 +352,73 @@ describe("bakeNodeEditToRun — run-first gate edit (writes .pi/run.json, NOT th
   });
 });
 
+// (P1 · basis rail) The AGENT chip: reassign a node's base agent by SETTING `agentType` on the template
+// node.json. TEMPLATE-ONLY by design — agentType is structural (the preset is expanded at author time),
+// so the run-bake path must REJECT it with a clear error. These prove the write lands + schema-validates,
+// a malformed chip is refused, and the run bake refuses the kind entirely (run.json byte-untouched).
+describe("agent chip — reassign the node's base agent (TEMPLATE-ONLY)", () => {
+  it("writeNodeEdit sets agentType on disk (schema-valid round-trip), other fields untouched", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    try {
+      const before = JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8"));
+      expect(before.agentType).toBeUndefined(); // precondition: bespoke node, no base yet
+
+      const res = await writeNodeEdit(templateDir, "build", { chip: { kind: "agent", agentType: "coder" } }, validate);
+      expect(res.status).toBe(200);
+
+      // ASSERT THE ON-DISK FILE — the agentType landed, validates against the REAL nodeSchema, additive.
+      const after = JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8"));
+      expect(after.agentType).toBe("coder");
+      expect(validate(nodeSchema, after).ok).toBe(true);
+      expect(after.contract).toEqual(before.contract);
+      expect(after.op).toBeUndefined(); // an agent chip never touches the gate lane
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("REASSIGNS: overwrites an existing agentType (the whole point of the basis rail)", async () => {
+    const node = { ...baseNode(), agentType: "explore" };
+    const { root, templateDir } = await makeTemplate(node);
+    try {
+      const res = await writeNodeEdit(templateDir, "build", { chip: { kind: "agent", agentType: "reviewer" } }, validate);
+      expect(res.status).toBe(200);
+      const after = JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8"));
+      expect(after.agentType).toBe("reviewer");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("REJECTS an agent chip with a missing/empty agentType (400, nothing written)", async () => {
+    expect(() => chipToOps({ kind: "agent" }, "build")).toThrow(WritebackError);
+    expect(() => chipToOps({ kind: "agent", agentType: "" }, "build")).toThrow(WritebackError);
+    const { root, templateDir } = await makeTemplate(baseNode());
+    try {
+      const before = await readFile(nodeJsonPathFor(templateDir, "build"), "utf8");
+      const res = await writeNodeEdit(templateDir, "build", { chip: { kind: "agent" } }, validate);
+      expect(res.status).toBe(400);
+      expect(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8")).toBe(before);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("bakeNodeEditToRun REJECTS an agent chip (template-only) with a clear error, run.json untouched", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    const { runDir } = await makeRun(root, "build");
+    try {
+      const runBefore = await readFile(runJsonPath(runDir), "utf8");
+      const res = await bakeNodeEditToRun(runDir, templateDir, "build", { chip: { kind: "agent", agentType: "coder" } }, validate, summarizeGates);
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/template/i); // the error must say WHERE the edit belongs
+      expect(await readFile(runJsonPath(runDir), "utf8")).toBe(runBefore); // nothing written
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("applyEdit — pure in-memory mutation (no I/O)", () => {
   it("does not mutate the input node (returns a copy)", () => {
     const node = baseNode();

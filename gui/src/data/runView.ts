@@ -6,6 +6,7 @@ import type { FlowNode, FlowNodeData, NodeStatus } from "../components/WorkflowN
 import type { DirEntry } from "../components/DirectoryPanel";
 import type { Edge } from "@xyflow/react";
 import type { LiveModel, LiveNode } from "./runStream";
+import type { AgentChip } from "./agentChips";
 import { apiFetch, apiUrl } from "./apiBase";
 
 export type ScopeKind = "run" | "skill" | "template" | "package" | "repo";
@@ -274,11 +275,13 @@ export async function loadNodeConfig(run: string, nodeId: string): Promise<Autho
 
 /** Drop a GATE chip onto a node → mutate the TEMPLATE `node.json` (append to `op[]` or set `checkpoint`).
  *  `target` defaults to the durable TEMPLATE write; `"run"` (ephemeral) is a server-side stub (501). On
- *  success the server returns the mutated config so the caller can re-render the badge immediately. */
+ *  success the server returns the mutated config so the caller can re-render the badge immediately.
+ *  An AGENT chip (P1 basis rail — sets `agentType`) rides the SAME endpoint; it is TEMPLATE-ONLY (the
+ *  run-bake path rejects it server-side), so callers must only ever send it with target "template". */
 export async function dropChipOnNode(
   run: string,
   nodeId: string,
-  chip: GateChip,
+  chip: GateChip | AgentChip,
   target: "template" | "run" = "template",
 ): Promise<{ ok: boolean; node?: AuthoredNodeConfig; error?: string; stub?: boolean }> {
   try {
