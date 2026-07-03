@@ -176,6 +176,85 @@ describe('telemetryStream — live deltas', () => {
   });
 });
 
+describe('telemetryStream — DRIVER-SELECTED accumulator (Claude stream-json is not folded through pi)', () => {
+  // The anomaly stream is a SEPARATE fold from the observe/SSE path: it drives its OWN per-node accumulator.
+  // It must select that accumulator by the node's driver (the SAME machinery buildRunView/watchRun use) —
+  // pi ⇒ createNodeAccumulator, claude-code ⇒ the count-only stream-json decoder. Folding a Claude node
+  // through pi's reducer no-ops on the assistant/user/system vocabulary (distill.ts `default: break`) ⇒
+  // 0 tokens, 0 tool calls, no tool-loop — the bug these tests pin. Each Claude assistant line carries one
+  // `tool_use` block (opens a call) + usage; three identical Bash calls trip the tool-loop threshold (3).
+  const cAssistant = (
+    reqId: string,
+    tokens: { input: number; output: number },
+    tool: { id: string; name: string; input: unknown },
+  ): PiEvent =>
+    ev({
+      type: 'assistant',
+      request_id: reqId,
+      message: {
+        role: 'assistant',
+        model: 'claude-sonnet-5',
+        usage: { input_tokens: tokens.input, output_tokens: tokens.output },
+        content: [{ type: 'tool_use', id: tool.id, name: tool.name, input: tool.input }],
+      },
+    });
+  const bashLoop: PiEvent[] = ['r1', 'r2', 'r3'].map((r, i) =>
+    cAssistant(r, { input: 100, output: 5 }, { id: `t${i}`, name: 'Bash', input: { cmd: 'ls' } }),
+  );
+
+  it('selects the Claude accumulator from the snapshot-stamped executor — tokens + tool-loop light up', async () => {
+    const updates: RunUpdate[] = [
+      { kind: 'snapshot', model: rmodel([mnode({ id: 'cc', status: 'running', executor: 'claude-code' })]) },
+      { kind: 'node-event', id: 'cc', event: ev({ type: 'system', subtype: 'init' }) },
+      ...bashLoop.map((event) => ({ kind: 'node-event', id: 'cc', event }) as RunUpdate),
+      { kind: 'node-status', id: 'cc', status: 'ok' },
+      { kind: 'done' },
+    ];
+    const out = await collect(telemetryStream(toAsync(updates)));
+    const anoms = out.filter((e) => e.kind === 'anomaly') as Extract<typeof out[number], { kind: 'anomaly' }>[];
+    // three identical Bash calls trip the tool-loop threshold — impossible if the claude stream no-ops through pi.
+    expect(anoms.filter((a) => a.anomaly.kind === 'tool-loop')).toHaveLength(1);
+    const close = out.find((e) => e.kind === 'node-close') as Extract<typeof out[number], { kind: 'node-close' }>;
+    expect(close.digest.toolCalls).toBe(3);
+    expect(close.digest.maxToolRepeat).toBe(3);
+    expect(close.digest.inputTokens).toBe(300); // 3 turns × 100 (deduped by request_id) — 0 through the pi reducer
+  });
+
+  it('a Claude node that starts AFTER attach (no snapshot executor) self-corrects via event detection', async () => {
+    // pending at attach ⇒ no stamped executor in the snapshot; the leading `system` line is unsniffable, so the
+    // fold starts provisional-pi and must FLIP to the claude reducer the moment an `assistant` line appears
+    // (DriverTable.detectUnstamped over the retained log — the SAME format-detect the batch/live seeds use).
+    const updates: RunUpdate[] = [
+      { kind: 'snapshot', model: rmodel([mnode({ id: 'cc', status: 'pending' })]) },
+      { kind: 'node-status', id: 'cc', status: 'running' },
+      { kind: 'node-event', id: 'cc', event: ev({ type: 'system', subtype: 'init' }) },
+      ...bashLoop.map((event) => ({ kind: 'node-event', id: 'cc', event }) as RunUpdate),
+      { kind: 'node-status', id: 'cc', status: 'ok' },
+      { kind: 'done' },
+    ];
+    const out = await collect(telemetryStream(toAsync(updates)));
+    const anoms = out.filter((e) => e.kind === 'anomaly') as Extract<typeof out[number], { kind: 'anomaly' }>[];
+    expect(anoms.filter((a) => a.anomaly.kind === 'tool-loop')).toHaveLength(1);
+    const close = out.find((e) => e.kind === 'node-close') as Extract<typeof out[number], { kind: 'node-close' }>;
+    expect(close.digest.toolCalls).toBe(3);
+    expect(close.digest.inputTokens).toBe(300);
+  });
+
+  it('a pi node is unaffected — pi vocabulary still folds through createNodeAccumulator', async () => {
+    // regression guard: the default/unstamped path stays byte-identical to today (pi's message_end fold).
+    const updates: RunUpdate[] = [
+      { kind: 'snapshot', model: rmodel([mnode({ id: 'p', status: 'running', executor: 'pi' })]) },
+      { kind: 'node-event', id: 'p', event: ev({ type: 'message_end', message: { role: 'assistant', usage: { input: 7, output: 2 } } }) },
+      { kind: 'node-status', id: 'p', status: 'ok' },
+      { kind: 'done' },
+    ];
+    const out = await collect(telemetryStream(toAsync(updates)));
+    const close = out.find((e) => e.kind === 'node-close') as Extract<typeof out[number], { kind: 'node-close' }>;
+    expect(close.digest.inputTokens).toBe(7);
+    expect(close.digest.modelCalls).toBe(1);
+  });
+});
+
 describe('toGenAiAttributes — OTel gen_ai.* bridge', () => {
   it('maps the cost spine and tags error.type on a failed node', () => {
     const d = projectRunDigest(rview([vnode({ id: 'n', status: 'blocked', model: 'MiniMax-M3', provider: 'mmgw', stopReason: 'max_tokens', tokens: tok({ input: 12, output: 4 }) })]));

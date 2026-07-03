@@ -14,8 +14,11 @@
 
 import type { RunView, RunViewNode } from './runView.js';
 import type { RunUpdate } from './types.js';
-import { createNodeAccumulator, type LiveMetrics } from './distill.js';
+import { createNodeAccumulator, type LiveMetrics, type NodeAccumulator } from './distill.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
+import { builtinDrivers } from '../runner/drivers/table.js';
+import type { AgentDriver } from '../runner/drivers/types.js';
+import type { PiEvent } from '../runner/events.js';
 
 // ── thresholds — the tail-sampling triggers (research: keep errors + anomalies, not keep-all) ──────────
 export interface TelemetryThresholds {
@@ -397,14 +400,64 @@ export async function* telemetryStream(updates: AsyncIterable<RunUpdate>, opts: 
   const verbose = opts.verbosity === 'verbose';
   const catalog = opts.catalog ?? loadModelCatalog();
 
-  const accs = new Map<string, ReturnType<typeof createNodeAccumulator>>();
+  // (P5) The anomaly stream drives its OWN per-node accumulator, so it must SELECT that accumulator by the
+  // node's driver via the SAME machinery buildRunView (replayEvents) and watchRun (seedNode) use — pi ⇒
+  // createNodeAccumulator (byte-identical), claude-code ⇒ the count-only stream-json decoder. Folding a Claude
+  // node through pi's reducer no-ops on its assistant/user/system vocabulary (distill.ts `default: break`) ⇒
+  // 0 tokens / 0 tool calls / no loop signal — the bug this seam closes. The stamped executor arrives on the
+  // snapshot node (started-before-attach) or a node-enriched delta (started-after); a node whose executor isn't
+  // known yet is format-DETECTED from its retained event log (DriverTable.detectUnstamped), so the leading
+  // unsniffable `system` lines start provisional-pi and FLIP to the claude reducer the moment an `assistant`
+  // line appears. The pick LOCKS (log released, never rebuilt) once the executor confirms it or a driver sniffs it.
+  const drivers = builtinDrivers();
+  const piFallbackId = drivers.get(undefined).id; // detectUnstamped's fallback (pi) — a non-pi pick is a real sniff
+  const execId = new Map<string, string>();          // stamped executor id, once known (snapshot / node-enriched)
+  const evLog = new Map<string, PiEvent[]>();        // retained events — kept ONLY while the pick is provisional
+  const accs = new Map<string, { acc: NodeAccumulator; kind: string; final: boolean }>();
   const snap = new Map<string, { label: string; phase: string | null; agentType?: string; missing: string[]; durationMs: number | null; stageIndex?: number }>();
   const emitted = new Map<string, Set<AnomalyKind>>(); // anomaly kinds already announced per node
   const opened = new Set<string>();
   const closed = new Set<string>();
   let anyFailed = false;
 
-  const accOf = (id: string) => accs.get(id) ?? accs.set(id, createNodeAccumulator()).get(id)!;
+  // Pick a node's driver + whether the pick is FINAL. A stamped executor is authoritative (final); otherwise
+  // detectUnstamped over the retained log — a non-pi result is a positive sniff (final), a pi fallback stays
+  // provisional (it may still flip to claude as more of the log arrives, or be confirmed later by the executor).
+  const pickDriver = (id: string): { driver: AgentDriver; final: boolean } => {
+    const exec = execId.get(id);
+    if (exec != null) return { driver: drivers.get(exec), final: true };
+    const driver = drivers.detectUnstamped(evLog.get(id) ?? []);
+    return { driver, final: driver.id !== piFallbackId };
+  };
+
+  // Build/rebuild/return a node's accumulator so its KIND matches the current pick; a (re)build replays the
+  // retained log. A FINAL pick locks the kind and releases the log (never rebuilt again). Never calls `push`.
+  const accOf = (id: string): NodeAccumulator => {
+    const cur = accs.get(id);
+    if (cur?.final) return cur.acc;
+    const { driver, final } = pickDriver(id);
+    if (cur && cur.kind === driver.id) {
+      if (final) { cur.final = true; evLog.delete(id); } // executor confirmed the provisional kind ⇒ lock, release log
+      return cur.acc;
+    }
+    const acc = driver.eventAccumulator?.() ?? createNodeAccumulator();
+    for (const e of evLog.get(id) ?? []) acc.push(e); // replay the retained log through the (re)selected reducer
+    accs.set(id, { acc, kind: driver.id, final });
+    if (final) evLog.delete(id);
+    return acc;
+  };
+
+  // Fold one live event: retain it (while provisional) so a later kind-flip can replay it, then EITHER let
+  // accOf's (re)build replay it OR fold it incrementally — never both (no double-count). Once final, the log
+  // is gone and events fold straight through.
+  const feed = (id: string, event: PiEvent): void => {
+    const cur = accs.get(id);
+    if (cur?.final) { cur.acc.push(event); return; }
+    (evLog.get(id) ?? evLog.set(id, []).get(id)!).push(event);
+    const before = accs.get(id);
+    const acc = accOf(id);                          // may rebuild (replaying the log, incl. this event)
+    if (accs.get(id) === before) acc.push(event);   // no rebuild ⇒ this event wasn't replayed — fold it now
+  };
   const emitOf = (id: string) => emitted.get(id) ?? emitted.set(id, new Set()).get(id)!;
 
   // build NodeMetrics from a node's live accumulator + its snapshot row + the given status.
@@ -468,11 +521,16 @@ export async function* telemetryStream(updates: AsyncIterable<RunUpdate>, opts: 
       yield { kind: 'run-start', run: u.model.run };
       for (const n of u.model.nodes) {
         snap.set(n.id, { label: n.label, phase: n.phase, agentType: n.agentType, missing: n.missing ?? [], durationMs: n.durationMs ?? null, stageIndex: n.stageIndex });
+        if (n.executor != null) execId.set(n.id, n.executor); // stamped driver ⇒ accOf selects the right reducer
         if (n.status === 'running') yield* openIfNeeded(n.id);
         if (TERMINAL.has(n.status)) { /* already-done node from a late attach — closed below at done */ }
       }
+    } else if (u.kind === 'node-enriched') {
+      // the re-assembled node carries the stamped executor a node that STARTED after attach didn't have in the
+      // snapshot — learn it so accOf can lock (and correct) a still-provisional pick. Emits nothing itself.
+      if (u.node.executor != null) execId.set(u.id, u.node.executor);
     } else if (u.kind === 'node-event') {
-      accOf(u.id).push(u.event);
+      feed(u.id, u.event);
       yield* openIfNeeded(u.id);
       if (verbose) {
         const t = u.event.type as string;
