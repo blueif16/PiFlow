@@ -234,12 +234,14 @@
   font-weight: var(--ds-weight-medium);
 }
 
-/* ── FusionSaveBar: bottom-center "commit the edits to this run" affordance (Fusion mode only) ──────── */
+/* ── FusionSaveBar: bottom-center "commit the edits to this run" affordance (Fusion mode only) ────────
+   One row ABOVE the ModeBar band: both are bottom-anchored and the ModeBar reaches past center on laptop
+   widths, so sharing its row paints this bar over the Digest/Chat keys (same for the ChipPalette). */
 .ds-fusionsave-layer {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: clamp(10px, 1.6vh, 18px);
+  bottom: calc(clamp(10px, 1.6vh, 18px) + 54px);
   z-index: var(--ds-z-popover);
   pointer-events: none;
 }
@@ -318,12 +320,13 @@
 .ds-gatechips__flash.is-ok { color: var(--ds-success-fg, #1a7f37); }
 .ds-gatechips__flash.is-err { color: var(--ds-error-fg); }
 
-/* ── (SA-E) ChipPalette: bottom-center draggable gate-chip source (Compose mode only) ───────────────── */
+/* ── (SA-E) ChipPalette: bottom-center draggable gate-chip source (Compose mode only) ─────────────────
+   One row ABOVE the ModeBar band — see the FusionSaveBar note (shared-row collision hides Digest/Chat). */
 .ds-chippalette-layer {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: clamp(10px, 1.6vh, 18px);
+  bottom: calc(clamp(10px, 1.6vh, 18px) + 54px);
   z-index: var(--ds-z-popover);
   pointer-events: none;
 }

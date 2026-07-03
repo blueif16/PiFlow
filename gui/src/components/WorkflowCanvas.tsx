@@ -18,7 +18,7 @@
  *   - Import order: tokens.css first, then the React Flow stylesheet, then our
  *     glass.css overrides last so our node/handle styles win.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -105,11 +105,32 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // enriched-live re-render doesn't re-hit /agents.json on every token delta. The poll path fetches it inline.
   const [agentCatalog, setAgentCatalog] = useState<AgentCatalog>({});
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { fitView } = useReactFlow();
+  const rf = useReactFlow();
+  const { fitView } = rf;
   // ONE run-telemetry subscription for the active run — provided to the Companion via RunStreamContext so
   // it doesn't open a second EventSource. The CANVAS renders EITHER from the distilled run-view poll (default)
   // OR from this enriched live model, gated by the client transport flag (docs/design P3).
   const live = useRunStream(activeRun);
+
+  // The top-left directory navigator floats over the canvas and fitView can't reserve screen space
+  // for it (px/% padding resolves in FLOW coordinates in this @xyflow version — verified empirically).
+  // So after a fit settles, MEASURE the panel and pan the viewport right just enough that no node in
+  // its vertical band sits under it. Pan only — never zoom. Chained onto the refit below.
+  const nudgeClearOfDir = useCallback(() => {
+    const dirEl = document.querySelector(".ds-dir");
+    if (!dirEl) return;
+    const r = dirEl.getBoundingClientRect();
+    const { x, y, zoom } = rf.getViewport();
+    let minScreenX = Infinity;
+    for (const n of rf.getNodes()) {
+      const sy = n.position.y * zoom + y;
+      const sh = (n.measured?.height ?? 0) * zoom;
+      if (sy > r.bottom + 12 || sy + sh < r.top) continue;
+      minScreenX = Math.min(minScreenX, n.position.x * zoom + x);
+    }
+    const need = r.right + 16 - minScreenX;
+    if (Number.isFinite(minScreenX) && need > 0) rf.setViewport({ x: x + need, y, zoom });
+  }, [rf]);
 
   // (P3) The CLIENT transport flag — read once per session (URL `?live=` / build default). 'poll' (default)
   // keeps today's 3 s /run-view re-poll VERBATIM; 'sse' renders the graph from the enriched live.model.
@@ -308,10 +329,11 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     selectRun(run);
   }, [selectRun]);
 
-  // refit the viewport once the real nodes land
+  // refit the viewport once the real nodes land; when the animated fit completes, nudge the graph
+  // clear of the directory navigator (a pan mid-animation would be overwritten by its later frames)
   useEffect(() => {
-    if (nodes.length) requestAnimationFrame(() => fitView({ padding: 0.25, duration: 320 }));
-  }, [nodes.length, fitView]);
+    if (nodes.length) requestAnimationFrame(() => { void fitView({ padding: 0.25, duration: 320 }).then(nudgeClearOfDir); });
+  }, [nodes.length, fitView, nudgeClearOfDir]);
 
   const onConnect = useCallback((c: Connection) => setEdges((eds) => addEdge(c, eds)), [setEdges]);
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => setExpandedId(node.id), []);
