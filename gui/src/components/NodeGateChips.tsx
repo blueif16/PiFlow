@@ -23,14 +23,17 @@ import { GateHex } from "./GateGlyph";
 const isRailKind = (k: unknown): k is RailKind => RAIL_KINDS.some((r) => r.kind === k);
 
 export function NodeGateChips({ nodeId, runGateCount = 0 }: { nodeId: string; runGateCount?: number }) {
-  const { run, configs, openCard } = useCompose();
+  const { run, configs, openCard, composingNodeId } = useCompose();
   const [over, setOver] = useState(false);
 
   const cfg = configs[nodeId];
   const hexes = authoredGateHexes(cfg);
   // Gates present on THIS RUN beyond the durable template set = un-promoted run-first edits (additive flow).
   const runOnly = Math.max(0, runGateCount - hexes.length);
-  const pipelineLabel = hexes.length ? hexes.map((h) => h.label).join(" → ") : "none";
+  // (Slice 2) the compose AGENT is mid-wire on this node — show a PENDING (ghost) hex until the run-view re-read
+  // carries the landed gate, at which point it solidifies into a real hex (config is truth, inv 6).
+  const composing = composingNodeId === nodeId;
+  const pipelineLabel = hexes.length ? hexes.map((h) => h.label).join(" → ") : composing ? "composing…" : "none";
   const runNote = runOnly > 0 ? `; ${runOnly} applied to this run only (not yet promoted)` : "";
 
   return (
@@ -60,19 +63,31 @@ export function NodeGateChips({ nodeId, runGateCount = 0 }: { nodeId: string; ru
       aria-label={`Drop a gate onto "${nodeId}". Gate pipeline: ${pipelineLabel}${runNote}.`}
     >
       <div className="ds-gatedrop__hexes">
-        {hexes.length === 0 && runOnly === 0 ? (
+        {hexes.length === 0 && runOnly === 0 && !composing ? (
           <span className="ds-gatedrop__empty">
             <span className="ds-hex ds-hex--ghost" style={{ ["--hex-size" as string]: "20px" }} aria-hidden="true" />
             drop a gate
           </span>
         ) : (
-          hexes.map((h, i) => <GateHex key={`${h.glyph}-${i}`} desc={h} size={20} />)
+          <>
+            {hexes.map((h, i) => <GateHex key={`${h.glyph}-${i}`} desc={h} size={20} />)}
+            {composing && (
+              <span
+                className="ds-hex ds-hex--ghost ds-hex--pending"
+                style={{ ["--hex-size" as string]: "20px" }}
+                title="an agent is composing this gate…"
+                aria-label="an agent is composing this gate"
+                role="img"
+              />
+            )}
+          </>
         )}
         {runOnly > 0 && (
           <span className="ds-gatedrop__runscoped" title={`${runOnly} gate${runOnly === 1 ? "" : "s"} applied to this run only — not yet promoted to the template`}>
             · {runOnly} run-scoped
           </span>
         )}
+        {composing && <span className="ds-gatedrop__wiring">composing…</span>}
       </div>
     </div>
   );

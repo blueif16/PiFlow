@@ -30,6 +30,10 @@ export interface ComposeApi {
   openCard: (nodeId: string, kind: RailKind) => void;
   /** The node the open card is bound to (kept highlighted on the canvas while authoring); null when closed. */
   targetId: string | null;
+  /** (Slice 2) The node whose compose AGENT session is mid-wire — the target renders a PENDING (ghost) hex
+   *  while composing; it SOLIDIFIES from the run-view re-read once the gate lands (config is truth, inv 6).
+   *  Null when no agent session is running. */
+  composingNodeId: string | null;
 }
 
 export const ComposeContext = createContext<ComposeApi>({
@@ -39,6 +43,7 @@ export const ComposeContext = createContext<ComposeApi>({
   dropChip: async () => ({ ok: false, error: "compose not active" }),
   openCard: () => {},
   targetId: null,
+  composingNodeId: null,
 });
 
 export const useCompose = () => useContext(ComposeContext);

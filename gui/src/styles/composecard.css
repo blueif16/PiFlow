@@ -116,6 +116,25 @@
 .ds-composecard__turn--you .ds-md { color: var(--ds-text-primary); font-size: var(--ds-text-base); }
 .ds-composecard__turn--you .ds-md__pre { max-width: 100%; overflow-x: auto; }
 
+/* (Slice 2) an "agent" turn — the compose agent's streamed reply, rendered as flat markdown (the Companion
+   pi-turn vocabulary: no bubble, just the prose). A block caret blinks while it streams. */
+.ds-composecard__turn--agent { display: flex; flex-direction: column; max-width: 62ch; }
+.ds-composecard__turn--agent .ds-md { color: var(--ds-text-primary); font-size: var(--ds-text-base); }
+.ds-composecard__turn--agent .ds-md__pre { max-width: 100%; overflow-x: auto; }
+.ds-composecard__caret {
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 3px;
+  vertical-align: -0.15em;
+  background: var(--ds-accent);
+  box-shadow: 0 0 6px 0 var(--ds-accent-ring);
+  animation: ds-caret-blink 1s steps(1) infinite;
+}
+@keyframes ds-caret-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+/* the ephemeral "the agent is composing…" status while the reply hasn't started streaming */
+.ds-composecard__sys[data-on="true"] { color: var(--ds-text-secondary); font-style: italic; }
+
 /* a "system" turn — the write result beneath the send. ok = quiet, err = the FULL error (wraps, untruncated) */
 .ds-composecard__sys {
   margin: 0;

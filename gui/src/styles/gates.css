@@ -97,6 +97,19 @@
 /* the faint placeholder hexagon shown when a node has no authored gates yet */
 .ds-hex--ghost { --hex-fill: var(--ds-bg-surface); color: var(--ds-border-strong); opacity: 0.8; }
 
+/* (Slice 2) PENDING hexagon — the compose agent is wiring this gate; it pulses on the accent, then solidifies
+   into a real hex once the run-view re-read carries the landed gate (config is truth). */
+.ds-hex--pending { color: var(--ds-accent); animation: ds-hex-pulse 1.1s var(--ds-ease-standard) infinite; }
+@keyframes ds-hex-pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+.ds-gatedrop__wiring {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-accent);
+  font-style: italic;
+  white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) { .ds-hex--pending { animation: none; opacity: 0.6; } }
+
 /* (Slice 1.5) run-scoped tag — gates applied to THIS run only, not yet promoted to the template */
 .ds-gatedrop__runscoped {
   font-family: var(--ds-font-mono);

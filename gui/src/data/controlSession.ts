@@ -227,7 +227,7 @@ const MAX_BACKOFF_MS = 15_000;
  * bridge re-sends the snapshot first (the host re-triggers get_state/get_messages/get_session_stats on
  * subscribe), so a reconnect re-bases.
  */
-export function useControlSession(run: string | null | undefined): ControlSessionApi {
+export function useControlSession(run: string | null | undefined, channel?: string): ControlSessionApi {
   const [state, setState] = useState<ControlSessionState>(INITIAL);
   const esRef = useRef<EventSource | null>(null);
   const backoffRef = useRef(500);
@@ -236,20 +236,23 @@ export function useControlSession(run: string | null | undefined): ControlSessio
   // Re-point trigger: when the console migrates to a different serve, the baseUrl changes → the connect
   // effect below re-runs and re-subscribes the control stream to the new origin (same run id).
   const endpointBase = useEndpoint().baseUrl;
+  // (Slice 2) An optional control CHANNEL (`compose`) addresses a SEPARATE pi from the Companion — appended to
+  // every control URL as `?channel=`. Default (undefined) = the Companion path, byte-identical to before.
+  const qs = channel ? `?channel=${encodeURIComponent(channel)}` : "";
 
   // GET the conversation history list and fold it into state (active flag → activeSessionId). Defined as a
   // ref-stable fetch so the EventSource effect can call it on connect/rebase without re-subscribing.
   const refreshSessions = useCallback(async () => {
     if (!run) return;
     try {
-      const r = await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/sessions`);
+      const r = await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/sessions${qs}`);
       if (!r.ok) return;
       const body = (await r.json()) as { sessions?: SessionSummary[] };
       const sessions = Array.isArray(body.sessions) ? body.sessions : [];
       const active = sessions.find((s) => s.active)?.id ?? null;
       setState((prev) => ({ ...prev, sessions, activeSessionId: active }));
     } catch { /* list is best-effort — a failed fetch leaves the prior list */ }
-  }, [run]);
+  }, [run, qs]);
 
   useEffect(() => {
     if (!run) { setState(INITIAL); return; }
@@ -259,7 +262,7 @@ export function useControlSession(run: string | null | undefined): ControlSessio
 
     const connect = () => {
       if (stoppedRef.current) return;
-      const es = sse(`/__piflow/control/${encodeURIComponent(run)}/stream`);
+      const es = sse(`/__piflow/control/${encodeURIComponent(run)}/stream${qs}`);
       esRef.current = es;
       es.onopen = () => { backoffRef.current = 500; void refreshSessions(); };
       es.onmessage = (e: MessageEvent) => {
@@ -288,16 +291,16 @@ export function useControlSession(run: string | null | undefined): ControlSessio
       esRef.current?.close();
       esRef.current = null;
     };
-  }, [run, refreshSessions, endpointBase]);
+  }, [run, refreshSessions, endpointBase, qs]);
 
   const post = useCallback(async (body: Record<string, unknown>) => {
     if (!run) return;
-    await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/message`, {
+    await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/message${qs}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  }, [run]);
+  }, [run, qs]);
 
   const send = useCallback(async (text: string) => {
     // steer if a turn is active, else a fresh prompt (the bridge maps deliverAs → prompt|steer|follow_up).
@@ -308,8 +311,8 @@ export function useControlSession(run: string | null | undefined): ControlSessio
 
   const start = useCallback(async () => {
     if (!run) return;
-    await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/start`, { method: "POST" });
-  }, [run]);
+    await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/start${qs}`, { method: "POST" });
+  }, [run, qs]);
 
   // CONTINUE a conversation: clear the chat view OPTIMISTICALLY (so the switch REPLACES, not appends — the
   // server also pushes session_rebase, but clearing here makes the swap feel instant), POST /select, then
@@ -317,19 +320,19 @@ export function useControlSession(run: string | null | undefined): ControlSessio
   const selectSession = useCallback(async (sessionId: string) => {
     if (!run) return;
     setState((prev) => ({ ...prev, messages: [], toolExecutions: new Map(), streaming: false, activeSessionId: sessionId }));
-    await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/select`, {
+    await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/select${qs}`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionId }),
     });
     await refreshSessions();
-  }, [run, refreshSessions]);
+  }, [run, refreshSessions, qs]);
 
   // NEW chat: clear the view, POST /new, refresh the list (the new conversation appears + becomes active).
   const newChat = useCallback(async () => {
     if (!run) return;
     setState((prev) => ({ ...prev, messages: [], toolExecutions: new Map(), streaming: false, activeSessionId: null }));
-    await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/new`, { method: "POST" });
+    await apiFetch(`/__piflow/control/${encodeURIComponent(run)}/new${qs}`, { method: "POST" });
     await refreshSessions();
-  }, [run, refreshSessions]);
+  }, [run, refreshSessions, qs]);
 
   return { ...state, send, abort, start, listSessions: refreshSessions, selectSession, newChat };
 }

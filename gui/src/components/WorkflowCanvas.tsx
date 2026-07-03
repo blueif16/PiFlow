@@ -96,6 +96,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // (Compose mode) the open drop card — a rail gate dropped on a node opens the natural-language card at it;
   // "Create gate" writes the template. Null = no card open.
   const [dropCard, setDropCard] = useState<DropCardTarget | null>(null);
+  // (Compose · Slice 2) the node whose compose AGENT session is mid-wire — the target renders a pending hex
+  // while composing; it solidifies from the run-view re-read once the gate lands. Null when idle.
+  const [composingNodeId, setComposingNodeId] = useState<string | null>(null);
   // (Slice 1.5) bumped after a RUN-first gate bake so the run-view re-loads even for a DONE run (whose poll
   // has stopped) — the newly-applied gate then appears on the graph without a manual reload.
   const [runViewNonce, setRunViewNonce] = useState(0);
@@ -426,17 +429,21 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   }, [activeRun]);
 
   // (Compose mode) a rail gate dropped on a node opens the left-side authoring overlay bound to that node.
+  // The node's upstream/downstream neighbors (from the live edge set) ride along so the compose agent gets the
+  // node's structural context in its bundle (Slice 2, inv 2) — read from `edges` at drop time.
   const openCard = useCallback((nodeId: string, kind: RailKind) => {
-    setDropCard({ nodeId, kind });
-  }, []);
+    const prev = edges.filter((e) => e.target === nodeId).map((e) => e.source);
+    const next = edges.filter((e) => e.source === nodeId).map((e) => e.target);
+    setDropCard({ nodeId, kind, prev, next });
+  }, [edges]);
 
   const composeApi = useMemo(
-    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip, openCard, targetId: dropCard?.nodeId ?? null }),
-    [mode, activeRun, nodeConfigs, dropChip, openCard, dropCard],
+    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip, openCard, targetId: dropCard?.nodeId ?? null, composingNodeId }),
+    [mode, activeRun, nodeConfigs, dropChip, openCard, dropCard, composingNodeId],
   );
 
   // Leaving Compose mode drops the loaded configs (re-fetched fresh on re-entry) + closes any open card.
-  useEffect(() => { if (mode !== "compose") { setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); setDropCard(null); } }, [mode]);
+  useEffect(() => { if (mode !== "compose") { setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); setDropCard(null); setComposingNodeId(null); } }, [mode]);
 
   // A backdrop zone is non-selectable, so the expanded node is always a real card — narrow before reading data.
   const expandedNode = nodes.find((n) => n.id === expandedId);
@@ -526,8 +533,16 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
               overlay is open — both are left-anchored, and the overlay is the focus. */}
           <GateRail active={mode === "compose" && !dropCard} />
-          {/* The left-side gate-authoring overlay (mirror of the right-side Companion), bound to the node. */}
-          <GateDropCard card={mode === "compose" ? dropCard : null} onClose={() => setDropCard(null)} dropChip={dropChip} />
+          {/* The left-side gate-authoring overlay (mirror of the right-side Companion), bound to the node. For
+              agent-composed kinds it drives a dedicated compose `pi` session (channel=compose) + reports which
+              node is mid-compose so the canvas paints a pending hex on it. */}
+          <GateDropCard
+            card={mode === "compose" ? dropCard : null}
+            run={activeRun}
+            onClose={() => { setDropCard(null); setComposingNodeId(null); }}
+            dropChip={dropChip}
+            onComposingChange={setComposingNodeId}
+          />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.
               Clicking an anomaly/onset node focuses that node on the canvas. */}
