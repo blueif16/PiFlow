@@ -8,7 +8,7 @@
 // These types live HERE (src/observe/), NOT src/types.ts — a parallel branch edits src/types.ts; the
 // two stay disjoint and merge clean.
 
-import type { NodeStatus, RunStatus } from '../runner/status.js';
+import type { NodeConfig, NodeStatus, RunStatus } from '../runner/status.js';
 // The enriched per-node shapes the LIVE graph renders — REUSED verbatim from the batch builder (runView.ts)
 // and the display derivation (derive.ts) so the SSE snapshot/delta and the on-demand run-view carry
 // byte-identical fields. Type-only imports: runView.ts (and its transitive deps) never import this module,
@@ -83,6 +83,9 @@ export interface NodeView {
    *  folded verbatim from the record's `driverId` (separate from agentType branding). Absent ⇒ pi default.
    *  Copied from the assembled RunViewNode.executor so the live SSE node matches buildRunView's. */
   executor?: string;
+  /** the RECORDED curated config slice (tools/skill/scope/gates — the agent's loadout) — carried verbatim
+   *  from the record like buildRunView does, so a live viewer never loses what the node ACTUALLY ran with. */
+  config?: NodeConfig;
   /** the effective model label the node ran on. */
   model?: string | null;
   /** the effective PROVIDER the node ran on (detected per-node from the node's own events; `null` when

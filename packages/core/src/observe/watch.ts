@@ -158,6 +158,9 @@ function mergeEnriched(base: NodeView, full: RunViewNode): NodeView {
     // (P5) the stamped executor/driver id — NOT on the lean base NodeView, so copy it from the assembled
     // node or the live badge blanks and diverges from buildRunView's per-node `executor` (shadow-diff key).
     ...(full.executor ? { executor: full.executor } : {}),
+    // the RECORDED config (tools/skill/scope/gates — the loadout) — NOT on the lean base either; copy it or
+    // the live hover card silently falls back to preset data that can disagree with what the node ran with.
+    ...(full.config ? { config: full.config } : {}),
     model: full.model,
     // per-node PROVIDER (rich.provider) — NOT carried on the lean base NodeView, so copy it from the assembled
     // node or the live adapter blanks it / falls back to the run provider and diverges from buildRunView.

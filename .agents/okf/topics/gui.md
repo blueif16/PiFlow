@@ -126,6 +126,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
 - `e25231f` 2026-07-02 — feat(gui): unified agent identity surface — face avatars inherit through agentType + inherent hover card on every agent node
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
+- `c384361` 2026-07-02 — feat(gui): hover card = the agent's loadout at a glance — skill chip (click → node detail), tool/scope TAGS; recorded config rides the live path + reconcile
 
 ### Lessons — memory cluster
 
@@ -173,7 +174,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:589) — 1 caller; tests: `gui/src/data/liveModelToRunView.test.ts`
-- `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/core/test/observe.test.ts`, `packages/core/test/watch.test.ts`, `packages/cli/test/remote-wiring.test.ts`
+- `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/core/test/observe.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/watch.test.ts`
 
-<sub>derived 2026-07-03 · arc=65 commits · files=8 · lessons=38</sub>
+<sub>derived 2026-07-03 · arc=66 commits · files=8 · lessons=38</sub>
 <!-- okf:auto-end -->

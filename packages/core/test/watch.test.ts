@@ -451,4 +451,39 @@ describe('watchRun — enriched snapshot mirrors buildRunView per-node (pi + Cla
     expect(snapshot!.model.tokenTotal?.contextPeak).toBe(view.tokenTotal?.contextPeak);
     expect(snapshot!.model.tokenTotal?.cost).toBeCloseTo(view.tokenTotal?.cost ?? -1, 9);
   });
+
+  // (retrieval completeness) The recorded per-node CONFIG — tools · skill · read/write scope · gates — is
+  // the agent's loadout; buildRunView carries it verbatim (assembleNode: rec.config), so the SSE snapshot
+  // must too, or a live viewer silently loses the loadout (the GUI hover card falls back to preset data
+  // that can DISAGREE with what the node actually ran with). FAILS while mergeEnriched drops `config`.
+  it('carries the recorded node config (tools/skill/scope) on the SSE snapshot, equal to buildRunView', async () => {
+    const runDir = mkRunDir();
+    const config = {
+      tools: { allow: ['read', 'write', 'submit_result'], deny: [] },
+      skill: '{{WORKSPACE}}/packages/skills/harden-blueprint/SKILL.md',
+      sandbox: { workspace: '.', readScope: ['{{RUN}}'], owns: ['spec/**'] },
+    };
+    const status: RunStatus = {
+      run: 'cfg1', provider: 'cp', model: 'm1',
+      startedAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:05.000Z',
+      done: false, ok: null, durationMs: null, stage: null, totals: null,
+      nodes: { g: rec('g', 'Gameplay', 'ok', { model: 'm1', config }) },
+    };
+    await writeRunJson(runDir, status);
+    await writeNodeFixture(
+      runDir,
+      { id: 'g', label: 'Gameplay', phase: null, reads: [], writes: [], promotes: [], status: 'ok' },
+      [],
+    );
+
+    const { view } = buildRunView(runDir);
+    expect(view.nodes[0].config).toEqual(config); // the oracle carries it (existing behavior)
+
+    const ctrl = new AbortController();
+    let snapshot: Extract<RunUpdate, { kind: 'snapshot' }> | null = null;
+    for await (const u of watchRun(runDir, { signal: ctrl.signal, pollMs: 10 })) {
+      if (u.kind === 'snapshot') { snapshot = u; ctrl.abort(); break; }
+    }
+    expect(snapshot!.model.nodes[0].config).toEqual(config); // the stream must not lose the loadout
+  });
 });
