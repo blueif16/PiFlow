@@ -6,9 +6,11 @@ description: >-
   a subsystem — needs to know how a code vertical works or WHERE to change it ("how does <subsystem> work",
   "where do I change X", "which files own Y", before touching runner/sandbox/observe/optimize/etc.); or (MAINTAIN)
   someone asks when/how to update the slices, what a slice's blast scope is, whether a slice is stale, or runs the
-  drift gate. Works on ANY repo that has `.agents/okf/` (config in `okf.config.json`); the cards live in
-  `.agents/okf/topics/*.md`. Slices are OPTIMIZER-FACING reference, NEVER injected into a worker node's runtime
-  prompt — this skill is how the out-of-band fixer reads them on demand.
+  drift gate; or (SETUP) a repo has NO `.agents/okf/` yet (FIND errors "not set up") or a stale/older engine and
+  needs the substrate seeded or upgraded. Works on ANY repo — SETUP (MODE S) seeds `.agents/okf/` into one that
+  lacks it, from the engine this skill carries under `assets/`, so it needs nothing but `node`. Slices are
+  OPTIMIZER-FACING reference, NEVER injected into a worker node's runtime prompt — this skill is how the
+  out-of-band fixer reads them on demand.
 ---
 
 # OKF slices — find the right one, keep them honest
@@ -24,6 +26,16 @@ you actually do with slices.
 facts; a slice gives it the validated map. But a slice is only useful if (a) you can FIND the right one and (b) it
 is FRESH. This skill is both halves.
 
+## Invocation — the CLI is optional (the skill just runs the scripts)
+Every command below has TWO equivalent forms; use whichever the repo has, and prefer the first when present:
+- **With `piflowctl`** (a piflow product, or the bin on PATH): `piflowctl understand <query> | --check | --rebuild | --reconcile | --owns <path>`.
+- **Standalone** (ANY repo with `.agents/okf/`, `node` only): `node .agents/okf/topics/_generate.mjs --find <query> | --check | --write | --reconcile | --owns <path>` (add `--json` to `--find` for a machine list).
+
+The engine (`_generate.mjs` + the pure `_rank.mjs` it imports) is vendored IN the repo, so the understanding
+travels with the repo as **data + a script**; `piflowctl` is a fast accessor, NEVER a dependency. This skill
+itself carries the engine under `assets/` so it can seed a fresh repo (MODE S). The rest of this doc writes the
+`piflowctl` form for brevity — the standalone `node …/_generate.mjs …` form is always equivalent.
+
 ---
 
 ## MODE A — FIND the slice for a task (the reader)
@@ -32,12 +44,15 @@ Use when you are about to change, debug, or explain a code area and want the val
 it from the repo. **Procedure (stop at the first step that resolves):**
 
 1. **Normalize the query** to concrete keys: the target FILE path(s), SYMBOL name(s), and/or CONCEPT keywords.
-2. **Match against the cards** in `.agents/okf/topics/` and RANK by *where* the match lands — ownership beats mention:
-   - FILE → `grep -rl "<path>" .agents/okf/topics/` — a card whose `resource:` IS that path is its CANONICAL owner
-     (the one primary file — the strongest match of all); one listing it in `seeds:` or its **Anchors** also OWNS it.
-   - SYMBOL → `grep -rl "<symbol>" .agents/okf/topics/` — a card listing it in `symbols:`/`aliases:` or Anchors OWNS it.
-   - CONCEPT → match `key`/`aliases`/`title`/`tags` in frontmatter. A bare prose/DRIFT-NOTE mention is a WEAK match —
-     do not pick a card just because the word appears in its prose; prefer the card that declares it in frontmatter.
+2. **Run the ranker — it returns the owning card.** `piflowctl understand "<query>"` (or standalone
+   `node .agents/okf/topics/_generate.mjs --find "<query>"`; add `--json` for a ranked machine list). It scores
+   every card by WHERE the query lands — **ownership beats mention**: a card whose frontmatter declares the query
+   (`resource:` = its canonical file is the strongest of all, then `seeds:`/`symbols:`/`aliases:`/`key`/`tags`)
+   far outranks one that merely name-drops it in prose (a bare prose mention can NEVER crown a card — the law is
+   structural). A natural-language question is handled by a tokenized fallback gated by that same ownership law.
+   It prints the top card's *"Why / how it works"* + `owns:` + related slices, or `UNCOVERED` when no card owns
+   the query. This is the ONE ranker (`_rank.mjs`) — the SAME scoring the optimizer's fixer wire uses, so you are
+   reading exactly what the fixer reads. (Grep the cards directly only to debug a ranking you doubt.)
 3. **If no card matches** (the file/symbol is uncovered): escalate to codegraph with ONE
    `codegraph explore "<symbol | how-does-X question>"` call — it returns the owning symbols' verbatim
    line-numbered source grouped by file + the call paths (incl. dynamic-dispatch hops grep can't follow) + a
@@ -146,6 +161,44 @@ relative fragments.
 
 ---
 
+## MODE S — SET UP `.agents/okf/` in a repo that lacks it (the seeder)
+
+Use when a repo has NO `.agents/okf/` (FIND/`understand` errors "not set up") or a STALE/older engine. This skill
+CARRIES the engine under `assets/`, so setup needs nothing but `node` + this skill — no piflowctl, no network.
+
+**Procedure (stop-and-report at any HALT):**
+1. **Detect.** Does `<repo>/.agents/okf/topics/_generate.mjs` exist? Absent → **fresh-seed**; present → **upgrade**.
+   If the existing engine is NEWER than this skill's `assets/` (e.g. it has modes `assets/` lacks), HALT — never downgrade.
+2. **Seed the engine (both paths).** Create `<repo>/.agents/okf/topics/`; copy BOTH `assets/_generate.mjs` AND
+   `assets/_rank.mjs` into it (`_generate.mjs` imports `_rank.mjs` — one without the other is broken). On **upgrade**,
+   overwrite ONLY those two engine files; PRESERVE every existing `*.md` card byte-for-byte.
+3. **Config (fresh-seed only).** Copy `assets/okf.config.template.json` → `<repo>/.agents/okf/okf.config.json` and set
+   `repoRoot` (repo root relative to `.agents/okf/`, usually `../..`), `memoryDir` (this repo's memory dir or `""`),
+   `codegraph` (`"codegraph"` if that binary is on PATH, else `""`). On upgrade, KEEP the existing config.
+4. **codegraph (optional).** If `codegraph` is on PATH and the repo has no `.codegraph/`, run `codegraph init` then
+   `codegraph sync` (unlocks the SEMANTIC?/IMPACT? reconcile rungs + blast). Everything degrades gracefully without
+   it (`codegraph: ""` / `OKF_NO_CODEGRAPH=1` → deterministic line-check only).
+5. **Cards.** Fresh-seed leaves ZERO cards — that is a VALID empty-but-healthy substrate. Author the first cards via
+   MODE B "To ADD a card" (or a codegraph-centrality starter set). NEVER hallucinate a card's "how it works"; a card
+   with a `TODO: curate` body + REAL anchors is honest, a confidently-wrong one is harmful.
+6. **Prove it.** `node .agents/okf/topics/_generate.mjs --check` (or `piflowctl understand --check`) MUST exit 0
+   (empty-but-valid, or every card healthy). On upgrade, if `--check` now flags a REAL anchor drift, reconcile per
+   MODE B before relying on it.
+
+**SETUP output shape / bar (ALL must hold):** `<repo>/.agents/okf/{topics/_generate.mjs, topics/_rank.mjs,
+okf.config.json}` exist; the two engine files are byte-identical to this skill's `assets/`; `--check` exits 0; on
+upgrade EVERY pre-existing card is unchanged and ONLY the two engine files changed. **Report:** which path ran
+(fresh-seed / upgrade), the config values set, whether codegraph was initialized, and the `--check` verdict.
+
+**SETUP scope fence:** do NOT author a card you cannot ground in real anchors; do NOT delete or rewrite existing
+cards on upgrade; do NOT downgrade a newer engine (HALT and report instead).
+
+**SETUP self-check before returning:** Did I copy BOTH engine files? Is `repoRoot` correct (does `--check` resolve
+its paths)? Did `--check` exit 0? On upgrade, did I preserve every card and change only the engine? Did I report the
+path, config, codegraph state, and verdict?
+
+---
+
 ## Invariants (the laws — do not violate)
 - **Optimizer-facing, never injected.** A slice is read by the out-of-band fixer/optimizer; it is NEVER put into a
   worker node's own runtime prompt (a node must not see its own failure history / code map). Keep slices out of any
@@ -169,8 +222,9 @@ relative fragments.
 ## Pointers
 - Design + rationale: `docs/research/memory/code-understanding-and-anti-drift.md` (§2 discovery · §4.1 blast ladder · §5 backlog E0–E8).
 - External SOTA verification: `docs/research/memory/sota-verification-2026-06-30.md`.
-- The generator: `.agents/okf/topics/_generate.mjs` (`--write` / `--check [--staged] [key]` / `--reconcile` /
-  `--owns <path>`), fronted by `piflowctl understand --rebuild`/`--check`/`--reconcile`/`--owns`; config:
+- The generator: `.agents/okf/topics/_generate.mjs` (`--find [--json] <query>` / `--write` / `--check [--staged]
+  [key]` / `--reconcile` / `--owns <path>`) + the pure ranker `_rank.mjs` it imports, fronted by `piflowctl
+  understand <query>`/`--rebuild`/`--check`/`--reconcile`/`--owns`; config:
   `.agents/okf/okf.config.json`.
   Incremental via a per-card input fingerprint (gitignored `.gen-cache.json`); `OKF_NO_CACHE=1` forces a full pass,
   `OKF_NO_CODEGRAPH=1` runs the deterministic line-check without the index (HEALTH only), `OKF_NO_SYNC=1` skips the
@@ -178,7 +232,12 @@ relative fragments.
 - The retrieval eval: `.agents/okf/eval/_eval.mjs` + `golden.json` (E6) — FIND vs the `codegraph explore` baseline.
 - Codegraph fullest-use (escalate with `explore` · `impact` for blast · `status`→`sync` hygiene): the tool's own
   canonical guidance in `src/mcp/server-instructions.ts` / https://colbymchenry.github.io/codegraph/.
-- Entry verb (SHIPPED): `piflowctl understand [subsystem]` (FIND) · `--check [key]` (this gate) · `--rebuild [key]`
-  (`--write`) fronts this engine so a consumer repo drives it without the raw script path — this skill is the
-  PROCEDURE the verb wraps. Installed via `piflowctl skills install --with understand`. Still open: the E6
-  retrieval-eval promotion gate; seeding `.agents/okf/` into a repo that lacks it (`understand` errors until then).
+- Entry verb (SHIPPED): `piflowctl understand [subsystem]` (FIND, ranked) · `--check [key]` (this gate) ·
+  `--rebuild [key]` (`--write`) · `--reconcile` · `--owns <path>` — a fast accessor over the SAME engine; the
+  standalone `node .agents/okf/topics/_generate.mjs --find|--check|…` form is equivalent (the CLI is optional).
+- This skill is the PORTABLE brain: install it GLOBALLY once (`piflowctl skills install ~ --with understand --with
+  memory --force` → `~/.claude/skills/`) so it is present in every repo; it CARRIES the engine under `assets/`
+  (parity-gated to the canonical `.agents/okf/topics/` copy) so MODE S can seed a fresh repo with `node` alone.
+- Consolidated reference (philosophy · the whole loop · the global-skill design): `docs/understand.md`.
+- Still open (per `docs/design/portable-understanding-library.md`): the E6 retrieval-eval promotion gate; the
+  codegraph-centrality starter-card bootstrap (M4).

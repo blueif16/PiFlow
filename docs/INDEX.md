@@ -45,6 +45,7 @@ This folder is the **design canon + the buildable spec**. Read in this order.
 | **The white-space** | A control agent that **generates → verifies → human-approves → durably registers** a new tool/node/hook in production. Nobody occupies it. | substrate §11.5 |
 | **The fork** | Substrate-as-product vs means-to-better-games. **Resolved: product** (see ROADMAP). | substrate §12 |
 | **Fusion node** | A `fusion` block makes a node a panel-of-agents whose answers a judge fuses into one (moa/best-of-n). | [fusion-nodes](fusion-nodes.md) |
+| **Understand system** | Code-understanding slices (Leg B): FIND the validated map before changing code; RECONCILE to keep it honest; a portable global skill that seeds any repo. | [understand](understand.md) |
 
 ## Provenance
 
