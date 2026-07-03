@@ -71,6 +71,8 @@
 //       quality/security grades → `source` = `https://github.com/{repo}`. The 3.5MB fetch is why this
 //       source is OPT-IN rather than a default.
 
+import { searchSkillIndex, type SkillIndexArtifact } from './skill-index-search.js';
+
 /** One discoverable remote skill — `source` feeds `piflowctl skill add <source>` verbatim. */
 export interface RemoteSkillRow {
   slug: string;
@@ -81,8 +83,12 @@ export interface RemoteSkillRow {
   source: string;
   author?: string;
   /** Which index this row came from (`'topagentskills' | 'agentskill' | 'claude-plugins' | 'claudskills'
-   *  | 'skills-re' | 'skillsmp' | 'skillregistry'`). */
+   *  | 'skills-re' | 'skillsmp' | 'skillregistry' | 'index'`). */
   index: string;
+  /** Popularity signal (stars + installs) where the upstream exposes one. */
+  pop?: number;
+  /** Quality signal 0-100 (curated composite score / audit grade) where the upstream exposes one. */
+  quality?: number;
 }
 
 /** Inputs to `searchRemote`. All optional; `fetchImpl` is the network seam (default `globalThis.fetch`). */
@@ -95,10 +101,11 @@ export interface SearchRemoteOpts {
 }
 
 const DEFAULT_LIMIT = 20;
-/** Quality-first, then breadth: the curated ranked 146 → the 274k searchable giant → the 50k searchable
- *  index → the 145k client-filtered brand. SkillsMP (50/day quota), skills.re (per-row resolve calls) and
- *  skillregistry (3.5MB static fetch) are OPT-IN via `sources`. */
-const DEFAULT_SOURCES = ['topagentskills', 'agentskill', 'claude-plugins', 'claudskills'];
+/** The BUNDLED index first (one ~sub-second fetch of the site's published artifact, ranked client-side —
+ *  usually decisive), then the live fan-out as the long-tail fallback: the curated ranked 146 → the 274k
+ *  searchable giant → the 50k searchable index → the 145k client-filtered brand. SkillsMP (50/day quota),
+ *  skills.re (per-row resolve calls) and skillregistry (3.5MB static fetch) are OPT-IN via `sources`. */
+const DEFAULT_SOURCES = ['index', 'topagentskills', 'agentskill', 'claude-plugins', 'claudskills'];
 
 /** One source module's contract: search for `q`, returning at most `limit` mapped rows. */
 interface RemoteSource {
@@ -401,7 +408,7 @@ const TOPAGENTSKILLS_CATALOG_URL = 'https://top-agent-skills.com/llms-full.txt';
 
 /** Parse the llms-full.txt bulk file into rows: blocks are separated by `---` lines; each skill block
  *  carries `name:`/`slug:`/`description:`/`publisher:` fields and a `- Source: <github url>` line. */
-function parseTopagentskillsCatalog(text: string): RemoteSkillRow[] {
+export function parseTopagentskillsCatalog(text: string): RemoteSkillRow[] {
   // The REAL file shape (live-verified 2026-07-03): each skill is a `---`-fenced FRONTMATTER segment
   // (`name:`/`slug:`/`publisher:`/`canonical:` — NO description field) followed by one-or-more BODY
   // segments (a `# <name>` heading, a prose description line, install snippets, and a Metadata list whose
@@ -416,6 +423,8 @@ function parseTopagentskillsCatalog(text: string): RemoteSkillRow[] {
     if (!name || !slug) continue;
     const publisher = /^publisher:\s*(.+)$/m.exec(fm)?.[1]?.trim();
     const canonical = /^canonical:\s*(\S+)$/m.exec(fm)?.[1]?.trim();
+    const scoreRaw = /^score:\s*(\d+(?:\.\d+)?)$/m.exec(fm)?.[1];
+    const quality = scoreRaw !== undefined ? Number(scoreRaw) : undefined;
 
     // The body = every following segment up to (not including) the next frontmatter segment.
     let body = '';
@@ -434,7 +443,15 @@ function parseTopagentskillsCatalog(text: string): RemoteSkillRow[] {
     const sourceLine = /^-\s*Source:\s*(\S+)/m.exec(body)?.[1]?.trim();
     const source = sourceLine ? (repoRootFromGithubTreeUrl(sourceLine) ?? sourceLine) : canonical;
     if (!source) continue;
-    rows.push({ slug, name, description, source, author: publisher, index: 'topagentskills' });
+    rows.push({
+      slug,
+      name,
+      description,
+      source,
+      author: publisher,
+      index: 'topagentskills',
+      ...(quality !== undefined ? { quality } : {}),
+    });
   }
   return rows;
 }
@@ -493,7 +510,25 @@ async function searchSkillregistry(
   return rows;
 }
 
+// ── The BUNDLED index (the site's published artifact — see skill-index-build.ts) ────────────────────
+const PIFLOW_INDEX_URL = 'https://piflow.sh/skills-index.json';
+
+async function searchBundledIndex(
+  q: string,
+  { fetchImpl, limit }: { fetchImpl?: typeof fetch; limit: number },
+): Promise<RemoteSkillRow[]> {
+  const f = fetchImpl ?? fetch;
+  const res = await f(PIFLOW_INDEX_URL);
+  if (!res.ok) throw new Error(`index: artifact fetch failed (HTTP ${res.status})`);
+  const art = (await res.json()) as SkillIndexArtifact;
+  if (art?.v !== 1 || !Array.isArray(art.docs)) throw new Error('index: artifact has an unknown shape');
+  // Docs are RemoteSkillRow-compatible by construction; `index` keeps the UPSTREAM provenance (the badge
+  // should say where a skill came from, not that it travelled through our artifact).
+  return searchSkillIndex(art.docs, q, limit);
+}
+
 const SOURCES: Record<string, RemoteSource> = {
+  index: { search: searchBundledIndex },
   topagentskills: { search: searchTopagentskills },
   agentskill: { search: searchAgentskill },
   'claude-plugins': { search: searchClaudePlugins },
@@ -539,30 +574,51 @@ export async function searchRemote(q: string, opts: SearchRemoteOpts = {}): Prom
     if (!SOURCES[id]) throw new Error(`searchRemote: unknown source '${id}' (known: ${Object.keys(SOURCES).sort().join(', ')})`);
   }
 
-  // Fire ALL sources CONCURRENTLY (wall-clock is the contract — a sequential fill made the GUI's live
-  // search feel dead), then fill in priority order with cross-source dedup. Each source is asked for the
-  // full `limit` (we can't know the earlier sources' yield before they resolve; the trim happens here).
-  const settled = await Promise.allSettled(
-    ids.map((id) => SOURCES[id].search(q, { fetchImpl: opts.fetchImpl, limit })),
-  );
-
   const rows: RemoteSkillRow[] = [];
   const seen = new Set<string>();
-  for (const s of settled) {
-    if (rows.length >= limit) break;
-    if (s.status !== 'fulfilled') continue; // a dead source degrades; the healthy ones still answer
-    for (const r of s.value) {
+  const failures: unknown[] = [];
+  let succeeded = 0;
+  const fill = (got: RemoteSkillRow[]) => {
+    for (const r of got) {
       if (rows.length >= limit) break;
       const key = dedupKey(r);
       if (seen.has(key)) continue;
       seen.add(key);
       rows.push(r);
     }
+  };
+
+  // STAGE 1 — the bundled index alone, when it leads: one cheap artifact fetch that usually fills the
+  // limit, in which case NO live API is touched at all (fast AND polite). It degrades into stage 2.
+  let live = ids;
+  if (ids[0] === 'index') {
+    live = ids.slice(1);
+    try {
+      fill(await SOURCES.index.search(q, { fetchImpl: opts.fetchImpl, limit }));
+      succeeded++;
+    } catch (e) {
+      failures.push(e);
+    }
+    if (rows.length >= limit) return rows;
   }
 
-  // No rows AND at least one failure ⇒ surface the first failure — an all-dead (or lone-source-dead)
-  // search must not masquerade as "no skills match".
-  const firstFailure = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
-  if (rows.length === 0 && firstFailure) throw firstFailure.reason;
+  // STAGE 2 — the live sources fire CONCURRENTLY (wall-clock is the contract — a sequential fill made the
+  // GUI's search feel dead), then fill in priority order with cross-source dedup. Each source is asked for
+  // the full `limit` (we can't know the earlier sources' yield before they resolve; the trim happens here).
+  const settled = await Promise.allSettled(
+    live.map((id) => SOURCES[id].search(q, { fetchImpl: opts.fetchImpl, limit })),
+  );
+  for (const s of settled) {
+    if (s.status === 'fulfilled') {
+      fill(s.value);
+      succeeded++;
+    } else {
+      failures.push(s.reason);
+    }
+  }
+
+  // NOTHING succeeded ⇒ surface the first failure — an all-dead search must not masquerade as "no skills
+  // match". (A healthy source returning zero rows IS a truthful no-match, even when another source died.)
+  if (rows.length === 0 && succeeded === 0 && failures.length > 0) throw failures[0];
   return rows;
 }
