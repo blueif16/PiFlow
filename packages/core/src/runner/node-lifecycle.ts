@@ -398,12 +398,21 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     let skillPath: string | undefined;
     try {
       const skillStage = resolveSkillStage(node.skill, resolveCtx);
-      const exists = skillStage && (await fs.stat(skillStage.source).then(() => true, () => false));
-      if (skillStage && exists) {
-        const skillRel = path.posix.join('.pi', 'skills', skillStage.name);
-        await fs.cp(skillStage.source, path.resolve(ctx.outDir, skillRel), { recursive: true, force: true });
-        await stageHostPathIntoSandbox(sandbox, ctx.outDir, skillRel);
-        skillPath = path.posix.join(stageRoot, node.sandbox.workspace || '.', skillRel);
+      const srcStat = skillStage ? await fs.stat(skillStage.source).catch(() => null) : null;
+      if (skillStage && srcStat) {
+        // The staged DIR is always `.pi/skills/<name>/` — collision-free because `resolveSkillStage` names
+        // it after the skill's OWNING directory even for a `.../SKILL.md` FILE ref (two nodes referencing
+        // DIFFERENT skills never share a destination, so concurrent siblings in the same stage never race
+        // `fs.cp` onto the same path — the ENOENT-on-chmod/unlink collision this fixes). A directory source
+        // copies AS that dir (unchanged shape); a FILE source nests under it (preserving the filename), so
+        // `--skill` is handed a DIRECTORY either way (pi's discovery contract), never a bare file.
+        const skillDirRel = path.posix.join('.pi', 'skills', skillStage.name);
+        const skillDestRel = srcStat.isDirectory()
+          ? skillDirRel
+          : path.posix.join(skillDirRel, path.basename(skillStage.source));
+        await fs.cp(skillStage.source, path.resolve(ctx.outDir, skillDestRel), { recursive: true, force: true });
+        await stageHostPathIntoSandbox(sandbox, ctx.outDir, skillDestRel);
+        skillPath = path.posix.join(stageRoot, node.sandbox.workspace || '.', skillDirRel);
       }
     } catch (e) {
       return finishNode(ctx, node, rec, t0, 'error', `skill staging failed: ${(e as Error).message}`, [], [(e as Error).message]);

@@ -36,10 +36,20 @@ export interface SkillStage {
  * the shared `resolveTokens`; a still-relative result is made absolute against the workspace root (where
  * skills canonically live — `ResolveCtx.workspace`). PURE: no filesystem access (the runner checks existence
  * + stages).
+ *
+ * COLLISION FIX: `prompt.skill` (node.schema.ts) is documented as "a SKILL.md pointer", so a template may
+ * legitimately author the ref as the FILE `.../<skill-dir>/SKILL.md`, not the skill directory — and every
+ * Agent-Skill file shares that exact filename by convention. Basenaming the ref directly would then collapse
+ * EVERY such node's staged `name` to the literal "SKILL.md", so concurrent sibling nodes race `fs.cp` onto
+ * the SAME `.pi/skills/SKILL.md` destination (observed: `ENOENT chmod '<run>/.pi/skills/SKILL.md'` when two
+ * land at once). So a ref whose basename IS "SKILL.md" (case-insensitive) names the stage after its OWNING
+ * DIRECTORY instead — the same collision-free name a directory ref for the identical skill already produces.
  */
 export function resolveSkillStage(skillRef: string | undefined, ctx: ResolveCtx): SkillStage | undefined {
   if (!skillRef || !skillRef.trim()) return undefined;
   const resolved = resolveTokens(skillRef, ctx);
   const source = path.isAbsolute(resolved) ? resolved : path.resolve(ctx.workspace, resolved);
-  return { source, name: path.basename(source) };
+  const base = path.basename(source);
+  const name = base.toLowerCase() === 'skill.md' ? path.basename(path.dirname(source)) : base;
+  return { source, name };
 }
