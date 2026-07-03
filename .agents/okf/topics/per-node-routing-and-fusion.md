@@ -119,6 +119,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 
 ### Lessons — memory cluster
 
@@ -141,9 +142,11 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[game-omni-reference-product]]
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
+- [[harden-node-completes-run-to-completion]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
+- [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[observe-single-data-path]]
 - [[op-consumption-two-layer]]
@@ -167,8 +170,8 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `judgePresetId` (packages/core/src/workflow/fusion/presets.ts:43) — 3 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `expandNode` (packages/core/src/workflow/fusion/expand.ts:69) — 1 caller in `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 10 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/server/src/handlers.ts`, `packages/core/src/runner/index.ts` +1 more; tests: `packages/core/test/model-routing.test.ts`
+- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/entry.ts`, `packages/server/src/handlers.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=46 commits · files=10 · lessons=38</sub>
+<sub>derived 2026-07-03 · arc=47 commits · files=10 · lessons=40</sub>
 <!-- okf:auto-end -->

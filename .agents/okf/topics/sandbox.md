@@ -170,6 +170,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
+- [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
@@ -196,5 +197,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `SeatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:202) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=73 commits · files=8 · lessons=41</sub>
+<sub>derived 2026-07-03 · arc=73 commits · files=8 · lessons=42</sub>
 <!-- okf:auto-end -->

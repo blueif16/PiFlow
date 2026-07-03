@@ -25,7 +25,7 @@ ONLY through files on disk — the filesystem IS the contract.
 
 # Anchors
 TEMPLATE-RUN JOIN
-- `packages/core/src/runner/entry.ts:153` — `runFromTemplate` — load → instantiate → compile → run
+- `packages/core/src/runner/entry.ts:163` — `runFromTemplate` — load → instantiate → compile → run
 - `packages/core/src/workflow/template/instantiate.ts:98` — `instantiateRun` — materialize `${RUN}/.pi/nodes/<id>/`
 PER-NODE RUNNER EXEC
 - `packages/core/src/runner/runner.ts:373` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
@@ -181,6 +181,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 - `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
+- `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 
 ### Lessons — memory cluster
 
@@ -193,14 +194,15 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[guidance-node-sonnet5-routing]]
 - [[local-docker-sandbox-mode]]
 - [[model-provider-single-default-fixture]]
+- [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 6 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run.test.ts`
+- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 6 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 8 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:643) — 11 callers in `packages/core/src/runner/resume.ts`, `packages/core/src/sandbox/local.ts`, `packages/docker/src/docker.ts`, `packages/core/src/runner/runner.ts` +2 more; ⚠ no covering tests found
+- `InstantiateRunOpts` (packages/core/src/workflow/template/instantiate.ts:40) — 4 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/template/instantiate.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=126 commits · files=7 · lessons=9</sub>
+<sub>derived 2026-07-03 · arc=127 commits · files=7 · lessons=10</sub>
 <!-- okf:auto-end -->
