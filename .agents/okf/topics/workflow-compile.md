@@ -129,6 +129,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -158,6 +159,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflowctl-bin-rename]]
 - [[roadmap-bookkeeping-linear]]
 - [[swarm-consensus-deferred]]
+- [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
@@ -165,9 +167,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 - `toNodeIntent` (packages/core/src/workflow/template/loader.ts:97) — 1 caller in `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
-- `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
-- `loadTemplate` (packages/core/src/workflow/template/loader.ts:215) — 12 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/blueprint-goldens.test.ts`, `packages/core/test/load-template.test.ts`, `packages/core/test/sandbox-output-passthrough.test.ts`
-- `NodeSpec` (packages/core/src/types.ts:17) — 34 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/drivers/types.ts`, `packages/core/src/runner/env-staging.ts` +3 more; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/driver-runtime.test.ts`, `packages/core/test/execcwd-staging.test.ts`, `packages/core/test/executor-override.test.ts` +2
+- `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
+- `loadTemplate` (packages/core/src/workflow/template/loader.ts:215) — 12 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/blueprint-goldens.test.ts`, `packages/core/test/load-template.test.ts`, `packages/core/test/sandbox-output-passthrough.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 38 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/env-staging.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/command.ts` +4 more; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/driver-runtime.test.ts`, `packages/core/test/execcwd-staging.test.ts`, `packages/core/test/executor-override.test.ts` +4
 
-<sub>derived 2026-07-02 · arc=69 commits · files=5 · lessons=31</sub>
+<sub>derived 2026-07-03 · arc=69 commits · files=5 · lessons=33</sub>
 <!-- okf:auto-end -->

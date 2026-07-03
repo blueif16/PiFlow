@@ -123,16 +123,26 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `36ba65e` 2026-07-01 — feat(gui): P5 — RunDigestPanel refetches off SSE deltas, not a 3s idle poll
 - `a06e930` 2026-07-01 — feat(gui): DR6 reconcile net — heal SSE drift on tab return (MODEL REPLACE)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `4ac20a5` 2026-07-02 — fix(gui): panel layering + modal discipline — rails get an ambient tier, modals exclusive + Escape
+- `a941c34` 2026-07-02 — fix(gui): floating chrome never covers content — palette row, HUD caption, dir-panel clearance
+- `3dcf5df` 2026-07-02 — feat(gui): render tokens/cost in the HUD; honor core's time-tone verdict; one token formatter
+- `5b854b9` 2026-07-02 — feat(gui): global local/cloud endpoint switcher — top-center icon, one-click confirm
+- `0c4c5ee` 2026-07-02 — feat(gui): render node gates as hexagon icons + a HUD "Hooks" section
+- `ebc5356` 2026-07-02 — feat(gui): compose gate rail + natural-language drop card
+- `8c119ae` 2026-07-02 — feat(gui): gate drop card → full-height left authoring overlay with a live transcript
+- `2073700` 2026-07-03 — feat(gui): run-first Create + "apply to entire template?" promotion in the compose overlay
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[eval-bulk-agents-use-cheaper-model]]
@@ -141,6 +151,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[game-omni-reference-product]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
 - [[observe-single-data-path]]
@@ -158,16 +169,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
+- [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
+- `NodeHud` (gui/src/components/NodeHud.tsx:97) — 1 caller in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:157) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:573) — 4 callers in `gui/src/components/WorkflowCanvas.tsx`; tests: `gui/src/data/liveModelToRunView.test.ts`, `gui/src/data/runView.test.ts`
-- `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/observe.test.ts`, `packages/core/test/watch.test.ts`
+- `toFlowGraph` (gui/src/data/runView.ts:589) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `loadRunView` (gui/src/data/runView.ts:159) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
 
-<sub>derived 2026-07-02 · arc=62 commits · files=8 · lessons=34</sub>
+<sub>derived 2026-07-03 · arc=70 commits · files=8 · lessons=38</sub>
 <!-- okf:auto-end -->

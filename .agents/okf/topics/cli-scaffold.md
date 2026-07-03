@@ -36,7 +36,7 @@ ADD-NODE
 - `packages/cli/src/scaffold.ts:201` — `buildNode` — PURE: id/phase/deps/contract + optional blocks + derives folded into `op[]`
 - `packages/cli/src/scaffold.ts:236` — `seedNodeMemory`/`seedNodeCodeMap` — seed memory.md + code-map.md create-if-absent (never clobbers prompt.md)
 RUN
-- `packages/cli/src/run.ts:444` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
+- `packages/cli/src/run.ts:451` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
 - `packages/core/src/runner/entry.ts:150` — `runFromTemplate` — the core template-run join the CLI delegates to
 
 # Freshness (anti-drift)
@@ -185,10 +185,16 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
+- `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
+- `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
@@ -198,6 +204,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[design-at-init-architecture]]
@@ -208,18 +215,22 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
+- [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
+- [[okf-coverage-boundary]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
+- [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
@@ -227,12 +238,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[swarm-consensus-deferred]]
+- [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
@@ -245,5 +258,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:702) — 3 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 - `scaffoldNew` (packages/cli/src/scaffold.ts:396) — 4 callers in `packages/cli/src/blueprint-stamp.ts`, `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-02 · arc=125 commits · files=8 · lessons=47</sub>
+<sub>derived 2026-07-03 · arc=130 commits · files=8 · lessons=55</sub>
 <!-- okf:auto-end -->

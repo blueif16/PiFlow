@@ -158,10 +158,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `80aafdb` 2026-07-02 — test(P6): failing tests + stubs for cost-spike + loopScore (RED)
 - `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `9ad30e3` 2026-07-02 — fix(observe): honest telemetry for unstamped-legacy and reused nodes (E+F)
+- `3dcf5df` 2026-07-02 — feat(gui): render tokens/cost in the HUD; honor core's time-tone verdict; one token formatter
+- `0c4c5ee` 2026-07-02 — feat(gui): render node gates as hexagon icons + a HUD "Hooks" section
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[claude-code-executor]]
 - [[competitive-gaps-pdw]]
@@ -183,5 +187,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `packages/core/src/workflow/template/render.ts`, `packages/cli/src/scaffold.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
 - `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
 
-<sub>derived 2026-07-02 · arc=98 commits · files=8 · lessons=12</sub>
+<sub>derived 2026-07-03 · arc=101 commits · files=8 · lessons=13</sub>
 <!-- okf:auto-end -->

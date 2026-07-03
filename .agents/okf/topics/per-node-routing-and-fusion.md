@@ -29,8 +29,8 @@ expanded nodes into stages/edges — the terminal: a DAG with nodes the author n
 # Anchors
 ROUTING — resolve (precedence)
 - `packages/core/src/runner/model-routing.ts:75` — `resolveNodeModel` — PURE precedence resolver (node.model > tiers[node.tier] > run --model > default)
-- `packages/core/src/runner/model-routing.ts:171` — `loadModelTiers` — read-only `~/.piflow/model-tiers.json`; absent/invalid ⇒ `{active:false}` default
-- `packages/core/src/runner/model-routing.ts:272` — `loadModelsIndex` — read-only pi `~/.pi/agent/models.json`; model id → provider auto-resolve
+- `packages/core/src/runner/model-routing.ts:196` — `loadModelTiers` — read-only `~/.piflow/model-tiers.json`; absent/invalid ⇒ `{active:false}` default
+- `packages/core/src/runner/model-routing.ts:297` — `loadModelsIndex` — read-only pi `~/.pi/agent/models.json`; model id → provider auto-resolve
 ROUTING — thread + per-node + escalate
 - `packages/core/src/runner/runner.ts:332` — `modelRouting: opts.modelRouting ?? { tiers, modelsIndex }` — resolve run config once, thread into `RunContext`
 - `packages/core/src/runner/node-lifecycle.ts:362` — `eff = resolveNodeModel(node, {…})` — per-node resolution at the build call
@@ -117,16 +117,20 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `9e7a20c` 2026-07-01 — fix(core): compile carries sandbox execCwd/execReads (E10 drop)
 - `2efc3f3` 2026-07-02 — test(P2): failing golden tests + claudeCodeDriver stub (RED)
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[design-at-init-architecture]]
@@ -136,9 +140,11 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
+- [[model-provider-single-default-fixture]]
 - [[observe-single-data-path]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
@@ -148,6 +154,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
+- [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
 - [[swarm-consensus-deferred]]
@@ -159,8 +166,8 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `judgePresetId` (packages/core/src/workflow/fusion/presets.ts:43) — 3 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `expandNode` (packages/core/src/workflow/fusion/expand.ts:69) — 1 caller in `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `loadModelTiers` (packages/core/src/runner/model-routing.ts:171) — 20 callers in `packages/cli/src/init/steps/claude-code.ts`, `packages/cli/src/init/steps/model-tiers.ts`, `packages/cli/src/model.ts`, `packages/cli/src/run.ts` +5 more; tests: `packages/core/test/agent-base.test.ts`, `packages/core/test/model-routing.test.ts`, `packages/core/test/piflow-home.test.ts`
+- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 10 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-02 · arc=44 commits · files=10 · lessons=32</sub>
+<sub>derived 2026-07-03 · arc=46 commits · files=10 · lessons=37</sub>
 <!-- okf:auto-end -->

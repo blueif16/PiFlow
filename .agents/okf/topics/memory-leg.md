@@ -225,6 +225,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `f1d8a81` 2026-07-02 — test(P4): failing tests + stubs for driverFits + schema agent + drivers catalog (RED)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
 - `3ffbdc6` 2026-07-02 — feat(cli): understand --reconcile/--owns + phrase-fallback ranker + fixer FIND wire
+- `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
+- `f8fc81c` 2026-07-02 — feat(okf): CLI reader + fixer wire source ranking from the engine — M1b
+- `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 
 ### Lessons — memory cluster
 
@@ -246,8 +250,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 - `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
-- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
+- `buildNodeMemory` (packages/core/src/memory/skeleton.ts:15) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
+- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-02 · arc=149 commits · files=15 · lessons=12</sub>
+<sub>derived 2026-07-03 · arc=153 commits · files=15 · lessons=12</sub>
 <!-- okf:auto-end -->

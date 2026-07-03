@@ -27,7 +27,7 @@ host mint a scoped token) and crosses EXACTLY that set in via `CreateOpts.env`; 
 
 # Anchors
 SELECT
-- `packages/cli/src/run.ts:247` — `parseRunArgs` (`--sandbox`) — parse the backend choice (typo errors loudly)
+- `packages/cli/src/run.ts:251` — `parseRunArgs` (`--sandbox`) — parse the backend choice (typo errors loudly)
 - `packages/cli/src/run.ts:363` — `makeDaytonaProvider` — dynamic `import('@piflow/daytona')` → `createDaytonaProvider`
 - `packages/cli/src/run.ts:377` — `makeE2bProvider` — dynamic `import('@piflow/e2b')` → `createE2bProvider`
 INSTALL
@@ -146,10 +146,16 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
+- `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
+- `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -157,6 +163,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[daytona-cloud-path]]
 - [[design-at-init-architecture]]
 - [[expert-representations]]
@@ -165,18 +172,22 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[game-omni-reference-product]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
+- [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
+- [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[railway-deploy-from-main-not-worktree]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
@@ -184,11 +195,11 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 
 ### Code anchors / blast radius (codegraph)
 
-- `createE2bProvider` (packages/e2b/src/e2b-sdk.ts:217) — 1 caller in `packages/e2b/src/index.ts`; ⚠ no covering tests found
+- `createE2bProvider` (packages/e2b/src/e2b-sdk.ts:217) — 2 callers in `packages/e2b/src/index.ts`; tests: `packages/e2b/test/control-plane-full-run.live.test.ts`
 - `E2bSandboxProvider` (packages/e2b/src/e2b.ts:436) — 6 callers in `packages/e2b/src/e2b-sdk.ts`, `packages/e2b/src/index.ts`; tests: `packages/e2b/test/sandbox-e2b-parity.test.ts`, `packages/e2b/test/n127-negative-twin.test.ts`, `packages/e2b/test/nbreach-parity.test.ts`
 - `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
-- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
+- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-02 · arc=84 commits · files=8 · lessons=31</sub>
+<sub>derived 2026-07-03 · arc=89 commits · files=8 · lessons=37</sub>
 <!-- okf:auto-end -->

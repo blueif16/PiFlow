@@ -137,10 +137,16 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
+- `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
+- `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
@@ -150,6 +156,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[expert-representations]]
@@ -158,18 +165,23 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
+- [[merge-workspace-token-bug]]
+- [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[op-consumption-two-layer]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
+- [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
 - [[telemetry-legibility-tracks]]
@@ -183,5 +195,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-02 · arc=68 commits · files=8 · lessons=33</sub>
+<sub>derived 2026-07-03 · arc=73 commits · files=8 · lessons=40</sub>
 <!-- okf:auto-end -->
