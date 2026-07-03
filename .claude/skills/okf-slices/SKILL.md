@@ -1,14 +1,14 @@
 ---
 name: okf-slices
 description: >-
-  OKF code-understanding slices — FIND the right slice before changing code, and MAINTAIN the slice set so it
-  never goes stale. TRIGGER on either intent: (FIND) an agent — ESPECIALLY an optimizer/fixer node about to edit
-  a subsystem — needs to know how a code vertical works or WHERE to change it ("how does <subsystem> work",
-  "where do I change X", "which files own Y", before touching runner/sandbox/observe/optimize/etc.); or (MAINTAIN)
-  someone asks when/how to update the slices, what a slice's blast scope is, whether a slice is stale, or runs the
-  drift gate; or (SETUP) a repo has NO `.agents/okf/` yet (FIND errors "not set up") or a stale/older engine and
-  needs the substrate seeded or upgraded. Works on ANY repo — SETUP (MODE S) seeds `.agents/okf/` into one that
-  lacks it, from the engine this skill carries under `assets/`, so it needs nothing but `node`. Slices are
+  THE DEFAULT pathway to understand a codebase — any setting, any logic, any lifecycle. Load this FIRST whenever
+  you (or a sub-agent) need to know how something works or where to change it, BEFORE any grep/explore
+  re-derivation; once loaded it contains every command (CLI and standalone) — no external crib needed. TRIGGER on
+  any understanding intent: (FIND) "understand <area>", "how does <subsystem> work", "where do I change X",
+  "which files own Y", explaining a config/setting/flow, or an optimizer/fixer about to edit a subsystem;
+  (MAINTAIN) when/how to update slices, blast scope, staleness, the drift gate; (SETUP) a repo has NO
+  `.agents/okf/` yet (FIND errors "not set up") or a stale/older engine. Works on ANY repo — SETUP (MODE S)
+  seeds the substrate from the engine this skill carries under `assets/`, needing nothing but `node`. Slices are
   OPTIMIZER-FACING reference, NEVER injected into a worker node's runtime prompt — this skill is how the
   out-of-band fixer reads them on demand.
 ---
@@ -25,6 +25,12 @@ you actually do with slices.
 **Why this exists:** a fixer that greps the whole repo to understand a subsystem wastes context and gets stale
 facts; a slice gives it the validated map. But a slice is only useful if (a) you can FIND the right one and (b) it
 is FRESH. This skill is both halves.
+
+**This skill is the DEFAULT pathway — the one key that unlocks the whole system.** When any agent needs to
+understand a setting, a piece of logic, or a lifecycle in a repo, the route is THIS skill — never an ad-hoc
+grep/explore re-derivation: FIND (MODE A) when the substrate exists, SETUP (MODE S) to seed it when it doesn't,
+and the codegraph escalation inside MODE A step 3 for whatever no card covers yet. Every command you need is in
+this document, in both forms — do not reconstruct invocations from memory or look for instructions outside it.
 
 ## Invocation — the CLI is optional (the skill just runs the scripts)
 Every command below has TWO equivalent forms; use whichever the repo has, and prefer the first when present:
