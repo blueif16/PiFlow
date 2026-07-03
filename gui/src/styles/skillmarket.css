@@ -290,3 +290,18 @@
   flex-shrink: 0;
 }
 .ds-skillcard__cmd.is-copied { border-color: var(--ds-accent); }
+
+/* the explicit deep-search action under instant index results */
+.ds-market__deep {
+  margin-top: 8px;
+  padding: 6px 10px;
+  width: 100%;
+  text-align: left;
+  font-size: 11px;
+  color: var(--ds-text-muted);
+  background: transparent;
+  border: 1px dashed var(--ds-border, rgba(0, 0, 0, 0.14));
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ds-market__deep:hover { color: var(--ds-accent); border-color: var(--ds-accent); }
