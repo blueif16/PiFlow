@@ -51,6 +51,9 @@ out/
 # recency / --check all need git; matches game-omni which tracks its .agents/okf/).
 .agents/*
 !.agents/okf/
+# repo-local, committable Agent-Skill bundles the run resolver + GUI skill panel read
+# (`<workspaceRoot>/.agents/skills/<id>/SKILL.md`) — versioned like .agents/okf/, not scratch.
+!.agents/skills/
 .codegraph/
 # Generated build artifact: `piflowctl skills install` ships the workflow-authoring trio, bundled into the
 # CLI tarball by the package's `prepack` (packages/cli/scripts/bundle-skills.mjs) from the canonical repo-root

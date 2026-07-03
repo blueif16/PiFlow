@@ -3,7 +3,8 @@
   "phase": "plan",
   "deps": [],
   "prompt": {
-    "file": "prompt.md"
+    "file": "prompt.md",
+    "skill": "multi-source-research"
   },
   "agentType": "plan",
   "tools": {
