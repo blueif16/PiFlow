@@ -1,7 +1,8 @@
 /* ============================================================================
    Companion — pi chat. Collapsed launcher (bottom-right) ↔ a full-height glass
-   RAIL on the right, layered over the live flowmap with NO backdrop. One tier
-   below the floating MenuBar/ModeBar so they keep floating on top.
+   RAIL on the right, layered over the live flowmap with NO backdrop. An AMBIENT
+   rail: below the HUD focus scrim (an open Node/File HUD dims it) and below the
+   floating MenuBar/ModeBar so they keep floating on top.
 
    Design law for this panel: no header, no dividers, no bubbles, no chip/notice
    containers. The transcript is flat text on glass; the ONLY bordered container
@@ -11,7 +12,7 @@
   position: fixed;
   right: clamp(10px, 1.6vw, 18px);
   bottom: clamp(10px, 1.6vh, 18px);
-  z-index: var(--ds-z-modal);           /* BELOW MenuBar/ModeBar (popover) → they stay on top of the rail */
+  z-index: var(--ds-z-rail);            /* ambient rail: below the HUD focus scrim/overlays AND the MenuBar/ModeBar */
   pointer-events: none;                 /* only the launcher/rail are interactive */
 }
 .ds-companion-layer > * { pointer-events: auto; }

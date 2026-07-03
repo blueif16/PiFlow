@@ -207,6 +207,7 @@
   --ds-z-node-raised: 5;
   --ds-z-toolbar: 10;
   --ds-z-panel: 100;
+  --ds-z-rail: 800; /* ambient side rails (digest/companion) — below the focus scrim so an open HUD dims them */
   --ds-z-scrim: 900;
   --ds-z-overlay: 1000;
   --ds-z-modal: 1100;

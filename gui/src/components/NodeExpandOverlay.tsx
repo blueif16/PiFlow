@@ -71,7 +71,9 @@ export function NodeExpandOverlay({ id, data, run, onClose }: NodeExpandOverlayP
               // entire HUD height chain depends on.
               gridTemplateRows: "minmax(0, 1fr)",
               placeItems: "stretch",
-              padding: "clamp(10px, 1.6vh, 18px)",
+              // extra BOTTOM clearance = the fixed ModeBar band (its offset + key row): the chrome floats
+              // above this overlay by design, so the HUD's bottom progress caption must not sit under it.
+              padding: "clamp(10px, 1.6vh, 18px) clamp(10px, 1.6vh, 18px) calc(clamp(10px, 1.6vh, 18px) + 54px)",
               pointerEvents: "none",
             }}
           >

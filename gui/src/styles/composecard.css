@@ -1,0 +1,185 @@
+/* ============================================================================
+   GateDropCard — the gate-authoring overlay: a full-height glass RAIL on the LEFT,
+   the mirror image of the Companion (right). Layered over the live flowmap with NO
+   backdrop, AMBIENT tier (below the HUD focus scrim + the floating MenuBar/ModeBar),
+   so the canvas stays lit. Reuses the Companion's flat-transcript vocabulary; the
+   ONE deviation is a bound header (gate kind → node) the spec calls for.
+   ========================================================================== */
+.ds-composecard-layer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: var(--ds-z-rail);   /* ambient rail — below the HUD scrim/overlays AND the MenuBar/ModeBar */
+  pointer-events: none;        /* only the rail is interactive */
+}
+.ds-composecard-layer > * { pointer-events: auto; }
+
+/* the open rail — fixed to the LEFT edge, full height. Flush left (no rounding there); the right edge
+   carries the rim + glass shadow as the elevation. One beveled inner top-RIGHT corner (mirror of the
+   Companion's inner top-left) = the sci-fi-rectangle game silhouette. */
+.ds-composecard {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(44vw, 540px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+}
+@supports (corner-shape: bevel) {
+  .ds-composecard {
+    border-start-start-radius: 0;
+    border-end-end-radius: 0;
+    border-start-end-radius: 16px;
+    corner-shape: bevel;
+  }
+}
+
+/* ── header — the ONE bound label the spec asks for: kind hexagon → node name + close ───────────────── */
+.ds-composecard__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  padding: clamp(14px, 1.8vh, 20px) var(--ds-space-8) var(--ds-space-3);
+}
+.ds-composecard__headtext { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.ds-composecard__kind {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+.ds-composecard__node {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-composecard__close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-tertiary);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast);
+}
+.ds-composecard__close:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-composecard__close:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* ── transcript — flat turns on glass, no bubbles (the Companion vocabulary) ────────────────────────── */
+.ds-composecard__log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-5);
+  padding: var(--ds-space-2) var(--ds-space-8) var(--ds-space-5);
+}
+.ds-composecard__empty {
+  margin: auto;
+  max-width: 40ch;
+  text-align: center;
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-tertiary);
+  line-height: var(--ds-leading-relaxed);
+}
+
+/* a "you" turn — the submitted description, tagged with the context chip binding it to node+gate */
+.ds-composecard__turn--you { display: flex; flex-direction: column; gap: var(--ds-space-2); max-width: 62ch; }
+.ds-composecard__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px 9px 3px 5px;
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-bg-surface);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+}
+.ds-composecard__turn--you .ds-md { color: var(--ds-text-primary); font-size: var(--ds-text-base); }
+.ds-composecard__turn--you .ds-md__pre { max-width: 100%; overflow-x: auto; }
+
+/* a "system" turn — the write result beneath the send. ok = quiet, err = the FULL error (wraps, untruncated) */
+.ds-composecard__sys {
+  margin: 0;
+  max-width: 62ch;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ds-text-tertiary);
+}
+.ds-composecard__sys[data-tone="ok"] { color: var(--ds-success-fg, #1a7f37); }
+.ds-composecard__sys[data-tone="ok"]::before { content: "✓ "; }
+.ds-composecard__sys[data-tone="err"] { color: var(--ds-error-fg); }
+.ds-composecard__sys[data-tone="err"]::before { content: "✕ "; }
+
+/* ── composer — a LARGE paste-a-paragraph textarea + the one primary button ─────────────────────────── */
+.ds-composecard__composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  flex: 0 0 auto;
+  /* bottom clearance = the floating ModeBar band (bottom-LEFT): the ModeBar floats a tier above this rail,
+     so the composer must sit above it (the same law as the HUD's bottom padding, NodeExpandOverlay). */
+  padding: var(--ds-space-3) var(--ds-space-8) calc(clamp(10px, 1.6vh, 18px) + 54px);
+}
+.ds-composecard__ta {
+  width: 100%;
+  min-height: 120px;
+  max-height: 40vh;
+  resize: vertical;
+  padding: var(--ds-space-3);
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-base);
+  line-height: var(--ds-leading-relaxed);
+  color: var(--ds-text-primary);
+  box-sizing: border-box;
+  transition: border-color var(--ds-dur-fast) var(--ds-ease-standard), box-shadow var(--ds-dur-fast);
+}
+.ds-composecard__ta:focus-visible { outline: none; border-color: var(--ds-accent); box-shadow: 0 0 0 2px var(--ds-accent-ring); }
+.ds-composecard__foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--ds-space-3); }
+.ds-composecard__hint { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-disabled); }
+.ds-composecard__create {
+  height: 32px;
+  padding: 0 16px;
+  border: 1px solid var(--ds-accent);
+  background: var(--ds-accent);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  color: #fff;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-composecard__create:hover:not(:disabled) { background: var(--ds-accent-active); }
+.ds-composecard__create:disabled { opacity: 0.5; cursor: not-allowed; }
+.ds-composecard__create:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-composecard__close,
+  .ds-composecard__ta,
+  .ds-composecard__create { transition: none; }
+}

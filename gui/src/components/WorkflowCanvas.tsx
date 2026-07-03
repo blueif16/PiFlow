@@ -18,7 +18,7 @@
  *   - Import order: tokens.css first, then the React Flow stylesheet, then our
  *     glass.css overrides last so our node/handle styles win.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -48,6 +48,7 @@ import { NodeExpandOverlay } from "./NodeExpandOverlay";
 import { FileExpandOverlay, openFileFor, type OpenFile } from "./FileExpandOverlay";
 import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
 import { MenuBar } from "./MenuBar";
+import { EndpointSwitcher } from "./EndpointSwitcher";
 import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
 import { RunDigestPanel } from "./RunDigestPanel";
@@ -58,8 +59,10 @@ import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { FusionContext, type FusionMode } from "./FusionContext";
 import { FusionSaveBar } from "./FusionSaveBar";
 import { ComposeContext } from "./ComposeContext";
-import { ChipPalette } from "./ChipPalette";
+import { GateRail } from "./GateRail";
+import { GateDropCard, type DropCardTarget } from "./GateDropCard";
 import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, runViewToLiveModel, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
+import type { RailKind } from "../data/gates";
 import { deriveZones, toZoneFlowNode, type ZoneFlowNode } from "../data/zones";
 import { loadIndex, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
 import { useRunStream, RunStreamContext } from "../data/runStream";
@@ -90,6 +93,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // pipeline badge's source of truth (the run-view distillation does NOT carry the template op[]). Loaded
   // lazily when Compose mode opens; refreshed for a single node after a chip drops.
   const [nodeConfigs, setNodeConfigs] = useState<Record<string, AuthoredNodeConfig>>({});
+  // (Compose mode) the open drop card — a rail gate dropped on a node opens the natural-language card at it;
+  // "Create gate" writes the template. Null = no card open.
+  const [dropCard, setDropCard] = useState<DropCardTarget | null>(null);
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
   const [digestOpen, setDigestOpen] = useState(false); // left-edge run digest; launched by the "D" key
   const [startOpen, setStartOpen] = useState(false); // the "Start a run" launcher modal (from the MenuBar)
@@ -105,11 +111,32 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // enriched-live re-render doesn't re-hit /agents.json on every token delta. The poll path fetches it inline.
   const [agentCatalog, setAgentCatalog] = useState<AgentCatalog>({});
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { fitView } = useReactFlow();
+  const rf = useReactFlow();
+  const { fitView } = rf;
   // ONE run-telemetry subscription for the active run — provided to the Companion via RunStreamContext so
   // it doesn't open a second EventSource. The CANVAS renders EITHER from the distilled run-view poll (default)
   // OR from this enriched live model, gated by the client transport flag (docs/design P3).
   const live = useRunStream(activeRun);
+
+  // The top-left directory navigator floats over the canvas and fitView can't reserve screen space
+  // for it (px/% padding resolves in FLOW coordinates in this @xyflow version — verified empirically).
+  // So after a fit settles, MEASURE the panel and pan the viewport right just enough that no node in
+  // its vertical band sits under it. Pan only — never zoom. Chained onto the refit below.
+  const nudgeClearOfDir = useCallback(() => {
+    const dirEl = document.querySelector(".ds-dir");
+    if (!dirEl) return;
+    const r = dirEl.getBoundingClientRect();
+    const { x, y, zoom } = rf.getViewport();
+    let minScreenX = Infinity;
+    for (const n of rf.getNodes()) {
+      const sy = n.position.y * zoom + y;
+      const sh = (n.measured?.height ?? 0) * zoom;
+      if (sy > r.bottom + 12 || sy + sh < r.top) continue;
+      minScreenX = Math.min(minScreenX, n.position.x * zoom + x);
+    }
+    const need = r.right + 16 - minScreenX;
+    if (Number.isFinite(minScreenX) && need > 0) rf.setViewport({ x: x + need, y, zoom });
+  }, [rf]);
 
   // (P3) The CLIENT transport flag — read once per session (URL `?live=` / build default). 'poll' (default)
   // keeps today's 3 s /run-view re-poll VERBATIM; 'sse' renders the graph from the enriched live.model.
@@ -308,10 +335,11 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     selectRun(run);
   }, [selectRun]);
 
-  // refit the viewport once the real nodes land
+  // refit the viewport once the real nodes land; when the animated fit completes, nudge the graph
+  // clear of the directory navigator (a pan mid-animation would be overwritten by its later frames)
   useEffect(() => {
-    if (nodes.length) requestAnimationFrame(() => fitView({ padding: 0.25, duration: 320 }));
-  }, [nodes.length, fitView]);
+    if (nodes.length) requestAnimationFrame(() => { void fitView({ padding: 0.25, duration: 320 }).then(nudgeClearOfDir); });
+  }, [nodes.length, fitView, nudgeClearOfDir]);
 
   const onConnect = useCallback((c: Connection) => setEdges((eds) => addEdge(c, eds)), [setEdges]);
   const onNodeClick: NodeMouseHandler = useCallback((_, node) => setExpandedId(node.id), []);
@@ -389,13 +417,18 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     return { ok: r.ok, error: r.error, stub: r.stub };
   }, [activeRun]);
 
+  // (Compose mode) a rail gate dropped on a node opens the left-side authoring overlay bound to that node.
+  const openCard = useCallback((nodeId: string, kind: RailKind) => {
+    setDropCard({ nodeId, kind });
+  }, []);
+
   const composeApi = useMemo(
-    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip }),
-    [mode, activeRun, nodeConfigs, dropChip],
+    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip, openCard, targetId: dropCard?.nodeId ?? null }),
+    [mode, activeRun, nodeConfigs, dropChip, openCard, dropCard],
   );
 
-  // Leaving Compose mode drops the loaded configs (re-fetched fresh on re-entry).
-  useEffect(() => { if (mode !== "compose") setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); }, [mode]);
+  // Leaving Compose mode drops the loaded configs (re-fetched fresh on re-entry) + closes any open card.
+  useEffect(() => { if (mode !== "compose") { setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); setDropCard(null); } }, [mode]);
 
   // A backdrop zone is non-selectable, so the expanded node is always a real card — narrow before reading data.
   const expandedNode = nodes.find((n) => n.id === expandedId);
@@ -414,7 +447,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             <div
               role="alert"
               style={{
-                position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 200,
+                // top: 60 clears the top-center EndpointSwitcher chip (chrome floats above content, so content
+                // must clear its band — the same law as the palette-row / HUD-caption clearances).
+                position: "absolute", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 200,
                 padding: "10px 14px", borderRadius: 8, fontSize: 13, fontFamily: "var(--ds-font-mono)",
                 background: "var(--ds-glass-bg-strong, #fff)", color: "var(--ds-error-fg, #c1262b)",
                 boxShadow: "var(--ds-shadow-md)",
@@ -473,10 +508,18 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             onOpenNode={(nodeId) => { setOpenFile(null); setExpandedId(nodeId); }}
             onClose={() => setOpenFile(null)}
           />
-          <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => setStartOpen(true)} onMigrateRun={() => setMigrateOpen(true)} ix={ix} />
-          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} />
+          {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
+              scrim (by design), so opening one must close the other or they stack. */}
+          <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} />
+          {/* Global running-location indicator (top-center): local ⇄ cloud at a glance, one-click switch via setEndpoint. */}
+          <EndpointSwitcher />
+          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen} />
           <FusionSaveBar active={mode === "fusion"} />
-          <ChipPalette active={mode === "compose"} />
+          {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
+              overlay is open — both are left-anchored, and the overlay is the focus. */}
+          <GateRail active={mode === "compose" && !dropCard} />
+          {/* The left-side gate-authoring overlay (mirror of the right-side Companion), bound to the node. */}
+          <GateDropCard card={mode === "compose" ? dropCard : null} onClose={() => setDropCard(null)} dropChip={dropChip} />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.
               Clicking an anomaly/onset node focuses that node on the canvas. */}

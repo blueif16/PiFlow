@@ -11,10 +11,17 @@
 // span's `durMs` is UNRECOVERABLE ⇒ EVERY span is `durMs:0` (the §4.1 count-only ceiling; the driver
 // declares `telemetry.perToolTimeline:'count-only'`). We never fake a duration.
 //
-// TOKENS/COST/MODEL do NOT ride this reducer — they ride the authoritative `result` event through
-// `rec.usage`/`nodeTokenSpine` (runView.ts). This reducer leaves tokens/model/provider/retries zeroed so
-// nothing double-sources from the (slimmed) stream: `nodeTokenSpine` prefers `rec.usage` and ignores
-// `rich.tokens` for Claude.
+// TOKENS/MODEL are ALSO accumulated here (Defect E2) as the FALLBACK for a run that carries no authoritative
+// `rec.usage` (a LEGACY run — no `result`-derived rollup was ever persisted). `nodeTokenSpine` (runView.ts)
+// still PREFERS `rec.usage` when present — this reducer's tokens/model are read only via its `{...rich.tokens}`/
+// `rich.model` branch, so a modern run (usage present) never double-sources.
+//
+// DEDUP BY TURN: one logical model turn is reported across MULTIPLE `assistant` lines as content streams in,
+// each repeating the IN-FLIGHT message's usage verbatim (verified against a real legacy capture — see
+// claude-stream-json-usage.ndjson) — summing every line would inflate tokens ~2-3x and modelCalls likewise.
+// The turn key is `request_id` (the real capture's correlator) falling back to `message.id` (the shape the
+// OTHER shipped fixture uses); a repeat of the SAME key is skipped. No cost is derived here — no principled
+// per-token price table exists in core for a subscription-flat executor, so cost stays 0 (never hardcoded).
 //
 // It reads ONLY the fields the post-slim events.jsonl preserves (events.ts's executor-aware slim keeps
 // `type`, tool_use `id`/`name`/`input`, tool_result `tool_use_id`/`is_error`), so the raw capture and the
@@ -27,7 +34,6 @@ import type {
   NodeStatusRecordLike,
   LiveMetrics,
   RichNode,
-  RichTokens,
   TimelineSpan,
 } from './distill.js';
 
@@ -56,8 +62,6 @@ const contentOf = (message: unknown): ContentBlock[] => {
   return m && Array.isArray(m.content) ? (m.content as ContentBlock[]) : [];
 };
 
-const ZERO_TOKENS: RichTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextPeak: 0, billable: 0 };
-
 /**
  * A count-only NodeAccumulator over Claude stream-json. Same surface as `createNodeAccumulator`, so both
  * batch replay (runView.ts) and the live tail (watch.ts) drive it identically, and a settled node's
@@ -80,9 +84,46 @@ export function createClaudeAccumulator(): NodeAccumulator {
   let eventsSeen = 0;
   const byType: Record<string, number> = {};
 
+  // (Defect E2) tokens/model/modelCalls — the FALLBACK source when a run carries no `rec.usage`.
+  let model: string | null = null;
+  let modelCalls = 0;
+  const tok = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextPeak: 0 };
+  // dedup key of the last COUNTED turn — repeats of the SAME key (a chunk of the same in-flight message)
+  // are skipped; `undefined` on both sides never matches itself (see accumulateUsage), so an assistant line
+  // with neither correlator always counts as its own turn.
+  let lastTurnKey: string | undefined;
+
   const seeRt = (e: PiEvent) => {
     const rt = e._rt as unknown;
     if (typeof rt === 'string') { if (!firstRt) firstRt = rt; lastRt = rt; }
+  };
+
+  // One assistant line's usage, DEDUPED by turn. A single logical model turn is reported across MULTIPLE
+  // `assistant` lines as content streams in, each repeating the IN-FLIGHT message's usage verbatim (verified
+  // against a real legacy capture) — so only the FIRST line of a turn is counted. The turn key is the event's
+  // top-level `request_id` (the real capture's correlator), falling back to `message.id` (the OTHER shipped
+  // fixture's shape); with NEITHER present, `turnKey` is always a fresh unique string, so nothing collapses.
+  let anonSeq = 0;
+  const accumulateUsage = (e: PiEvent, msg: { model?: string; id?: string; usage?: unknown }): void => {
+    if (!model && typeof msg.model === 'string') model = msg.model;
+    const requestId = (e as { request_id?: unknown }).request_id;
+    const turnKey = typeof requestId === 'string' ? requestId
+      : typeof msg.id === 'string' ? msg.id
+      : `__anon_${anonSeq++}`;
+    if (turnKey === lastTurnKey) return; // a repeated chunk of the SAME turn — already counted
+    lastTurnKey = turnKey;
+    modelCalls += 1;
+    const u = msg.usage;
+    if (!u || typeof u !== 'object') return;
+    const usage = u as Record<string, number>;
+    tok.input += usage.input_tokens || 0;
+    tok.output += usage.output_tokens || 0;
+    tok.cacheRead += usage.cache_read_input_tokens || 0;
+    tok.cacheWrite += usage.cache_creation_input_tokens || 0;
+    // "context in the window" for this call — same shape as nodeTokenSpine's rec.usage contextPeak formula.
+    const peak = (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
+    if (peak > tok.contextPeak) tok.contextPeak = peak;
+    // no principled per-token price for a subscription-flat executor in core — cost stays 0, never hardcoded.
   };
 
   return {
@@ -95,7 +136,10 @@ export function createClaudeAccumulator(): NodeAccumulator {
       switch (type) {
         // assistant line: each `tool_use` content block OPENS a tool span (counts + fingerprints; the
         // matching user tool_result closes it). An assistant line may carry text/thinking blocks too — ignored.
+        // (Defect E2) role==='assistant' also feeds the token/model FALLBACK accumulation, deduped by turn.
         case 'assistant': {
+          const msg = (e as { message?: unknown }).message as { role?: string; model?: string; id?: string; usage?: unknown } | undefined;
+          if (msg && msg.role === 'assistant') accumulateUsage(e, msg);
           for (const block of contentOf((e as { message?: unknown }).message)) {
             if (!block || block.type !== 'tool_use') continue;
             const name = block.name as string;
@@ -137,15 +181,16 @@ export function createClaudeAccumulator(): NodeAccumulator {
     },
 
     metrics(): LiveMetrics {
-      // Claude token/model/retry telemetry rides rec.usage (the result-event spine), NOT this reducer, so
-      // the live metrics carry only what this stream authoritatively knows: the tool-loop signal.
+      // Claude retry/stopReason telemetry rides rec.usage (the result-event spine), NOT this reducer — those
+      // stay zeroed/null. tokens/model/modelCalls (Defect E2) are the FALLBACK accumulation for a run with no
+      // rec.usage, so the live metrics report them here too (not just at finalize/snapshot).
       return {
-        model: null, provider: null,
-        modelCalls: 0, toolCalls, maxToolRepeat, repeatedTool,
+        model, provider: null,
+        modelCalls, toolCalls, maxToolRepeat, repeatedTool,
         loopScore: loop.value,
         retries: 0, stopReason: null,
         truncated: false,
-        tokens: { ...ZERO_TOKENS },
+        tokens: { ...tok, billable: tok.input + tok.output },
       };
     },
 
@@ -174,15 +219,17 @@ export function createClaudeAccumulator(): NodeAccumulator {
     const durationMs = statusRec.durationMs;
 
     const rich: RichNode = {
-      // model/provider/api/tokens/retries/stopReason ride rec.usage (nodeTokenSpine), not this stream.
-      model: null, provider: null, api: null,
+      // provider/api/retries/stopReason ride rec.usage (nodeTokenSpine) when present, not this stream — those
+      // stay null/zeroed. model/tokens/modelCalls (Defect E2) are the FALLBACK accumulation nodeTokenSpine
+      // reads via `{...rich.tokens}`/`rich.model` when a run carries no rec.usage (a legacy run).
+      model, provider: null, api: null,
       toolCalls, toolBreakdown: { ...toolBreakdown }, timeline: [...timelineOut],
       reads: [], lists: [], writes: [], bash: [],
-      tokens: { ...ZERO_TOKENS },
+      tokens: { ...tok, billable: tok.input + tok.output },
       retries: 0, stopReason: null, truncated: false, thinkingChars: 0,
-      modelCalls: 0, maxToolRepeat, repeatedTool,
+      modelCalls, maxToolRepeat, repeatedTool,
       loopScore: loop.value,
-      coverage: { eventsSeen, usageEvents: 0, byType: { ...byType } },
+      coverage: { eventsSeen, usageEvents: modelCalls, byType: { ...byType } },
       startedAt, endedAt, durationMs,
     };
     const io = {

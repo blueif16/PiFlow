@@ -44,9 +44,12 @@ export function NodeModeStrip({ mode, data }: { mode: ViewMode; data: FlowNodeDa
     const peak = rv?.tokens?.contextPeak ?? 0;
     if (dur == null && !peak) return <div className="ds-nodemode ds-nodemode--muted">no run data</div>;
 
-    // time: a SETTLED node carries derived.time from the observe surface; a RUNNING node has no final
-    // duration, so it ticks live (the clock exception) and tones via the pinned mirror on live elapsed.
-    const ratio = dur != null && avg && avg > 0 ? dur / avg : null;
+    // time: a SETTLED node carries derived.time from the observe surface (null is a VERDICT there, not a
+    // gap — a reused node's durationMs is a PRIOR run's carry, a baseline-less node has nothing to compare
+    // against); a RUNNING node has no final duration, so it ticks live (the clock exception) and tones via
+    // the pinned mirror on live elapsed. The local recompute exists ONLY for that running case — never
+    // re-tone a settled node the observe surface declined to tone.
+    const ratio = d?.time ? d.time.ratio : running && dur != null && avg && avg > 0 ? dur / avg : null;
     const timeFrac = ratio != null ? ratio : dur != null ? 1 : 0;
     const timeToneV: ContextTone = d?.time?.tone ?? (ratio != null ? timeTone(ratio) : "ok");
     const timeVal = dur != null ? (avg ? `${formatMs(dur)} / ${formatMs(avg)}` : formatMs(dur)) : "—";

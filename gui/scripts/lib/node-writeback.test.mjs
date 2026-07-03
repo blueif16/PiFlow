@@ -146,6 +146,54 @@ describe("writeNodeEdit — the end-to-end TEMPLATE node.json mutation", () => {
     }
   });
 
+  // ── The compose-redesign acceptance (compose-gate-audit.md §4.1) ────────────────────────────────────
+  // The OLD palette dropped a judge chip WITHOUT a rubric → this path 400'd on EVERY drop. The redesign's
+  // drop card collects the rubric text and sends it, so the SAME endpoint now lands the gate. Both halves
+  // are asserted here: (a) the rubric-less payload is still rejected (the bug is real, not imagined), and
+  // (b) a pasted paragraph is persisted VERBATIM as the rubric on re-read (assert the file, not the response).
+  it("REJECTS a judge chip with NO rubric (400) — the exact old-palette payload that 400'd every drop", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    try {
+      const before = await readFile(nodeJsonPathFor(templateDir, "build"), "utf8");
+      // The literal payload the old ChipPalette dropped (ChipPalette.tsx:29): judgeTier/threshold/retryMax, NO rubric.
+      const res = await writeNodeEdit(
+        templateDir,
+        "build",
+        { chip: { kind: "judge", judgeTier: "deep", threshold: "pass", retryMax: 1 } },
+        validate,
+      );
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/rubric/i);
+      const unchanged = await readFile(nodeJsonPathFor(templateDir, "build"), "utf8");
+      expect(unchanged).toBe(before); // nothing written on the reject
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("persists a PASTED PARAGRAPH as the judge rubric VERBATIM on disk (the redesign acceptance)", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    // A realistic multi-sentence rubric a user pastes into the drop card — asserted byte-for-byte on re-read.
+    const paragraph =
+      "A good output names every file it changed and quotes the exact line it edited. It invents no paths, and it never claims a test passed without showing the command output.";
+    try {
+      const res = await writeNodeEdit(
+        templateDir,
+        "build",
+        { chip: { kind: "judge", judgeTier: "deep", rubric: paragraph, threshold: "pass", retryMax: 1 } },
+        validate,
+      );
+      expect(res.status).toBe(200);
+      // ASSERT ON THE RE-READ FILE, not the response: the rubric is present and unaltered.
+      const after = JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8"));
+      expect(after.judgeGate.rubric).toBe(paragraph);
+      // and the node still validates against the real nodeSchema (it re-loads through the loader).
+      expect(validate(nodeSchema, after).ok).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("appends to an EXISTING op[] lane (stacking chips), preserving order", async () => {
     const node = baseNode();
     node.op = [{ when: "post", run: { cmd: "tsc" }, onFailure: "block" }]; // an execution gate already present

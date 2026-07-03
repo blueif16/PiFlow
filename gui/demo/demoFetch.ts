@@ -110,6 +110,11 @@ function resolvePiflow(path: string): Response | null {
   return jsonResponse({ ok: true }, 200);
 }
 
+// Mark this as the static demo so the GUI can be HONEST about inert writes: the compose drop card reads
+// this flag and says "editing is disabled in this demo" instead of faking a successful gate write (the
+// node-edit endpoint below returns an inert { ok: true } with no mutated node).
+(window as unknown as { __PIFLOW_DEMO__?: boolean }).__PIFLOW_DEMO__ = true;
+
 /** Install the fetch wrapper: intercept `/__piflow/*`, pass everything else through. */
 const realFetch = window.fetch.bind(window);
 window.fetch = function demoFetchWrapper(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {

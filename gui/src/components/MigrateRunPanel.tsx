@@ -60,6 +60,14 @@ export function MigrateRunPanel({ open, onClose, activeRun, onMigrated }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentBaseUrl]);
 
+  // Escape closes — the same convention every other overlay (Node/File HUD, switcher popup) obeys.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   async function migrate() {

@@ -1,7 +1,8 @@
 /* ============================================================================
    RunDigestPanel — the run-LEVEL observation lens. A full-height glass RAIL on
    the LEFT edge (mirror of the Companion's right rail), layered over the live
-   flowmap with NO backdrop, one tier below the floating MenuBar/ModeBar.
+   flowmap with NO backdrop — an AMBIENT rail: below the HUD focus scrim (an open
+   Node/File HUD dims it) and below the floating MenuBar/ModeBar.
 
    Same design law as the Companion: flat content on glass, no bubbles. The only
    accents are the severity tones on the worklist rows — reusing the gate/policy
@@ -12,7 +13,7 @@
   left: 0;
   top: 0;
   bottom: 0;
-  z-index: var(--ds-z-modal);           /* BELOW MenuBar/ModeBar (popover) → they stay on top of the rail */
+  z-index: var(--ds-z-rail);            /* ambient rail: below the HUD focus scrim/overlays AND the MenuBar/ModeBar */
   pointer-events: none;
 }
 .ds-digest-layer > * { pointer-events: auto; }

@@ -22,10 +22,10 @@ import { ProgressBar } from "./ProgressBar";
 import { StatusPill, HudCorners } from "./HudBits";
 import { FileView, type FileTarget } from "./FileContent";
 import { CacheDonut } from "./CacheDonut";
-import { NodeGates } from "./NodeGates";
+import { NodeHooks } from "./NodeGates";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
-import { formatMs, formatBytes, type RunViewNode, type ScopeKind, type Tone } from "../data/runView";
+import { formatMs, formatBytes, formatTokens, type RunViewNode, type ScopeKind, type Tone } from "../data/runView";
 import "../styles/hud.css";
 import "../styles/reader.css";
 
@@ -305,10 +305,15 @@ function Identity({ id, data, reduce, onClose, status }: { id: string; data: Flo
 }
 
 /* ── CENTER overview (at rest): the summary + the REAL extra telemetry not shown
-   elsewhere — phase, issues/warnings, context peak, timing. Replaced in-place by the
-   region/file panel on hover/click. (Token cost is intentionally NOT shown — broken upstream.) ── */
+   elsewhere — phase, issues/warnings, context peak, tokens/cost, timing. Replaced in-place by the
+   region/file panel on hover/click. Tokens/cost render only when non-zero: legacy Claude replay is
+   fixed upstream (driver-sniffed accumulator), and a subscription-flat executor's honest cost IS 0 —
+   a "$0.00" row would read as broken, so zero stays silent. ── */
 function Overview({ rv, status, expected, elapsedMs }: { rv: RunViewNode; status: NonNullable<FlowNodeData["status"]>; expected: number | null; elapsedMs: number | null }) {
   const ctxPeak = rv.tokens?.contextPeak ?? 0;
+  const tokIn = rv.tokens?.input ?? 0;
+  const tokOut = rv.tokens?.output ?? 0;
+  const cost = rv.tokens?.cost ?? 0;
   const running = status === "running";
   return (
     <div className="ds-hud__overview">
@@ -333,16 +338,13 @@ function Overview({ rv, status, expected, elapsedMs }: { rv: RunViewNode; status
         <Fact k={running ? "Elapsed" : "Duration"} v={formatMs(elapsedMs)} />
         {expected != null && <Fact k="Avg / prior" v={`${formatMs(expected)} · ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}`} />}
         {ctxPeak > 0 && <Fact k="Context peak" v={`${ctxPeak.toLocaleString()} tok`} />}
+        {(tokIn > 0 || tokOut > 0) && <Fact k="Tokens" v={`${formatTokens(tokIn)} in · ${formatTokens(tokOut)} out`} />}
+        {cost > 0 && <Fact k="Cost" v={`$${cost.toFixed(cost < 1 ? 3 : 2)}`} />}
       </div>
 
-      {/* (POLICY channel) The detailed "what happens after this node" chain — the node's authored gate lane +
-          policy + checkpoint, projected from observe (config.gates). The detail tier of the card's short symbol. */}
-      {rv.config?.gates && rv.config.gates.entries.length > 0 && (
-        <div className="ds-hud__policy">
-          <span className="ds-hud__policy-title">After this node</span>
-          <NodeGates variant="detail" gates={rv.config.gates} />
-        </div>
-      )}
+      {/* (POLICY channel) "Hooks" — the node's authored gate lane + policy + checkpoint in plain-language
+          pre / post / human lanes, projected from observe (config.gates). One honest rendering from config. */}
+      <NodeHooks gates={rv.config?.gates} />
 
       <div className="ds-hud__hintline">Hover a panel, or click an input file.</div>
     </div>

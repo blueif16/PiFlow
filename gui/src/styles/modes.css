@@ -235,12 +235,14 @@
   font-weight: var(--ds-weight-medium);
 }
 
-/* ── FusionSaveBar: bottom-center "commit the edits to this run" affordance (Fusion mode only) ──────── */
+/* ── FusionSaveBar: bottom-center "commit the edits to this run" affordance (Fusion mode only) ────────
+   One row ABOVE the ModeBar band: both are bottom-anchored and the ModeBar reaches past center on laptop
+   widths, so sharing its row paints this bar over the Digest/Chat keys. */
 .ds-fusionsave-layer {
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: clamp(10px, 1.6vh, 18px);
+  bottom: calc(clamp(10px, 1.6vh, 18px) + 54px);
   z-index: var(--ds-z-popover);
   pointer-events: none;
 }
@@ -280,88 +282,9 @@
 }
 .ds-fusionsave__btn.is-primary:hover { background: var(--ds-accent-active); }
 
-/* ── (SA-E) Compose mode: per-node gate drop-target + the gate-pipeline badge widen ─────────────────── */
-.ds-gatechips {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  pointer-events: auto;                  /* interactive — accepts a dropped chip */
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 4px;
-  border: 1px dashed var(--ds-border-strong);
-  border-radius: var(--ds-radius-sm);
-  background: var(--ds-bg-surface);
-  transition: border-color var(--ds-dur-fast) var(--ds-ease-standard), background var(--ds-dur-fast) var(--ds-ease-standard);
-}
-.ds-gatechips.is-over {
-  border-color: var(--ds-accent);
-  border-style: solid;
-  background: var(--ds-bg-hover);
-}
-.ds-gatechips__pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
-.ds-gatechips__empty { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-disabled); font-style: italic; }
-.ds-gatechip {
-  height: 18px;
-  padding: 0 6px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--ds-radius-sm);
-  font-family: var(--ds-font-mono);
-  font-size: var(--ds-text-xs);
-  white-space: nowrap;
-}
-.ds-gatechip--gate { background: var(--ds-accent); color: #fff; }
-.ds-gatechip--tier { background: var(--ds-bg-hover); color: var(--ds-text-secondary); border: 1px solid var(--ds-border-strong); }
-.ds-gatechips__flash { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); }
-.ds-gatechips__flash.is-ok { color: var(--ds-success-fg, #1a7f37); }
-.ds-gatechips__flash.is-err { color: var(--ds-error-fg); }
-
-/* ── (SA-E) ChipPalette: bottom-center draggable gate-chip source (Compose mode only) ───────────────── */
-.ds-chippalette-layer {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: clamp(10px, 1.6vh, 18px);
-  z-index: var(--ds-z-popover);
-  pointer-events: none;
-}
-.ds-chippalette {
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-2);
-  padding: 6px 12px;
-  border-radius: var(--ds-radius-lg);
-}
-.ds-chippalette__title { font-family: var(--ds-font-sans); font-size: var(--ds-text-xs); color: var(--ds-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
-.ds-chippalette__sep { width: 1px; height: 20px; background: var(--ds-border-strong); }
-.ds-chip {
-  height: 26px;
-  padding: 0 12px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--ds-radius-md);
-  font-family: var(--ds-font-mono);
-  font-size: var(--ds-text-sm);
-}
-.ds-chip--gate {
-  border: 1px solid var(--ds-border-strong);
-  background: var(--ds-bg-surface);
-  color: var(--ds-text-primary);
-  cursor: grab;
-  transition: background var(--ds-dur-fast) var(--ds-ease-standard), border-color var(--ds-dur-fast) var(--ds-ease-standard);
-}
-.ds-chip--gate:hover { background: var(--ds-bg-hover); border-color: var(--ds-accent); }
-.ds-chip--gate:active { cursor: grabbing; }
-.ds-chip--stub { border: 1px dashed var(--ds-border-strong); background: transparent; color: var(--ds-text-disabled); cursor: not-allowed; }
 
 @media (prefers-reduced-motion: reduce) {
   .ds-mode-btn { transition: none; }
   .ds-fusiontoggle__btn { transition: none; }
   .ds-fusionsave__btn { transition: none; }
-  .ds-gatechips { transition: none; }
-  .ds-chip--gate { transition: none; }
 }

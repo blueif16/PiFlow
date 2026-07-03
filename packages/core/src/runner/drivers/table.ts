@@ -7,6 +7,7 @@
 // returning a FRESH table each call (no module-level singleton — hermetic).
 
 import type { AgentDriver } from './types.js';
+import type { PiEvent } from '../events.js';
 import { piDriver } from './pi.js';
 import { claudeCodeDriver } from './claude-code.js';
 
@@ -56,6 +57,20 @@ export class DriverTable {
 
   list(): AgentDriver[] {
     return [...this.m.values()];
+  }
+
+  /**
+   * (Defect E1) Pick a driver for an UNSTAMPED record (`driverId` absent — mid-run, or a run written before
+   * P3 stamped it) by sniffing the parsed event SAMPLE's vocabulary via each registered driver's
+   * `sniffsEvents`. Falls back to 'pi' (via `get(undefined)`, the historical default) when no driver
+   * recognizes the sample — an empty or pi-vocabulary sample behaves exactly as it always did. Distinct from
+   * `get`: this is the ONLY seam that inspects event shape, so a STAMPED record's lookup never format-sniffs.
+   */
+  detectUnstamped(sample: PiEvent[]): AgentDriver {
+    for (const d of this.list()) {
+      if (d.sniffsEvents?.(sample)) return d;
+    }
+    return this.get(undefined);
   }
 }
 

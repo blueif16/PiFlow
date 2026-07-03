@@ -21,6 +21,7 @@ import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
 import { builtinDrivers, type DriverTable } from '../runner/drivers/table.js';
 import type { NodeConfig, NodeUsage } from '../runner/status.js';
+import type { PiEvent } from '../runner/events.js';
 import type { SandboxProviderKind, Workflow } from '../types.js';
 
 export type ScopeKind = 'run' | 'skill' | 'template' | 'package' | 'repo';
@@ -176,21 +177,28 @@ const SCOPE_ORDER: ScopeKind[] = ['run', 'skill', 'template', 'package', 'repo']
 // Replay a node's events.jsonl through the reducer, COUNTING every line + every torn line (the data-load
 // ledger: lines == eventsSeen + parseErrors must hold, or events were silently lost). The reducer is
 // DRIVER-SELECTED by the node's stamped `driverId` (P5): pi ⇒ createNodeAccumulator (byte-identical),
-// claude-code ⇒ the count-only stream-json decoder. `?? createNodeAccumulator()` covers a driver that
-// returns no accumulator (or an unstamped/legacy record ⇒ get(undefined) ⇒ pi) so nothing crashes.
+// claude-code ⇒ the count-only stream-json decoder. A STAMPED record resolves via `drivers.get` UNCHANGED
+// (an unknown stamped id still FAILS CLOSED). An UNSTAMPED record (driverId absent — mid-run, or a run
+// written before P3 stamped it) is FORMAT-DETECTED from the parsed events via `drivers.detectUnstamped`
+// (Defect E1), so a legacy Claude run stops silently folding through pi's no-op accumulator; an unstamped
+// pi-vocabulary (or empty) sample still falls back to pi, exactly as before. `?? createNodeAccumulator()`
+// covers a driver that returns no accumulator so nothing crashes.
 function replayEvents(runDir: string, id: string, drivers: DriverTable, driverId?: string) {
   const f = path.join(runDir, '.pi', 'nodes', id, 'events.jsonl');
-  const acc = drivers.get(driverId).eventAccumulator?.() ?? createNodeAccumulator();
   let lines = 0, parseErrors = 0, exists = false, bytes = 0;
+  const parsed: PiEvent[] = [];
   if (fssync.existsSync(f)) {
     exists = true;
     bytes = fssync.statSync(f).size;
     for (const line of fssync.readFileSync(f, 'utf8').split('\n')) {
       if (!line.trim()) continue;
       lines += 1;
-      try { acc.push(JSON.parse(line)); } catch { parseErrors += 1; }
+      try { parsed.push(JSON.parse(line)); } catch { parseErrors += 1; }
     }
   }
+  const driver = driverId != null ? drivers.get(driverId) : drivers.detectUnstamped(parsed);
+  const acc = driver.eventAccumulator?.() ?? createNodeAccumulator();
+  for (const e of parsed) acc.push(e);
   return { acc, lines, parseErrors, exists, bytes };
 }
 
@@ -371,7 +379,9 @@ export function assembleNode(
     ...(rec.driverId ? { executor: rec.driverId } : {}), // (P5) stamped executor/driver id → GUI badge
     ...(rec.config ? { config: rec.config } : {}), // (SKIN) curated config slice → GUI cloud skin
     startedAt: rec.startedAt, endedAt: rec.endedAt, durationMs: rec.durationMs,
-    expectedMs: ctx.expected[id] ?? rec.durationMs ?? null, priorSamples: ctx.samples[id] ?? 0,
+    // Honest "no baseline": a node with zero prior samples gets expectedMs:null, NEVER falling back to its
+    // OWN durationMs (that fabricated a ratio of exactly 1.0 — "on-target" — for a node with no history at all).
+    expectedMs: ctx.expected[id] ?? null, priorSamples: ctx.samples[id] ?? 0,
     // (P6) cross-run cost/billable means — the cost-spike denominators (null without history).
     expectedBillable: ctx.expectedBillable?.[id] ?? null,
     expectedCost: ctx.expectedCost?.[id] ?? null,

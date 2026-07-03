@@ -6,7 +6,7 @@
 import { apiFetch } from "./apiBase";
 
 /** The tail-sampled anomaly kinds, in the order the worklist ranks them (failures first). */
-export type AnomalyKind = "failed" | "truncated" | "context-pressure" | "tool-loop" | "slow" | "retries";
+export type AnomalyKind = "failed" | "truncated" | "context-pressure" | "tool-loop" | "slow" | "retries" | "cost-spike" | "loop-score";
 
 /** One reason a node is worth attention — the worklist item, with the value/bar it crossed. */
 export interface Anomaly {

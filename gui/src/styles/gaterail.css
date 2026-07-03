@@ -1,0 +1,86 @@
+/* GateRail + GateDropCard — the compose editor's drag source (left-edge hexagon rail) and the natural-language
+   drop card. Floating-chrome idiom (the a941c34 convention): a body-portal layer with pointer-events:none, so
+   only the interactive hexes/card take pointer events and nothing ever covers canvas content. */
+
+/* ── The rail: a vertical stack of hexagons on the LEFT edge, clear of RUN FILES (top-left) + zoom (bottom-left) ── */
+.ds-gaterail-layer {
+  position: fixed;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: var(--ds-z-rail);
+  pointer-events: none; /* only the rail items are interactive */
+}
+.ds-gaterail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* a rail item = a resting hexagon that EXPANDS in place on hover/focus to reveal name + one-line description */
+.ds-rail-item {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius-lg);
+  background: transparent;
+  cursor: grab;
+  text-align: left;
+  color: inherit;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-rail-item:active { cursor: grabbing; }
+.ds-rail-item .ds-hex { --hex-size: 38px; --hex-border: 2px; }
+
+/* the label reveals on hover/focus — collapsed (0 width) at rest so the rail is just hexagons */
+.ds-rail-item__label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition: max-width var(--ds-dur-base) var(--ds-ease-standard),
+              opacity var(--ds-dur-fast) var(--ds-ease-standard),
+              margin-left var(--ds-dur-base) var(--ds-ease-standard);
+}
+.ds-rail-item:hover,
+.ds-rail-item:focus-visible {
+  background: var(--ds-glass-bg-strong, #fff);
+  border-color: var(--ds-border-hairline);
+  box-shadow: var(--ds-shadow-md);
+  outline: none;
+}
+.ds-rail-item:hover .ds-rail-item__label,
+.ds-rail-item:focus-visible .ds-rail-item__label {
+  max-width: 260px;
+  opacity: 1;
+  margin-left: 10px;
+  padding-right: 8px;
+}
+.ds-rail-item__name {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-primary);
+}
+.ds-rail-item__desc {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+/* The drop card itself is a full-height left overlay — its styles live in composecard.css. */
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-rail-item,
+  .ds-rail-item__label { transition: none; }
+}

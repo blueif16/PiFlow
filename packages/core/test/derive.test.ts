@@ -13,6 +13,7 @@ import { DEFAULT_CONTEXT_WINDOW } from '../src/observe/models.js';
 // Fill the required DeriveInput fields so a test states only what it cares about.
 function di(p: Partial<DeriveInput> = {}): DeriveInput {
   return {
+    status: 'ok',
     toolCalls: 0,
     toolBreakdown: {},
     timeline: [],
@@ -128,6 +129,24 @@ describe('deriveNode — time vs cross-run mean (NodeModeStrip oracle: >1.5 high
     expect(tone(1100)).toBe('warn'); // 1.1
     expect(tone(1000)).toBe('ok');   // 1.0 — NOT warn
     expect(tone(900)).toBe('ok');    // 0.9
+  });
+});
+
+describe('deriveNode — time zone gates on status (Defect F1: no fabricated live tone for a reused/cache-hit node)', () => {
+  // A 'reused' node carries its PRIOR run's durationMs verbatim (runner.ts's seedNode, by design), so
+  // durationMs/expectedMs comparing THIS run's non-event against a real cross-run mean is meaningless — the
+  // node did not run this time. Before the fix, `time` fired on duration/expectedMs alone, so a reused node
+  // with a stale carried-forward duration painted a fabricated "slow" (high) bar on the canvas strip.
+  it('is null for a reused node even when durationMs/expectedMs would otherwise compute a high ratio', () => {
+    const d = deriveNode(di({ status: 'reused', durationMs: 914045, expectedMs: 536000 })); // ratio ~1.705
+    expect(d.time).toBeNull();
+  });
+  it('a non-reused (settled) node with the IDENTICAL durationMs/expectedMs still computes the normal ratio+tone', () => {
+    // Regression guard: proves the gate is status-SPECIFIC, not a blanket disable of the time zone.
+    const d = deriveNode(di({ status: 'ok', durationMs: 914045, expectedMs: 536000 }));
+    expect(d.time).not.toBeNull();
+    expect(d.time!.ratio).toBeCloseTo(914045 / 536000, 6);
+    expect(d.time!.tone).toBe('high');
   });
 });
 
