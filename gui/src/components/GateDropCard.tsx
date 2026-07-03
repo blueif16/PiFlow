@@ -4,13 +4,14 @@
  * turn rendering, ambient z-rail tier below the HUD scrim). It replaces the old canned-default write with a
  * describe-then-create surface:
  *   - Header binds the gate KIND (user vocabulary: agentic check / execution / human) to the target node.
- *   - Body is a live TRANSCRIPT: hitting "Create gate" renders the submitted text as a markdown turn tagged
- *     with a context chip ("agentic check → <node>"), then a system turn beneath it reports success or the
- *     FULL server error (never truncated). The transcript is structured so Slice 2 can bind a control session
- *     ABOVE the composer without redesign — but this slice builds NO chat/session, only the direct write.
+ *   - Body is a live TRANSCRIPT: hitting "Create gate" applies the gate to THIS RUN first (Slice 1.5 run-first)
+ *     and renders the submitted text as a markdown turn tagged with a context chip ("agentic check → <node>").
+ *     A CHOICE turn beneath it — "Applied to this run · Apply to the entire template?" — PROMOTES the change
+ *     durably (future runs) or keeps it run-only. A failed write renders the FULL error as a system turn.
+ *     The transcript is structured so Slice 2 can bind a control session ABOVE the composer without redesign.
  *   - Composer is a LARGE paste-a-paragraph textarea + the one primary button.
- * Escape or the close control dismisses it. The direct write path + payload mapping are unchanged
- * (buildGateChip → ComposeContext.dropChip → POST /__piflow/node-edit → template node.json).
+ * Escape or the close control dismisses it. Run-first + promote reuse the SAME validated write path
+ * (buildGateChip → ComposeContext.dropChip(target) → POST /__piflow/node-edit → run `.pi/` or template node.json).
  */
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -29,14 +30,22 @@ export interface DropCardTarget {
 interface GateDropCardProps {
   card: DropCardTarget | null;
   onClose: () => void;
-  dropChip: (nodeId: string, chip: GateChip) => Promise<{ ok: boolean; error?: string; stub?: boolean }>;
+  dropChip: (nodeId: string, chip: GateChip, target?: "run" | "template") => Promise<{ ok: boolean; error?: string; stub?: boolean }>;
 }
 
 // The static demo shim (gui/demo/demoFetch.ts) sets this so writes aren't faked as success here.
 const isDemo = (): boolean => typeof window !== "undefined" && (window as unknown as { __PIFLOW_DEMO__?: boolean }).__PIFLOW_DEMO__ === true;
 
-/** One transcript turn: the user's submitted description ("you"), or a system report of the write ("system"). */
-type Turn = { id: number; role: "you" | "system"; text: string; tone?: "ok" | "err" };
+/** One transcript turn: the user's submitted description ("you"), a system report ("system"), or the run→template
+ *  promotion CHOICE ("choice", carrying the chip so "Apply to template" can re-send it). */
+type Turn = {
+  id: number;
+  role: "you" | "system" | "choice";
+  text?: string;
+  tone?: "ok" | "err";
+  chip?: GateChip;
+  resolved?: "promoted" | "dismissed";
+};
 
 export function GateDropCard({ card, onClose, dropChip }: GateDropCardProps) {
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -44,6 +53,7 @@ export function GateDropCard({ card, onClose, dropChip }: GateDropCardProps) {
   const idRef = useRef(0);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [promoting, setPromoting] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
 
   const demo = isDemo();
@@ -54,6 +64,7 @@ export function GateDropCard({ card, onClose, dropChip }: GateDropCardProps) {
     setText("");
     setTurns([]);
     setBusy(false);
+    setPromoting(false);
     if (card) requestAnimationFrame(() => taRef.current?.focus());
   }, [card?.nodeId, card?.kind]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -73,27 +84,37 @@ export function GateDropCard({ card, onClose, dropChip }: GateDropCardProps) {
   const canCreate = canCreateGate(card.kind, text);
   const kindHex = railHex(card.kind, spec.name);
   const chipLabel = `${spec.name} → ${card.nodeId}`;
+  const pushTurn = (t: Omit<Turn, "id">) => setTurns((cur) => [...cur, { id: ++idRef.current, ...t }]);
 
+  // Create gate → RUN-FIRST: apply to this run, then offer to promote to the template.
   const submit = async () => {
     if (!canCreate || busy) return;
     const sent = text;
-    setTurns((t) => [...t, { id: ++idRef.current, role: "you", text: sent }]);
+    pushTurn({ role: "you", text: sent });
     setText("");
     if (demo) {
-      setTurns((t) => [...t, { id: ++idRef.current, role: "system", tone: "err", text: "Editing is disabled in this demo — run `piflowctl gui` on a real project to author gates." }]);
+      pushTurn({ role: "system", tone: "err", text: "Editing is disabled in this demo — run `piflowctl gui` on a real project to author gates." });
       return;
     }
     setBusy(true);
     const chip = buildGateChip(card.kind, sent);
-    const r = await dropChip(card.nodeId, chip);
+    const r = await dropChip(card.nodeId, chip, "run");
     setBusy(false);
-    if (r.ok) {
-      setTurns((t) => [...t, { id: ++idRef.current, role: "system", tone: "ok", text: `Gate created on ${card.nodeId}.` }]);
-    } else {
-      setTurns((t) => [...t, { id: ++idRef.current, role: "system", tone: "err", text: r.stub ? "This run doesn't support template edits (run-target is stubbed)." : (r.error ?? "The edit failed.") }]);
-    }
+    if (r.ok) pushTurn({ role: "choice", chip });
+    else pushTurn({ role: "system", tone: "err", text: r.stub ? "This run doesn't support edits (run-target is stubbed)." : (r.error ?? "The edit failed.") });
     requestAnimationFrame(() => taRef.current?.focus());
   };
+
+  // Apply to the entire template → the durable promote (reuses the template write path).
+  const promote = async (turnId: number, chip: GateChip) => {
+    if (promoting) return;
+    setPromoting(true);
+    const r = await dropChip(card.nodeId, chip, "template");
+    setPromoting(false);
+    if (r.ok) setTurns((cur) => cur.map((x) => (x.id === turnId ? { ...x, resolved: "promoted" } : x)));
+    else pushTurn({ role: "system", tone: "err", text: r.error ?? "Promotion failed." });
+  };
+  const dismiss = (turnId: number) => setTurns((cur) => cur.map((x) => (x.id === turnId ? { ...x, resolved: "dismissed" } : x)));
 
   return createPortal(
     <div className="ds-composecard-layer">
@@ -123,7 +144,26 @@ export function GateDropCard({ card, onClose, dropChip }: GateDropCardProps) {
                     {chipLabel}
                   </span>
                   {/* the submitted text as a rendered markdown paragraph turn (paste-a-paragraph friendly) */}
-                  <MarkdownReader source={turn.text} />
+                  <MarkdownReader source={turn.text ?? ""} />
+                </div>
+              ) : turn.role === "choice" ? (
+                <div key={turn.id} className="ds-composecard__choice">
+                  <p className="ds-composecard__sys" data-tone="ok">Applied to this run.</p>
+                  {turn.resolved === "promoted" ? (
+                    <p className="ds-composecard__sys" data-tone="ok">Promoted to the template — future runs get it too.</p>
+                  ) : turn.resolved === "dismissed" ? (
+                    <p className="ds-composecard__note">Kept on this run only.</p>
+                  ) : (
+                    <div className="ds-composecard__choicebox">
+                      <span className="ds-composecard__choiceq">Apply to the entire template?</span>
+                      <div className="ds-composecard__choiceact">
+                        <button type="button" className="ds-composecard__promote" disabled={promoting} onClick={() => void promote(turn.id, turn.chip!)}>
+                          {promoting ? "Applying…" : "Apply to template"}
+                        </button>
+                        <button type="button" className="ds-composecard__keep" onClick={() => dismiss(turn.id)}>Keep on this run</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p key={turn.id} className="ds-composecard__sys" data-tone={turn.tone} role={turn.tone === "err" ? "alert" : undefined}>{turn.text}</p>
@@ -143,7 +183,7 @@ export function GateDropCard({ card, onClose, dropChip }: GateDropCardProps) {
             aria-label={`${spec.name} — ${spec.desc}`}
           />
           <div className="ds-composecard__foot">
-            <span className="ds-composecard__hint" aria-hidden="true">⌘⏎ to create</span>
+            <span className="ds-composecard__hint" aria-hidden="true">applies to this run · ⌘⏎</span>
             <button type="submit" className="ds-composecard__create" disabled={!canCreate || busy}>
               {busy ? "Creating…" : "Create gate"}
             </button>

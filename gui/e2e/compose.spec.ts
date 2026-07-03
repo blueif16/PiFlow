@@ -29,6 +29,7 @@ const DEPLOY_TEMPLATE = path.resolve(__dirname, "..", "..", "deploy", "control-v
 const TEMPLATE_DIR = path.join(PRODUCT_ROOT, ".piflow", WF, "template");
 const NODE_JSON = path.join(TEMPLATE_DIR, "nodes", NODE, "node.json");
 const RUN_DIR = path.join(PRODUCT_ROOT, ".piflow", WF, "runs", RUN_ID);
+const RUN_PI = path.join(RUN_DIR, ".pi", "run.json"); // where a run-first bake lands (config.gates)
 const GUI_URL = `${E2E_BASE}/?token=${E2E_TOKEN}`;
 const SHOTS = path.join(__dirname, "..", "test-results", "compose");
 
@@ -82,6 +83,19 @@ test.beforeAll(async () => {
   const a = assessRunView(view, { expectNodes: [NODE] });
   expect(a.pass, `seed must pass the rubric: ${a.failures.join("; ")}`).toBe(true);
   expect(view.nodes[0]?.config?.gates?.entries.length ?? 0).toBeGreaterThan(0);
+
+  // Snapshot the pristine seed (template + run.json) so each test can restore it → order-independent.
+  pristineTemplate = await readFile(NODE_JSON, "utf8");
+  pristineRunJson = await readFile(RUN_PI, "utf8");
+});
+
+// The run-first bake and the promote both MUTATE the fixture (run.json / template node.json). Restore the
+// pristine seed before every test so tests don't clobber each other regardless of order.
+let pristineTemplate = "";
+let pristineRunJson = "";
+test.beforeEach(async () => {
+  if (pristineTemplate) await writeFile(NODE_JSON, pristineTemplate);
+  if (pristineRunJson) await writeFile(RUN_PI, pristineRunJson);
 });
 
 test.afterAll(async () => {
@@ -133,13 +147,15 @@ test("rail renders ONLY in compose mode, and each hex expands on hover", async (
   await expect(page.locator(".ds-gaterail")).toHaveCount(0);
 });
 
-test("ACCEPTANCE — drag AGENTIC CHECK → overlay → Create writes the pasted paragraph as the rubric VERBATIM", async ({ page }) => {
+test("ACCEPTANCE — Create applies to THIS RUN first; promote writes the rubric VERBATIM to the template", async ({ page }) => {
+  // Guard: the template starts with NO judge gate (only the seeded advisory floor).
+  expect(JSON.parse(await readFile(NODE_JSON, "utf8")).judgeGate).toBeUndefined();
+
   await page.goto(GUI_URL);
   await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
   await enterCompose(page);
 
   const target = dropTarget(page);
-  const hexesBefore = await target.locator(".ds-hex").count();
 
   // Drag the agentic-check hex onto the node → drag-over affordance → screenshot → drop.
   const gesture = await dragRailOnto(page, page.locator(".ds-gaterail .ds-rail-item").first(), target);
@@ -152,7 +168,6 @@ test("ACCEPTANCE — drag AGENTIC CHECK → overlay → Create writes the pasted
   await expect(page.locator(".ds-gaterail")).toHaveCount(0);
   await expect(card.locator(".ds-composecard__kind")).toHaveText("Agentic check");
   await expect(card.locator(".ds-composecard__node")).toContainText(NODE);
-  // the target node stays highlighted on the canvas while authoring
   await expect(page.locator(`.react-flow__node[data-id="${NODE}"] .ds-node[data-compose-target="true"]`)).toHaveCount(1);
   await expect(card.locator(".ds-composecard__ta")).toBeFocused();
 
@@ -161,28 +176,61 @@ test("ACCEPTANCE — drag AGENTIC CHECK → overlay → Create writes the pasted
 
   await card.getByRole("button", { name: "Create gate" }).click();
 
-  // The card STAYS open; the transcript renders the submitted text as a turn tagged with a context chip,
-  // then a success system-turn beneath it.
+  // (1) RUN-FIRST: the gate lands on THIS RUN's .pi/run.json (config.gates), and the choice turn appears.
   const youTurn = card.locator(".ds-composecard__turn--you");
-  await expect(youTurn).toHaveCount(1);
   await expect(youTurn.locator(".ds-composecard__chip")).toContainText(`Agentic check → ${NODE}`);
   await expect(youTurn).toContainText("addresses the reader by name");
-  await expect(card.locator('.ds-composecard__sys[data-tone="ok"]')).toContainText(`Gate created on ${NODE}`);
-  await page.screenshot({ path: path.join(SHOTS, "09-composecard-transcript.png") });
+  const choice = card.locator(".ds-composecard__choice");
+  await expect(choice).toContainText("Applied to this run");
+  await expect(choice).toContainText("Apply to the entire template?");
+  await page.screenshot({ path: path.join(SHOTS, "09-composecard-question.png") });
 
-  // The landed gate is present on the node immediately (a new hex; the agentic-check hex is retry-toned).
-  await expect(target.locator(".ds-hex")).toHaveCount(hexesBefore + 1);
-  await expect(target.locator('.ds-hex[data-tone="retry"]')).toHaveCount(1);
+  // assert on the RUN's .pi/ (re-read): the run now carries a judge/reroute gate entry...
+  await expect
+    .poll(async () => {
+      const run = JSON.parse(await readFile(RUN_PI, "utf8"));
+      const entries = run.nodes?.[NODE]?.config?.gates?.entries ?? [];
+      return entries.some((e: { kind?: string }) => e.kind === "reroute");
+    }, { message: "run .pi/ must carry the run-first gate", timeout: 5000 })
+    .toBe(true);
+  // ...while the TEMPLATE is still UNTOUCHED (run-first — not promoted yet).
+  expect(JSON.parse(await readFile(NODE_JSON, "utf8")).judgeGate, "template must NOT change on a run-first save").toBeUndefined();
 
-  // THE ACCEPTANCE: re-read the TEMPLATE node.json from disk (a different path than the write) and assert the
-  // pasted paragraph is the rubric, byte-for-byte. This path 400'd on every drop before the redesign.
-  const after = JSON.parse(await readFile(NODE_JSON, "utf8"));
-  expect(after.judgeGate?.rubric).toBe(RUBRIC);
+  // the on-node compose row truthfully flags the un-promoted run-only gate once the run-view re-polls.
+  await expect(target.locator(".ds-gatedrop__runscoped")).toBeVisible();
 
-  // Escape closes the overlay → the landed hex is unobstructed on the node.
+  // (2) PROMOTE: "Apply to template" writes the rubric VERBATIM into the template node.json (the durable path).
+  await card.getByRole("button", { name: "Apply to template" }).click();
+  await expect(choice).toContainText("Promoted to the template");
+  await page.screenshot({ path: path.join(SHOTS, "10-composecard-promoted.png") });
+
+  const tmpl = JSON.parse(await readFile(NODE_JSON, "utf8"));
+  expect(tmpl.judgeGate?.rubric).toBe(RUBRIC); // byte-for-byte
+
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
   await page.screenshot({ path: path.join(SHOTS, "06-node-hexes-after.png") });
+});
+
+test("dismiss keeps a run-first gate RUN-ONLY — the template is never touched", async ({ page }) => {
+  await page.goto(GUI_URL);
+  await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
+  await enterCompose(page);
+
+  const gesture = await dragRailOnto(page, page.locator(".ds-gaterail .ds-rail-item").first(), dropTarget(page));
+  await gesture.drop();
+
+  const card = page.locator(".ds-composecard");
+  await card.locator(".ds-composecard__ta").fill("Verify the greeting reads naturally.");
+  await card.getByRole("button", { name: "Create gate" }).click();
+
+  const choice = card.locator(".ds-composecard__choice");
+  await expect(choice).toContainText("Applied to this run");
+  await choice.getByRole("button", { name: "Keep on this run" }).click();
+  await expect(choice).toContainText("Kept on this run only");
+
+  // The template was NEVER written — dismiss keeps it run-only.
+  expect(JSON.parse(await readFile(NODE_JSON, "utf8")).judgeGate, "dismiss must not promote to the template").toBeUndefined();
 });
 
 test("error path — a failed create surfaces the FULL server error (never truncated) as a system turn", async ({ page }) => {

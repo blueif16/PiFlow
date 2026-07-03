@@ -96,6 +96,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // (Compose mode) the open drop card — a rail gate dropped on a node opens the natural-language card at it;
   // "Create gate" writes the template. Null = no card open.
   const [dropCard, setDropCard] = useState<DropCardTarget | null>(null);
+  // (Slice 1.5) bumped after a RUN-first gate bake so the run-view re-loads even for a DONE run (whose poll
+  // has stopped) — the newly-applied gate then appears on the graph without a manual reload.
+  const [runViewNonce, setRunViewNonce] = useState(0);
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
   const [digestOpen, setDigestOpen] = useState(false); // left-edge run digest; launched by the "D" key
   const [startOpen, setStartOpen] = useState(false); // the "Start a run" launcher modal (from the MenuBar)
@@ -219,7 +222,8 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     };
     load();
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [activeRun, fusionOverrides, sseLive, setNodes, setEdges, endpointBase]);
+    // `runViewNonce` forces a one-off re-load after a run-first gate bake (a DONE run's poll has stopped).
+  }, [activeRun, fusionOverrides, sseLive, setNodes, setEdges, endpointBase, runViewNonce]);
 
   // ── (P3) Enriched-live render path — active only when `sseLive` (flag 'sse' + a live streaming run) ────────
   // The graph is built from the SSE-enriched `live.model` (adapter → toFlowGraph); the GUI computes nothing.
@@ -403,17 +407,21 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     return () => { alive = false; };
   }, [mode, activeRun, flowNodes]);
 
-  // (Compose mode · SA-E) drop a gate chip onto a node → mutate its TEMPLATE node.json (append to op[] /
-  // set checkpoint), then REFRESH that node's config so the badge re-renders WITH the new gate (round-trip:
-  // GUI edit → node.json → re-read renders the change). config is the single source of truth.
-  const dropChip = useCallback(async (nodeId: string, chip: GateChip): Promise<{ ok: boolean; error?: string; stub?: boolean }> => {
+  // (Compose · SA-E + Slice 1.5) apply a gate chip to a node. `target` defaults to "run" — RUN-FIRST: the gate
+  // lands on THIS run's `.pi/run.json` (visible on the run once the run-view re-polls), the template untouched.
+  // "template" PROMOTES it durably (the original write-back path); on a template write we refresh that node's
+  // AUTHORED config so the compose badge re-renders with the promoted gate. config is the single source of truth.
+  const dropChip = useCallback(async (nodeId: string, chip: GateChip, target: "run" | "template" = "run"): Promise<{ ok: boolean; error?: string; stub?: boolean }> => {
     if (!activeRun) return { ok: false, error: "no active run" };
-    const r = await dropChipOnNode(activeRun, nodeId, chip, "template");
-    if (r.ok) {
-      // Prefer the mutated config the endpoint echoed; fall back to a fresh read.
+    const r = await dropChipOnNode(activeRun, nodeId, chip, target);
+    if (r.ok && target === "template") {
+      // Prefer the mutated config the endpoint echoed; fall back to a fresh read (the run bake doesn't touch it).
       const fresh = r.node ?? (await loadNodeConfig(activeRun, nodeId));
       if (fresh) setNodeConfigs((prev) => ({ ...prev, [nodeId]: fresh }));
     }
+    // A run-first bake changed the run's `.pi/` — re-load the run-view so the gate appears on the graph even
+    // for a DONE run (whose 3 s poll has stopped).
+    if (r.ok && target === "run") setRunViewNonce((n) => n + 1);
     return { ok: r.ok, error: r.error, stub: r.stub };
   }, [activeRun]);
 

@@ -132,6 +132,49 @@
 .ds-composecard__sys[data-tone="err"] { color: var(--ds-error-fg); }
 .ds-composecard__sys[data-tone="err"]::before { content: "✕ "; }
 
+/* the run→template PROMOTION choice turn — "Applied to this run · Apply to the entire template?" */
+.ds-composecard__choice { display: flex; flex-direction: column; gap: var(--ds-space-2); max-width: 62ch; }
+.ds-composecard__choicebox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3);
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+}
+.ds-composecard__choiceq { font-family: var(--ds-font-sans); font-size: var(--ds-text-sm); color: var(--ds-text-primary); }
+.ds-composecard__choiceact { display: flex; gap: var(--ds-space-2); }
+.ds-composecard__promote {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--ds-accent);
+  background: var(--ds-accent);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  color: #fff;
+}
+.ds-composecard__promote:hover:not(:disabled) { background: var(--ds-accent-active); }
+.ds-composecard__promote:disabled { opacity: 0.5; cursor: not-allowed; }
+.ds-composecard__keep {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--ds-border-strong);
+  background: transparent;
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+.ds-composecard__keep:hover { background: var(--ds-bg-hover); }
+.ds-composecard__promote:focus-visible,
+.ds-composecard__keep:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-composecard__note { margin: 0; font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-tertiary); font-style: italic; }
+
 /* ── composer — a LARGE paste-a-paragraph textarea + the one primary button ─────────────────────────── */
 .ds-composecard__composer {
   display: flex;

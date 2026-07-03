@@ -97,6 +97,15 @@
 /* the faint placeholder hexagon shown when a node has no authored gates yet */
 .ds-hex--ghost { --hex-fill: var(--ds-bg-surface); color: var(--ds-border-strong); opacity: 0.8; }
 
+/* (Slice 1.5) run-scoped tag — gates applied to THIS run only, not yet promoted to the template */
+.ds-gatedrop__runscoped {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-blue-600);
+  font-style: italic;
+  white-space: nowrap;
+}
+
 /* ── HUD "Hooks" — plain-language lanes (pre / post / human) derived from the node's config. ── */
 .ds-hooks { display: flex; flex-direction: column; gap: var(--ds-space-2); margin-top: 12px; }
 .ds-hooks__title {
