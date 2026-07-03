@@ -10,7 +10,7 @@
 // so the same source always yields the same hash (an integrity anchor, not a timestamp).
 //
 // `search <q> --remote` is a SECOND, ONLINE lane bolted onto the same verb: it hits remote skill indexes
-// (skill-remote.ts's `searchRemote` — ClaudSkills by default) instead of the local rings, purely for
+// (core's `searchRemote` — quality-first defaults, `--source a,b` to pick) instead of the local rings, purely for
 // DISCOVERY — every emitted row's `source` feeds this same `add <source>` verbatim. A network/HTTP failure
 // there is caught HERE and turned into one clean stderr line (never a stack trace).
 
@@ -39,7 +39,7 @@ export interface SkillDeps {
 
 const USAGE =
   `usage: piflowctl skill list [--json]\n` +
-  `       piflowctl skill search <q> [--remote] [--limit <n>] [--json]\n` +
+  `       piflowctl skill search <q> [--remote] [--source <a,b>] [--limit <n>] [--json]\n` +
   `       piflowctl skill add <source> [--skill <name>] [--force]\n`;
 
 /** The global piflow home — the SAME resolution core's `skillSearchRoots`/`defaultAgentsDir` use. */
@@ -337,6 +337,19 @@ export async function runSkillCli(argv: string[], deps: SkillDeps = {}): Promise
             return 1;
           }
           opts.limit = n;
+        }
+        // `--source a,b` — pick which remote indexes to query (default: core's quality-first order).
+        if (rest.includes('--source')) {
+          const raw = flag(rest, 'source');
+          const sources = raw
+            ?.split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          if (!sources?.length || raw?.startsWith('-')) {
+            err(`piflowctl skill search --remote: --source requires a comma-separated list of index ids.\n`);
+            return 1;
+          }
+          opts.sources = sources;
         }
         const search = deps.searchRemote ?? searchRemote;
         let rows: RemoteSkillRow[];
