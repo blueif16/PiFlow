@@ -3,9 +3,9 @@
  * (CanvasInner), NOT inside the NodeHud, and PORTALS to <body> at a z above the
  * overlay scrim so it stays visible and clickable in BOTH the full-map view and
  * the per-node HUD view. Because it's portaled within the providers, it still
- * reads ExpandContext (Exit) and the React Flow instance (Fit view).
+ * reads ExpandContext (Exit). (Fit view lives once, in the React Flow Controls bottom-left.)
  *
- *   [ workspace / run ▾ ]  9/9 · 1m47s   ⤢ fit   ✕ exit(node mode only)
+ *   [ workspace / run ▾ ]  9/9 · 1m47s   ✕ exit(node mode only)
  *
  * Clicking the switch opens the workspace/run switcher — the SAME Miller-column
  * directory menu as the canvas navigator (DirectoryPanel), fed by the global
@@ -14,7 +14,6 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useReactFlow } from "@xyflow/react";
 import { GlassSurface } from "./GlassSurface";
 import { DirectoryPanel } from "./DirectoryPanel";
 import { useExpand } from "./ExpandContext";
@@ -30,7 +29,6 @@ import "../styles/startrun.css";
 // (bottom-right, beside the chat launcher), not here — this bar carries the workspace/run switcher + run actions.
 export function MenuBar({ activeRun, onSelectRun, onStartRun, onMigrateRun, ix }: { activeRun: string; onSelectRun: (run: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null }) {
   const { expandedId, collapse } = useExpand();
-  const { fitView } = useReactFlow();
   const [open, setOpen] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
 
@@ -92,12 +90,6 @@ export function MenuBar({ activeRun, onSelectRun, onStartRun, onMigrateRun, ix }
             </svg>
           </button>
         )}
-
-        <button type="button" className="ds-menubar__icon" aria-label="Fit view" onClick={() => fitView({ padding: 0.25, duration: 320 })}>
-          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M2 5.5V2.5h3M14 5.5V2.5h-3M2 10.5v3h3M14 10.5v3h-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
 
         {expandedId && (
           <button type="button" className="ds-menubar__icon ds-menubar__exit" aria-label="Exit node view" onClick={collapse}>
