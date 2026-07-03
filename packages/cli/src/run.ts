@@ -27,6 +27,7 @@ import {
   effectiveModel,
   loadModelTiers,
   loadModelsIndex,
+  loadPiDefaults,
   expandFusion,
   expandSubworkflow,
   loadFusionConfig,
@@ -51,6 +52,7 @@ import os from 'node:os';
 import { readdirSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { resolveRemote, startRemoteRun, streamUrlFor, type StartRemoteResult, type RemoteOpts } from './remote.js';
+import { pushTemplate, type PushResult } from './template-push.js';
 import {
   readContexts,
   resolveActive,
@@ -90,6 +92,8 @@ export interface RunDeps {
   runFromConfig?: (config: ResolvedRunConfig) => Promise<RunResult>;
   /** The LIVE template-run join — loadTemplate → instantiateRun → compile → runWorkflow, INSIDE core. */
   runFromTemplate?: (templateDir: string, opts: RunFromTemplateOpts) => Promise<RunResult>;
+  /** Resolve the single system-default provider+model (pi's settings.json). Injectable so tests are hermetic. */
+  loadPiDefaults?: () => { provider?: string; model?: string };
   /**
    * Factory for the `--sandbox local` real-exec provider (injectable so a test asserts the instance).
    * `dangerous:true` ⇒ the `danger-full-access` bypass (read-scope jail OFF); default ⇒ secure-by-default.
@@ -293,9 +297,10 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
 export interface DryRunPlanOpts {
   /** Where the staged prompt lives (referenced as `@<file>`). Default a placeholder `_pi` dir. */
   promptDir?: string;
-  /** Provider name the command builder stamps (`pi --provider`). Default 'cp'. */
+  /** Effective provider (`pi --provider`) — the resolved system default or an explicit override; undefined ⇒
+   *  no `--provider`/`--model` stamped (pi's own default). No hardcoded name. */
   provider?: string;
-  /** Model pin, if any. */
+  /** Effective model (`pi --model`), if resolved. */
   model?: string;
   /** Reasoning-depth cap → `pi --thinking <v>`. Rendered only when set, mirroring the LIVE command. */
   thinking?: string;
@@ -320,7 +325,9 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
   // superset `assembleRunTools` builds — else a node declaring `submit_result` falsely reads UNRESOLVED.
   const registry = seededRegistry([SUBMIT_RESULT_TOOL]);
   const promptDir = opts.promptDir ?? '_pi';
-  const provider = opts.provider ?? 'cp';
+  // Undefined ⇒ neither `--provider` nor `--model` is stamped and pi uses its own settings.json default (the
+  // preview mirrors the live command exactly — no hardcoded provider name).
+  const provider = opts.provider;
   // G1 — resolve the SAME per-node effective model/provider the runner will (read-only global config).
   const tiers = loadModelTiers();
   const modelsIndex = loadModelsIndex();
@@ -524,6 +531,14 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   // run is traceable to its prompt WITHOUT the run id BEING the prompt id.
   const promptId = parsed.args.promptId ?? parsed.args.prompt;
 
+  // The effective provider+model as a PAIR: an explicit `--provider`/`--model` wins, else the single system
+  // default (pi's `settings.json` via `loadPiDefaults`). NO hardcoded provider/model name — a model swap is a
+  // settings.json edit that changes nothing here. Threaded to both the dry-run preview and the live run; the
+  // command builder stamps them together or neither (pi ignores a lone `--provider`).
+  const piDefaults = (deps.loadPiDefaults ?? loadPiDefaults)();
+  const effProvider = parsed.provider ?? piDefaults.provider;
+  const effModel = parsed.model ?? piDefaults.model;
+
   // ── DRY-RUN: build + materialize + print, but invoke NO model. ──
   if (parsed.dryRun) {
     const loaded = await loadTemplate(templateDir);
@@ -556,8 +571,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
       ...(promptId ? { promptId } : {}),
       source: wf.meta.name,
       profile: parsed.profile ?? null,
-      provider: parsed.provider ?? 'cp',
-      model: parsed.model ?? null,
+      provider: effProvider,
+      model: effModel ?? null,
       startedAt: ts,
       updatedAt: ts,
       done: true,
@@ -575,7 +590,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     await writeStatus(outDir, dryStatus);
     // reference the actual realized prompt path the run materialized (engine-owned layout helper).
     const samplePromptDir = nodePromptFile(outDir, '<id>').replace(/\/<id>\/prompt\.md$/, '');
-    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: parsed.provider ?? 'cp', model: parsed.model, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride }));
+    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: effProvider, model: effModel, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride }));
     print(`piflowctl run: dry-run materialized a viewable plan at ${outDir} (open it: piflowctl gui / piflowctl status ${outDir}). Nodes are status "dry" — no model ran.`);
     return undefined;
   }
@@ -613,7 +628,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // (M1b) A CUSTOM gateway (nebius/mmgw/…) lives ONLY in the host's ~/.pi/agent/models.json; stage its
     // entry into the VM so pi resolves --provider there (the image bakes none), and read the cred var(s)
     // from that entry's $VAR apiKey refs (authoritative). A built-in provider has no entry → no staging.
-    const pi = loadPiProviderConfig(parsed.provider);
+    const pi = loadPiProviderConfig(effProvider);
     const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
     // (M1c) Boot from the promoted SNAPSHOT by default (zero config). A raw `DAYTONA_IMAGE` ref overrides
     // (and suppresses the snapshot); `DAYTONA_SNAPSHOT` picks a different snapshot name.
@@ -628,7 +643,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // Forward the pi gateway credential into the VM: an explicit --cloud-secret wins, else the entry's $VAR(s),
     // else the well-known var for a built-in provider. The runner resolves each through the SAME
     // SecretResolver+allowlist as MCP creds (the raw value never leaves the resolver seam).
-    const fallback = providerCredVar(parsed.provider);
+    const fallback = providerCredVar(effProvider);
     cloudSecrets = parsed.cloudSecret
       ? [parsed.cloudSecret]
       : pi.credVars.length
@@ -639,10 +654,17 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     const credList = cloudSecrets.join(', ');
     const bootFrom = rawImage ? `image ${rawImage}` : `snapshot ${snapshot}`;
     print(`piflowctl run: cloud (daytona) — booting from ${bootFrom}.`);
+    // A gateway with a LITERAL apiKey (e.g. mmgw) needs NO cred var — its key rides inline in the staged
+    // models.json — so an empty cloudSecrets is NOT "unresolved". Signal on (staged config OR forwarded cred);
+    // warn only when NEITHER resolved (else the run would truly have no model).
+    const staged = [
+      stageHome ? `staged ~/.pi/agent/models.json[${effProvider}]` : '',
+      cloudSecrets.length ? `forwarding ${credList}` : '',
+    ].filter(Boolean).join(' + ');
     print(
-      cloudSecrets.length
-        ? `piflowctl run: cloud (daytona) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the VM (allowlisted; the raw value never leaves the resolver seam).`
-        : `piflowctl run: ⚠ cloud (daytona) — no provider config/credential resolved for --provider "${parsed.provider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the VM will have no model key.`,
+      staged
+        ? `piflowctl run: cloud (daytona) — ${staged} into the VM (allowlisted; the raw value never leaves the resolver seam).`
+        : `piflowctl run: ⚠ cloud (daytona) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the VM will have no model key.`,
     );
   } else if (parsed.sandbox === 'e2b') {
     // Real pi exec inside a remote E2B CLOUD sandbox (open egress by default — the MCP unblock). The
@@ -651,7 +673,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // `makeE2bProvider` — an absent package gives the `npm i @piflow/e2b` install message.
     // (M1b parity) A CUSTOM gateway lives ONLY in the host's ~/.pi/agent/models.json; stage its entry into
     // the sandbox so pi resolves --provider there, and read the cred var(s) from that entry's $VAR refs.
-    const pi = loadPiProviderConfig(parsed.provider);
+    const pi = loadPiProviderConfig(effProvider);
     const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
     const template = resolveE2bTemplate(process.env);
     provider = await makeE2bProvider({
@@ -660,7 +682,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
       ...(stageHome ? { stageHome } : {}),
     });
     // Forward the pi gateway credential into the sandbox (SAME allowlist/resolver path as daytona + MCP).
-    const fallback = providerCredVar(parsed.provider);
+    const fallback = providerCredVar(effProvider);
     cloudSecrets = parsed.cloudSecret
       ? [parsed.cloudSecret]
       : pi.credVars.length
@@ -671,10 +693,15 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     const credList = cloudSecrets.join(', ');
     const bootFrom = template ? `template ${template}` : 'the E2B default base template (no pi baked — set E2B_TEMPLATE)';
     print(`piflowctl run: cloud (e2b) — booting from ${bootFrom}; egress OPEN by default.`);
+    // (see daytona) a LITERAL-key gateway needs no cred var — signal on staged-OR-forwarded, warn only when neither.
+    const staged = [
+      stageHome ? `staged ~/.pi/agent/models.json[${effProvider}]` : '',
+      cloudSecrets.length ? `forwarding ${credList}` : '',
+    ].filter(Boolean).join(' + ');
     print(
-      cloudSecrets.length
-        ? `piflowctl run: cloud (e2b) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the sandbox (allowlisted; the raw value never leaves the resolver seam).`
-        : `piflowctl run: ⚠ cloud (e2b) — no provider config/credential resolved for --provider "${parsed.provider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the sandbox will have no model key.`,
+      staged
+        ? `piflowctl run: cloud (e2b) — ${staged} into the sandbox (allowlisted; the raw value never leaves the resolver seam).`
+        : `piflowctl run: ⚠ cloud (e2b) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the sandbox will have no model key.`,
     );
   } else if (parsed.sandbox === 'docker') {
     // Real pi exec inside a LOCAL Docker container — the offline mirror of the cloud path. The managed pi
@@ -684,7 +711,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // A container inherits NO host env (docker is a CLOUD_KIND), so — exactly like daytona/e2b — a CUSTOM
     // gateway from ~/.pi/agent/models.json is staged into the container home and its cred var(s) cross via
     // the allowlist. A built-in provider has no entry → no staging.
-    const pi = loadPiProviderConfig(parsed.provider);
+    const pi = loadPiProviderConfig(effProvider);
     const stageHome = pi.config ? { '.pi/agent/models.json': pi.config } : undefined;
     const image = process.env.DOCKER_IMAGE;
     provider = await makeDockerProvider({
@@ -692,7 +719,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
       ...(stageHome ? { stageHome } : {}),
     });
     // Forward the pi gateway credential into the container (SAME allowlist/resolver path as the cloud backends).
-    const fallback = providerCredVar(parsed.provider);
+    const fallback = providerCredVar(effProvider);
     cloudSecrets = parsed.cloudSecret
       ? [parsed.cloudSecret]
       : pi.credVars.length
@@ -703,10 +730,15 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     const credList = cloudSecrets.join(', ');
     const bootFrom = image ? `image ${image}` : 'the auto-built pi node-runtime image (built on first use)';
     print(`piflowctl run: local (docker) — booting one container per run from ${bootFrom}; egress OPEN by default.`);
+    // (see daytona) a LITERAL-key gateway needs no cred var — signal on staged-OR-forwarded, warn only when neither.
+    const staged = [
+      stageHome ? `staged ~/.pi/agent/models.json[${effProvider}]` : '',
+      cloudSecrets.length ? `forwarding ${credList}` : '',
+    ].filter(Boolean).join(' + ');
     print(
-      cloudSecrets.length
-        ? `piflowctl run: local (docker) — ${stageHome ? `staged ~/.pi/agent/models.json[${parsed.provider}] + ` : ''}forwarding ${credList} into the container (allowlisted; the raw value never leaves the resolver seam).`
-        : `piflowctl run: ⚠ local (docker) — no provider config/credential resolved for --provider "${parsed.provider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the container will have no model key.`,
+      staged
+        ? `piflowctl run: local (docker) — ${staged} into the container (allowlisted; the raw value never leaves the resolver seam).`
+        : `piflowctl run: ⚠ local (docker) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the container will have no model key.`,
     );
   }
   // (G7) `--detach` ⇒ UNATTENDED: take each (G5) checkpoint's declared default so a backgrounded run never
@@ -729,9 +761,9 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // (P4, §2.4) `--strict` flips the author-time driver-fit preflight from advisory-warn to blocking.
     ...(parsed.strict ? { strict: true } : {}),
     profile: parsed.profile,
-    providerName: parsed.provider,
+    providerName: effProvider,
     thinking: parsed.thinking,
-    model: parsed.model,
+    model: effModel,
     // Run-start executor selection (run-level default + per-node overrides) — pick pi vs claude-code WITHOUT
     // editing the template. Threaded through RunOptions (executor/executorOverride) to node-lifecycle's
     // resolveExecutor. Omitted when absent so a run with no --executor stays byte-identical.
@@ -814,6 +846,8 @@ export function remoteStartBody(parsed: ParsedRunArgs): Record<string, unknown> 
 /** Injectable seam for the remote-run path (default = the real `startRemoteRun` + stdout), so a test spies it. */
 export interface RemoteRunDeps {
   startRemoteRun?: (entry: ContextEntry, body: object, opts?: RemoteOpts) => Promise<StartRemoteResult>;
+  /** Ship the local template to the plane first (setup-on-miss). Default = the real pushTemplate; a test spies it. */
+  pushTemplate?: (entry: ContextEntry, templateDir: string) => Promise<PushResult>;
   print?: (line: string) => void;
 }
 
@@ -829,8 +863,20 @@ export async function runTemplateRemote(
   deps: RemoteRunDeps = {},
 ): Promise<StartRemoteResult> {
   const start = deps.startRemoteRun ?? startRemoteRun;
+  const push = deps.pushTemplate ?? ((e: ContextEntry, t: string) => pushTemplate(e, t, {}));
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
-  const res = await start(entry, remoteStartBody(parsed));
+  const body = remoteStartBody(parsed);
+  // AUTO-PUSH (setup-on-miss): ship the LOCAL template to the plane FIRST, so a purely-local workflow runs in
+  // the cloud with NO image rebuild — the missing half of local⇄cloud symmetry. Idempotent; best-effort: a
+  // bake-only plane 501s and we fall back to sending the local path (today's behavior, works for a baked one).
+  try {
+    const pushed = await push(entry, path.resolve(parsed.templateDir));
+    if (pushed.ok && pushed.templateDir) {
+      body.templateDir = pushed.templateDir; // the plane-side path (under its uploads root) — the plane resolves THIS
+      print(`  ↑ pushed template to "${contextName}" (product "${pushed.product}") — launching the pushed copy.`);
+    }
+  } catch { /* best-effort — fall back to the local templateDir already in `body` */ }
+  const res = await start(entry, body);
   print(`piflowctl run: launched on context "${contextName}" (${entry.baseUrl}) — run "${res.run}".`);
   // Prefer the server-returned streamUrl (absolute-ized against the base); else derive the canonical one.
   const streamUrl = res.streamUrl

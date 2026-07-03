@@ -35,6 +35,7 @@ import {
   isCloudEntry,
   type ContextEntry,
 } from './context-store.js';
+import { pushTemplate as pushTemplateDefault, type PushResult } from './template-push.js';
 
 // ── the direction (pure) ─────────────────────────────────────────────────────────────────────────
 
@@ -114,6 +115,9 @@ export interface MigrateDeps {
    *  migrated tail keeps the source's model gateway + model instead of falling back to the runner defaults. */
   spawnResume?: (templateDir: string, run: string, sandbox: string, cwd: string, launch?: ResumeLaunch) => void;
   useContextFn?: (target: string) => Promise<void>;
+  /** Ship the source template to the target plane before adopt (adopt assumes the template is present — the one
+   *  gap migrate had). Default = the real pushTemplate; a test spies it. Best-effort (a 501 plane falls back). */
+  pushTemplate?: (entry: ContextEntry, templateDir: string, override: { product?: string; workflow?: string }) => Promise<PushResult>;
   print?: (s: string) => void;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -174,6 +178,7 @@ export async function migrateRun(opts: MigrateOpts, deps: MigrateDeps = {}): Pro
   const spawnResume = deps.spawnResume ?? spawnResumeDefault;
   const remoteRunModelFn = deps.remoteRunModelFn ?? (async (entry: ContextEntry, run: string, o: { fetchImpl?: typeof fetch }) => (await import('./remote.js')).remoteRunModel(entry, run, o));
   const useContextFn = deps.useContextFn ?? (async (t: string) => { await writeContexts(useContext(readContexts(), t)); });
+  const pushTemplateFn = deps.pushTemplate ?? pushTemplateDefault;
 
   const file = readContexts();
   const sourceName = resolveActive({});
@@ -246,6 +251,15 @@ export async function migrateRun(opts: MigrateOpts, deps: MigrateDeps = {}): Pro
     await unpackRunDir(bundle, destRunDir);
     spawnResume(tpl.templateDir, opts.run, sandbox, tpl.productRoot ?? process.cwd(), launch);
   } else {
+    // AUTO-PUSH the template so the target's adopt can RESOLVE it (adopt assumes the template is already on the
+    // plane — the one gap migrate had). Only when the source is LOCAL (we hold its templateDir). Best-effort: a
+    // bake-only plane 501s and adopt falls back to a pre-present/baked template.
+    if (sourceLocal && localRef?.templateDir) {
+      try {
+        const pushed = await pushTemplateFn(targetEntry, localRef.templateDir, { product, workflow });
+        if (pushed.ok) print(`  ↑ pushed the template to ${opts.target} so the resume can resolve it.`);
+      } catch { /* best-effort — adopt falls back to a pre-present/baked template */ }
+    }
     const qs = new URLSearchParams({ sandbox });
     if (opts.product ?? localRef?.product) qs.set('product', product);
     if (workflow) qs.set('workflow', workflow);

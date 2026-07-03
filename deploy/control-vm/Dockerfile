@@ -102,10 +102,14 @@ USER piflow
 # gateway registry entry ($VAR-ref'd, SECRET-FREE); the CMD writes it to ~/.pi/agent/models.json at boot
 # so a run on the VM resolves a CUSTOM --provider exactly like a laptop / a daytona-e2b node does. The
 # referenced key (e.g. NEBIUS_API_KEY) still arrives as a Fly SECRET — pi expands $VAR from env at runtime.
+# PIFLOW_PI_SETTINGS_JSON (optional, same origin) carries the SINGLE system default (defaultProvider/
+# defaultModel); the CMD writes it to ~/.pi/agent/settings.json at boot so a born-in-cloud run inherits the
+# deployed provider+model with NO hardcoded name and NO per-run flag (the runner reads it via loadPiDefaults).
 ENV PIFLOW_HOST=0.0.0.0 \
     PIFLOW_PORT=8080 \
     PIFLOW_SCOPE_ROOTS=/home/piflow/demo \
     PIFLOW_ALLOWED_TEMPLATES=/home/piflow/demo/.piflow/greet/template \
+    PIFLOW_UPLOADS_ROOT=/home/piflow/uploads \
     PIFLOW_STATIC=/home/piflow/app/gui/dist
 
 EXPOSE 8080
@@ -116,4 +120,4 @@ EXPOSE 8080
 # supplied one) so the SAME (models.json file + $VAR cred allowlist) projection daytona/e2b use also
 # lands here. The scope root is also the cwd so resolveScope + the spawned runner's cwd see the demo.
 WORKDIR /home/piflow/demo
-CMD ["sh", "-c", "test -n \"$PIFLOW_TOKEN\" || { echo 'FATAL: PIFLOW_TOKEN is unset — refusing to start an unauthenticated public control plane. Set it with: fly secrets set PIFLOW_TOKEN=...' >&2; exit 1; }; if [ -n \"$PIFLOW_PI_MODELS_JSON\" ]; then mkdir -p \"$HOME/.pi/agent\" && printf '%s' \"$PIFLOW_PI_MODELS_JSON\" > \"$HOME/.pi/agent/models.json\"; fi; exec piflowctl serve --host 0.0.0.0 --port 8080 --token \"$PIFLOW_TOKEN\" --static \"$PIFLOW_STATIC\" --roots \"$PIFLOW_SCOPE_ROOTS\" --allow-templates \"$PIFLOW_ALLOWED_TEMPLATES\""]
+CMD ["sh", "-c", "test -n \"$PIFLOW_TOKEN\" || { echo 'FATAL: PIFLOW_TOKEN is unset — refusing to start an unauthenticated public control plane. Set it with: fly secrets set PIFLOW_TOKEN=...' >&2; exit 1; }; if [ -n \"$PIFLOW_PI_MODELS_JSON\" ]; then mkdir -p \"$HOME/.pi/agent\" && printf '%s' \"$PIFLOW_PI_MODELS_JSON\" > \"$HOME/.pi/agent/models.json\"; fi; if [ -n \"$PIFLOW_PI_SETTINGS_JSON\" ]; then mkdir -p \"$HOME/.pi/agent\" && printf '%s' \"$PIFLOW_PI_SETTINGS_JSON\" > \"$HOME/.pi/agent/settings.json\"; fi; exec piflowctl serve --host 0.0.0.0 --port 8080 --token \"$PIFLOW_TOKEN\" --static \"$PIFLOW_STATIC\" --roots \"$PIFLOW_SCOPE_ROOTS\" --allow-templates \"$PIFLOW_ALLOWED_TEMPLATES\" --uploads \"$PIFLOW_UPLOADS_ROOT\""]

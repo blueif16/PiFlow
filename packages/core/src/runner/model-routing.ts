@@ -93,7 +93,7 @@ export function resolveNodeModel(node: NodeRouting, run: RunRouting): EffectiveM
 
   let provider = node.provider;
   if (!provider && model && run.modelsIndex) provider = run.modelsIndex.get(model);
-  provider = provider ?? run.provider; // undefined ⇒ the caller's default (cp)
+  provider = provider ?? run.provider; // undefined ⇒ the system default (settings.json), or pi's own if absent
 
   return { model, provider };
 }
@@ -165,6 +165,31 @@ export function defaultTiersPath(): string {
 /** Default location of pi's native model registry (read-only — pi owns it). */
 export function defaultModelsPath(): string {
   return path.join(os.homedir(), '.pi', 'agent', 'models.json');
+}
+
+/** Default location of pi's native settings (read-only — pi owns it): the SINGLE source of truth for the
+ *  default provider+model (`defaultProvider`/`defaultModel`). Mirrors `defaultModelsPath` (same ~/.pi/agent dir). */
+export function defaultPiSettingsPath(): string {
+  return path.join(os.homedir(), '.pi', 'agent', 'settings.json');
+}
+
+/**
+ * The system-level DEFAULT provider+model — the ONE fixed fixture. Read from pi's own `settings.json`
+ * (`defaultProvider`/`defaultModel`), so a model swap is a single config edit that changes ZERO call sites and
+ * NO code carries a hardcoded model/provider NAME. This is the terminal fallback of the additive cascade
+ * (per-node > tier > run `--provider`/`--model` > THIS). Absent/invalid file ⇒ `{}` (never throws): the caller
+ * then stamps neither flag and pi resolves its own default. Injectable `file` so tests are hermetic.
+ */
+export function loadPiDefaults(file: string = defaultPiSettingsPath()): { provider?: string; model?: string } {
+  try {
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as { defaultProvider?: unknown; defaultModel?: unknown };
+    const out: { provider?: string; model?: string } = {};
+    if (typeof raw.defaultProvider === 'string' && raw.defaultProvider) out.provider = raw.defaultProvider;
+    if (typeof raw.defaultModel === 'string' && raw.defaultModel) out.model = raw.defaultModel;
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 /** Read the tier map (READ-ONLY). Absent/invalid ⇒ `{ active:false, tiers:{} }` (never throws on absence). */

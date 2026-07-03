@@ -46,7 +46,9 @@ export interface RunContext {
    */
   strict?: boolean;
   execRunner: ExecRunner;
-  providerName: string;
+  /** Run-level default provider (`pi --provider`), resolved from the single system default (settings.json) at
+   *  the CLI edge. Undefined ⇒ neither `--provider` nor `--model` is stamped and pi uses its own default. */
+  providerName?: string;
   model?: string;
   /**
    * Run-start executor selection (run-level default + per-node override), applied at each node run by

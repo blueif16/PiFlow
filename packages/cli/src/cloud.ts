@@ -45,9 +45,12 @@ import {
   cloudCredEnvAdditions,
   resolveClaudeOAuthToken,
   defaultSecretResolver,
+  loadPiDefaults,
   type SecretResolver,
 } from '@piflow/core';
 import { parsePiProvider } from './run.js';
+import { resolveRemote } from './remote.js';
+import { pushTemplate } from './template-push.js';
 import {
   readContexts,
   writeContexts,
@@ -80,6 +83,10 @@ export const DEFAULT_DOCKERFILE = 'deploy/control-vm/Dockerfile';
 const OAUTH_SECRET = 'CLAUDE_CODE_OAUTH_TOKEN';
 /** The NON-secret env the image's CMD writes to ~/.pi/agent/models.json at boot (the gateway registry). */
 export const MODELS_JSON_ENV = 'PIFLOW_PI_MODELS_JSON';
+/** The NON-secret env the image's CMD writes to ~/.pi/agent/settings.json at boot — the SINGLE system default
+ *  (defaultProvider/defaultModel) the plane's runner (loadPiDefaults) reads. So a born-in-cloud run inherits the
+ *  deployed provider+model with NO hardcoded name and NO per-run flag; overrides still layer on top. */
+export const SETTINGS_JSON_ENV = 'PIFLOW_PI_SETTINGS_JSON';
 /** API-key vars a non-empty value of which silently OUTRANKS the OAuth token → per-token billing. NEVER stage. */
 const FORBIDDEN_SECRETS = new Set(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']);
 /** The nodeId the mint seam passes to the SecretResolver (so a broker can scope a per-caller token). */
@@ -124,16 +131,23 @@ export interface MintedSecrets {
   secrets: CloudSecret[];
   /** The scoped, SECRET-FREE `~/.pi/agent/models.json` gateway entry to stage (when a custom --provider resolved). */
   modelsJson?: string;
+  /** The SECRET-FREE `~/.pi/agent/settings.json` (defaultProvider/defaultModel) to stage — the plane's single
+   *  system default, so a born-in-cloud run inherits the deployed provider+model (when a custom --provider resolved). */
+  settingsJson?: string;
   /** The pi gateway name a custom `--provider` resolved to (for display); absent on the plain-key path. */
   provider?: string;
   /** Declared secrets that could NOT be resolved on this machine (the operator must supply them). */
   missing: string[];
 }
 
-/** The pi gateway decomposition (mirrors `run.ts`'s cloud-node path): the models.json entry + its $VAR cred names. */
+/** The pi gateway decomposition (mirrors `run.ts`'s cloud-node path): the models.json entry + its $VAR cred names
+ *  + the provider's DEFAULT model (for the plane's settings.json — never a hardcoded name). */
 export interface ProviderResolution {
   config?: string;
   credVars: string[];
+  /** The provider's default model id — the host's settings.json `defaultModel` when it names THIS provider,
+   *  else the gateway entry's first model. Feeds the plane's staged settings.json defaultModel. */
+  defaultModel?: string;
 }
 
 /** Injectable boundaries for `mintCloudSecrets` — real defaults (crypto RNG + the core resolvers), fakes in tests. */
@@ -150,10 +164,22 @@ export interface MintDeps {
   resolveProvider?: (provider: string) => ProviderResolution;
 }
 
-/** Default gateway resolver — the same source `run.ts` reads for a daytona/e2b node (never throws → {credVars:[]}). */
+/** Default gateway resolver — the same source `run.ts` reads for a daytona/e2b node (never throws → {credVars:[]}).
+ *  Also surfaces the provider's DEFAULT model (for the plane's settings.json): the host settings.json default when
+ *  it names THIS provider (the single source of truth), else the gateway entry's first model id. No hardcoded name. */
 function resolveProviderDefault(provider: string): ProviderResolution {
   try {
-    return parsePiProvider(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'models.json'), 'utf8'), provider);
+    const res = parsePiProvider(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'models.json'), 'utf8'), provider);
+    const sys = loadPiDefaults();
+    let defaultModel = sys.provider === provider ? sys.model : undefined;
+    if (!defaultModel && res.config) {
+      try {
+        const entry = (JSON.parse(res.config) as { providers?: Record<string, { models?: Array<{ id?: string }> }> })
+          .providers?.[provider];
+        defaultModel = entry?.models?.[0]?.id;
+      } catch { /* keep undefined — settings.json just carries defaultProvider then */ }
+    }
+    return { ...res, defaultModel };
   } catch {
     return { credVars: [] };
   }
@@ -186,6 +212,7 @@ export async function mintCloudSecrets(
   // The gateway decomposition — the SAME (models.json entry + $VAR cred allowlist) a daytona/e2b node gets.
   // A custom --provider with a real entry → stage the file + use ITS cred vars; otherwise the single env key.
   let modelsJson: string | undefined;
+  let settingsJson: string | undefined;
   let providerName: string | undefined;
   let credVarNames: string[];
   const gw = opts.provider ? resolveProvider(opts.provider) : undefined;
@@ -193,6 +220,14 @@ export async function mintCloudSecrets(
     modelsJson = gw.config;
     providerName = opts.provider;
     credVarNames = gw.credVars;
+    // Stage the plane's SINGLE system default (settings.json) so a born-in-cloud run inherits the deployed
+    // provider+model with NO hardcoded name and NO per-run flag. defaultModel is derived (host settings.json or
+    // the gateway's first model); when it can't be resolved we still pin defaultProvider (pi picks the model).
+    settingsJson = JSON.stringify(
+      gw.defaultModel
+        ? { defaultProvider: providerName, defaultModel: gw.defaultModel }
+        : { defaultProvider: providerName },
+    );
   } else {
     credVarNames = [opts.providerSecret];
   }
@@ -242,7 +277,7 @@ export async function mintCloudSecrets(
     }
   }
 
-  return { token, appUrl, contextEntry: { baseUrl: appUrl, token }, secrets, modelsJson, provider: providerName, missing };
+  return { token, appUrl, contextEntry: { baseUrl: appUrl, token }, secrets, modelsJson, settingsJson, provider: providerName, missing };
 }
 
 // ── the deploy plan (PURE — the ordered runbook the README documents) ──────────────────────────────
@@ -298,6 +333,8 @@ export function secretsSetStep(
   const setPairs = [...ctx.secrets];
   if (ctx.modelsJson)
     setPairs.push({ name: MODELS_JSON_ENV, value: ctx.modelsJson, displayValue: `<gateway:${ctx.provider ?? 'pi'}>` });
+  if (ctx.settingsJson)
+    setPairs.push({ name: SETTINGS_JSON_ENV, value: ctx.settingsJson, displayValue: `<default:${ctx.provider ?? 'pi'}>` });
   const secretArgs = setPairs.map((s) => `${s.name}=${s.value}`);
   const command = argv(secretArgs);
   // The display mirrors the command's shape but redacts every value — so `argv` is applied to the redacted pairs
@@ -373,14 +410,26 @@ export function rmDockerignoreStep(): DeployStep {
  */
 export const CONTROL_VM_DEMO_PRODUCT = 'demo';
 
-/** The invariant smoke gate — identical for every host; keys only on the origin + the minted token. */
-export function smokeStep(appUrl: string, token: string): DeployStep {
+/**
+ * The invariant smoke gate — identical for every host; keys only on the origin + the minted token.
+ * When the deploy stages an e2b template, thread it in as `E2B_TEMPLATE`: the smoke defaults SANDBOX=e2b and
+ * FATALS (exit 2) if E2B_TEMPLATE is unset (smoke-live.mjs), so projecting it here makes `cloud up --execute`
+ * HANDS-FREE — the operator no longer has to `export E2B_TEMPLATE` in-shell for the gate to reach the POST.
+ * E2B_TEMPLATE is deploy CONFIG (a public template id), not a secret, so it's shown in-clear in the display.
+ */
+export function smokeStep(appUrl: string, token: string, e2bTemplate?: string): DeployStep {
+  const env: Record<string, string> = {
+    PIFLOW_CLOUD_URL: appUrl,
+    PIFLOW_TOKEN: token,
+    PIFLOW_PRODUCT: CONTROL_VM_DEMO_PRODUCT,
+  };
+  if (e2bTemplate) env.E2B_TEMPLATE = e2bTemplate;
   return {
     id: 'smoke',
     kind: 'smoke',
     command: ['node', 'deploy/control-vm/smoke-live.mjs'],
-    env: { PIFLOW_CLOUD_URL: appUrl, PIFLOW_TOKEN: token, PIFLOW_PRODUCT: CONTROL_VM_DEMO_PRODUCT },
-    display: `PIFLOW_CLOUD_URL=${appUrl} PIFLOW_TOKEN=*** PIFLOW_PRODUCT=${CONTROL_VM_DEMO_PRODUCT} node deploy/control-vm/smoke-live.mjs`,
+    env,
+    display: `PIFLOW_CLOUD_URL=${appUrl} PIFLOW_TOKEN=*** PIFLOW_PRODUCT=${CONTROL_VM_DEMO_PRODUCT}${e2bTemplate ? ` E2B_TEMPLATE=${e2bTemplate}` : ''} node deploy/control-vm/smoke-live.mjs`,
     outward: true,
     note: 'the P5 gate: A(auth)→B(start)→C(SSE done)→D(run-view)→E(in-VM bwrap/OAuth invariants).',
   };
@@ -396,7 +445,7 @@ export function buildDeployPlan(adapter: HostAdapter, ctx: HostPlanContext): Dep
     app: ctx.app,
     appUrl: ctx.appUrl,
     hostId: adapter.id,
-    steps: [...adapter.upSteps(ctx), smokeStep(ctx.appUrl, ctx.token)],
+    steps: [...adapter.upSteps(ctx), smokeStep(ctx.appUrl, ctx.token, ctx.e2bTemplate)],
   };
 }
 
@@ -414,6 +463,7 @@ export function buildFlyDeployPlan(opts: {
   secrets: CloudSecret[];
   token: string;
   modelsJson?: string;
+  settingsJson?: string;
   provider?: string;
 }): DeployPlan {
   return buildDeployPlan(flyAdapter, { ...opts, port: 8080 });
@@ -430,6 +480,9 @@ export function renderPlan(plan: DeployPlan, mint: MintedSecrets, opts: { contex
   lines.push(`  (the smoke needs it too: PIFLOW_TOKEN is in that file, or copy it from step 3 when you run it).`);
   if (mint.provider) {
     lines.push(`  pi gateway "${mint.provider}" → staged as ${MODELS_JSON_ENV} (the VM writes ~/.pi/agent/models.json at boot).`);
+    if (mint.settingsJson) {
+      lines.push(`  system default → staged as ${SETTINGS_JSON_ENV} (the VM writes ~/.pi/agent/settings.json at boot; a born-in-cloud run inherits it).`);
+    }
   }
   lines.push('');
   lines.push('  This is a PLAN — nothing outward-facing has run (no fly build/deploy, no spend). Run the steps');
@@ -525,8 +578,11 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
   const adapter = resolveAdapter(opts.host);
   const appUrl = adapter.appUrl(opts.app, { publicUrl: opts.publicUrl, port: opts.port });
 
+  // The e2b template the plane's worker boots (override with E2B_TEMPLATE, else the pi-baked default). Projected
+  // onto the plane by the mint AND into the smoke env by smokeStep, so `--execute` needs no in-shell export.
+  const e2bTemplate = process.env.E2B_TEMPLATE ?? DEFAULT_E2B_TEMPLATE;
   const mint = await mintCloudSecrets(
-    { appUrl, provider: opts.provider, providerSecret: opts.providerSecret, e2bTemplate: process.env.E2B_TEMPLATE ?? DEFAULT_E2B_TEMPLATE },
+    { appUrl, provider: opts.provider, providerSecret: opts.providerSecret, e2bTemplate },
     deps,
   );
   const plan = buildDeployPlan(adapter, {
@@ -538,7 +594,9 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
     secrets: mint.secrets,
     token: mint.token,
     modelsJson: mint.modelsJson,
+    settingsJson: mint.settingsJson,
     provider: mint.provider,
+    e2bTemplate,
   });
 
   // Register the row up front (a harmless local write) so `context use cloud` works the moment it's live.
@@ -649,8 +707,44 @@ const DOWN_USAGE =
  * `deps` is the injection seam runCloudUp/runCloudDown already expose (defaults to the real impls) — so a
  * test can drive the CLI's default-flag resolution (e.g. no `--host` → the DEFAULT_HOST pathway) with fakes.
  */
+/**
+ * `piflowctl cloud push <templateDir> [--product p] [--workflow w] [--context c]` — install a LOCAL template on
+ * the active (or named) cloud plane so it runs there with NO image rebuild. Thin glue over the tested
+ * `pushTemplate`; the plane must have push enabled (`serve --uploads <dir>`) or it 501s with a hint.
+ */
+export async function runCloudPush(rest: string[]): Promise<void> {
+  const print = (s: string) => process.stdout.write(s + '\n');
+  const fail = (m: string) => { process.stderr.write(`piflowctl cloud push: ${m}\n`); process.exitCode = 1; };
+  let templateDir: string | undefined;
+  let product: string | undefined;
+  let workflow: string | undefined;
+  let contextName: string | undefined;
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a === '--product') product = rest[++i];
+    else if (a === '--workflow') workflow = rest[++i];
+    else if (a === '--context') contextName = rest[++i];
+    else if (!a.startsWith('-') && !templateDir) templateDir = a;
+    else return fail(`unexpected argument "${a}"`);
+  }
+  if (!templateDir) return fail('a template directory is required (piflowctl cloud push <templateDir>)');
+  let remote: ReturnType<typeof resolveRemote>;
+  try { remote = resolveRemote(contextName); } catch (e) { return fail((e as Error).message ?? String(e)); }
+  if (!remote) return fail('this targets a CLOUD context — run `piflowctl context use cloud` first, or pass --context <name>');
+  let res;
+  try { res = await pushTemplate(remote.entry, templateDir, { product, workflow }); }
+  catch (e) { return fail(`push failed — ${(e as Error).message ?? String(e)}`); }
+  if (!res.ok) return fail(`the plane rejected the push (HTTP ${res.status})${res.error ? ` — ${res.error}` : ''}${res.status === 501 ? '  [enable it on the plane: serve --uploads <dir>]' : ''}`);
+  print(`✓ pushed → context "${remote.name}" (${remote.entry.baseUrl}) as product "${res.product}" / workflow "${res.workflow}".`);
+  print(`  plane path: ${res.templateDir}`);
+  print(`  → run it in the cloud:  piflowctl run ${templateDir} --context ${remote.name}`);
+}
+
 export async function runCloudCli(argv: string[], deps: CloudDeps = {}): Promise<void> {
   const [verb, ...rest] = argv;
+  // `push` has its own arg shape (a positional templateDir) — intercept BEFORE the up/down flag parser, which
+  // would reject the positional as an unknown flag.
+  if (verb === 'push') return runCloudPush(rest);
 
   // Shared flag parse (both verbs accept --host/--app/--port/--context/--execute; up also takes
   // provider/config/dockerfile/public-url).

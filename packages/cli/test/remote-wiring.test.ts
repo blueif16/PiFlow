@@ -132,6 +132,8 @@ describe('remote run — runTemplateRemote POSTs /api/runs/start and surfaces th
     let sentBody: any;
     const lines: string[] = [];
     const res = await runTemplateRemote(entry, 'cloud', parsed, {
+      // push DISABLED plane (501) ⇒ no network, and the local templateDir path is sent (today's behavior).
+      pushTemplate: async () => ({ ok: false, status: 501 }),
       startRemoteRun: async (_e, body) => { sentBody = body; return { run: 'brave-tart', streamUrl: '/__piflow/stream/brave-tart' }; },
       print: (l) => lines.push(l),
     });
@@ -148,8 +150,35 @@ describe('remote run — runTemplateRemote POSTs /api/runs/start and surfaces th
     const entry: ContextEntry = { baseUrl: 'http://remote:5273' };
     const parsed = parseRunArgs(['/tmpl']);
     await expect(
-      runTemplateRemote(entry, 'cloud', parsed, { startRemoteRun: async () => { throw new Error('remote start-run failed (403): template not allowed'); }, print: () => {} }),
+      runTemplateRemote(entry, 'cloud', parsed, { pushTemplate: async () => ({ ok: false, status: 501 }), startRemoteRun: async () => { throw new Error('remote start-run failed (403): template not allowed'); }, print: () => {} }),
     ).rejects.toThrow(/template not allowed/);
+  });
+
+  it('AUTO-PUSH: a push-enabled plane installs the template and the run launches the PUSHED copy (plane path)', async () => {
+    const entry: ContextEntry = { baseUrl: 'http://remote:5273', token: 'sk' };
+    const parsed = parseRunArgs(['/repo/.piflow/wf/template', '--sandbox', 'e2b']);
+    let sentBody: any;
+    let pushedDir: string | undefined;
+    await runTemplateRemote(entry, 'cloud', parsed, {
+      pushTemplate: async (_e, tpl) => { pushedDir = tpl; return { ok: true, status: 202, templateDir: '/home/piflow/uploads/wf/.piflow/wf/template', product: 'wf', workflow: 'wf' }; },
+      startRemoteRun: async (_e, body) => { sentBody = body; return { run: 'r1' }; },
+      print: () => {},
+    });
+    expect(pushedDir).toBe(path.resolve('/repo/.piflow/wf/template')); // the LOCAL dir was pushed
+    // the start body now points at the PLANE path (not the local one) — the plane resolves the pushed copy.
+    expect(sentBody.templateDir).toBe('/home/piflow/uploads/wf/.piflow/wf/template');
+  });
+
+  it('AUTO-PUSH: graceful fallback — a bake-only plane (501) keeps the LOCAL templateDir path', async () => {
+    const entry: ContextEntry = { baseUrl: 'http://remote:5273' };
+    const parsed = parseRunArgs(['/repo/.piflow/wf/template', '--sandbox', 'e2b']);
+    let sentBody: any;
+    await runTemplateRemote(entry, 'cloud', parsed, {
+      pushTemplate: async () => ({ ok: false, status: 501 }),
+      startRemoteRun: async (_e, body) => { sentBody = body; return { run: 'r1' }; },
+      print: () => {},
+    });
+    expect(sentBody.templateDir).toBe(path.resolve('/repo/.piflow/wf/template')); // unchanged — no plane path
   });
 });
 

@@ -33,8 +33,10 @@ describe('railwayAdapter identity', () => {
 });
 
 describe('railwayAdapter.appUrl', () => {
-  it('shapes the .up.railway.app origin from the service name (the deterministic guess)', () => {
-    expect(railwayAdapter.appUrl('a', { port: 8080 })).toBe('https://a.up.railway.app');
+  it('shapes the origin as <service>-<env>.up.railway.app (env defaults to production — where Railway actually serves)', () => {
+    // RAN-37: Railway's generated public domain is `<service>-<environment>.up.railway.app`, NOT `<service>.up.railway.app`.
+    // The old guess (no `-production`) 404'd a dead hostname → the smoke masked it as a readiness "race".
+    expect(railwayAdapter.appUrl('a', { port: 8080 })).toBe('https://a-production.up.railway.app');
   });
   it('prefers an operator-supplied --public-url (railway domain confirms it)', () => {
     expect(railwayAdapter.appUrl('a', { publicUrl: 'https://custom.example', port: 8080 })).toBe(

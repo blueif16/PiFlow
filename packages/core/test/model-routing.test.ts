@@ -15,10 +15,43 @@ import {
   ModelRoutingError,
   loadModelTiers,
   loadModelsIndex,
+  loadPiDefaults,
   type ModelTiers,
 } from '../src/runner/model-routing.js';
 
 const activeTiers: ModelTiers = { active: true, tiers: { fast: 'deepseek-v3', deep: 'claude-opus-4-8' } };
+
+// The SINGLE fixed fixture: pi's settings.json `defaultProvider`/`defaultModel`. No provider/model NAME is
+// hardcoded in the SDK — this reader is the one place the system default enters, so a swap is a config edit.
+describe('loadPiDefaults — the single system default (pi settings.json)', () => {
+  it('reads defaultProvider + defaultModel from a settings.json', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-settings-'));
+    const file = path.join(dir, 'settings.json');
+    await fs.writeFile(file, JSON.stringify({ theme: 'dark', defaultProvider: 'mmgw', defaultModel: 'MiniMax-M3' }));
+    expect(loadPiDefaults(file)).toEqual({ provider: 'mmgw', model: 'MiniMax-M3' });
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('a model swap is a single config edit — the reader carries whatever the file holds (no hardcoded name)', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-settings-'));
+    const file = path.join(dir, 'settings.json');
+    await fs.writeFile(file, JSON.stringify({ defaultProvider: 'openrouter', defaultModel: 'anthropic/claude-sonnet-4.5' }));
+    expect(loadPiDefaults(file)).toEqual({ provider: 'openrouter', model: 'anthropic/claude-sonnet-4.5' });
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('a missing/partial/invalid file ⇒ {} (never throws) — the caller then stamps nothing and pi self-resolves', async () => {
+    expect(loadPiDefaults('/nonexistent/piflow-settings.json')).toEqual({});
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-settings-'));
+    const partial = path.join(dir, 'settings.json');
+    await fs.writeFile(partial, JSON.stringify({ theme: 'dark' })); // no defaults at all
+    expect(loadPiDefaults(partial)).toEqual({});
+    const bad = path.join(dir, 'bad.json');
+    await fs.writeFile(bad, 'not json{');
+    expect(loadPiDefaults(bad)).toEqual({});
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+});
 
 describe('resolveNodeModel — MODEL precedence (node.model > tier > run > pi default)', () => {
   it('node.model wins over tier, run model, and everything else', () => {

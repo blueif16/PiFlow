@@ -108,7 +108,8 @@ export interface RunOptions {
   strict?: boolean;
   /** The exec primitive (carries the watchdog + kill seam). Default `defaultExecRunner`. */
   execRunner?: ExecRunner;
-  /** Provider name passed to the command builder (`pi --provider`). Default 'cp'. */
+  /** Run-level default provider (`pi --provider`), resolved from the single system default (settings.json) at
+   *  the CLI edge. Undefined ⇒ the command builder stamps neither flag and pi uses its own default. */
   providerName?: string;
   /** Optional model pin. */
   model?: string;
@@ -398,7 +399,10 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     // (P4, §2.4) Author-time driver-fit enforcement — advisory-warn by default, blocking under `--strict`.
     strict: opts.strict,
     execRunner: opts.execRunner ?? defaultExecRunner,
-    providerName: opts.providerName ?? 'cp',
+    // No hardcoded provider default here — the single system default (settings.json) is resolved at the CLI
+    // edge (run.ts/config.ts `loadPiDefaults`) and threaded in. Undefined ⇒ the command builder stamps neither
+    // `--provider` nor `--model` and pi uses its own settings.json default.
+    providerName: opts.providerName,
     model: opts.model,
     // Run-start executor selection (run-level default + per-node override) — resolved per node by
     // `resolveExecutor` (override wins → default → the node's authored executor). Absent ⇒ authored value.
@@ -453,7 +457,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
       ...(opts.promptId ? { promptId: opts.promptId } : {}),
       source: wf.meta.name,
       profile: opts.profile ?? null,
-      provider: opts.providerName ?? 'cp',
+      provider: opts.providerName,
       model: opts.model ?? null,
       // The CONTROLLING process's pid — the one driving this run. Recorded so a later
       // `piflowctl node <run> <id> --stop` can signal THIS run's process group (the runner spawns each

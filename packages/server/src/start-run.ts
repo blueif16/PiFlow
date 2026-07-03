@@ -60,12 +60,20 @@ export async function resolveTemplateDir(body: StartBody): Promise<{ ok: true; t
  * publicly-exposed control plane must restrict WHICH templates it will run. PURE (no I/O) — compares resolved
  * absolute paths so trailing slashes and relative-vs-absolute forms of the SAME dir are equal.
  * - allowlist undefined/null/empty ⇒ true (ALLOW ALL — preserves today's local dev behavior).
- * - otherwise ⇒ true iff `templateDir` (path.resolve'd) equals one of the allowlist entries (each path.resolve'd).
+ * - otherwise ⇒ true iff `templateDir` (path.resolve'd) EQUALS a listed entry (a baked template dir) OR lives
+ *   UNDER a listed DIRECTORY (an uploads root a pushed template lands in — `cloud push`). The UNDER check is a
+ *   true path-child test via `path.relative`, NOT a string prefix: it rejects a `../` escape and a sibling that
+ *   merely shares a string prefix (`/uploads-evil` is not a child of `/uploads`).
  */
 export function isTemplateAllowed(templateDir: string, allowlist: string[] | undefined | null): boolean {
   if (!allowlist || allowlist.length === 0) return true;
   const target = path.resolve(templateDir);
-  return allowlist.some((entry) => path.resolve(entry) === target);
+  return allowlist.some((entry) => {
+    const root = path.resolve(entry);
+    if (root === target) return true; // exact — a baked template dir
+    const rel = path.relative(root, target); // UNDER an allow-listed dir — a pushed template's uploads root
+    return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+  });
 }
 
 /** The canonical runs home for a template dir (`.piflow/<wf>/template` ⇒ `.piflow/<wf>/runs`), else null. */

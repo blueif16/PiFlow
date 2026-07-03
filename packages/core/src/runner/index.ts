@@ -111,6 +111,8 @@ export {
   loadModelsIndex,
   defaultTiersPath,
   defaultModelsPath,
+  defaultPiSettingsPath,
+  loadPiDefaults,
   CANONICAL_TIERS,
   TIER_FAST,
   TIER_BALANCED,

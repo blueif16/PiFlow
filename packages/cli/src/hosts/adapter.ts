@@ -29,8 +29,17 @@ export interface HostPlanContext {
   token: string;
   /** Secret-free gateway config, staged as MODELS_JSON_ENV (when a custom `--provider` resolved). */
   modelsJson?: string;
+  /** Secret-free system default (defaultProvider/defaultModel), staged as SETTINGS_JSON_ENV — the plane's
+   *  single default a born-in-cloud run inherits (when a custom `--provider` resolved). */
+  settingsJson?: string;
   /** Gateway name, for the display label. */
   provider?: string;
+  /**
+   * The e2b template the deploy projects onto the plane — threaded into the smoke env so `--execute` is
+   * hands-free. E2B-specific for now (E2B is the only working cloud worker); generalize to a per-worker
+   * sandbox-image field when other cloud sandbox providers (daytona/…) become first-class.
+   */
+  e2bTemplate?: string;
 }
 
 /**

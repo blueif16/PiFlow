@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { RunOptions } from './runner.js';
+import { loadPiDefaults } from './model-routing.js';
 
 /** Args (already parsed off the CLI by the caller) that OVERRIDE the env defaults. All optional except `run`. */
 export interface ConfigArgs {
@@ -42,6 +43,9 @@ export interface LoadConfigInput {
   args: ConfigArgs;
   /** The env map (default `process.env`) — injected so the resolution is pure + testable. */
   env?: Record<string, string | undefined>;
+  /** Path to pi's `settings.json` (the single system default source) — injected so the resolution is hermetic
+   *  in tests. Defaults to `~/.pi/agent/settings.json`. */
+  settingsFile?: string;
 }
 
 /**
@@ -110,13 +114,18 @@ export function loadConfig(input: LoadConfigInput): ResolvedRunOpts {
     throw new Error('loadConfig: `run` is required (the instance id — pass --run <id>); none in args.');
   }
 
+  // The additive cascade's terminal fallback: the single system default (pi's settings.json). NO hardcoded
+  // provider/model name — a model swap is a settings.json edit. Absent file ⇒ {} ⇒ the flags stay undefined
+  // and pi resolves its own default.
+  const sys = loadPiDefaults(input.settingsFile);
+
   const resolved: ResolvedRunOpts = {
     run: args.run,
     outDir: args.outDir,
     repoRoot: args.repoRoot,
-    // provider: arg > env > built-in default 'cp'.
-    providerName: args.providerName ?? env.PI_RUNNER_PROVIDER ?? 'cp',
-    model: args.model ?? env.PI_RUNNER_MODEL ?? undefined,
+    // provider: arg > env > system default (settings.json). No hardcoded name.
+    providerName: args.providerName ?? env.PI_RUNNER_PROVIDER ?? sys.provider,
+    model: args.model ?? env.PI_RUNNER_MODEL ?? sys.model,
     thinking: args.thinking ?? env.PI_RUNNER_THINKING ?? undefined,
     from: args.from ?? env.PI_RUNNER_FROM ?? undefined,
     until: args.until ?? env.PI_RUNNER_UNTIL ?? undefined,

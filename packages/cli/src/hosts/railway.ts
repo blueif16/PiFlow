@@ -25,9 +25,13 @@ export const railwayAdapter: HostAdapter = {
   label: 'railway',
   urlIsHostDerived: true,
 
-  // Railway's default public origin is `https://<service>.up.railway.app` — a deterministic guess the
-  // `railway domain` step confirms; an operator who already has a custom domain passes it as `--public-url`.
-  appUrl: (app, { publicUrl }) => publicUrl ?? `https://${app}.up.railway.app`,
+  // Railway's generated public origin is `https://<service>-<environment>.up.railway.app` — the
+  // `-<environment>` suffix is REQUIRED (RAN-37: `<service>.up.railway.app` is a DEAD hostname that 404s
+  // "Application not found", which the smoke's readiness poll silently masked as a 90s "race"). The
+  // environment defaults to `production` (Railway's default env; override via RAILWAY_ENVIRONMENT); the
+  // `railway domain` step confirms it, and a custom domain overrides via `--public-url`.
+  appUrl: (app, { publicUrl }) =>
+    publicUrl ?? `https://${app}-${process.env.RAILWAY_ENVIRONMENT ?? 'production'}.up.railway.app`,
 
   upSteps: (c) => [
     // railway's builder reads ONLY a context-root Dockerfile + .dockerignore (same as fly) — stage then clean.

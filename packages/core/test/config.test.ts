@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadConfig, parseArgFlags } from '../src/runner/index.js';
 
 describe('loadConfig — resolve PI_RUNNER_* env + args → the run-opts subset runFromConfig consumes (U8)', () => {
@@ -27,18 +30,29 @@ describe('loadConfig — resolve PI_RUNNER_* env + args → the run-opts subset 
 
   it('args OVERRIDE env (the CLI flag beats the env default)', () => {
     const cfg = loadConfig({
-      args: { run: 'g2', providerName: 'cp', model: 'm-cli', from: 'harden' },
+      args: { run: 'g2', providerName: 'openrouter', model: 'm-cli', from: 'harden' },
       env: { PI_RUNNER_PROVIDER: 'mmgw', PI_RUNNER_MODEL: 'm-env', PI_RUNNER_FROM: 'w0' },
     });
-    expect(cfg.providerName).toBe('cp'); // arg wins
+    expect(cfg.providerName).toBe('openrouter'); // arg wins
     expect(cfg.model).toBe('m-cli'); // arg wins
     expect(cfg.from).toBe('harden'); // arg wins
   });
 
-  it('provider defaults to "cp" when neither arg nor env sets it', () => {
-    const cfg = loadConfig({ args: { run: 'g3' }, env: {} });
-    expect(cfg.providerName).toBe('cp');
-    // unset optional knobs are absent (not garbage) → runWorkflow falls back to ITS defaults.
+  // The terminal fallback of the additive cascade is the SINGLE system default — pi's settings.json — NOT a
+  // hardcoded provider/model name. A model swap is a settings.json edit; loadConfig carries whatever it holds.
+  it('provider+model fall back to the system default (pi settings.json) when neither arg nor env sets them', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'piflow-cfg-'));
+    const settingsFile = join(dir, 'settings.json');
+    writeFileSync(settingsFile, JSON.stringify({ defaultProvider: 'mmgw', defaultModel: 'MiniMax-M3' }));
+    const cfg = loadConfig({ args: { run: 'g3' }, env: {}, settingsFile });
+    expect(cfg.providerName).toBe('mmgw'); // the system default — no hardcoded name in code
+    expect(cfg.model).toBe('MiniMax-M3');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('provider+model are UNDEFINED when nothing sets them and no settings.json exists (pi self-resolves)', () => {
+    const cfg = loadConfig({ args: { run: 'g3b' }, env: {}, settingsFile: '/nonexistent/piflow-no-settings.json' });
+    expect(cfg.providerName).toBeUndefined(); // no `cp`, no invented default
     expect(cfg.model).toBeUndefined();
     expect(cfg.nodeTimeoutMs).toBeUndefined();
     expect(cfg.from).toBeUndefined();
