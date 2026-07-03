@@ -186,6 +186,7 @@
   border: 1px solid var(--ds-border-strong);
 }
 .ds-basiscard__face svg { width: 14px; height: 14px; }
+.ds-basiscard__face .ds-agentface { width: 20px; height: 20px; border: none; }  /* the base's face art fills the slot */
 .ds-basiscard__text { display: inline-flex; flex-direction: column; min-width: 0; line-height: 1.15; }
 .ds-basiscard__label { color: var(--ds-text-primary); font-weight: var(--ds-weight-medium); white-space: nowrap; }
 .ds-basiscard__id { color: var(--ds-text-tertiary); font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -17,6 +17,8 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import * as motion from "motion/react-client";
 import { useExpand } from "./ExpandContext";
 import { useViewMode } from "./ViewModeContext";
+import { agentFace } from "./agentFaces";
+import { AgentHoverCard } from "./AgentHoverCard";
 import { NodeModeStrip } from "./NodeModeStrip";
 import { NodeFusionToggle } from "./NodeFusionToggle";
 import { NodeGateChips } from "./NodeGateChips";
@@ -191,6 +193,16 @@ export function AgentPresetIcon({ icon }: { icon?: string }) {
   }
 }
 
+/** The ONE agent-identity mark every surface renders (node chip · basis card · provenance chip · hover
+ *  card): the base agent's FACE when its preset id has face art (agentFaces, keyed by the stable id a
+ *  node inherits via `agentType`), else the preset's `display.icon` glyph, else the default agent glyph.
+ *  Purely cosmetic — never affects status, layout, or behavior. */
+export function AgentAvatar({ agentType, icon }: { agentType?: string; icon?: string }) {
+  const face = agentFace(agentType);
+  if (face) return <img className="ds-agentface" src={face} alt="" aria-hidden="true" />;
+  return <AgentPresetIcon icon={icon} />;
+}
+
 /** (SKIN channel) The cloud-runtime glyph — a small inline cloud (no icon dependency, the KindIcon
  *  pattern). Rendered on a 'cloud' node so the signal is not color-only (a11y / color-blind). */
 function CloudGlyph() {
@@ -259,7 +271,11 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
 
       <div className="ds-node__header">
         <span style={{ color: accentColor, display: "inline-flex" }}>
-          {data.agentIcon ? <AgentPresetIcon icon={data.agentIcon} /> : <KindIcon kind={data.kind} />}
+          {data.agentType || data.agentIcon ? (
+            <AgentAvatar agentType={data.agentType} icon={data.agentIcon} />
+          ) : (
+            <KindIcon kind={data.kind} />
+          )}
         </span>
         <span className="ds-node__title">{data.title}</span>
         {isCloud && (
@@ -298,6 +314,11 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
           projected from observe (config.gates). Hidden in Compose — the editor (NodeGateChips) owns that slot
           and reads the authored template instead. */}
       {mode !== "compose" && <NodeGates variant="card" gates={data.rv?.config?.gates} />}
+
+      {/* The UNIFIED agent surface: EVERY agent node — base-adopting or bespoke — carries the same hover
+          identity card (who it is, its base, model, executor, tools/skills, the inherited role prompt).
+          Inherent to the agent class: rendered here once, shown on card hover/focus via glass.css. */}
+      {data.kind === "agent" && <AgentHoverCard data={data} />}
 
       <Handle type="source" position={Position.Right} className="ds-handle" />
 

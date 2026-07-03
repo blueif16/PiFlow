@@ -8,7 +8,7 @@
  * A LIVE/foreign run carries a lean model (status only, no rv) — those modes
  * degrade to a muted "—" rather than fabricate. See the per-mode branches below.
  */
-import { AgentPresetIcon, type FlowNodeData } from "./WorkflowNode";
+import { AgentAvatar, type FlowNodeData } from "./WorkflowNode";
 import type { ViewMode } from "./ViewModeContext";
 import { contextTone, timeTone, DEFAULT_CONTEXT_WINDOW, formatBytes, formatMs, formatTokens, type ContextTone } from "../data/runView";
 import "../styles/modes.css";
@@ -87,15 +87,15 @@ export function NodeModeStrip({ mode, data }: { mode: ViewMode; data: FlowNodeDa
     // base "postures" (Scout/Architect/Maker/Critic/Listener/Scribe). `mergePreset` folded the base's role-
     // prompt + base tools into the node at author-time; the label/icon/color ride through (spec → observe →
     // here), resolved from the agents catalog. A node with no `agentType` is bespoke — authored from scratch.
-    // The face is a CIRCULAR avatar: today a placeholder glyph (AgentPresetIcon keyed by display.icon); the
-    // per-base human-face SVGs swap in by that same key (purely cosmetic — never affects status/layout).
-    const base = rv?.agentType;
+    // The face is a CIRCULAR avatar: the base's face art when it has some (agentFaces, keyed by the stable
+    // preset id), else the display.icon glyph (AgentAvatar — purely cosmetic, never affects status/layout).
+    const base = rv?.agentType ?? data.agentType;
     if (!base) return <div className="ds-nodemode ds-nodemode--muted">bespoke · no base</div>;
     return (
       <div className="ds-nodemode ds-nodemode--basis">
         <span className="ds-basiscard" title={`base agent: ${base}`}>
           <span className="ds-basiscard__face" style={data.agentColor ? { color: data.agentColor } : undefined}>
-            <AgentPresetIcon icon={data.agentIcon} />
+            <AgentAvatar agentType={base} icon={data.agentIcon} />
           </span>
           <span className="ds-basiscard__text">
             <span className="ds-basiscard__label">{data.agentLabel ?? base}</span>
