@@ -116,7 +116,13 @@ export const defaultCheckpointWait: CheckpointWaiter = async ({ deadline, read, 
     const remaining = deadline === Infinity ? pollMs : Math.min(pollMs, deadline - Date.now());
     await new Promise<void>((resolve) => {
       const t = setTimeout(resolve, Math.max(0, remaining));
-      t.unref?.();
+      // NB: do NOT unref() this timer. During an ATTENDED park this poll timer is frequently the ONLY
+      // pending work (e.g. a run windowed `--until <checkpoint>`, or the checkpoint being the last live
+      // lane). Unref'ing it lets Node drain the event loop and EXIT (code 0) with the checkpoint still
+      // `awaiting-input` — the run silently "un-parks" itself and no live process is left to accept the
+      // reply. Keeping the timer REFERENCED holds the process at the gate until a valid reply arrives or
+      // the deadline elapses — the intended attended-checkpoint block. (A DETACHED run never reaches here:
+      // `checkpointReply:'default'` skips the wait entirely, node-lanes.ts.)
       signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
     });
   }
