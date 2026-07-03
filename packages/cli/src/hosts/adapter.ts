@@ -29,6 +29,9 @@ export interface HostPlanContext {
   token: string;
   /** Secret-free gateway config, staged as MODELS_JSON_ENV (when a custom `--provider` resolved). */
   modelsJson?: string;
+  /** Secret-free system default (defaultProvider/defaultModel), staged as SETTINGS_JSON_ENV — the plane's
+   *  single default a born-in-cloud run inherits (when a custom `--provider` resolved). */
+  settingsJson?: string;
   /** Gateway name, for the display label. */
   provider?: string;
   /**

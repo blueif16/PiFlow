@@ -10,6 +10,7 @@ import {
   runCloudCli,
   flyAppUrl,
   MODELS_JSON_ENV,
+  SETTINGS_JSON_ENV,
   CONTROL_VM_DEMO_PRODUCT,
   type MintDeps,
   type CloudDeps,
@@ -59,6 +60,30 @@ describe('mintCloudSecrets', () => {
     expect(m.modelsJson).toBe('{"providers":{"mmgw":{}}}');
     expect(m.provider).toBe('mmgw');
     expect(m.secrets.map((s) => s.name)).toEqual(['PIFLOW_TOKEN', 'MMGW_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']);
+  });
+
+  // The plane's SINGLE system default: `--provider` + its default model become a settings.json the VM writes at
+  // boot, so a born-in-cloud run inherits the deployed provider+model with NO hardcoded name. defaultModel is
+  // derived (host settings.json or the gateway's first model); missing ⇒ defaultProvider alone (pi picks the model).
+  it('custom gateway: stages the system default (settings.json) with the resolved defaultProvider+defaultModel', async () => {
+    const m = await mintCloudSecrets(
+      { appUrl: flyAppUrl('a'), provider: 'mmgw', providerSecret: 'NEBIUS_API_KEY' },
+      fixedMintDeps({ resolveProvider: () => ({ config: '{"providers":{"mmgw":{}}}', credVars: [], defaultModel: 'MiniMax-M3' }) }),
+    );
+    expect(m.settingsJson).toBe('{"defaultProvider":"mmgw","defaultModel":"MiniMax-M3"}');
+  });
+
+  it('custom gateway with no resolvable model: settings.json pins defaultProvider alone (pi picks the model)', async () => {
+    const m = await mintCloudSecrets(
+      { appUrl: flyAppUrl('a'), provider: 'mmgw', providerSecret: 'NEBIUS_API_KEY' },
+      fixedMintDeps({ resolveProvider: () => ({ config: '{"providers":{"mmgw":{}}}', credVars: [] }) }),
+    );
+    expect(m.settingsJson).toBe('{"defaultProvider":"mmgw"}');
+  });
+
+  it('plain path (no --provider): stages NO settings.json (nothing to default to)', async () => {
+    const m = await mintCloudSecrets({ appUrl: flyAppUrl('a'), providerSecret: 'NEBIUS_API_KEY' }, fixedMintDeps());
+    expect(m.settingsJson).toBeUndefined();
   });
 
   it('reports an UNRESOLVED provider cred + OAuth as missing (never staged empty)', async () => {
@@ -138,6 +163,13 @@ describe('buildFlyDeployPlan', () => {
     expect(set.command.some((a) => a.startsWith(`${MODELS_JSON_ENV}={`))).toBe(true); // the real config in the command
     expect(set.display).toContain(`${MODELS_JSON_ENV}=<gateway:mmgw>`); // labeled, not the blob, in display
     expect(set.display).not.toContain('$MMGW_KEY');
+  });
+
+  it('when a settings.json system default is present it rides secrets-set as a NON-secret labeled env', () => {
+    const plan = buildFlyDeployPlan({ ...base, settingsJson: '{"defaultProvider":"mmgw","defaultModel":"MiniMax-M3"}', provider: 'mmgw' });
+    const set = plan.steps.find((s) => s.id === 'secrets-set')!;
+    expect(set.command.some((a) => a.startsWith(`${SETTINGS_JSON_ENV}={`))).toBe(true); // the real default in the command
+    expect(set.display).toContain(`${SETTINGS_JSON_ENV}=<default:mmgw>`); // labeled, not the blob, in display
   });
 
   it('the smoke step carries the app url + token + the baked demo product id in its env (redacted in display)', () => {

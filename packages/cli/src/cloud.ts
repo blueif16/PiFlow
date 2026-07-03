@@ -45,6 +45,7 @@ import {
   cloudCredEnvAdditions,
   resolveClaudeOAuthToken,
   defaultSecretResolver,
+  loadPiDefaults,
   type SecretResolver,
 } from '@piflow/core';
 import { parsePiProvider } from './run.js';
@@ -82,6 +83,10 @@ export const DEFAULT_DOCKERFILE = 'deploy/control-vm/Dockerfile';
 const OAUTH_SECRET = 'CLAUDE_CODE_OAUTH_TOKEN';
 /** The NON-secret env the image's CMD writes to ~/.pi/agent/models.json at boot (the gateway registry). */
 export const MODELS_JSON_ENV = 'PIFLOW_PI_MODELS_JSON';
+/** The NON-secret env the image's CMD writes to ~/.pi/agent/settings.json at boot — the SINGLE system default
+ *  (defaultProvider/defaultModel) the plane's runner (loadPiDefaults) reads. So a born-in-cloud run inherits the
+ *  deployed provider+model with NO hardcoded name and NO per-run flag; overrides still layer on top. */
+export const SETTINGS_JSON_ENV = 'PIFLOW_PI_SETTINGS_JSON';
 /** API-key vars a non-empty value of which silently OUTRANKS the OAuth token → per-token billing. NEVER stage. */
 const FORBIDDEN_SECRETS = new Set(['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']);
 /** The nodeId the mint seam passes to the SecretResolver (so a broker can scope a per-caller token). */
@@ -126,16 +131,23 @@ export interface MintedSecrets {
   secrets: CloudSecret[];
   /** The scoped, SECRET-FREE `~/.pi/agent/models.json` gateway entry to stage (when a custom --provider resolved). */
   modelsJson?: string;
+  /** The SECRET-FREE `~/.pi/agent/settings.json` (defaultProvider/defaultModel) to stage — the plane's single
+   *  system default, so a born-in-cloud run inherits the deployed provider+model (when a custom --provider resolved). */
+  settingsJson?: string;
   /** The pi gateway name a custom `--provider` resolved to (for display); absent on the plain-key path. */
   provider?: string;
   /** Declared secrets that could NOT be resolved on this machine (the operator must supply them). */
   missing: string[];
 }
 
-/** The pi gateway decomposition (mirrors `run.ts`'s cloud-node path): the models.json entry + its $VAR cred names. */
+/** The pi gateway decomposition (mirrors `run.ts`'s cloud-node path): the models.json entry + its $VAR cred names
+ *  + the provider's DEFAULT model (for the plane's settings.json — never a hardcoded name). */
 export interface ProviderResolution {
   config?: string;
   credVars: string[];
+  /** The provider's default model id — the host's settings.json `defaultModel` when it names THIS provider,
+   *  else the gateway entry's first model. Feeds the plane's staged settings.json defaultModel. */
+  defaultModel?: string;
 }
 
 /** Injectable boundaries for `mintCloudSecrets` — real defaults (crypto RNG + the core resolvers), fakes in tests. */
@@ -152,10 +164,22 @@ export interface MintDeps {
   resolveProvider?: (provider: string) => ProviderResolution;
 }
 
-/** Default gateway resolver — the same source `run.ts` reads for a daytona/e2b node (never throws → {credVars:[]}). */
+/** Default gateway resolver — the same source `run.ts` reads for a daytona/e2b node (never throws → {credVars:[]}).
+ *  Also surfaces the provider's DEFAULT model (for the plane's settings.json): the host settings.json default when
+ *  it names THIS provider (the single source of truth), else the gateway entry's first model id. No hardcoded name. */
 function resolveProviderDefault(provider: string): ProviderResolution {
   try {
-    return parsePiProvider(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'models.json'), 'utf8'), provider);
+    const res = parsePiProvider(readFileSync(path.join(os.homedir(), '.pi', 'agent', 'models.json'), 'utf8'), provider);
+    const sys = loadPiDefaults();
+    let defaultModel = sys.provider === provider ? sys.model : undefined;
+    if (!defaultModel && res.config) {
+      try {
+        const entry = (JSON.parse(res.config) as { providers?: Record<string, { models?: Array<{ id?: string }> }> })
+          .providers?.[provider];
+        defaultModel = entry?.models?.[0]?.id;
+      } catch { /* keep undefined — settings.json just carries defaultProvider then */ }
+    }
+    return { ...res, defaultModel };
   } catch {
     return { credVars: [] };
   }
@@ -188,6 +212,7 @@ export async function mintCloudSecrets(
   // The gateway decomposition — the SAME (models.json entry + $VAR cred allowlist) a daytona/e2b node gets.
   // A custom --provider with a real entry → stage the file + use ITS cred vars; otherwise the single env key.
   let modelsJson: string | undefined;
+  let settingsJson: string | undefined;
   let providerName: string | undefined;
   let credVarNames: string[];
   const gw = opts.provider ? resolveProvider(opts.provider) : undefined;
@@ -195,6 +220,14 @@ export async function mintCloudSecrets(
     modelsJson = gw.config;
     providerName = opts.provider;
     credVarNames = gw.credVars;
+    // Stage the plane's SINGLE system default (settings.json) so a born-in-cloud run inherits the deployed
+    // provider+model with NO hardcoded name and NO per-run flag. defaultModel is derived (host settings.json or
+    // the gateway's first model); when it can't be resolved we still pin defaultProvider (pi picks the model).
+    settingsJson = JSON.stringify(
+      gw.defaultModel
+        ? { defaultProvider: providerName, defaultModel: gw.defaultModel }
+        : { defaultProvider: providerName },
+    );
   } else {
     credVarNames = [opts.providerSecret];
   }
@@ -244,7 +277,7 @@ export async function mintCloudSecrets(
     }
   }
 
-  return { token, appUrl, contextEntry: { baseUrl: appUrl, token }, secrets, modelsJson, provider: providerName, missing };
+  return { token, appUrl, contextEntry: { baseUrl: appUrl, token }, secrets, modelsJson, settingsJson, provider: providerName, missing };
 }
 
 // ── the deploy plan (PURE — the ordered runbook the README documents) ──────────────────────────────
@@ -300,6 +333,8 @@ export function secretsSetStep(
   const setPairs = [...ctx.secrets];
   if (ctx.modelsJson)
     setPairs.push({ name: MODELS_JSON_ENV, value: ctx.modelsJson, displayValue: `<gateway:${ctx.provider ?? 'pi'}>` });
+  if (ctx.settingsJson)
+    setPairs.push({ name: SETTINGS_JSON_ENV, value: ctx.settingsJson, displayValue: `<default:${ctx.provider ?? 'pi'}>` });
   const secretArgs = setPairs.map((s) => `${s.name}=${s.value}`);
   const command = argv(secretArgs);
   // The display mirrors the command's shape but redacts every value — so `argv` is applied to the redacted pairs
@@ -428,6 +463,7 @@ export function buildFlyDeployPlan(opts: {
   secrets: CloudSecret[];
   token: string;
   modelsJson?: string;
+  settingsJson?: string;
   provider?: string;
 }): DeployPlan {
   return buildDeployPlan(flyAdapter, { ...opts, port: 8080 });
@@ -444,6 +480,9 @@ export function renderPlan(plan: DeployPlan, mint: MintedSecrets, opts: { contex
   lines.push(`  (the smoke needs it too: PIFLOW_TOKEN is in that file, or copy it from step 3 when you run it).`);
   if (mint.provider) {
     lines.push(`  pi gateway "${mint.provider}" → staged as ${MODELS_JSON_ENV} (the VM writes ~/.pi/agent/models.json at boot).`);
+    if (mint.settingsJson) {
+      lines.push(`  system default → staged as ${SETTINGS_JSON_ENV} (the VM writes ~/.pi/agent/settings.json at boot; a born-in-cloud run inherits it).`);
+    }
   }
   lines.push('');
   lines.push('  This is a PLAN — nothing outward-facing has run (no fly build/deploy, no spend). Run the steps');
@@ -555,6 +594,7 @@ export async function runCloudUp(opts: CloudUpOpts, deps: CloudDeps = {}): Promi
     secrets: mint.secrets,
     token: mint.token,
     modelsJson: mint.modelsJson,
+    settingsJson: mint.settingsJson,
     provider: mint.provider,
     e2bTemplate,
   });
