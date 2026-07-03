@@ -164,3 +164,18 @@ describe("shadowDiff — the full-field-key parity gate", () => {
     expect(divs.some((d) => d.scope === "node" && d.id === "build" && d.field.includes("toolBreakdown"))).toBe(true);
   });
 });
+
+// (G6 inheritance) agentType is RENDERED (face avatar + hover card + basis chip), so it belongs to the parity
+// field key: an SSE path that loses it while /run-view carries it is a real rendered divergence and must be
+// flagged — not silently passed. FAILS while NODE_FIELDS omits agentType.
+describe("shadowDiff — agentType is part of the rendered field key", () => {
+  it("flags a node whose agentType differs between the SSE and poll views", () => {
+    const sse = view();
+    const poll = clone(sse);
+    poll.nodes[0].agentType = "coder"; // /run-view carries the identity; the SSE side lost it
+    const out = shadowDiff(sse, poll);
+    expect(out).toContainEqual(
+      expect.objectContaining({ scope: "node", id: poll.nodes[0].id, field: "agentType", poll: "coder" }),
+    );
+  });
+});

@@ -39,6 +39,8 @@ export interface NodeConfig {
   provider?: string;
   tier?: string;
   tools?: { allow?: string[]; deny?: string[]; };
+  /** The skill this node loads (`node.skill`) — the loadout half beside `tools`. Mirrors core. */
+  skill?: string;
   timeoutMs?: number;
   retries?: number;
   agentType?: string;
@@ -295,9 +297,19 @@ export function gatePipelineLabels(cfg: AuthoredNodeConfig | null | undefined): 
   return labels;
 }
 
-/** (G6) A preset's branding, as the catalog endpoint returns it (the node carries only `agentType`). */
-export interface AgentDisplay { label?: string; icon?: string; color?: string; }
-/** agentType id → its display branding, from `~/.piflow/agents/` via `/__piflow/agents.json`. */
+/** (G6) A preset's PUBLIC IDENTITY, as the catalog endpoint returns it (the node carries only `agentType`):
+ *  the display branding PLUS the base agent's role prompt / skills / tools — what a node INHERITED from its
+ *  base, rendered by the agent hover card. All optional; a display-only row still renders branded chips. */
+export interface AgentDisplay {
+  label?: string; icon?: string; color?: string;
+  /** The base agent's canonical ROLE prompt (its system prompt; the node's task is appended below it). */
+  prompt?: string;
+  skills?: string[];
+  tools?: { allow?: string[]; deny?: string[] };
+  model?: string;
+  tier?: string;
+}
+/** agentType id → its public identity, from `~/.piflow/agents/` via `/__piflow/agents.json`. */
 export type AgentCatalog = Record<string, AgentDisplay>;
 
 /** Fetch the agent-preset catalog (id → {icon,label,color}) from the dev middleware. The display lives in
@@ -442,6 +454,7 @@ function liveNodeToRunViewNode(n: LiveNode): RunViewNode {
     phase: n.phase,
     status: n.status,
     ...(n.executor ? { executor: n.executor } : {}), // (P5) stamped executor/driver id → badge
+    ...(n.agentType ? { agentType: n.agentType } : {}), // (G6) base-agent identity → face avatar + hover card
     model: n.model ?? null,
     // provider is PER-NODE (detected from the node's own events; null when undeterminable) — carried on the
     // enriched wire node (watch.ts mergeEnriched), so it matches buildRunView's per-node provider EXACTLY. A
@@ -512,6 +525,7 @@ function runViewNodeToLiveNode(n: RunViewNode): LiveNode {
     stageIndex: n.stageIndex ?? 1,
     lane: n.lane ?? 0,
     ...(n.executor ? { executor: n.executor } : {}), // (P5) stamped executor/driver id → badge
+    ...(n.agentType ? { agentType: n.agentType } : {}), // (G6) identity survives the DR6 reconcile
     tokens: n.tokens,
     derived: n.derived,
     model: n.model ?? null,
@@ -586,9 +600,12 @@ export function toFlowGraph(view: RunView, catalog: AgentCatalog = {}): { nodes:
       kind: "agent",
       typeLabel: rv.phase ?? "node",
       ...(skin !== "flat" ? { runtime: skin } : {}),
-      // (G6) the preset's branding, resolved from the catalog by the node's agentType label. The icon is
-      // a KEY the chip maps to a bundled glyph; absent/unknown ⇒ the default agent glyph (never blocks).
-      ...(preset ? { agentIcon: preset.icon, agentColor: preset.color, agentLabel: preset.label ?? rv.agentType } : {}),
+      // (G6) the base-agent IDENTITY, resolved from the catalog by the node's agentType label: the id itself
+      // (the face/avatar keys off the STABLE preset id), the branding trio, and the FULL catalog entry (the
+      // hover card's source: role prompt / skills / tools). The icon is a KEY the chip maps to a bundled
+      // glyph; absent/unknown ⇒ the default agent glyph (never blocks). Passed BY REFERENCE — render-only.
+      ...(rv.agentType ? { agentType: rv.agentType } : {}),
+      ...(preset ? { agentIcon: preset.icon, agentColor: preset.color, agentLabel: preset.label ?? rv.agentType, agentPreset: preset } : {}),
       status: toNodeStatus(rv.status),
       preview: rv.summary ? truncate(rv.summary, 84) : `${rv.toolCalls} tools · ${rv.reads.length} reads`,
       progress: rv.status === "running" ? undefined : 1,

@@ -77,3 +77,18 @@ describe("liveModelToRunView → toFlowGraph — a streamed value reaches the re
     expect(rv?.derived).toBeUndefined(); // not fabricated for a bare node
   });
 });
+
+// (G6 inheritance over SSE) A LIVE node's base-agent identity must reach the rendered FlowNode exactly as a
+// settled run-view node's does — the wire (core NodeView, read.ts) carries `agentType` verbatim; if the client
+// adapter drops it, a RUNNING run renders every node "bespoke · no base" (no face, empty hover card) until it
+// settles. This FAILS when the adapter or toFlowGraph loses the id on the live path.
+describe("liveModelToRunView — base-agent identity on the live path", () => {
+  it("carries a live node's agentType through to data.agentType and resolves its catalog entry", () => {
+    const node = liveNode({ id: "explore", label: "explore", status: "running", agentType: "explore" });
+    const view = liveModelToRunView(model([node]));
+    const entry = { label: "Explore", icon: "compass", prompt: "Read-only scout." };
+    const { nodes } = toFlowGraph(view, { explore: entry });
+    expect(nodes[0].data.agentType).toBe("explore");
+    expect(nodes[0].data.agentPreset).toBe(entry);
+  });
+});

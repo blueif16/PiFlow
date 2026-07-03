@@ -21,7 +21,7 @@ import * as motion from "motion/react-client";
 import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
 import { FileView, type FileTarget } from "./FileContent";
 import { scrimVariants, overlayContentVariants } from "../motion/transitions";
-import { AgentPresetIcon, type FlowNode, type NodeStatus } from "./WorkflowNode";
+import { AgentAvatar, type FlowNode, type NodeStatus } from "./WorkflowNode";
 import "../styles/fileoverlay.css";
 
 /** the open file plus the navigator state it was opened from (so the embedded explorer mounts in place). */
@@ -41,7 +41,7 @@ export interface FileExpandOverlayProps {
   onClose: () => void;
 }
 
-interface NodeRef { id: string; title: string; status: NodeStatus; typeLabel: string; agentIcon?: string; agentColor?: string }
+interface NodeRef { id: string; title: string; status: NodeStatus; typeLabel: string; agentType?: string; agentIcon?: string; agentColor?: string }
 
 /** Derive which node PRODUCED the file (wrote/emitted it) and which nodes USED it (read it),
  *  by matching the file's run-relative displayPath against every node's reads/writes/artifacts. */
@@ -54,7 +54,7 @@ function provenanceOf(nodes: FlowNode[], displayPath: string): { producedBy: Nod
     const ref: NodeRef = {
       id: n.id, title: n.data.title, status: n.data.status ?? "idle",
       typeLabel: n.data.agentLabel ?? n.data.typeLabel,
-      agentIcon: n.data.agentIcon, agentColor: n.data.agentColor,
+      agentType: n.data.agentType, agentIcon: n.data.agentIcon, agentColor: n.data.agentColor,
     };
     if (!producedBy && (rv.writes.some((w) => w.displayPath === displayPath) || rv.artifacts.some((a) => a.displayPath === displayPath)))
       producedBy = ref;
@@ -179,7 +179,7 @@ function NodeChip({ node, onClick }: { node: NodeRef; onClick: (id: string) => v
   const accent = node.agentColor ?? "var(--ds-node-agent)";
   return (
     <button type="button" className="ds-provnode" data-status={node.status} onClick={() => onClick(node.id)} title={`${node.title} · ${node.typeLabel}`}>
-      <span className="ds-provnode__icon" style={{ color: accent }}><AgentPresetIcon icon={node.agentIcon} /></span>
+      <span className="ds-provnode__icon" style={{ color: accent }}><AgentAvatar agentType={node.agentType} icon={node.agentIcon} /></span>
       <span className="ds-provnode__title">{node.title}</span>
     </button>
   );

@@ -32,7 +32,7 @@ SOURCE
 - `gui/src/data/runIndex.ts:60` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
 SHAPE
 - `gui/src/data/runView.ts:157` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
-- `gui/src/data/runView.ts:573` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
+- `gui/src/data/runView.ts:587` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
 RENDER
 - `gui/src/components/WorkflowCanvas.tsx:139` — index→view→graph wiring (loadRunView+loadAgentCatalog→toFlowGraph)
 - `gui/src/components/WorkflowNode.tsx:274` — paints `NodeModeStrip` under the card when a view-mode is active
@@ -123,6 +123,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `36ba65e` 2026-07-01 — feat(gui): P5 — RunDigestPanel refetches off SSE deltas, not a 3s idle poll
 - `a06e930` 2026-07-01 — feat(gui): DR6 reconcile net — heal SSE drift on tab return (MODEL REPLACE)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
+- `e25231f` 2026-07-02 — feat(gui): unified agent identity surface — face avatars inherit through agentType + inherent hover card on every agent node
 
 ### Lessons — memory cluster
 
@@ -133,6 +135,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[eval-bulk-agents-use-cheaper-model]]
@@ -141,6 +144,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[game-omni-reference-product]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
 - [[observe-single-data-path]]
@@ -158,6 +162,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
+- [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
@@ -165,9 +170,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:157) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:573) — 4 callers in `gui/src/components/WorkflowCanvas.tsx`; tests: `gui/src/data/liveModelToRunView.test.ts`, `gui/src/data/runView.test.ts`
-- `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/observe.test.ts`, `packages/core/test/watch.test.ts`
+- `toFlowGraph` (gui/src/data/runView.ts:587) — 1 caller; tests: `gui/src/data/liveModelToRunView.test.ts`
+- `watchRun` (packages/cli/src/watch.ts:61) — 12 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/core/test/observe.test.ts`, `packages/core/test/watch.test.ts`, `packages/cli/test/remote-wiring.test.ts`
 
-<sub>derived 2026-07-02 · arc=62 commits · files=8 · lessons=34</sub>
+<sub>derived 2026-07-03 · arc=64 commits · files=8 · lessons=37</sub>
 <!-- okf:auto-end -->

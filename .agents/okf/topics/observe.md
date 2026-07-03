@@ -149,6 +149,9 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 - `80aafdb` 2026-07-02 — test(P6): failing tests + stubs for cost-spike + loopScore (RED)
 - `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
+- `5bd9143` 2026-07-02 — feat(server): POST /__piflow/templates — install a pushed template (no rebuild)
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
 
 ### Lessons — memory cluster
 
@@ -172,25 +175,30 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[game-omni-reference-product]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
+- [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
 - [[optimize-loop-native-not-adhoc]]
 - [[piflow-ci-cd-pipeline]]
+- [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
+- [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
@@ -201,7 +209,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `assembleNode` (packages/core/src/observe/runView.ts:335) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/watch.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `NodeTokenSpine` (packages/core/src/observe/runView.ts:255) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:274) — 2 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/node-token-spine.test.ts`
-- `RunView` (packages/core/src/observe/runView.ts:113) — 13 callers in `packages/core/src/index.ts`, `packages/core/src/observe/assess.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts` +1 more; tests: `packages/core/test/assess-probe.test.ts`, `packages/core/test/observe-assess.test.ts`
+- `RunView` (packages/core/src/observe/runView.ts:113) — 13 callers in `packages/core/src/observe/assess.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/assess-probe.test.ts`, `packages/core/test/observe-assess.test.ts`
 
-<sub>derived 2026-07-02 · arc=60 commits · files=13 · lessons=41</sub>
+<sub>derived 2026-07-03 · arc=63 commits · files=13 · lessons=46</sub>
 <!-- okf:auto-end -->

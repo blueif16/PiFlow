@@ -34,6 +34,9 @@ export interface LiveNode {
   /** (P5) the stamped executor/driver id this node ran under (pi/claude-code/third) — mirrors core
    *  NodeView.executor so the adapter carries each node's executor to the badge, matching buildRunView. */
   executor?: string;
+  /** (G6) the base-agent preset id — mirrors core NodeView.agentType (verbatim passthrough, read.ts) so a
+   *  LIVE node carries the same identity (face avatar + agent hover card) a settled run-view node does. */
+  agentType?: string;
   /** the effective model label the node ran on. */
   model?: string | null;
   /** the PER-NODE provider (detected from the node's own events; null when undeterminable) — mirrors core

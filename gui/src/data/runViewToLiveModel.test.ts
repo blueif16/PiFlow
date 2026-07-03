@@ -88,3 +88,16 @@ describe("runViewToLiveModel — the DR6 reconcile MODEL-REPLACE source", () => 
     expect(m.edges).toEqual([{ from: "a", to: "b", path: "shared.txt" }]);
   });
 });
+
+// (G6 inheritance) The DR6 reconcile must not STRIP a node's base-agent identity: a reconcile that drops
+// `agentType` would blank every face/hover card the moment a backgrounded tab returns. Round-trip a view whose
+// node carries an agentType; the parity gate (which includes agentType in the field key) must see zero divergence.
+describe("runViewToLiveModel — base-agent identity survives the reconcile", () => {
+  it("round-trips agentType with ZERO divergence over the shadow-diff field key", () => {
+    const a = rvNode({ id: "a", status: "ok", agentType: "coder", tokens: tokens(10), derived: derived("ok") });
+    const v = view([a], tokens(10));
+    const roundTripped = liveModelToRunView(runViewToLiveModel(v));
+    expect(shadowDiff(roundTripped, v)).toEqual([]);
+    expect(roundTripped.nodes[0].agentType).toBe("coder");
+  });
+});

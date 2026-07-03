@@ -81,6 +81,8 @@ export interface NodeConfig {
   tier?: string;
   /** Per-node tool selection (`node.tools`). */
   tools?: { allow?: string[]; deny?: string[] };
+  /** The skill this node loads (`node.skill`) — the loadout half beside `tools`; what DEFINES the agent. */
+  skill?: string;
   /** Hard wall-clock cap (`node.sandbox.timeoutMs`). */
   timeoutMs?: number;
   /** Per-node retry budget (`node.io.retries`). */

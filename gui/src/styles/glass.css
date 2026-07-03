@@ -395,6 +395,120 @@
 @media (prefers-reduced-motion: reduce) { .ds-spinner { animation-duration: 1.4s; } }
 
 /* ---------------------------------------------------------------------------
+   4b. AGENT IDENTITY — the face avatar + the unified agent hover card.
+   ONE identity mark (AgentAvatar): the base agent's FACE when its preset id
+   has face art, else the display.icon glyph. The hover card is the agent
+   class's INHERENT hover behavior: hover/focus ANY agent node → who it is
+   (base, model, executor, tools/skills, inherited role prompt). CSS-only
+   visibility — no state, no listeners; delayed so panning never spams it.
+   --------------------------------------------------------------------------- */
+.ds-agentface {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--ds-radius-full);
+  object-fit: cover;
+  display: block;
+  background: #fff;                     /* the headshots are transparent PNGs — coin them on white */
+  border: 1px solid var(--ds-border-strong);
+}
+
+.ds-agentcard {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: -6px;
+  width: 264px;
+  padding: var(--ds-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  background: var(--ds-glass-bg-strong, var(--ds-bg-surface));
+  -webkit-backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
+  backdrop-filter: blur(var(--ds-glass-blur)) saturate(var(--ds-glass-saturate));
+  border: 1px solid var(--ds-border-strong);
+  box-shadow: var(--ds-shadow-lg, var(--ds-shadow-sm));
+  font-size: var(--ds-text-sm);
+  z-index: 40;
+  /* hidden at rest; the OPEN transition waits 350ms so drive-by hovers never flash it */
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity var(--ds-dur-fast) var(--ds-ease-standard), transform var(--ds-dur-fast) var(--ds-ease-standard);
+  cursor: default;
+}
+.ds-node:hover .ds-agentcard,
+.ds-node:focus-visible .ds-agentcard {
+  opacity: 1;
+  pointer-events: auto;                 /* stays open while the pointer is over the card (it's a child) */
+  transform: none;
+  transition-delay: 350ms;
+}
+/* raise the hovered node's React Flow wrapper so the card floats over sibling nodes/edges
+   (React Flow sets an inline z-index per node; !important is required to beat it) */
+.react-flow__node:hover,
+.react-flow__node:focus-within {
+  z-index: 900 !important;
+}
+
+/* slim identity anchor — a tiny face + the base id, deliberately quiet (the card leads with the
+   DEFINING substance below: prompt · tools · skill; never a branding repeat of the node header) */
+.ds-agentcard__head { display: flex; align-items: center; gap: var(--ds-space-2); }
+.ds-agentcard__face {                  /* circular face slot, tinted by the base's color (inline style) */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: var(--ds-radius-full);
+  background: var(--ds-bg-base, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--ds-border-strong);
+}
+.ds-agentcard__face .ds-agentface { width: 18px; height: 18px; border: none; }
+.ds-agentcard__face svg { width: 12px; height: 12px; }
+.ds-agentcard__base {
+  color: var(--ds-text-tertiary);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ds-tracking-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-agentcard__rows { display: flex; flex-direction: column; gap: 3px; }
+.ds-agentcard__row { display: flex; gap: var(--ds-space-2); align-items: baseline; }
+.ds-agentcard__key {
+  flex: none;
+  width: 58px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ds-tracking-label);
+  color: var(--ds-text-tertiary);
+}
+.ds-agentcard__val { color: var(--ds-text-secondary); min-width: 0; overflow-wrap: anywhere; }
+.ds-agentcard__val--mono { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); }
+
+/* the defining prompt gets the card's space — generous, scrollable */
+.ds-agentcard__prompt { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--ds-border-hairline); padding-top: var(--ds-space-2); }
+.ds-agentcard__prompttext {
+  margin: 0;
+  max-height: 170px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  line-height: 1.45;
+  color: var(--ds-text-secondary);
+}
+.ds-agentcard__rows { border-top: 1px solid var(--ds-border-hairline); padding-top: var(--ds-space-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-agentcard { transition: opacity var(--ds-dur-fast); transform: none; }
+}
+
+/* ---------------------------------------------------------------------------
    5. HANDLES — connection ports. Small, hairline, accent on hover.
    --------------------------------------------------------------------------- */
 .ds-handle {

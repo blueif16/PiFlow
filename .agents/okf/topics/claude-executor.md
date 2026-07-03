@@ -27,12 +27,12 @@ a claude success still falls through to the executor-agnostic driver gates, so s
 
 # Anchors
 SELECT (route + credential + model)
-- `packages/core/src/runner/command.ts:154` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
+- `packages/core/src/runner/command.ts:160` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
 - `packages/core/src/runner/node-lifecycle.ts:208` — `runNode` — builds the claude env additions (`claudeExecutorEnvAdditions`) before sandbox create
 - `packages/core/src/runner/claude-executor.ts:124` — `claudeExecutorEnvAdditions` — injects `CLAUDE_CODE_OAUTH_TOKEN` + `CLAUDE_CONFIG_DIR`, empties the API-key vars (subscription-only, never silent API billing)
 - `packages/core/src/runner/claude-executor.ts:100` — `resolveClaudeOAuthToken` — layered host-side token resolve: SecretResolver env → `~/.piflow/claude-code.json` → local Keychain/`.credentials.json`
 BUILD (`claude -p` command)
-- `packages/core/src/runner/command.ts:128` — `claudeCommand` — assembles `claude -p --permission-mode bypassPermissions --output-format stream-json --verbose` (prompt on stdin)
+- `packages/core/src/runner/command.ts:133` — `claudeCommand` — assembles `claude -p --permission-mode bypassPermissions --output-format stream-json --verbose` (prompt on stdin)
 - `packages/core/src/runner/command.ts:137` — `claudeCommand` — `if (ctx.model) parts.push('--model', ctx.model)` — the model wiring
 SPAWN
 - `packages/core/src/runner/node-lifecycle.ts:398` — `runNode` — `ctx.buildCommand(...)` (dispatch happens here) produces the command
@@ -103,6 +103,8 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 
 ### Lessons — memory cluster
 
@@ -117,6 +119,8 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[game-omni-reference-product]]
 - [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
+- [[gui-nodehud-redesign]]
+- [[guidance-node-sonnet5-routing]]
 - [[mastra-competitive-analysis]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
@@ -126,18 +130,20 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
 - [[sdk-data-boundaries]]
 - [[telemetry-legibility-tracks]]
+- [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:15) — 3 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
-- `claudeCommand` (packages/core/src/runner/command.ts:127) — 4 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-code-driver.test.ts`
+- `claudeCommand` (packages/core/src/runner/command.ts:133) — 1 caller in `packages/core/src/runner/index.ts`; ⚠ no covering tests found
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 - `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 6 callers in `packages/core/src/runner/drivers/claude-code.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 
-<sub>derived 2026-07-02 · arc=30 commits · files=5 · lessons=23</sub>
+<sub>derived 2026-07-03 · arc=32 commits · files=5 · lessons=27</sub>
 <!-- okf:auto-end -->
