@@ -48,6 +48,7 @@ import { NodeExpandOverlay } from "./NodeExpandOverlay";
 import { FileExpandOverlay, openFileFor, type OpenFile } from "./FileExpandOverlay";
 import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
 import { MenuBar } from "./MenuBar";
+import { EndpointSwitcher } from "./EndpointSwitcher";
 import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
 import { RunDigestPanel } from "./RunDigestPanel";
@@ -436,7 +437,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             <div
               role="alert"
               style={{
-                position: "absolute", top: 16, left: "50%", transform: "translateX(-50%)", zIndex: 200,
+                // top: 60 clears the top-center EndpointSwitcher chip (chrome floats above content, so content
+                // must clear its band — the same law as the palette-row / HUD-caption clearances).
+                position: "absolute", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 200,
                 padding: "10px 14px", borderRadius: 8, fontSize: 13, fontFamily: "var(--ds-font-mono)",
                 background: "var(--ds-glass-bg-strong, #fff)", color: "var(--ds-error-fg, #c1262b)",
                 boxShadow: "var(--ds-shadow-md)",
@@ -498,6 +501,8 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
               scrim (by design), so opening one must close the other or they stack. */}
           <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} />
+          {/* Global running-location indicator (top-center): local ⇄ cloud at a glance, one-click switch via setEndpoint. */}
+          <EndpointSwitcher />
           <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen} />
           <FusionSaveBar active={mode === "fusion"} />
           <ChipPalette active={mode === "compose"} />

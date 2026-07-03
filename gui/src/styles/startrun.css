@@ -19,20 +19,6 @@
   color: var(--ds-accent-hover);
 }
 
-/* context reflector — a small, unobtrusive chip in the MenuBar naming the active
-   control endpoint (dim mono, a hairline divider like the status chip). */
-.ds-menubar__endpoint {
-  font-family: var(--ds-font-mono);
-  font-size: var(--ds-text-xs);
-  color: var(--ds-text-tertiary);
-  padding: 0 var(--ds-space-2);
-  border-left: 1px solid var(--ds-border-hairline);
-  white-space: nowrap;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* frosted focus layer — the SAME light scrim the node overlay uses, so the modal
    calms the busy canvas beneath it while the glass card pops as the focus. */
 .ds-startrun-scrim {

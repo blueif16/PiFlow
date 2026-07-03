@@ -20,20 +20,19 @@ import { DirectoryPanel } from "./DirectoryPanel";
 import { useExpand } from "./ExpandContext";
 import { findThread, indexToTree, type GlobalIndex } from "../data/runIndex";
 import { formatMs } from "../data/runView";
-import { useEndpoint } from "../data/apiBase";
 import "../styles/menubar.css";
 import "../styles/startrun.css";
 
 // `ix` is owned + LIVE-polled by CanvasInner (single source of truth) and passed down — the switcher
 // list + status chip stay fresh as runs start / progress without the bar holding its own loader.
 // `onStartRun` deploys the StartRunPanel (owned by CanvasInner so it can wire the returned run into
-// the run-select seam). The endpoint reflector shows which control server the GUI is talking to.
+// the run-select seam). Which control server the GUI talks to is shown by the global EndpointSwitcher
+// (top-center), not here — this bar carries the workspace/run switcher + run actions.
 export function MenuBar({ activeRun, onSelectRun, onStartRun, onMigrateRun, ix }: { activeRun: string; onSelectRun: (run: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null }) {
   const { expandedId, collapse } = useExpand();
   const { fitView } = useReactFlow();
   const [open, setOpen] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
-  const endpointBaseUrl = useEndpoint().baseUrl;
 
   // dismiss the switcher on any click outside it (or Esc) — the "click anywhere closes" rule
   useEffect(() => {
@@ -77,12 +76,6 @@ export function MenuBar({ activeRun, onSelectRun, onStartRun, onMigrateRun, ix }
             {active.state === "running" && active.runningStalled && <span className="ds-menubar__stalled"> · stalled</span>}
           </span>
         )}
-
-        {/* which control server the GUI is talking to — same-origin (local serve) or a remote URL.
-            Reads the LIVE endpoint so a migrate switch re-labels it without a reload. */}
-        <span className="ds-menubar__endpoint" title={`control server: ${endpointBaseUrl || "same-origin"}`}>
-          {endpointBaseUrl || "local (same-origin)"}
-        </span>
 
         {/* LAUNCH a run — the one action in the chrome (accent-tinted). Opens the StartRunPanel. */}
         <button type="button" className="ds-menubar__icon ds-menubar__start" aria-label="Start a run" title="Start a run" onClick={onStartRun}>

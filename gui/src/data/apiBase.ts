@@ -32,6 +32,17 @@ function seedEndpoint(): Endpoint {
 let endpoint: Endpoint = seedEndpoint();
 const listeners = new Set<() => void>();
 
+// The last CLOUD endpoint the console was pointed at this session — so the one-click switch can re-point
+// local → cloud without re-typing the URL. Kept in memory only (never persisted): a bearer belongs in RAM,
+// and a fresh local session honestly has no known remote (the switcher then asks for one). Seeded if the
+// app boots already on cloud (VITE_PIFLOW_API + ?token=).
+let rememberedRemote: Endpoint | null = endpoint.baseUrl ? { ...endpoint } : null;
+
+/** The last cloud endpoint pointed at this session, or `null` if the console has only ever been local. */
+export function getRememberedRemote(): Endpoint | null {
+  return rememberedRemote;
+}
+
 /** The current endpoint (read at call time, so `api`/`sse`/`apiFetch` always use the live value). */
 export function getEndpoint(): Endpoint {
   return endpoint;
@@ -43,7 +54,34 @@ export function getEndpoint(): Endpoint {
  */
 export function setEndpoint(next: { baseUrl: string; token?: string }): void {
   endpoint = { baseUrl: next.baseUrl.replace(/\/$/, ""), token: next.token ?? "" };
+  if (endpoint.baseUrl) rememberedRemote = { ...endpoint }; // remember the cloud we came from; local never clears it
   for (const l of listeners) l();
+}
+
+/** Which control plane an endpoint points at. `baseUrl` is the ONE remote-ness predicate: `""` = local. */
+export function endpointKind(baseUrl: string): "local" | "cloud" {
+  return baseUrl ? "cloud" : "local";
+}
+
+/** The resolved target of a one-click local⇄cloud toggle (what the switcher's Confirm feeds to setEndpoint). */
+export type EndpointSwitchPlan =
+  | { from: "cloud"; to: "local"; ready: true; endpoint: Endpoint }
+  | { from: "local"; to: "cloud"; ready: true; endpoint: Endpoint }
+  | { from: "local"; to: "cloud"; ready: false }; // no remote known → the switcher asks for one
+
+/**
+ * Resolve the toggle from the current endpoint (+ the remembered remote). cloud→local always repoints to
+ * same-origin. local→cloud reuses a known remote when one exists; otherwise it is `ready: false` — the switch
+ * NEVER fabricates a URL, so the UI degrades to asking for one.
+ */
+export function planEndpointSwitch(current: Endpoint, remembered: Endpoint | null): EndpointSwitchPlan {
+  if (endpointKind(current.baseUrl) === "cloud") {
+    return { from: "cloud", to: "local", ready: true, endpoint: { baseUrl: "", token: "" } };
+  }
+  if (remembered && endpointKind(remembered.baseUrl) === "cloud") {
+    return { from: "local", to: "cloud", ready: true, endpoint: { baseUrl: remembered.baseUrl, token: remembered.token } };
+  }
+  return { from: "local", to: "cloud", ready: false };
 }
 
 function subscribe(cb: () => void): () => void {
