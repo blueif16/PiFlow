@@ -187,6 +187,12 @@ export interface RunOptions {
    */
   noResume?: boolean;
   /**
+   * Targeted re-run — force-RUN exactly these node ids, force-REUSE all others (the `node --rerun`
+   * primitive). Takes precedence over the journal; the `--from` pin + missing-artifact safety flip still
+   * apply on top.
+   */
+  rerunNodes?: ReadonlySet<string>;
+  /**
    * Active run PROFILE name — resolved against the WorkflowSpec's declared `profiles` BEFORE compile to
    * elide a subset of nodes (deps rewired transitively). The elision happens at the spec-compile sites
    * (`runFromConfig`/`runFromTemplate`), NOT here (`runWorkflow` already holds a compiled `Workflow`).
@@ -515,7 +521,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   // journal) vs RUN (changed, or a DAG descendant of a changed node). `--from` force-reuses the prefix;
   // `noResume` ignores the journal (full re-run). A fresh run (no journal) ⇒ every node RUNs.
   const journal = await loadJournal(outDir);
-  const { reused: reusedSet } = await seedFromJournal(ctx, journal, fromIdx, opts.noResume ?? false);
+  const { reused: reusedSet } = await seedFromJournal(ctx, journal, fromIdx, opts.noResume ?? false, opts.rerunNodes);
   // The prior run.json THIS run overwrites — the source of the reused nodes' preserved records and the
   // accumulated-clock baseline below. Null on a fresh run (or a template swap), so neither carry fires.
   const prior = await loadPriorStatus(outDir, wf.meta.name);

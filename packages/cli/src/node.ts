@@ -32,7 +32,8 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdtemp, writeFile } from 'node:fs/promises';
-import { loadJournal as coreLoadJournal, piSessionsDir, piDir, runJsonFile, nodeDir, type Journal, type RunStatus } from '@piflow/core';
+import { loadJournal as coreLoadJournal, piSessionsDir, piDir, runJsonFile, nodeDir, type Journal, type RunStatus, type RunResult } from '@piflow/core';
+import { runTemplate, runFailureReport, type ParsedRunArgs, type SandboxChoice } from './run.js';
 
 /** Shell-quote a single token (paths may contain spaces). Mirrors command.ts `q`. */
 function q(s: string): string {
@@ -278,6 +279,12 @@ export interface NodeDeps {
   signalProcess?: (pid: number, signal: 'SIGTERM' | 'SIGKILL') => boolean;
   /** Sleep `ms` between the SIGTERM and the SIGKILL escalation. Default real `setTimeout`; tests pass a no-op. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Drive a template run — the `--rerun` actuator. Default the real `runTemplate` (run.ts), so `--rerun`
+   * reuses run's ENTIRE machinery (workspace derivation · sandbox provider · the `--from/--until/--no-resume`
+   * window join). A test injects a stub (the pi-spawn boundary) so no real agent runs.
+   */
+  runTemplate?: (parsed: ParsedRunArgs) => Promise<RunResult | undefined>;
   print?: (line: string) => void;
   error?: (line: string) => void;
 }
@@ -288,18 +295,30 @@ export interface ParsedNodeArgs {
   nodeId: string;
   resume: boolean;
   stop: boolean;
+  /** COLD single-node re-execution from frozen upstream, in the EXISTING run dir (window=[node], forced RUN). */
+  rerun: boolean;
   message?: string;
+  /** `--rerun` run flags, mirroring the `run`/`node` surface (threaded verbatim into the run). */
+  sandbox?: string;
+  thinking?: string;
+  provider?: string;
+  workspace?: string;
 }
 
-/** Parse the flat `node` argv → `{ run, nodeId, resume, stop, message }`. First two positionals = run, nodeId. */
+/** Parse the flat `node` argv → `{ run, nodeId, resume, stop, rerun, … }`. First two positionals = run, nodeId. */
 export function parseNodeArgs(argv: string[]): ParsedNodeArgs {
-  const out: ParsedNodeArgs = { run: '', nodeId: '', resume: false, stop: false };
+  const out: ParsedNodeArgs = { run: '', nodeId: '', resume: false, stop: false, rerun: false };
   const positionals: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--resume') out.resume = true;
     else if (k === '--stop') out.stop = true;
+    else if (k === '--rerun') out.rerun = true;
     else if (k === '-m' || k === '--message') out.message = argv[++i];
+    else if (k === '--sandbox') out.sandbox = argv[++i];
+    else if (k === '--thinking') out.thinking = argv[++i];
+    else if (k === '--provider') out.provider = argv[++i];
+    else if (k === '--workspace') out.workspace = argv[++i];
     else if (!k.startsWith('-')) positionals.push(k);
   }
   out.run = positionals[0] ?? '';
@@ -364,18 +383,84 @@ export async function runNodeCli(argv: string[], deps: NodeDeps = {}): Promise<n
       try { process.kill(-pid, signal); return true; } catch { return false; }
     });
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => { const t = setTimeout(r, ms); t.unref?.(); }));
+  const runTemplateFn = deps.runTemplate ?? ((parsed: ParsedRunArgs) => runTemplate(parsed));
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
   const error = deps.error ?? ((s: string) => process.stderr.write(s + '\n'));
 
   const parsed = parseNodeArgs(argv);
   if (!parsed.run || !parsed.nodeId) {
-    error('piflowctl node: a run and a node id are required (piflowctl node <run> <nodeId> --resume [-m "<message>"]).');
+    error('piflowctl node: a run and a node id are required (piflowctl node <run> <nodeId> --resume [-m "<message>"] | --rerun | --stop).');
     return 1;
   }
-  if (parsed.resume === parsed.stop) {
-    // neither, or both — exactly one action is required.
-    error('piflowctl node: pass exactly one of --resume or --stop.');
+  if ([parsed.resume, parsed.stop, parsed.rerun].filter(Boolean).length !== 1) {
+    // neither, or more than one — EXACTLY one action is required.
+    error('piflowctl node: pass exactly one of --resume, --rerun, or --stop.');
     return 1;
+  }
+
+  // ── --rerun: COLD single-node re-execution from FROZEN upstream, in the EXISTING run dir. ──
+  // Reuses run's `--from <id> --until <id> --no-resume` machinery: window = exactly this node, forced RUN
+  // (bypasses the journal's reuse/skip decision even when the node is already `ok`), the upstream prefix
+  // pinned reused + stat-preflighted (a missing pinned artifact HARD-errors). The runner then executes the
+  // node's agent → merge ops → contract gate + checks → records result + telemetry, exactly as a normal run.
+  // A thin wrapper: derive the template + run id from the run dir, then hand off to the SAME `runTemplate`
+  // path `run --from … --until … --no-resume` uses, honoring the same run flags.
+  if (parsed.rerun) {
+    let runDir: string;
+    try {
+      runDir = resolveRunDir(parsed.run);
+    } catch (e) {
+      error((e as Error).message);
+      return 1;
+    }
+    // Derive the authored template from the CANONICAL run layout `.piflow/<wf>/runs/<id>` → `…/template`
+    // (the SAME path optimize.ts derives a product's template from a run dir). A run dir outside that layout
+    // has no re-derivable template — HARD-error rather than guess, since --rerun needs it to re-execute.
+    const templateDir = path.resolve(runDir, '..', '..', 'template');
+    if (!existsSync(path.join(templateDir, 'meta.json'))) {
+      error(
+        `piflowctl node ${parsed.run} ${parsed.nodeId} --rerun: cannot derive the template for this run — expected ${path.join(templateDir, 'meta.json')} (the canonical .piflow/<wf>/runs/<id> layout). --rerun needs the authored template to re-execute a node.`,
+      );
+      return 1;
+    }
+    const runId = path.basename(runDir);
+    // Build the run args: window=[nodeId,nodeId] + an EXPLICIT rerun-set (force-RUN exactly this node,
+    // force-REUSE every sibling/upstream) over the EXISTING run dir (its canonical home resolves back to
+    // `runDir`). NOT `noResume:true` — that would re-run every sibling sharing the target's parallel stage.
+    // `sandbox` defaults to `inmemory` (parity with `run`); an explicit `--sandbox local` marks the legacy
+    // override so the real provider is built.
+    const parsedRun: ParsedRunArgs = {
+      templateDir,
+      dryRun: false,
+      run: runId,
+      from: parsed.nodeId,
+      until: parsed.nodeId,
+      rerunNodes: new Set([parsed.nodeId]),
+      sandbox: (parsed.sandbox as SandboxChoice) ?? 'inmemory',
+      ...(parsed.sandbox ? { sandboxExplicit: true } : {}),
+      ...(parsed.workspace ? { workspace: parsed.workspace } : {}),
+      ...(parsed.provider ? { provider: parsed.provider } : {}),
+      ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
+      args: {},
+    };
+    print(
+      `piflowctl node: cold re-run of "${parsed.nodeId}" in ${runDir} — window [${parsed.nodeId}], force-RUN this node + force-REUSE its siblings/upstream (upstream artifacts frozen + preflighted).`,
+    );
+    let result: RunResult | undefined;
+    try {
+      result = await runTemplateFn(parsedRun);
+    } catch (e) {
+      error(`piflowctl node ${parsed.run} ${parsed.nodeId} --rerun: ${(e as Error).message}`);
+      return 1;
+    }
+    // Surface a preflight/exec failure LOUDLY (a missing pinned upstream artifact ⇒ ok:false + a blocked
+    // `__resume__` node) — mirroring `run`'s top-level verdict. A healthy re-run reports nothing.
+    const report = result?.status ? runFailureReport(result.status, result.outDir) : null;
+    if (report) {
+      error(report);
+      return 1;
+    }
+    return 0;
   }
 
   // ── --stop: signal a node's (or, as a fallback, the run's) process group. ──
