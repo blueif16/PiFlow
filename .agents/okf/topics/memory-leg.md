@@ -229,6 +229,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `f8fc81c` 2026-07-02 — feat(okf): CLI reader + fixer wire source ranking from the engine — M1b
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
+- `e0b6106` 2026-07-03 — feat(cli): marketplace P0 verbs — agents list · catalog sync|introspect · skill list|search|add
+- `6694161` 2026-07-03 — feat(cli,core): validate skill manifests at install time — export parseSkillManifest
+- `9f50daa` 2026-07-03 — feat(cli): skill search --remote — online marketplace discovery
 
 ### Lessons — memory cluster
 
@@ -241,6 +245,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[node-illustration-pipeline]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
 - [[telemetry-first-node-diagnosis]]
@@ -254,5 +259,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-03 · arc=153 commits · files=15 · lessons=12</sub>
+<sub>derived 2026-07-03 · arc=157 commits · files=15 · lessons=13</sub>
 <!-- okf:auto-end -->

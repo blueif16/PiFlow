@@ -153,9 +153,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[memory-legs-coordination]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
+- [[omniscience-piflow-setup]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[piflow-memory-system-v1]]
+- [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
@@ -173,5 +175,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-03 · arc=26 commits · files=19 · lessons=27</sub>
+<sub>derived 2026-07-03 · arc=26 commits · files=19 · lessons=29</sub>
 <!-- okf:auto-end -->

@@ -143,6 +143,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `9641b93` 2026-07-03 — feat(gui): skill side panel — full skill-bundle info on click
 - `d7d9da6` 2026-07-03 — feat(gui): switch-workspace launcher (client)
 - `5eff54c` 2026-07-03 — feat(gui): base-agent rail on Basis mode — drag a preset onto a node to reassign agentType
+- `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 
 ### Lessons — memory cluster
 
@@ -173,6 +174,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
@@ -195,5 +197,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadRunView` (gui/src/data/runView.ts:173) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
 
-<sub>derived 2026-07-03 · arc=82 commits · files=8 · lessons=40</sub>
+<sub>derived 2026-07-03 · arc=83 commits · files=8 · lessons=41</sub>
 <!-- okf:auto-end -->

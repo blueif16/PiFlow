@@ -139,6 +139,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
+- `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
 
 ### Lessons — memory cluster
 
@@ -175,6 +176,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
 - [[okf-coverage-boundary]]
+- [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
@@ -183,6 +185,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
@@ -193,6 +196,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[site-piflow-no-unrequested-chrome]]
+- [[skill-marketplace-gui-design]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
@@ -205,5 +209,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-03 · arc=76 commits · files=8 · lessons=54</sub>
+<sub>derived 2026-07-03 · arc=77 commits · files=8 · lessons=57</sub>
 <!-- okf:auto-end -->

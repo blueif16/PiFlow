@@ -179,6 +179,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
 - [[railway-deploy-from-main-not-worktree]]
@@ -193,7 +194,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
 - `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
-- `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `SeatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:202) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=73 commits · files=8 · lessons=40</sub>
+<sub>derived 2026-07-03 · arc=73 commits · files=8 · lessons=41</sub>
 <!-- okf:auto-end -->

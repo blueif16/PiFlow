@@ -123,11 +123,13 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[memory-legs-coordination]]
 - [[node-illustration-pipeline]]
 - [[okf-coverage-boundary]]
+- [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
@@ -135,6 +137,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[piflowctl-bin-rename]]
 - [[roadmap-bookkeeping-linear]]
 - [[site-piflow-no-unrequested-chrome]]
+- [[skill-marketplace-gui-design]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
@@ -146,7 +149,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `listServerTools` (packages/tool-bridge/src/index.ts:105) — 2 callers in `packages/core/src/catalog/introspect.ts`; tests: `packages/tool-bridge/test/list-server-tools.test.ts`
 - `seededRegistry` (packages/core/src/tools/catalog.ts:58) — 8 callers in `packages/cli/src/inspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog.test.ts`
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/tool-config.test.ts`
-- `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/catalog/introspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`, `packages/core/test/runner.test.ts`
+- `introspectMcpServer` (packages/core/src/catalog/introspect.ts:100) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
 
-<sub>derived 2026-07-03 · arc=28 commits · files=9 · lessons=41</sub>
+<sub>derived 2026-07-03 · arc=28 commits · files=9 · lessons=44</sub>
 <!-- okf:auto-end -->

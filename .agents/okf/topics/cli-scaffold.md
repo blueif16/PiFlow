@@ -37,7 +37,7 @@ ADD-NODE
 - `packages/cli/src/scaffold.ts:236` — `seedNodeMemory`/`seedNodeCodeMap` — seed memory.md + code-map.md create-if-absent (never clobbers prompt.md)
 RUN
 - `packages/cli/src/run.ts:451` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
-- `packages/core/src/runner/entry.ts:150` — `runFromTemplate` — the core template-run join the CLI delegates to
+- `packages/core/src/runner/entry.ts:153` — `runFromTemplate` — the core template-run join the CLI delegates to
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-STALENESS NOTE (NOT drift): in THIS worktree (branch `feat/optimize-prove-landing`, ~62 commits behind `main`) the scaffolder has no `--agent-type` flag and `buildNode` emits no `agentType`. But the flag DOES exist on `main` (`packages/cli/src/scaffold.ts:623/714/744`, merged `fc73095`+`296e221`, 2026-06-29) — it folds a preset via `mergePreset` and prepends its role-prompt — exactly as the [[piflow-init-scaffolder]] / [[g6-agenttype-presets]] memories say. The earlier "flag is ABSENT" reading (and the §1 doc note) was an artifact of deriving the slice on a stale branch, NOT a real capability gap. LESSON: a slice's anchors track ITS branch; an absence here must be checked against `main` before being called drift (the slice-vs-branch confound, distinct from anti-drift tier-0).
@@ -190,6 +190,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `e0b6106` 2026-07-03 — feat(cli): marketplace P0 verbs — agents list · catalog sync|introspect · skill list|search|add
+- `9f50daa` 2026-07-03 — feat(cli): skill search --remote — online marketplace discovery
 
 ### Lessons — memory cluster
 
@@ -208,6 +210,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
 - [[design-at-init-architecture]]
+- [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
@@ -225,6 +228,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
 - [[okf-coverage-boundary]]
+- [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
@@ -233,6 +237,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
@@ -244,6 +249,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[site-piflow-no-unrequested-chrome]]
+- [[skill-marketplace-gui-design]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
@@ -258,5 +264,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:702) — 3 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 - `scaffoldNew` (packages/cli/src/scaffold.ts:396) — 4 callers in `packages/cli/src/blueprint-stamp.ts`, `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=130 commits · files=8 · lessons=55</sub>
+<sub>derived 2026-07-03 · arc=132 commits · files=8 · lessons=59</sub>
 <!-- okf:auto-end -->

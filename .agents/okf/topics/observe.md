@@ -161,6 +161,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `3aea9ce` 2026-07-03 — Merge worktree-gui-frontend-fixes: run-first compose (pi session) + driver-selected telemetry
 - `b04be67` 2026-07-03 — feat(server): /__piflow/skill — read + parse a SKILL.md bundle (name/desc/requires/mcp/body)
 - `b9c8fac` 2026-07-03 — refactor(server): agents.json + skill display roots ride core's enumeration seam
+- `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 
 ### Lessons — memory cluster
 
@@ -200,6 +201,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
@@ -223,5 +225,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:114) — 8 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-03 · arc=72 commits · files=13 · lessons=49</sub>
+<sub>derived 2026-07-03 · arc=73 commits · files=13 · lessons=50</sub>
 <!-- okf:auto-end -->

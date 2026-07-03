@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -217,5 +217,83 @@ describe('runFromTemplate — the template-run join (U8, §10)', () => {
     expect(result.status.nodes.greet.status).toBe('error');
     expect(result.status.nodes.greet.issues?.join(' ')).toMatch(/arg|greeting/i);
     await fs.rm(runDir, { recursive: true, force: true });
+  });
+});
+
+// ── F1: the skill `requires` FLOOR is wired into the live run path at entry (before catalogForSpec) ──
+// A node bound to a skill whose manifest declares `requires` gets those tool addresses unioned into its
+// effective `tools.allow` at run start — so an UNPROVISIONED `mcp.*` floor fails FAST at the node's
+// existing pre-spawn bind check, instead of the skill silently running without its declared tools.
+describe('runFromConfig — a bound skill\'s requires FLOOR wires into the run path', () => {
+  let WS: string; // workspace root carrying `.agents/skills/<id>/SKILL.md`
+  let HOME: string; // PIFLOW_HOME → empty catalog + empty installed-skill ring (hermetic)
+  let SAVED: string | undefined;
+
+  beforeEach(async () => {
+    WS = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-floor-run-ws-'));
+    HOME = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-floor-run-home-'));
+    SAVED = process.env.PIFLOW_HOME;
+    process.env.PIFLOW_HOME = HOME; // catalogForSpec.globalDir() + the wire's Ring 1 both read this
+  });
+  afterEach(async () => {
+    if (SAVED === undefined) delete process.env.PIFLOW_HOME;
+    else process.env.PIFLOW_HOME = SAVED;
+    await fs.rm(WS, { recursive: true, force: true });
+    await fs.rm(HOME, { recursive: true, force: true });
+  });
+
+  async function writeSkill(id: string, fm: string): Promise<void> {
+    const dir = path.join(WS, '.agents', 'skills', id);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'SKILL.md'), `---\n${fm}\n---\nBody.\n`);
+  }
+
+  /** A one-node spec binding `skill`, default (builtin) tools. */
+  function skillSpec(skill: string): WorkflowSpec {
+    return {
+      meta: { name: 'sk', description: 'd' },
+      nodes: [{ label: 'work', prompt: 'do work', skill, tools: {}, io: { reads: [], produces: ['w.txt'], artifacts: [{ path: 'w.txt' }] } }],
+    };
+  }
+
+  it('an UNPROVISIONED mcp.* floor blocks the node (fail-fast) — proving the floor reached the run path', async () => {
+    // Without the wire the node (builtins only) would run `ok`; the wire adds mcp.absent:tool → the
+    // pre-spawn bind check finds it missing from the catalog → `blocked`. THAT is the fail-fast preflight.
+    await writeSkill('needs-mcp', 'name: needs-mcp\nrequires: [mcp.absent:tool]\nallowed: [mcp.absent:tool]');
+    const outDir = await tmpOut();
+    const result = await runFromConfig({
+      workflowSpec: skillSpec('needs-mcp'),
+      run: 'floor-block',
+      outDir,
+      workspace: WS,
+      buildCommand: stubBuilder(),
+    });
+    expect(result.status.ok).toBe(false);
+    expect(result.status.nodes.work.status).toBe('blocked');
+    expect(result.status.nodes.work.issues?.join(' ')).toMatch(/mcp\.absent:tool/);
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a bound skill that does NOT resolve wires nothing and the run still succeeds (loud-miss stays advisory)', async () => {
+    const outDir = await tmpOut();
+    const result = await runFromConfig({
+      workflowSpec: skillSpec('ghost-skill-not-installed'),
+      run: 'floor-ghost',
+      outDir,
+      workspace: WS,
+      buildCommand: stubBuilder(),
+    });
+    expect(result.status.ok).toBe(true);
+    expect(result.status.nodes.work.status).toBe('ok');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a MALFORMED manifest (requires ⊄ allowed) fails the run at start with the parser message', async () => {
+    await writeSkill('malformed', 'name: malformed\nrequires: [mcp.x:y]\nallowed: [fs:read]');
+    const outDir = await tmpOut();
+    await expect(
+      runFromConfig({ workflowSpec: skillSpec('malformed'), run: 'floor-bad', outDir, workspace: WS, buildCommand: stubBuilder() }),
+    ).rejects.toThrow(/manifest violation — requires ⊄ allowed/);
+    await fs.rm(outDir, { recursive: true, force: true });
   });
 });
