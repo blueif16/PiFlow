@@ -61,14 +61,18 @@ import { FusionContext, type FusionMode } from "./FusionContext";
 import { FusionSaveBar } from "./FusionSaveBar";
 import { ComposeContext } from "./ComposeContext";
 import { BasisContext } from "./BasisContext";
+import { MarketContext } from "./MarketContext";
 import { SkillContext } from "./SkillContext";
 import { SkillPanel } from "./SkillPanel";
+import { SkillMarketPanel } from "./SkillMarketPanel";
+import { SkillDropCard, type SkillCardTarget } from "./SkillDropCard";
 import { GateRail } from "./GateRail";
 import { GateDropCard, type DropCardTarget } from "./GateDropCard";
 import { AgentRail } from "./AgentRail";
 import { AgentDropCard, type AgentCardTarget } from "./AgentDropCard";
 import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, runViewToLiveModel, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
 import type { AgentChip } from "../data/agentChips";
+import type { SkillChip } from "../data/skillChips";
 import type { RailKind } from "../data/gates";
 import { deriveZones, toZoneFlowNode, type ZoneFlowNode } from "../data/zones";
 import { loadIndex, pickCurrentRun, pickRunForWorkspace, workspaceOfRun, homeWorkspace, homeRoots, type GlobalIndex } from "../data/runIndex";
@@ -115,6 +119,10 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const [openSkill, setOpenSkill] = useState<string | null>(null); // the skill id shown in the left SkillPanel (null = closed)
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
   const [digestOpen, setDigestOpen] = useState(false); // left-edge run digest; launched by the "D" key
+  const [marketOpen, setMarketOpen] = useState(false); // left-edge skill marketplace; launched by the "S" key
+  // (P2 skill marketplace) the open skill-loadout confirm card — a skill dragged from the panel onto a node's
+  // skill slot opens it; "Apply to this run" bakes run-first, then offers a template promote. Null = no card.
+  const [skillCard, setSkillCard] = useState<SkillCardTarget | null>(null);
   const [startOpen, setStartOpen] = useState(false); // the "Start a run" launcher modal (from the MenuBar)
   const [migrateOpen, setMigrateOpen] = useState(false); // the "Migrate run" modal (from the MenuBar)
   // The live control-plane endpoint. When a migrate re-points it (setEndpoint), this baseUrl changes and the
@@ -473,7 +481,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // lands on THIS run's `.pi/run.json` (visible on the run once the run-view re-polls), the template untouched.
   // "template" PROMOTES it durably (the original write-back path); on a template write we refresh that node's
   // AUTHORED config so the compose badge re-renders with the promoted gate. config is the single source of truth.
-  const dropChip = useCallback(async (nodeId: string, chip: GateChip | AgentChip, target: "run" | "template" = "run"): Promise<{ ok: boolean; error?: string; stub?: boolean }> => {
+  const dropChip = useCallback(async (nodeId: string, chip: GateChip | AgentChip | SkillChip, target: "run" | "template" = "run"): Promise<{ ok: boolean; error?: string; stub?: boolean }> => {
     if (!activeRun) return { ok: false, error: "no active run" };
     const r = await dropChipOnNode(activeRun, nodeId, chip, target);
     if (r.ok && target === "template") {
@@ -515,6 +523,18 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // Leaving Basis mode closes any open reassign card (mirrors the Compose teardown).
   useEffect(() => { if (mode !== "basis") setAgentCard(null); }, [mode]);
 
+  // (P2 skill marketplace) a skill dragged onto a node's skill slot opens the loadout confirm card. `active`
+  // = the marketplace panel is open (agent nodes then show the drop slot); the write happens on the card.
+  const openSkillCard = useCallback((nodeId: string, skill: string, current?: string) => {
+    setSkillCard({ nodeId, skill, ...(current ? { current } : {}) });
+  }, []);
+  const marketApi = useMemo(
+    () => ({ active: marketOpen, openCard: openSkillCard, targetId: skillCard?.nodeId ?? null }),
+    [marketOpen, openSkillCard, skillCard],
+  );
+  // Closing the marketplace panel closes any open skill card (mirrors the Basis teardown).
+  useEffect(() => { if (!marketOpen) setSkillCard(null); }, [marketOpen]);
+
   // A backdrop zone is non-selectable, so the expanded node is always a real card — narrow before reading data.
   const expandedNode = nodes.find((n) => n.id === expandedId);
   const expandedData = expandedNode && isFlowNode(expandedNode) ? expandedNode.data : null;
@@ -533,6 +553,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       <FusionContext.Provider value={fusionApi}>
       <ComposeContext.Provider value={composeApi}>
       <BasisContext.Provider value={basisApi}>
+      <MarketContext.Provider value={marketApi}>
       <SkillContext.Provider value={skillApi}>
       <RunStreamContext.Provider value={live}>
       <LayoutGroup>
@@ -612,7 +633,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           {/* Consolidated control-plane control (bottom-right, beside the chat launcher): the local ⇄ cloud
               switch + connect-a-remote, with a liveness dot (green reachable / red unreachable). */}
           <ControlPlaneChip health={controlHealth} />
-          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen || workspaceOpen} />
+          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} marketOpen={marketOpen} onToggleMarket={() => setMarketOpen((o) => !o)} muted={startOpen || migrateOpen || workspaceOpen} />
           <FusionSaveBar active={mode === "fusion"} />
           {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
               overlay is open — both are left-anchored, and the overlay is the focus. */}
@@ -639,8 +660,15 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             onComposingChange={setComposingNodeId}
           />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
-          {/* Left-edge skill inspector — opened by clicking a loaded skill chip (node card / NodeHud). */}
+          {/* Left-edge skill inspector — opened by clicking a loaded skill chip (node card / NodeHud) OR a
+              marketplace card. */}
           <SkillPanel activeRun={activeRun} />
+          {/* Left-edge skill MARKETPLACE (S key): search + ring filter + draggable skill cards. A card CLICK
+              opens the SkillPanel detail; DRAGGING one onto a node's skill slot opens the loadout confirm card. */}
+          <SkillMarketPanel activeRun={activeRun} open={marketOpen} onClose={() => setMarketOpen(false)} />
+          {/* The skill-loadout confirm card (AgentDropCard idiom + the GateDropCard two-tier apply): dragged
+              skill vs current + requires/allowed, one primary "Apply to this run" then a template promote. */}
+          <SkillDropCard card={skillCard} run={activeRun} onClose={() => setSkillCard(null)} dropChip={dropChip} />
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.
               Clicking an anomaly/onset node focuses that node on the canvas. */}
           <RunDigestPanel activeRun={activeRun} open={digestOpen} liveStatus={live.status} liveSig={digestSig} onFocusNode={setExpandedId} onClose={() => setDigestOpen(false)} />
@@ -652,6 +680,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       </LayoutGroup>
       </RunStreamContext.Provider>
       </SkillContext.Provider>
+      </MarketContext.Provider>
       </BasisContext.Provider>
       </ComposeContext.Provider>
       </FusionContext.Provider>

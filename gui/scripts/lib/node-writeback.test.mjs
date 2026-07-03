@@ -419,6 +419,86 @@ describe("agent chip — reassign the node's base agent (TEMPLATE-ONLY)", () => 
   });
 });
 
+// (P2 · skill marketplace) The SKILL chip: set a node's loadout skill by SETTING `prompt.skill` on the
+// node.json, PRESERVING `prompt.file`. Unlike the agent chip (structural → template-only), a skill is an
+// OVERLAY (a loadout pointer), so it ALSO bakes run-first (config.skill on the run) exactly as gate chips do.
+// These prove the write lands + schema-validates preserving prompt.file, a re-drop overwrites, a malformed
+// chip is refused, and the run bake carries the skill onto run.json (leaving the template byte-untouched).
+describe("skill chip — set the node's loadout skill (prompt.skill, an OVERLAY)", () => {
+  it("chipToOps → { ops:[], skillPatch } (trimmed); a missing/empty skill throws", () => {
+    const { ops, skillPatch } = chipToOps({ kind: "skill", skill: "  harden-blueprint  " }, "build");
+    expect(ops).toHaveLength(0);
+    expect(skillPatch).toBe("harden-blueprint");
+    expect(() => chipToOps({ kind: "skill" }, "build")).toThrow(WritebackError);
+    expect(() => chipToOps({ kind: "skill", skill: "" }, "build")).toThrow(WritebackError);
+    expect(() => chipToOps({ kind: "skill", skill: "   " }, "build")).toThrow(WritebackError);
+  });
+
+  it("writeNodeEdit sets prompt.skill on disk, PRESERVING prompt.file (schema-valid round-trip), additive", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    try {
+      const before = JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8"));
+      expect(before.prompt).toEqual({ file: "prompt.md" }); // precondition: a file prompt, no skill yet
+
+      const res = await writeNodeEdit(templateDir, "build", { chip: { kind: "skill", skill: "harden-blueprint" } }, validate);
+      expect(res.status).toBe(200);
+
+      const after = JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8"));
+      // (1) the skill landed, (2) prompt.file is PRESERVED (not clobbered — the schema REQUIRES it), (3) the
+      // node still validates against the REAL nodeSchema, (4) other fields untouched, (5) no gate-lane touch.
+      expect(after.prompt.skill).toBe("harden-blueprint");
+      expect(after.prompt.file).toBe("prompt.md");
+      expect(validate(nodeSchema, after).ok).toBe(true);
+      expect(after.contract).toEqual(before.contract);
+      expect(after.op).toBeUndefined();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("OVERWRITES an existing prompt.skill (one skill per node), keeping prompt.file", async () => {
+    const node = { ...baseNode(), prompt: { file: "prompt.md", skill: "old-skill" } };
+    const { root, templateDir } = await makeTemplate(node);
+    try {
+      const res = await writeNodeEdit(templateDir, "build", { chip: { kind: "skill", skill: "new-skill" } }, validate);
+      expect(res.status).toBe(200);
+      const after = JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8"));
+      expect(after.prompt).toEqual({ file: "prompt.md", skill: "new-skill" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("REJECTS a skill chip with a missing/empty skill (400, nothing written)", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    try {
+      const before = await readFile(nodeJsonPathFor(templateDir, "build"), "utf8");
+      const res = await writeNodeEdit(templateDir, "build", { chip: { kind: "skill" } }, validate);
+      expect(res.status).toBe(400);
+      expect(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8")).toBe(before);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("bakeNodeEditToRun applies a skill chip RUN-FIRST (config.skill on run.json), template UNCHANGED", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    const { runDir } = await makeRun(root, "build");
+    try {
+      const tmplBefore = await readFile(nodeJsonPathFor(templateDir, "build"), "utf8");
+      const res = await bakeNodeEditToRun(runDir, templateDir, "build", { chip: { kind: "skill", skill: "harden-blueprint" } }, validate, summarizeGates);
+      expect(res.status).toBe(200);
+      // (1) the RUN carries the skill overlay now — the run-view surfaces node.config.skill (mirrors core NodeConfig).
+      const run = JSON.parse(await readFile(runJsonPath(runDir), "utf8"));
+      expect(run.nodes.build.config.skill).toBe("harden-blueprint");
+      // (2) the TEMPLATE is byte-untouched — the whole point of run-first (a skill CAN bake, unlike agentType).
+      expect(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8")).toBe(tmplBefore);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("applyEdit — pure in-memory mutation (no I/O)", () => {
   it("does not mutate the input node (returns a copy)", () => {
     const node = baseNode();

@@ -1,0 +1,254 @@
+/* ============================================================================
+   SkillMarketPanel — the skill MARKETPLACE. A full-height glass RAIL on the LEFT
+   edge (mirror of the Companion's right rail / the RunDigest rail), layered over
+   the flowmap with NO backdrop, below the floating MenuBar/ModeBar. Plus the
+   per-node skill DROP band (NodeSkillDrop) and the drop-card vs-row skill mark.
+
+   Flat content on glass, no bubbles (the Companion/Digest law). Draggable cards;
+   ring tones reuse the neutral vocabulary.
+   ========================================================================== */
+.ds-market-layer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: var(--ds-z-rail); /* ambient rail: below the HUD scrim AND the MenuBar/ModeBar */
+  pointer-events: none;
+}
+.ds-market-layer > * { pointer-events: auto; }
+
+.ds-market {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(42vw, 460px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-4);
+  overflow-y: auto;
+  border-radius: 0;
+  padding: clamp(20px, 3vh, 32px) var(--ds-space-6) clamp(72px, 9vh, 92px) var(--ds-space-7);
+}
+@supports (corner-shape: bevel) {
+  .ds-market {
+    border-start-end-radius: 16px;
+    corner-shape: bevel;
+  }
+}
+
+.ds-market__close {
+  position: absolute;
+  top: clamp(12px, 1.8vh, 20px);
+  right: var(--ds-space-4);
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-tertiary);
+  border-radius: var(--ds-radius-md);
+  font-size: var(--ds-text-sm);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast);
+}
+.ds-market__close:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-market__close:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+.ds-market__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ds-space-3);
+  padding-right: 34px; /* clear the close button */
+}
+.ds-market__title { display: flex; flex-direction: column; gap: 2px; }
+.ds-market__eyebrow {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-2xs, 10px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ds-text-tertiary);
+}
+.ds-market__name {
+  margin: 0;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-md);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+.ds-market__mcpwarn {
+  margin-left: auto;
+  align-self: center;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-2xs, 10px);
+  color: var(--ds-warn-fg, #9a6a00);
+  background: var(--ds-warn-subtle, rgba(154, 106, 0, 0.1));
+  padding: 2px 7px;
+  border-radius: var(--ds-radius-sm);
+}
+
+/* ── controls: search + ring toggle ───────────────────────────────────────── */
+.ds-market__controls { display: flex; flex-direction: column; gap: var(--ds-space-3); }
+.ds-market__search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-primary);
+  background: var(--ds-glass-bg-strong, #fff);
+  border: 1px solid var(--ds-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--ds-radius-md);
+}
+.ds-market__search:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.ds-market__rings { display: flex; gap: 6px; flex-wrap: wrap; }
+.ds-market__ring {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-2xs, 10px);
+  color: var(--ds-text-secondary);
+  background: transparent;
+  border: 1px solid var(--ds-border, rgba(0, 0, 0, 0.12));
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background var(--ds-dur-fast), border-color var(--ds-dur-fast), color var(--ds-dur-fast);
+}
+.ds-market__ring b { font-weight: var(--ds-weight-semibold); color: var(--ds-text-tertiary); }
+.ds-market__ring:hover { background: var(--ds-bg-hover); }
+.ds-market__ring.is-active {
+  color: var(--ds-text-primary);
+  border-color: var(--ds-accent);
+  background: var(--ds-accent-subtle, var(--ds-bg-hover));
+}
+.ds-market__ring.is-active b { color: var(--ds-accent); }
+
+.ds-market__muted {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+  line-height: 1.5;
+  padding: var(--ds-space-2) 0;
+}
+
+/* ── the card list ─────────────────────────────────────────────────────────── */
+.ds-market__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--ds-space-3); }
+
+.ds-skillcard {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px;
+  background: var(--ds-glass-bg-strong, #fff);
+  border: 1px solid var(--ds-border, rgba(0, 0, 0, 0.1));
+  border-radius: var(--ds-radius-md);
+  cursor: grab;
+  transition: border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard),
+              transform var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-skillcard:hover { border-color: var(--ds-accent); box-shadow: var(--ds-shadow-sm, 0 1px 4px rgba(0, 0, 0, 0.08)); transform: translateY(-1px); }
+.ds-skillcard:active { cursor: grabbing; }
+.ds-skillcard:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+.ds-skillcard[data-shadowed="true"] { opacity: 0.62; }
+
+.ds-skillcard__head { display: flex; align-items: center; gap: 8px; }
+.ds-skillcard__mark { display: inline-flex; color: var(--ds-text-secondary); }
+.ds-skillcard__name {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-skillcard__ring {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-2xs, 10px);
+  color: var(--ds-text-tertiary);
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--ds-border, rgba(0, 0, 0, 0.1));
+}
+.ds-skillcard__ring[data-ring="workspace"] { color: var(--ds-accent); border-color: var(--ds-accent); }
+
+.ds-skillcard__desc {
+  margin: 0;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-xs, 12px);
+  color: var(--ds-text-secondary);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ds-skillcard__badges { display: flex; flex-wrap: wrap; gap: 5px; }
+.ds-skillcard__badge {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-2xs, 10px);
+  padding: 2px 7px;
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-bg-hover);
+  color: var(--ds-text-secondary);
+}
+.ds-skillcard__badge[data-tone="warn"] { color: var(--ds-warn-fg, #9a6a00); background: var(--ds-warn-subtle, rgba(154, 106, 0, 0.1)); }
+.ds-skillcard__badge[data-tone="err"] { color: var(--ds-error-fg, #c1262b); background: var(--ds-error-subtle, rgba(193, 38, 43, 0.1)); }
+.ds-skillcard__badge[data-tone="muted"] { color: var(--ds-text-tertiary); }
+
+.ds-skillcard__tags { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.ds-skillcard__more { font-family: var(--ds-font-mono); font-size: var(--ds-text-2xs, 10px); color: var(--ds-text-tertiary); }
+
+/* ── the drop-card vs-row skill mark + the "about" description ─────────────── */
+.ds-skillchip__mark { display: inline-flex; color: var(--ds-text-secondary); }
+.ds-skillcard__badge[data-on="true"] { color: var(--ds-accent); }
+
+/* ── NodeSkillDrop — the per-node skill drop band (ABOVE the card, clear of the below-card basis band) ── */
+.ds-skilldrop {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto; /* interactive — accepts a dropped skill card */
+  border: 1px dashed var(--ds-border, rgba(0, 0, 0, 0.18));
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-glass-bg-soft, rgba(255, 255, 255, 0.5));
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-skilldrop__hint {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-2xs, 10px);
+  letter-spacing: 0.04em;
+  color: var(--ds-text-tertiary);
+  pointer-events: none;
+}
+.ds-skilldrop.is-over {
+  border-color: var(--ds-accent);
+  border-style: dashed;
+  background: var(--ds-accent-subtle, var(--ds-bg-hover));
+  box-shadow: 0 0 0 3px var(--ds-accent-ring, rgba(0, 0, 0, 0.06));
+}
+.ds-skilldrop.is-over .ds-skilldrop__hint { color: var(--ds-accent); }
+
+/* the highlighted node while its skill card is open (mirror of data-basis-target) */
+.ds-node[data-market-target="true"] { box-shadow: 0 0 0 2px var(--ds-accent), var(--ds-shadow-md); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-skillcard, .ds-skilldrop { transition: none; }
+}

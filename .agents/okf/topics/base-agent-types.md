@@ -36,7 +36,7 @@ CONSUMED
 PASSED THROUGH
 - `packages/core/src/observe/runView.ts:291` — agentType passthrough into `RunViewNode`
 RENDERED
-- `gui/src/data/runView.ts:633` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
+- `gui/src/data/runView.ts:636` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
 - `gui/src/components/NodeModeStrip.tsx:85` — renders the base-agent chip
 
 # Freshness (anti-drift)
@@ -167,6 +167,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `0c4c5ee` 2026-07-02 — feat(gui): render node gates as hexagon icons + a HUD "Hooks" section
 - `e070ef1` 2026-07-02 — Merge worktree-gui-frontend-fixes: GUI frontend fixes onto main so `piflowctl gui` shows them
 - `8357625` 2026-07-03 — feat(gui): tool-icon vocabulary + promote/type the telemetry we already collect
+- `9641b93` 2026-07-03 — feat(gui): skill side panel — full skill-bundle info on click
+- `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
+- `5eff54c` 2026-07-03 — feat(gui): base-agent rail on Basis mode — drag a preset onto a node to reassign agentType
+- `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 
 ### Lessons — memory cluster
 
@@ -182,16 +186,17 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
+- [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 7 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
-- `PresetMergeable` (packages/core/src/workflow/agent-preset.ts:37) — 8 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
-- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `packages/core/src/workflow/template/render.ts`, `packages/cli/src/scaffold.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
-- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
+- `PresetMergeable` (packages/core/src/workflow/agent-preset.ts:37) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
+- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/cli/src/agents.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; ⚠ no covering tests found
+- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 2 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=107 commits · files=8 · lessons=13</sub>
+<sub>derived 2026-07-03 · arc=111 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

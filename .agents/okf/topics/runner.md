@@ -25,7 +25,7 @@ ONLY through files on disk — the filesystem IS the contract.
 
 # Anchors
 TEMPLATE-RUN JOIN
-- `packages/core/src/runner/entry.ts:150` — `runFromTemplate` — load → instantiate → compile → run
+- `packages/core/src/runner/entry.ts:153` — `runFromTemplate` — load → instantiate → compile → run
 - `packages/core/src/workflow/template/instantiate.ts:98` — `instantiateRun` — materialize `${RUN}/.pi/nodes/<id>/`
 PER-NODE RUNNER EXEC
 - `packages/core/src/runner/runner.ts:373` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
@@ -33,7 +33,7 @@ PER-NODE RUNNER EXEC
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
 - `packages/core/src/runner/node-lifecycle.ts:490` — artifact host-stat — a node is `ok` only if its declared artifacts exist
-- `packages/core/src/runner/node-lifecycle.ts:992` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
+- `packages/core/src/runner/node-lifecycle.ts:1003` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode`/`finishNode` no longer live in `packages/core/src/runner/runner.ts` (the §2.1 split moved the per-node lifecycle to `packages/core/src/runner/node-lifecycle.ts`; runner.ts only re-exports them) — the stage loop is the run-level concern in runner.ts, the per-node concern is in node-lifecycle.ts. This is the DYNAMIC exec spine carved out of the former `runtime-core`; its static sibling (`workflow-compile`) ends at the compiled `Workflow`, which is exactly where this slice begins. Threads that cross this spine each have their own slice: `sandbox` (the jail runNode creates), `per-node-routing-and-fusion` (the model on the pi command), `node-action-protocol` (the gates between exec and finish).
@@ -180,6 +180,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
+- `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
 
 ### Lessons — memory cluster
 
@@ -201,5 +202,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 8 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
 - `RunScope` (packages/core/src/types.ts:643) — 11 callers in `packages/core/src/runner/resume.ts`, `packages/core/src/sandbox/local.ts`, `packages/docker/src/docker.ts`, `packages/core/src/runner/runner.ts` +2 more; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=125 commits · files=7 · lessons=9</sub>
+<sub>derived 2026-07-03 · arc=126 commits · files=7 · lessons=9</sub>
 <!-- okf:auto-end -->

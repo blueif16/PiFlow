@@ -21,6 +21,7 @@ import { loadFusionConfig } from './fusion-config.js';
 import { builtinDrivers } from './drivers/table.js';
 import { loadModelTiers } from './model-routing.js';
 import { assembleRunTools } from './tool-config.js';
+import { wireSkillFloors } from './skill-floor.js';
 import { catalogForSpec } from '../catalog/client.js';
 import { runWorkflow, type RunOptions, type RunResult } from './runner.js';
 // Leaf import (NOT the observe barrel) — registry.js pulls no runner module, so there is no cycle.
@@ -119,6 +120,15 @@ export async function runFromConfig(config: ResolvedRunConfig): Promise<RunResul
   // fusion (so a reroute target inside a fusion judge is cloned correctly) and BEFORE compile (the compiler
   // draws the gate→clone→downstream edges from the generated reads/produces). No reroute node ⇒ unchanged.
   spec = expandReroute(spec);
+  // (F1 — skill requires-floor) Union each bound skill's `requires` FLOOR into the node's tools.allow BEFORE
+  // resolveRunTools slices the catalog by the selected mcp.* addresses — so an unprovisioned mcp.* floor
+  // fails FAST at the node's pre-spawn bind check. Workspace/run resolved from the run opts (matches
+  // runWorkflow's `workspace ?? repoRoot ?? cwd`). Skill-less nodes are untouched (byte-identical).
+  await wireSkillFloors(spec, {
+    run: (runOpts as RunOptions).outDir ?? process.cwd(),
+    workspace: (runOpts as RunOptions).workspace ?? (runOpts as RunOptions).repoRoot ?? process.cwd(),
+    args: (runOpts as RunOptions).args,
+  });
   // (G11) Seed the tool catalog into the run AFTER the expand passes (so judge/sibling/reroute nodes are
   // seen), honoring an explicit caller's registry/mcpConfig. `secretResolver` is forwarded as-is (host seam).
   const tools = resolveRunTools(spec, runOpts as RunOptions);
@@ -182,6 +192,11 @@ export async function runFromTemplate(templateDir: string, opts: RunFromTemplate
   // AFTER fusion (so a reroute target inside a fusion judge is cloned correctly) and BEFORE compile. No
   // reroute node ⇒ the spec is returned unchanged (additivity).
   spec = expandReroute(spec);
+  // (2.68) (F1 — skill requires-floor) Union each bound skill's `requires` FLOOR into the node's tools.allow
+  // BEFORE resolveRunTools reads the spec. The WORKSPACE root (the bare-id ring-search base) + runDir are
+  // both in hand here — the seam the template load path lacks. A required mcp.* absent from the catalog then
+  // fails FAST at the node's pre-spawn bind check. Skill-less nodes are untouched (byte-identical).
+  await wireSkillFloors(spec, { run: runDir, workspace, args: (runOpts as RunOptions).args });
   // (2.7) (G11) seed the tool catalog into the run AFTER the expand passes, honoring an explicit caller's
   // registry/mcpConfig. This is the canonical CLI/template path the blocker (#1) lived on — a node
   // declaring `oc.*`/`mcp.*` now binds instead of falling through to a bare DefaultToolRegistry.

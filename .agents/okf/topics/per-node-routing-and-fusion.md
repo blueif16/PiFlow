@@ -47,7 +47,7 @@ FUSION — config + expand
 - `packages/core/src/workflow/fusion/presets.ts:43` — `judgePresetId` — pick the judge preset by mode (moa / best-of-n) over `FUSION_PRESETS`
 FUSION — expand-then-compile (terminal)
 - `packages/core/src/runner/entry.ts:116` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromConfig path)
-- `packages/core/src/runner/entry.ts:177` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromTemplate path)
+- `packages/core/src/runner/entry.ts:63` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromTemplate path)
 - `packages/core/src/dag.ts:206` — `compile` — folds the expanded siblings+judge into stages/edges (the DAG the author never wrote)
 
 # Freshness (anti-drift)
@@ -157,6 +157,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
+- [[skill-marketplace-gui-design]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
@@ -166,8 +167,8 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `judgePresetId` (packages/core/src/workflow/fusion/presets.ts:43) — 3 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `expandNode` (packages/core/src/workflow/fusion/expand.ts:69) — 1 caller in `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 10 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/model-routing.test.ts`
+- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 10 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/server/src/handlers.ts`, `packages/core/src/runner/index.ts` +1 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=46 commits · files=10 · lessons=37</sub>
+<sub>derived 2026-07-03 · arc=46 commits · files=10 · lessons=38</sub>
 <!-- okf:auto-end -->

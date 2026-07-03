@@ -49,6 +49,12 @@ that is how a silent, wrong workflow gets built.
 | A workflow in another engine's format (n8n / YAML / JSON) | **IMPORT** | Map the foreign graph → the template's DAG manifest + per-node defs. ⛔ not yet — do not improvise; stop and flag the missing importer |
 | Only a task/goal, or a skill/agent system described in prose | **COMPOSE** | The agent REASONS the task into a DAG — START from a blueprint shape (`references/blueprints/`; the composition grammar is `references/blueprints/AUTHORING-GUIDE.md`) and stamp/insert it with the scaffold loop (below), each lane bound to a base agent via `--agent-type`. ✅ |
 
+- **Before authoring a lane's prose, run the skill-marketplace ladder — `references/skill-marketplace.md`.** A
+  node's craft belongs in a SKILL, not its `prompt.md`, so first SEARCH for one that already carries it
+  (`piflowctl skill list/search --json`, then the remote lane), INSTALL it if remote (`piflowctl skill add`),
+  and BIND it (`add-node --skill <id>`) — reach for an existing bundle before hand-writing craft. No match ⇒
+  compose the node without a skill; NEVER invent a skill id.
+
 - **The PORT script is the bridge; its 0 exit is the oracle.** It ends by `compile()`ing its own output and
   asserting the DAG survived — trust the exit code, not a glance at the JSON. A non-zero exit means the spec is
   not trustworthy; fix the cause named in the error, never hand-edit around it.
@@ -67,12 +73,16 @@ that is how a silent, wrong workflow gets built.
 - **New conditions are a new row + a new reference + (if programmatic) a new script — never more prose here.**
 - **The scaffold loop IS the convenience pathway — author by flags, never by hand-writing node JSON.** Stamp any
   template (COMPOSE, or extend a PORT) with the CLI: `piflowctl new <dir>` → per node `piflowctl add-node <dir>
-  --id <id> [--dep …] [--tool …] [--artifact …] [--owns …] [--on-fail block] [--agent-type <base>]` (config is
+  --id <id> [--dep …] [--tool …] [--artifact …] [--owns …] [--on-fail block] [--agent-type <base>] [--skill
+  <id>]` (config is
   emitted from flags, re-runnable as a deterministic function of them; the FULL gate/judge/checkpoint/control
   surface is flags too — see the gate-authoring bullet below) → `Write` each `nodes/<id>/prompt.md` (the
   PROSE — the only part that's yours) → `piflowctl extract <dir>` to TEST (free DAG preview, no model — the real
   loadTemplate gate). `--agent-type <base>` binds a whole base agent (its tools + skill + the OBSERVABLE label,
-  via the real `mergePreset`) in one flag. This is how a node is scaffolded or customized in a single line —
+  via the real `mergePreset`) in one flag; `--skill <id>` binds ONE resolvable skill by its bare id →
+  `node.json` `prompt.skill` (an explicit `--skill` OVERRIDES the preset's fallback `skills[0]`; the id resolves
+  through the skill rings at run time — find/install it first with the marketplace ladder,
+  `references/skill-marketplace.md`). This is how a node is scaffolded or customized in a single line —
   reach for it before hand-authoring, and `extract` after every change to confirm the DAG still compiles.
 - **Gates, judges, checkpoints, and control are FLAGS — never hand-edit `node.json` for them.** The WHOLE
   per-node gate surface is reachable from `add-node`; each flag emits the exact schema field the loader honors,

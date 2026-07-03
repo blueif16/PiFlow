@@ -475,6 +475,65 @@ export const piflowSkill: Middleware = async (req, res, next) => {
   }
 };
 
+/** One `listSkills` row, widened with the wire-only MCP provisioning fields (see `piflowSkillsMarketplace`). */
+interface MarketplaceEntry {
+  id: string; dir: string; ring: "workspace" | "installed"; name: string; description: string;
+  requires: string[]; allowed: string[];
+  display?: { label?: string; icon?: string; color?: string };
+  shadowed?: boolean; error?: string;
+  /** The `mcp.*`-namespaced ids out of `requires` — the subset a catalog slice can attest to. */
+  mcpRequires: string[];
+  /** Every `mcpRequires` id present in the cached MCP catalog index; vacuously `true` when empty. */
+  provisioned: boolean;
+}
+
+/** `GET /__piflow/skills/<run>` — the MARKETPLACE listing the GUI's skill panel renders: core's `listSkills`
+ *  over BOTH local rings (the run's workspace `.agents/skills`, then the installed `<piflowHome>/skills`),
+ *  each row WIDENED with its MCP provisioning status against the cached `~/.piflow/catalog/mcp.index.json`
+ *  slice (core's `loadMcpCatalog`) — so the panel can flag "needs mcp.foo, not installed" with one request.
+ *  A run with no workspace root (outside any registered repo) degrades to the installed ring alone, 200 —
+ *  it never 500s for that; only a genuinely unresolved run 404s (the same shape sibling handlers use). */
+export const piflowSkillsMarketplace: Middleware = async (req, res, next) => {
+  const m = req.url?.match(/^\/__piflow\/skills\/([^/?]+)/);
+  if (!m) return next();
+  const run = decodeURIComponent(m[1]);
+
+  const resolved = await resolveRunDir(run);
+  if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+
+  const locateMod = findCore("workflow/ops/skill-locate.js");
+  const catalogMod = findCore("catalog/client.js");
+  if (!locateMod || !catalogMod) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
+
+  try {
+    const { listSkills } = (await import(pathToFileURL(locateMod).href)) as {
+      listSkills: (opts: { workspace?: string; piflowHome?: string }) => Promise<Array<Omit<MarketplaceEntry, "mcpRequires" | "provisioned">>>;
+    };
+    const { loadMcpCatalog } = (await import(pathToFileURL(catalogMod).href)) as {
+      loadMcpCatalog: () => { entries: Array<{ address: string }>; servers: Record<string, unknown> };
+    };
+
+    // No workspace root ⇒ pass `workspace: undefined` so `listSkills` searches the installed ring alone
+    // (its own documented fallback) rather than failing — matches this route's "never a 500" contract.
+    const skills = await listSkills({ workspace: resolved.workspaceRoot ?? undefined });
+    const { entries } = loadMcpCatalog();
+    const catalogAddresses = new Set(entries.map((e) => e.address));
+
+    // `mcp.*` is the ONE address namespace the catalog slice can attest to (loadMcpCatalog rows are always
+    // `mcp.<server>:<tool>`); a non-mcp requires id (e.g. a builtin `read`) has nothing to check, so it never
+    // enters mcpRequires and never drags provisioned false.
+    const widened: MarketplaceEntry[] = skills.map((entry) => {
+      const mcpRequires = entry.requires.filter((id) => id.startsWith("mcp."));
+      const provisioned = mcpRequires.every((id) => catalogAddresses.has(id));
+      return { ...entry, mcpRequires, provisioned };
+    });
+
+    sendJson(res, 200, { skills: widened, mcpCatalog: entries.length > 0 });
+  } catch (e) {
+    sendJson(res, 500, { error: `skills list failed for "${run}" (${String(e)})` });
+  }
+};
+
 /** `POST /__piflow/checkpoint/<run>` — dumb courier: write a human's reply to the run's checkpoint file. */
 export const piflowCheckpointReply: Middleware = async (req, res, next) => {
   const m = req.url?.match(/^\/__piflow\/checkpoint\/([^/?]+)/);
@@ -809,6 +868,7 @@ export const apiHandlers: Middleware[] = [
   piflowFile,
   piflowTree,
   piflowSkill,
+  piflowSkillsMarketplace,
   piflowCheckpointReply,
   piflowAgents,
   piflowNodeWriteback,

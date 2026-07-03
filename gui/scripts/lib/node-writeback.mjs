@@ -45,6 +45,9 @@ export function nodeJsonPathFor(templateDir, nodeId) {
 //   floor     → op{ when:'post', gate:{kind, path?, param?, advisory?}, onFailure }     (structural floor)
 //   agent     → SETS the node's `agentType` (base-agent reassign — P1 basis rail). TEMPLATE-ONLY: the
 //               preset is expanded at author time, so the run bake REJECTS this kind (see bakeNodeEditToRun).
+//   skill     → SETS the node's `prompt.skill` loadout pointer (P2 skill marketplace), PRESERVING `prompt.file`.
+//               An OVERLAY (not a structural expansion like agentType), so the run bake ACCEPTS it: it reflects
+//               the skill onto the run's `config.skill` exactly as a gate reflects `config.gates`.
 //
 // JUDGE auto-expansion is REAL (no longer deferred): a judge chip PERSISTS the `judgeGate` descriptor
 // (judgeTier/rubric/threshold/policy — the `JudgeGate` shape, gate-authoring.ts) onto node.json in the
@@ -109,8 +112,15 @@ export function chipToOps(chip, nodeId) {
       if (typeof chip.agentType !== "string" || !chip.agentType.trim().length) throw new WritebackError("agent chip requires a non-empty `agentType`");
       return { ops: [], agentTypePatch: chip.agentType.trim() };
     }
+    case "skill": {
+      // Loadout overlay (P2 skill marketplace) → SET the node's `prompt.skill` (schema: prompt.skill, a non-empty
+      // string). Never touches the op[] lane; a second drop OVERWRITES the prior skill (one skill per node). The
+      // prompt.file preservation happens in applyEdit (it holds the current node's prompt).
+      if (typeof chip.skill !== "string" || !chip.skill.trim().length) throw new WritebackError("skill chip requires a non-empty `skill`");
+      return { ops: [], skillPatch: chip.skill.trim() };
+    }
     default:
-      throw new WritebackError(`unknown gate chip kind "${chip.kind}" (expected execution | floor | judge | human | agent)`);
+      throw new WritebackError(`unknown gate chip kind "${chip.kind}" (expected execution | floor | judge | human | agent | skill)`);
   }
 }
 
@@ -135,7 +145,7 @@ export class WritebackError extends Error {
 export function applyEdit(node, nodeId, edit) {
   if (!node || typeof node !== "object" || Array.isArray(node)) throw new WritebackError("node.json must be a JSON object");
   if (!edit || typeof edit !== "object") throw new WritebackError("edit must be { chip }");
-  const { ops, checkpointPatch, judgeGate, agentTypePatch } = chipToOps(edit.chip, nodeId);
+  const { ops, checkpointPatch, judgeGate, agentTypePatch, skillPatch } = chipToOps(edit.chip, nodeId);
   const next = { ...node };
   if (ops.length) next.op = [...(Array.isArray(node.op) ? node.op : []), ...ops];
   if (checkpointPatch) next.checkpoint = { ...(node.checkpoint && typeof node.checkpoint === "object" ? node.checkpoint : {}), ...checkpointPatch };
@@ -144,6 +154,12 @@ export function applyEdit(node, nodeId, edit) {
   if (judgeGate) next.judgeGate = judgeGate;
   // Base-agent reassign (agent chip) — SET, not append: one base per node, a re-drop overwrites.
   if (agentTypePatch) next.agentType = agentTypePatch;
+  // Loadout overlay (skill chip) — SET `prompt.skill`, PRESERVING the existing `prompt.file` (the schema
+  // REQUIRES file). A re-drop overwrites the skill; the file is never clobbered.
+  if (skillPatch) {
+    const prevPrompt = node.prompt && typeof node.prompt === "object" && !Array.isArray(node.prompt) ? node.prompt : {};
+    next.prompt = { ...prevPrompt, skill: skillPatch };
+  }
   return { node: next, judgeGate };
 }
 
@@ -280,11 +296,15 @@ export async function bakeNodeEditToRun(runDir, templateDir, nodeId, edit, valid
   const gates = typeof summarize === "function" ? summarize(mutated) : undefined;
   const rec = nodes[nodeId];
   const prevConfig = rec.config && typeof rec.config === "object" ? rec.config : {};
-  rec.config = { ...prevConfig, ...(gates ? { gates } : {}) };
+  // A skill chip is an OVERLAY (loadout pointer) — reflect it on the run's `config.skill` (observe surfaces
+  // node.config.skill, mirroring core NodeConfig), exactly as a gate chip reflects `config.gates`. Gated on the
+  // chip kind so a gate/other bake never injects a skill the run didn't actually run under.
+  const skillOverlay = edit.chip.kind === "skill" ? mutated.prompt?.skill : undefined;
+  rec.config = { ...prevConfig, ...(gates ? { gates } : {}), ...(skillOverlay ? { skill: skillOverlay } : {}) };
 
   // 6. atomic write-back of run.json (the same atomic write the template path uses).
   await atomicWrite(runJsonFile, JSON.stringify(runJson, null, 2) + "\n");
-  return { ok: true, status: 200, body: { ok: true, node: mutated, ...(gates ? { gates } : {}), scope: "run" }, file: runJsonFile };
+  return { ok: true, status: 200, body: { ok: true, node: mutated, ...(gates ? { gates } : {}), ...(skillOverlay ? { skill: skillOverlay } : {}), scope: "run" }, file: runJsonFile };
 }
 
 // The schema object is injected by the plugin (it imports core's dist); in the test we pass the validator

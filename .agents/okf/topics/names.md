@@ -104,6 +104,7 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - [[blueprints-layer]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[model-provider-single-default-fixture]]
+- [[omniscience-piflow-setup]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
 - [[runs-live-in-product-runs-folder]]
@@ -116,5 +117,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-03 · arc=38 commits · files=7 · lessons=6</sub>
+<sub>derived 2026-07-03 · arc=38 commits · files=7 · lessons=7</sub>
 <!-- okf:auto-end -->

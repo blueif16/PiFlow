@@ -113,10 +113,12 @@ USAGE
   piflowctl catalog sync [--base-url <u>] [--max-pages <n>] [--json] mirror the MCP registry's server directory
                                             into ~/.piflow/catalog/mcp.index.json (incremental + tombstones)
   piflowctl catalog introspect <server> [--json]  capture ONE server's real tools/list into its per-tool entries
-  piflowctl skill   list [--json] | search <q> [--json] | add <source> [--skill <name>] [--force]
+  piflowctl skill   list [--json] | search <q> [--remote] [--limit <n>] [--json] | add <source> [--skill <name>] [--force]
                                             the LOCAL skill rings a node's bare skill ref resolves through
                                             (<ws>/.agents/skills → ~/.piflow/skills): list/search the resolvable
-                                            catalog · add = install a bundle (local dir | git URL | owner/repo)
+                                            catalog · search --remote = discover skills on a remote index
+                                            (ClaudSkills by default) instead · add = install a bundle (local
+                                            dir | git URL | owner/repo — incl. a --remote row's source)
   piflowctl understand [subsystem] [--check|--rebuild]  how a subsystem works / where to change it (code slices)
   piflowctl blueprint <list | show <id>>    discover DAG topologies to stamp: list = every 'id — description';
                                             show = the full recipe (topology + wiring) before you compose

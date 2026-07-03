@@ -21,7 +21,9 @@ import { agentFace } from "./agentFaces";
 import { AgentHoverCard } from "./AgentHoverCard";
 import { useCompose } from "./ComposeContext";
 import { useBasis } from "./BasisContext";
+import { useMarket } from "./MarketContext";
 import { NodeAgentDrop } from "./NodeAgentDrop";
+import { NodeSkillDrop } from "./NodeSkillDrop";
 import { NodeModeStrip } from "./NodeModeStrip";
 import { NodeFusionToggle } from "./NodeFusionToggle";
 import { NodeGateChips } from "./NodeGateChips";
@@ -242,6 +244,10 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   // (Basis mode) the node the open base-agent reassign card is bound to — same highlight discipline.
   const { targetId: basisTargetId } = useBasis();
   const isBasisTarget = mode === "basis" && basisTargetId === id;
+  // (Skill marketplace) while the panel is open, agent nodes show a skill drop slot; the node bound to the
+  // open skill card stays highlighted (same discipline as basis/compose). Independent of the view mode.
+  const { active: marketActive, targetId: marketTargetId } = useMarket();
+  const isMarketTarget = marketTargetId === id;
   const status: NodeStatus = data.status ?? (selected ? "selected" : "idle");
   // (G6) a preset node leads with its branded icon, tinted by the preset's color; otherwise the default
   // agent/file accent. The icon is purely cosmetic — it never changes status, layout, or behavior.
@@ -267,6 +273,7 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       {...(hasRuntimeGlyph ? { "data-runtime": data.runtime } : {})}
       {...(isComposeTarget ? { "data-compose-target": "true" } : {})}
       {...(isBasisTarget ? { "data-basis-target": "true" } : {})}
+      {...(isMarketTarget ? { "data-market-target": "true" } : {})}
       role="button"
       tabIndex={0}
       aria-label={`${data.kind} ${data.title}.${isCloud ? " Runs in cloud." : ""}${isUnlocked ? " Sandbox unlocked — full filesystem access." : ""} Press Enter to expand.`}
@@ -333,6 +340,13 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       {data.kind === "agent" && <AgentHoverCard data={data} />}
 
       <Handle type="source" position={Position.Right} className="ds-handle" />
+
+      {/* (P2 skill marketplace) While the marketplace panel is open, every agent node shows a slim skill
+          drop slot (ABOVE the card). A skill dragged from the panel opens the loadout confirm card. This is
+          independent of the view mode (the marketplace is a panel toggle, not a mode). */}
+      {marketActive && data.kind === "agent" && (
+        <NodeSkillDrop nodeId={id} current={data.rv?.config?.skill} />
+      )}
 
       {mode === "fusion" ? (
         <NodeFusionToggle nodeId={id} agentType={data.rv?.agentType} />
