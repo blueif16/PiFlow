@@ -120,6 +120,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
+- [[hooks-give-info-never-autofix]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
@@ -153,5 +154,5 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/tool-config.test.ts`, `packages/core/test/catalog-introspect.test.ts`
 - `introspectMcpServer` (packages/core/src/catalog/introspect.ts:109) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
 
-<sub>derived 2026-07-03 · arc=30 commits · files=9 · lessons=44</sub>
+<sub>derived 2026-07-03 · arc=30 commits · files=9 · lessons=45</sub>
 <!-- okf:auto-end -->
