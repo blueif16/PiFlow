@@ -425,20 +425,23 @@ export const piflowAgents: Middleware = async (req, res, next) => {
   }
 };
 
-// Load the pure node-writeback host lib ONCE, injecting core's real nodeSchema + validator (memoized).
-let _writebackLib: { mod: Record<string, unknown>; validate: ((s: object, d: unknown) => { ok: boolean; errors: string[] }) | null } | null = null;
+// Load the pure node-writeback host lib ONCE, injecting core's real nodeSchema + validator + the canonical
+// `summarizeGates` fold the run-first bake reuses (memoized).
+let _writebackLib: { mod: Record<string, unknown>; validate: ((s: object, d: unknown) => { ok: boolean; errors: string[] }) | null; summarize: ((n: unknown) => unknown) | null } | null = null;
 const loadWritebackLib = async () => {
   if (_writebackLib) return _writebackLib;
   const libPath = findLib("node-writeback.mjs");
   const schemaPath = findCore("workflow/template/schema/node.schema.js");
   const valPath = findCore("runner/schema.js");
+  const corePath = findCore("index.js");
   if (!libPath) throw new Error("node-writeback lib not found — is this the piflow gui?");
-  if (!schemaPath || !valPath) throw new Error("@piflow/core dist not found — run: npm run build (at repo root)");
+  if (!schemaPath || !valPath || !corePath) throw new Error("@piflow/core dist not found — run: npm run build (at repo root)");
   const mod = await import(pathToFileURL(libPath).href);
   const { nodeSchema } = await import(pathToFileURL(schemaPath).href);
   const { defaultSchemaValidator } = await import(pathToFileURL(valPath).href);
+  const { summarizeGates } = await import(pathToFileURL(corePath).href);
   (mod.setNodeSchema as (s: unknown) => void)(nodeSchema);
-  _writebackLib = { mod, validate: await defaultSchemaValidator() };
+  _writebackLib = { mod, validate: await defaultSchemaValidator(), summarize: summarizeGates as (n: unknown) => unknown };
   return _writebackLib;
 };
 
@@ -487,7 +490,26 @@ export const piflowNodeWriteback: Middleware = async (req, res, next) => {
   const target = body.target === "run" ? "run" : "template";
 
   if (target === "run") {
-    return sendJson(res, 501, { error: "run-instance (ephemeral) edits are not implemented yet — only template edits are durable; live mid-run mutation is deferred", stub: true });
+    // RUN-FIRST bake (Slice 1.5): apply the gate to THIS run's `.pi/run.json` config.gates, NOT the template.
+    // The gate applies on top of the current template config, folded via core's canonical summarizeGates.
+    const resolved = await resolveRunDir(run);
+    if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+    const templateDir = join(resolved.runDir, "..", "..", "template");
+    if (!existsSync(templateDir)) return sendJson(res, 404, { error: `no template for "${run}" at ${templateDir} (run-first bake needs the canonical <wf>/template layout)` });
+    try {
+      const { mod, validate, summarize } = await loadWritebackLib();
+      const out = await (mod.bakeNodeEditToRun as (rd: string, td: string, id: string, e: unknown, v: unknown, s: unknown) => Promise<{ status: number; body: unknown }>)(
+        resolved.runDir,
+        templateDir,
+        nodeId,
+        { chip: body.chip },
+        validate,
+        summarize,
+      );
+      return sendJson(res, out.status, out.body);
+    } catch (e) {
+      return sendJson(res, 500, { error: `run edit failed (${String(e)})` });
+    }
   }
 
   const tpl = await templateDirFor(run);

@@ -198,6 +198,79 @@ export async function writeNodeEdit(templateDir, nodeId, edit, validate) {
   return { ok: true, status: 200, body: { ok: true, node: mutated, ...(judgeGate ? { judgeGate } : {}) }, file };
 }
 
+/**
+ * (Slice 1.5) RUN-FIRST bake: apply a dropped gate chip to THIS RUN's `.pi/run.json` (its
+ * `nodes[<id>].config.gates`) WITHOUT touching the template — the "applied to this run" default. The gate
+ * lands on the run's DISPLAY surface (observe's `buildRunView` reads `config.gates` VERBATIM off run.json,
+ * ungated by node status); it is NOT promoted to the template until the user chooses to (that is the durable
+ * `writeNodeEdit` path). Mirrors `writeNodeEdit`'s decisions (safe id, apply, schema-validate, 400/404), but
+ * the fold that produces the run's `config.gates` is core's canonical `summarizeGates` (INJECTED, like
+ * `validate`) so a run-baked gate is byte-shaped exactly like a real run would have written it — no drift.
+ *
+ * A run bake is DISPLAY-ONLY: it does NOT feed the journal-driven resume/re-run (that is envelope-hash driven,
+ * `.pi/journal.json`, untouched here). It makes the authored gate visible on this run's graph/HUD immediately.
+ * The gate is applied ON TOP OF the CURRENT template config, so `config.gates` becomes "the template's gates +
+ * this edit" for this run (a run-scoped preview of the template edit). Structural judge materialization (the
+ * `<id>__judge` node) is NOT added to the run graph — the judge's user-facing effect (reroute-on-fail) is
+ * folded into `config.gates` by `summarizeGates`, which is the honest run-scoped representation.
+ *
+ *   - `runDir`      the run dir (`<wf>/runs/<id>`) whose `.pi/run.json` we mutate.
+ *   - `templateDir` the per-repo TEMPLATE dir — the CURRENT authored config the edit is applied ON TOP of.
+ *   - `nodeId`      the target node (must be a run node AND a containment-safe slug).
+ *   - `edit`        `{ chip }` — the dropped chip.
+ *   - `validate`    core's `defaultSchemaValidator` (the mutated node must still satisfy nodeSchema, else 400).
+ *   - `summarize`   core's `summarizeGates` (the canonical `op[]` + checkpoint → GateSummary fold).
+ */
+export async function bakeNodeEditToRun(runDir, templateDir, nodeId, edit, validate, summarize) {
+  if (!isSafeNodeId(nodeId)) return { ok: false, status: 400, body: { error: "missing or unsafe nodeId" } };
+
+  // 1. the node's CURRENT authored config (template) is the base the edit applies on top of.
+  let node;
+  try {
+    node = await readNodeConfig(templateDir, nodeId);
+  } catch (e) {
+    return { ok: false, status: 404, body: { error: String(e?.message ?? e) } };
+  }
+
+  // 2. apply the chip in memory (validates the chip; throws WritebackError on malformed → 400).
+  let mutated;
+  try {
+    ({ node: mutated } = applyEdit(node, nodeId, edit));
+  } catch (e) {
+    return { ok: false, status: 400, body: { error: String(e?.message ?? e), reasons: e?.reasons } };
+  }
+
+  // 3. the mutated node must still satisfy nodeSchema (the SAME gate the template write runs).
+  if (validate) {
+    const { ok, errors } = validate(nodeSchemaFor(), mutated);
+    if (!ok) return { ok: false, status: 400, body: { error: "edit would make node.json invalid", reasons: errors } };
+  }
+
+  // 4. the run's `.pi/run.json` — the target must be a real run node.
+  const runJsonFile = join(runDir, ".pi", "run.json");
+  let runJson;
+  try {
+    runJson = JSON.parse(await readFile(runJsonFile, "utf8"));
+  } catch {
+    return { ok: false, status: 404, body: { error: `no run.json for this run at ${runJsonFile}` } };
+  }
+  const nodes = runJson && typeof runJson === "object" ? runJson.nodes : undefined;
+  if (!nodes || typeof nodes !== "object" || !nodes[nodeId]) {
+    return { ok: false, status: 404, body: { error: `node "${nodeId}" is not in this run` } };
+  }
+
+  // 5. fold the mutated node → the canonical GateSummary, and set it on the run node's config (verbatim the
+  //    shape a real run's finishNode would have written). Preserve any other config fields already recorded.
+  const gates = typeof summarize === "function" ? summarize(mutated) : undefined;
+  const rec = nodes[nodeId];
+  const prevConfig = rec.config && typeof rec.config === "object" ? rec.config : {};
+  rec.config = { ...prevConfig, ...(gates ? { gates } : {}) };
+
+  // 6. atomic write-back of run.json (the same atomic write the template path uses).
+  await atomicWrite(runJsonFile, JSON.stringify(runJson, null, 2) + "\n");
+  return { ok: true, status: 200, body: { ok: true, node: mutated, ...(gates ? { gates } : {}), scope: "run" }, file: runJsonFile };
+}
+
 // The schema object is injected by the plugin (it imports core's dist); in the test we pass the validator
 // a closed-over schema. This indirection keeps THIS lib free of a static core import (esbuild never
 // bundles core into the Vite config — same reason the index/checkpoint libs load core by absolute path).
