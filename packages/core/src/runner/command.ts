@@ -27,7 +27,8 @@ export interface CommandContext {
   promptFile: string;
   /** Optional model pin (provider's default model is used when omitted). */
   model?: string;
-  /** Provider name passed to `pi --provider` (default 'cp'). */
+  /** Provider name passed to `pi --provider` — ONLY stamped alongside `model` (pi ignores a lone `--provider`).
+   *  Omitted ⇒ pi resolves its own settings.json default; never defaulted to a hardcoded name here. */
   provider?: string;
   /**
    * In-sandbox path to the generated tool `-e` extension, when the node selected sdk/mcp tools. The
@@ -56,8 +57,9 @@ function q(s: string): string {
  * auto-approve tools) + `--no-session` (ephemeral — DROPPED when `opts.session` requests a persisted
  * per-node session; see the session block below), `--offline` (suppress pi's startup network chatter;
  * the model call still works), `--no-extensions` (+ explicit `-e` still loads), `--no-context-files`
- * (a node runs on ONLY the driver's prompt — no repo AGENTS.md/CLAUDE.md leak), `--provider cp`,
- * `--model` only when pinned, `--tools <resolved.piTools joined by ,>`, `--exclude-tools
+ * (a node runs on ONLY the driver's prompt — no repo AGENTS.md/CLAUDE.md leak), `--provider`+`--model` as a
+ * PAIR only when both resolve (else neither — pi ignores a lone `--provider` and uses its settings.json default),
+ * `--tools <resolved.piTools joined by ,>`, `--exclude-tools
  * <resolved.excludeTools joined by ,>` when the selection denied any, `--thinking <v>` only when
  * `opts.thinking` is set, each `opts.extraExtensions` as `-e <path>` BEFORE `-e <ctx.extensionFile>`
  * (the staged generated tool extension), and the prompt as `@<file>`. Closes stdin (the runner does —
@@ -67,7 +69,6 @@ function q(s: string): string {
  * byte-identical to before.
  */
 export const defaultPiCommand: CommandBuilder = (node, resolved, ctx, opts = {}) => {
-  const provider = ctx.provider ?? 'cp';
   // SESSION wiring (warm-resume §4a): `--no-session` (ephemeral) and a persisted session dir are mutually
   // exclusive. With session opts present, persist+locate the session under `--session-dir` and address it by
   // id — `--session-id <id>` CREATES it (first attempt, caller-minted id), `--session <id>` RESUMES it (warm
@@ -79,8 +80,13 @@ export const defaultPiCommand: CommandBuilder = (node, resolved, ctx, opts = {})
   const parts: string[] = [
     'pi', '-p', '--mode', 'json', '-a', ...sessionFlags,
     '--offline', '--no-extensions', '--no-context-files',
-    '--provider', provider,
   ];
+  // Provider+model are stamped as a PAIR — never a bare `--provider`, never a hardcoded name. pi honors
+  // `--provider` ONLY when `--model` is also given (a lone `--provider` is silently IGNORED and pi falls back
+  // to its own `settings.json` default). So: both set ⇒ pin the pair; model-only ⇒ pi infers the provider from
+  // the model; NEITHER ⇒ pi uses its single system default (`~/.pi/agent/settings.json`). The concrete default
+  // lives in that one config, so a model swap touches no code (see model-routing.ts `loadPiDefaults`).
+  if (ctx.provider && ctx.model) parts.push('--provider', ctx.provider);
   if (ctx.model) parts.push('--model', ctx.model);
   if (resolved.piTools.length) parts.push('--tools', resolved.piTools.join(','));
   if (resolved.excludeTools?.length) parts.push('--exclude-tools', resolved.excludeTools.join(','));

@@ -27,6 +27,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { defaultPiCommand } from '../runner/command.js';
+import { loadPiDefaults } from '../runner/model-routing.js';
 import { type NodeSpec, type ResolveResult, type SecretResolver, defaultSecretResolver } from '../types.js';
 import { resolveEntry, type OpenClawPluginEntry } from './openclaw-shim.js';
 
@@ -207,7 +208,7 @@ export interface RunEmbeddedAgentParamsSubset {
   workspaceDir?: string;
   /** Pin the model (`pi --model`). When absent, pi's provider default is used. */
   model?: string;
-  /** Provider for `pi --provider` (default 'cp', matching the runner). */
+  /** Provider for `pi --provider`. Absent ⇒ the single system default (settings.json), matching the runner. */
   provider?: string;
   /** Hard wall-clock cap for the nested run (ms). */
   timeoutMs?: number;
@@ -324,7 +325,11 @@ export async function runEmbeddedAgentViaPi(
   runPi: RunPiCommand = defaultRunPiCommand,
 ): Promise<EmbeddedAgentRunResultShape> {
   const t0 = Date.now();
-  const provider = typeof params.provider === 'string' && params.provider ? params.provider : 'cp';
+  // Provider+model for the nested pi come from params, else the single system default (settings.json) — never a
+  // hardcoded name. defaultPiCommand stamps them as a pair (a lone provider is ignored by pi anyway).
+  const sys = loadPiDefaults();
+  const provider = (typeof params.provider === 'string' && params.provider) ? params.provider : sys.provider;
+  const model = (typeof params.model === 'string' && params.model) ? params.model : sys.model;
   const timeoutMs = typeof params.timeoutMs === 'number' && params.timeoutMs > 0 ? params.timeoutMs : 1_800_000;
 
   const err = (text: string): EmbeddedAgentRunResultShape => ({
@@ -353,7 +358,7 @@ export async function runEmbeddedAgentViaPi(
     const resolved: ResolveResult = { piTools: [] };
     const command = defaultPiCommand(node, resolved, {
       promptFile,
-      model: typeof params.model === 'string' && params.model ? params.model : undefined,
+      model,
       provider,
     });
 

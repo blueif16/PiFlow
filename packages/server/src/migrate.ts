@@ -82,7 +82,8 @@ export function makePiflowMigrate(allowedTemplates?: string[] | null): Middlewar
 
       // PRESERVE the source run's launch config: recover provider/model from the just-unpacked `.pi/run.json`
       // (RunStatus.provider/.model) for any the query didn't carry — so the migrated tail keeps the source's
-      // model gateway + model instead of resuming on the runner defaults ("cp"). Only these are persisted at
+      // model gateway + model instead of resuming on the runner's system default (settings.json). A run NEVER
+      // hardcodes a model name; it carries the resolved pair forward. Only these are persisted at
       // run start; --thinking and per-node --executor are NOT, so they cannot be recovered here.
       const runJson = await readRunJson(destRunDir);
       if (!body.provider && runJson?.provider) body.provider = runJson.provider;

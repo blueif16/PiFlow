@@ -27,6 +27,7 @@ import {
   effectiveModel,
   loadModelTiers,
   loadModelsIndex,
+  loadPiDefaults,
   expandFusion,
   expandSubworkflow,
   loadFusionConfig,
@@ -91,6 +92,8 @@ export interface RunDeps {
   runFromConfig?: (config: ResolvedRunConfig) => Promise<RunResult>;
   /** The LIVE template-run join — loadTemplate → instantiateRun → compile → runWorkflow, INSIDE core. */
   runFromTemplate?: (templateDir: string, opts: RunFromTemplateOpts) => Promise<RunResult>;
+  /** Resolve the single system-default provider+model (pi's settings.json). Injectable so tests are hermetic. */
+  loadPiDefaults?: () => { provider?: string; model?: string };
   /**
    * Factory for the `--sandbox local` real-exec provider (injectable so a test asserts the instance).
    * `dangerous:true` ⇒ the `danger-full-access` bypass (read-scope jail OFF); default ⇒ secure-by-default.
@@ -288,9 +291,10 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
 export interface DryRunPlanOpts {
   /** Where the staged prompt lives (referenced as `@<file>`). Default a placeholder `_pi` dir. */
   promptDir?: string;
-  /** Provider name the command builder stamps (`pi --provider`). Default 'cp'. */
+  /** Effective provider (`pi --provider`) — the resolved system default or an explicit override; undefined ⇒
+   *  no `--provider`/`--model` stamped (pi's own default). No hardcoded name. */
   provider?: string;
-  /** Model pin, if any. */
+  /** Effective model (`pi --model`), if resolved. */
   model?: string;
   /** Reasoning-depth cap → `pi --thinking <v>`. Rendered only when set, mirroring the LIVE command. */
   thinking?: string;
@@ -315,7 +319,9 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
   // superset `assembleRunTools` builds — else a node declaring `submit_result` falsely reads UNRESOLVED.
   const registry = seededRegistry([SUBMIT_RESULT_TOOL]);
   const promptDir = opts.promptDir ?? '_pi';
-  const provider = opts.provider ?? 'cp';
+  // Undefined ⇒ neither `--provider` nor `--model` is stamped and pi uses its own settings.json default (the
+  // preview mirrors the live command exactly — no hardcoded provider name).
+  const provider = opts.provider;
   // G1 — resolve the SAME per-node effective model/provider the runner will (read-only global config).
   const tiers = loadModelTiers();
   const modelsIndex = loadModelsIndex();
@@ -519,6 +525,14 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   // run is traceable to its prompt WITHOUT the run id BEING the prompt id.
   const promptId = parsed.args.promptId ?? parsed.args.prompt;
 
+  // The effective provider+model as a PAIR: an explicit `--provider`/`--model` wins, else the single system
+  // default (pi's `settings.json` via `loadPiDefaults`). NO hardcoded provider/model name — a model swap is a
+  // settings.json edit that changes nothing here. Threaded to both the dry-run preview and the live run; the
+  // command builder stamps them together or neither (pi ignores a lone `--provider`).
+  const piDefaults = (deps.loadPiDefaults ?? loadPiDefaults)();
+  const effProvider = parsed.provider ?? piDefaults.provider;
+  const effModel = parsed.model ?? piDefaults.model;
+
   // ── DRY-RUN: build + materialize + print, but invoke NO model. ──
   if (parsed.dryRun) {
     const loaded = await loadTemplate(templateDir);
@@ -551,8 +565,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
       ...(promptId ? { promptId } : {}),
       source: wf.meta.name,
       profile: parsed.profile ?? null,
-      provider: parsed.provider ?? 'cp',
-      model: parsed.model ?? null,
+      provider: effProvider,
+      model: effModel ?? null,
       startedAt: ts,
       updatedAt: ts,
       done: true,
@@ -570,7 +584,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     await writeStatus(outDir, dryStatus);
     // reference the actual realized prompt path the run materialized (engine-owned layout helper).
     const samplePromptDir = nodePromptFile(outDir, '<id>').replace(/\/<id>\/prompt\.md$/, '');
-    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: parsed.provider ?? 'cp', model: parsed.model, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride }));
+    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: effProvider, model: effModel, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride }));
     print(`piflowctl run: dry-run materialized a viewable plan at ${outDir} (open it: piflowctl gui / piflowctl status ${outDir}). Nodes are status "dry" — no model ran.`);
     return undefined;
   }
@@ -722,9 +736,9 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     until: parsed.until,
     ...(parsed.noResume ? { noResume: true } : {}),
     profile: parsed.profile,
-    providerName: parsed.provider,
+    providerName: effProvider,
     thinking: parsed.thinking,
-    model: parsed.model,
+    model: effModel,
     // Run-start executor selection (run-level default + per-node overrides) — pick pi vs claude-code WITHOUT
     // editing the template. Threaded through RunOptions (executor/executorOverride) to node-lifecycle's
     // resolveExecutor. Omitted when absent so a run with no --executor stays byte-identical.

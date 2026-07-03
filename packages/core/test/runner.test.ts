@@ -647,15 +647,40 @@ describe('runWorkflow — claude-code node derives its verdict from parseClaudeR
 describe('defaultPiCommand — production headless flags', () => {
   it('builds the headless pi invocation with provider, tools, and @prompt', () => {
     const node = compile(wf([n('X', [], ['x.txt'])])).nodes.x;
-    const cmd = defaultPiCommand(node, { piTools: ['read', 'write'] }, { promptFile: '_pi/prompt.md', provider: 'cp', model: 'm1' });
+    const cmd = defaultPiCommand(node, { piTools: ['read', 'write'] }, { promptFile: '_pi/prompt.md', provider: 'mmgw', model: 'm1' });
     expect(cmd).toContain('pi -p --mode json -a --no-session --offline --no-extensions --no-context-files');
-    expect(cmd).toContain('--provider cp');
+    expect(cmd).toContain('--provider mmgw');
     expect(cmd).toContain('--model m1');
     expect(cmd).toContain('--tools read,write');
     expect(cmd).toMatch(/@'_pi\/prompt\.md'$/);
     // back-compat: the 3-arg call carries NEITHER of U4's new flags.
     expect(cmd).not.toContain('--exclude-tools');
     expect(cmd).not.toContain('--thinking');
+  });
+
+  // provider+model are stamped as a PAIR and NEVER a hardcoded name. pi ignores a lone `--provider`, so the
+  // builder must: pin BOTH when both resolve, stamp model-only, and — critically — stamp NEITHER when neither
+  // resolves (the single system default, settings.json, is what pi then uses; there is no `--provider cp` floor).
+  it('stamps --provider ONLY alongside --model (a lone provider is dropped — pi ignores it)', () => {
+    const node = compile(wf([n('X', [], ['x.txt'])])).nodes.x;
+    const cmd = defaultPiCommand(node, { piTools: ['read'] }, { promptFile: '_pi/prompt.md', provider: 'mmgw' });
+    expect(cmd).not.toContain('--provider'); // no model ⇒ provider is meaningless to pi ⇒ dropped
+    expect(cmd).not.toContain('--model');
+  });
+
+  it('stamps --model alone when only a model resolves (pi infers the provider from the model)', () => {
+    const node = compile(wf([n('X', [], ['x.txt'])])).nodes.x;
+    const cmd = defaultPiCommand(node, { piTools: ['read'] }, { promptFile: '_pi/prompt.md', model: 'm1' });
+    expect(cmd).toContain('--model m1');
+    expect(cmd).not.toContain('--provider');
+  });
+
+  it('stamps NEITHER --provider NOR --model when neither resolves — NO hardcoded `--provider cp` floor', () => {
+    const node = compile(wf([n('X', [], ['x.txt'])])).nodes.x;
+    const cmd = defaultPiCommand(node, { piTools: ['read'] }, { promptFile: '_pi/prompt.md' });
+    expect(cmd).not.toContain('--provider');
+    expect(cmd).not.toContain('--model');
+    expect(cmd).not.toContain('cp'); // the old default is gone entirely
   });
 
   it('emits --exclude-tools from resolved.excludeTools (NOT a node.tools read)', () => {
