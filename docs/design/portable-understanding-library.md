@@ -102,21 +102,20 @@ Ordered by dependency. Each names its **falsifiable acceptance bar** and its **g
   `memory-leg` card's anchor drift → auto-repaired (`understand.ts:157 → :132`, span-verified). The
   self-maintaining loop fired on its own construction.
 
-### M2 — Promote the skills to GLOBAL + make them portable-complete  · OPEN · the portability primitive
-- **What:** move `okf-slices` + `memory-slices` to `~/.claude/skills/` (the portable brain). Edit them
-  (via `agentic-prompt-design`) for two things they lack: (i) a **CLI-optional contract** — prefer
-  `piflowctl understand`, fall back to `node .agents/okf/topics/_generate.mjs --find`; (ii) a **SETUP
-  mode** — an explicit procedure the agent follows to seed `.agents/okf/` into an unseeded repo. Carry
-  the canonical `_generate.mjs` as `assets/_generate.mjs`.
-- **Acceptance bar:** the skill triggers in a NON-piflow repo (no per-repo install); its instructions
-  never assume `piflowctl` exists; the bundled `assets/_generate.mjs` is **byte-identical** to piflow's
-  live engine (enforced — see M2-drift). Keep the piflow project copy too (dev repo).
-- **M2-drift:** a check that `assets/_generate.mjs` == `.agents/okf/topics/_generate.mjs` (fail-on-diff),
-  so the distribution copy can never rot. Wire it into the same pre-commit gate.
-- **Gate:** eval — the skill, loaded globally, produces the right FIND/SETUP routing on a seeded and an
-  unseeded fixture repo (deterministic checks first, per `test-discipline` evals row).
+### M2 — Promote the skills to GLOBAL + make them portable-complete  · ✅ SHIPPED (merge `87d9e23`) · the portability primitive
+- **As built:** `okf-slices` + `memory-slices` promoted to `~/.claude/skills/` (present in every repo). The
+  skill was edited (under `agentic-prompt-design`) for (i) a **CLI-optional contract** (every op has a standalone
+  `node …/_generate.mjs …` form; `piflowctl` is a fast accessor), (ii) FIND via the shipped `--find` ranker
+  (replacing the manual grep step), and (iii) a **MODE S — SETUP** procedure (output shape · bar · scope fence ·
+  self-check). The engine is carried under `assets/{_generate.mjs, _rank.mjs, okf.config.template.json}`.
+- **Acceptance bar — MET:** the global skill's bundled engine works standalone (proven: seatbelt→sandbox 143 via
+  `~/.claude/skills/okf-slices/assets/_generate.mjs`); a **fresh, non-piflow temp repo** was MODE-S-seeded from the
+  global skill on `node` alone → `--check` exit 0 (empty-but-valid) → authored a card → FIND resolved it.
+- **M2-drift — DONE:** `packages/cli/test/skill-assets-parity.test.ts` asserts `assets/*.mjs` byte-identical to the
+  canonical engine (fail-on-diff, mutation-proven) — the distribution copy can't silently rot.
+- **Gate — DONE:** 428 cli tests green. (Deferred: a promptfoo-style eval of the skill's FIND/SETUP routing.)
 
-### M3 — Skill-driven SEED / upgrade of a repo  (piflowctl init = optional fast path)  · OPEN
+### M3 — Skill-driven SEED / upgrade of a repo  (piflowctl init = optional fast path)  · ◑ CORE SHIPPED in M2 (MODE S); init verb OPEN
 - **What:** the primary path is the M2 skill's SETUP mode — the agent, in any product, seeds
   `.agents/okf/{topics/_generate.mjs, okf.config.json}` by copying the skill's bundled engine + writing a
   config. Two sub-paths: **fresh-seed** (no `.agents/okf/`) and **upgrade** (a *stale* one — swap the
