@@ -11,6 +11,7 @@
  */
 import { createContext, useContext } from "react";
 import type { GateChip, AuthoredNodeConfig } from "../data/runView";
+import type { RailKind } from "../data/gates";
 
 export interface ComposeApi {
   /** True while the Compose view-mode is active (nodes paint their gate drop-targets). */
@@ -20,8 +21,12 @@ export interface ComposeApi {
   /** node id → its authored config (op[]/checkpoint/tier) — the badge's source of truth. */
   configs: Record<string, AuthoredNodeConfig>;
   /** Drop a gate chip onto a node → mutate the template node.json (append to op[] / set checkpoint).
-   *  Resolves ok/error/stub for UI feedback; on success the node's config is refreshed upstream. */
+   *  Resolves ok/error/stub for UI feedback; on success the node's config is refreshed upstream. Called by
+   *  the drop card's "Create gate", NOT on the raw drop (the drop opens the card via `openCard`). */
   dropChip: (nodeId: string, chip: GateChip) => Promise<{ ok: boolean; error?: string; stub?: boolean }>;
+  /** Open the natural-language drop card at a node, anchored to the drop target's screen rect. The rail's
+   *  drop only records the intent (node + kind + anchor); the write happens on the card's "Create gate". */
+  openCard: (nodeId: string, kind: RailKind, anchor: { top: number; left: number; bottom: number; right: number }) => void;
 }
 
 export const ComposeContext = createContext<ComposeApi>({
@@ -29,6 +34,7 @@ export const ComposeContext = createContext<ComposeApi>({
   run: "",
   configs: {},
   dropChip: async () => ({ ok: false, error: "compose not active" }),
+  openCard: () => {},
 });
 
 export const useCompose = () => useContext(ComposeContext);

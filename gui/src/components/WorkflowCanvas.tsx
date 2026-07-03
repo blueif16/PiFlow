@@ -59,8 +59,10 @@ import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { FusionContext, type FusionMode } from "./FusionContext";
 import { FusionSaveBar } from "./FusionSaveBar";
 import { ComposeContext } from "./ComposeContext";
-import { ChipPalette } from "./ChipPalette";
+import { GateRail } from "./GateRail";
+import { GateDropCard, type DropCardTarget } from "./GateDropCard";
 import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, runViewToLiveModel, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
+import type { RailKind } from "../data/gates";
 import { deriveZones, toZoneFlowNode, type ZoneFlowNode } from "../data/zones";
 import { loadIndex, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
 import { useRunStream, RunStreamContext } from "../data/runStream";
@@ -91,6 +93,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // pipeline badge's source of truth (the run-view distillation does NOT carry the template op[]). Loaded
   // lazily when Compose mode opens; refreshed for a single node after a chip drops.
   const [nodeConfigs, setNodeConfigs] = useState<Record<string, AuthoredNodeConfig>>({});
+  // (Compose mode) the open drop card — a rail gate dropped on a node opens the natural-language card at it;
+  // "Create gate" writes the template. Null = no card open.
+  const [dropCard, setDropCard] = useState<DropCardTarget | null>(null);
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
   const [digestOpen, setDigestOpen] = useState(false); // left-edge run digest; launched by the "D" key
   const [startOpen, setStartOpen] = useState(false); // the "Start a run" launcher modal (from the MenuBar)
@@ -412,13 +417,18 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     return { ok: r.ok, error: r.error, stub: r.stub };
   }, [activeRun]);
 
+  // (Compose mode) a rail gate dropped on a node opens the drop card anchored at the drop target.
+  const openCard = useCallback((nodeId: string, kind: RailKind, anchor: { top: number; left: number; bottom: number; right: number }) => {
+    setDropCard({ nodeId, kind, anchor });
+  }, []);
+
   const composeApi = useMemo(
-    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip }),
-    [mode, activeRun, nodeConfigs, dropChip],
+    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip, openCard }),
+    [mode, activeRun, nodeConfigs, dropChip, openCard],
   );
 
-  // Leaving Compose mode drops the loaded configs (re-fetched fresh on re-entry).
-  useEffect(() => { if (mode !== "compose") setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); }, [mode]);
+  // Leaving Compose mode drops the loaded configs (re-fetched fresh on re-entry) + closes any open card.
+  useEffect(() => { if (mode !== "compose") { setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); setDropCard(null); } }, [mode]);
 
   // A backdrop zone is non-selectable, so the expanded node is always a real card — narrow before reading data.
   const expandedNode = nodes.find((n) => n.id === expandedId);
@@ -505,7 +515,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           <EndpointSwitcher />
           <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen} />
           <FusionSaveBar active={mode === "fusion"} />
-          <ChipPalette active={mode === "compose"} />
+          {/* (Compose mode) the left-edge hexagon gate rail (drag source) + the natural-language drop card. */}
+          <GateRail active={mode === "compose"} />
+          <GateDropCard card={mode === "compose" ? dropCard : null} onClose={() => setDropCard(null)} dropChip={dropChip} />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.
               Clicking an anomaly/onset node focuses that node on the canvas. */}

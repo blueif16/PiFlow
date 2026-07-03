@@ -1,0 +1,175 @@
+/* GateRail + GateDropCard — the compose editor's drag source (left-edge hexagon rail) and the natural-language
+   drop card. Floating-chrome idiom (the a941c34 convention): a body-portal layer with pointer-events:none, so
+   only the interactive hexes/card take pointer events and nothing ever covers canvas content. */
+
+/* ── The rail: a vertical stack of hexagons on the LEFT edge, clear of RUN FILES (top-left) + zoom (bottom-left) ── */
+.ds-gaterail-layer {
+  position: fixed;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: var(--ds-z-rail);
+  pointer-events: none; /* only the rail items are interactive */
+}
+.ds-gaterail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* a rail item = a resting hexagon that EXPANDS in place on hover/focus to reveal name + one-line description */
+.ds-rail-item {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--ds-radius-lg);
+  background: transparent;
+  cursor: grab;
+  text-align: left;
+  color: inherit;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-rail-item:active { cursor: grabbing; }
+.ds-rail-item .ds-hex { --hex-size: 38px; --hex-border: 2px; }
+
+/* the label reveals on hover/focus — collapsed (0 width) at rest so the rail is just hexagons */
+.ds-rail-item__label {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  transition: max-width var(--ds-dur-base) var(--ds-ease-standard),
+              opacity var(--ds-dur-fast) var(--ds-ease-standard),
+              margin-left var(--ds-dur-base) var(--ds-ease-standard);
+}
+.ds-rail-item:hover,
+.ds-rail-item:focus-visible {
+  background: var(--ds-glass-bg-strong, #fff);
+  border-color: var(--ds-border-hairline);
+  box-shadow: var(--ds-shadow-md);
+  outline: none;
+}
+.ds-rail-item:hover .ds-rail-item__label,
+.ds-rail-item:focus-visible .ds-rail-item__label {
+  max-width: 260px;
+  opacity: 1;
+  margin-left: 10px;
+  padding-right: 8px;
+}
+.ds-rail-item__name {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ds-text-primary);
+}
+.ds-rail-item__desc {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+
+/* ── The drop card: a small anchored popover with ONE textarea + ONE primary button ── */
+.ds-dropcard {
+  position: fixed;
+  z-index: var(--ds-z-popover);
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  padding: 12px;
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-glass-bg-strong, #fff);
+  border: 1px solid var(--ds-border-hairline);
+  box-shadow: var(--ds-shadow-lg, var(--ds-shadow-md));
+}
+.ds-dropcard__head { display: flex; align-items: center; gap: 8px; }
+.ds-dropcard__title {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-primary);
+}
+.ds-dropcard__sub {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-secondary);
+}
+.ds-dropcard__ta {
+  width: 100%;
+  min-height: 74px;
+  resize: vertical;
+  padding: 8px 9px;
+  border: 1px solid var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-surface);
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  line-height: var(--ds-leading-relaxed);
+  color: var(--ds-text-primary);
+  box-sizing: border-box;
+}
+.ds-dropcard__ta:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; border-color: var(--ds-accent); }
+.ds-dropcard__foot { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.ds-dropcard__cancel {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  color: var(--ds-text-secondary);
+}
+.ds-dropcard__cancel:hover { background: var(--ds-bg-hover); }
+.ds-dropcard__create {
+  height: 28px;
+  padding: 0 14px;
+  border: 1px solid var(--ds-accent);
+  background: var(--ds-accent);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-medium);
+  color: #fff;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-dropcard__create:hover:not(:disabled) { background: var(--ds-accent-active); }
+.ds-dropcard__create:disabled { opacity: 0.5; cursor: not-allowed; }
+.ds-dropcard__create:focus-visible,
+.ds-dropcard__cancel:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+/* the FULL server error — wraps, never truncated (compose-gate-audit.md §4.1: kill the 28-char truncation) */
+.ds-dropcard__err {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  line-height: 1.5;
+  color: var(--ds-error-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.ds-dropcard__notice {
+  font-family: var(--ds-font-sans);
+  font-size: var(--ds-text-xs);
+  line-height: 1.5;
+  color: var(--ds-text-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-rail-item,
+  .ds-rail-item__label,
+  .ds-dropcard__create { transition: none; }
+}
