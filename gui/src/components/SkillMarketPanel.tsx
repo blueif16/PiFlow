@@ -209,8 +209,13 @@ function RemoteSkillCard({ skill }: { skill: RemoteSkill }) {
 
       {skill.description && <p className="ds-skillcard__desc">{skill.description}</p>}
 
+      {/* the VISIBLE install affordance: the exact command, one click to copy — never only a tooltip */}
+      <div className={`ds-skillcard__cmd${copied ? " is-copied" : ""}`} aria-live="polite">
+        <code className="ds-skillcard__cmdtext">{cmd}</code>
+        <span className="ds-skillcard__cmdcopy">{copied ? "copied ✓" : "copy"}</span>
+      </div>
+
       <div className="ds-skillcard__badges">
-        {copied && <span className="ds-skillcard__badge" data-tone="muted">install command copied</span>}
         {skill.author && <span className="ds-skillcard__badge" data-tone="muted">{skill.author}</span>}
         <a
           className="ds-skillcard__srclink"
