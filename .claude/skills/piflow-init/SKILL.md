@@ -55,6 +55,15 @@ that is how a silent, wrong workflow gets built.
 - **Mechanical port = the floor, not the finish.** `references/parse-claude-workflow.md` names what the script
   CANNOT recover (data-flow reads, hooks, the contract decisions) and how to refine it. Read that before you
   ship the template.
+- **PORT = TRANSLATE the source's INTENT into our idioms; never transcribe its STRUCTURE.** The source graph
+  (Claude `.js` / LangGraph) is a spec of intent, not a shape to mirror — a step that was a graph node THERE is
+  not automatically a `pi` node HERE. Understand our functionality FIRST, then map each step to its MOST NATIVE
+  construct: an agentic step → a `pi` node; a deterministic step that STAGES a file the model reads → a PRE-hook
+  seed; a deterministic step that RUNS a fetch or ESTABLISHES shared state → an upstream `programmatic` node +
+  `promote`; a human pause → a `checkpoint`; a QA/fix loop → `rerouteTo`/`--from`; a build/test gate → an `op`
+  gate. **The #1 port smell — a `pi` node whose whole prompt is "run X and return its output" — is a pass-through
+  the source happened to model as a node; it MUST become a hook or a `programmatic` node, NEVER a `pi`.** You are
+  re-expressing the workflow in our SDK, not adding nodes.
 - **New conditions are a new row + a new reference + (if programmatic) a new script — never more prose here.**
 - **The scaffold loop IS the convenience pathway — author by flags, never by hand-writing node JSON.** Stamp any
   template (COMPOSE, or extend a PORT) with the CLI: `piflowctl new <dir>` → per node `piflowctl add-node <dir>
@@ -284,6 +293,19 @@ are in `reference/sdk-consumer.md` — read it first.** The flow:
   artifact is the conflation this law forbids — it makes the node un-removable, re-introduces "the student
   grades its own homework," and breaks the mode toggle below. Split it: a producer makes the artifact, the
   verifier judges it.
+- **Four re-attempt axes — never conflate them (above all, never call reroute "retry").** Four distinct
+  mechanisms re-touch work; each has an OBSERVABLE discriminator. **VERIFY** = a gate node judges an
+  already-produced PRODUCT artifact and writes a pass/fail verdict — it re-runs nothing and creates nothing
+  load-bearing (its `VALIDATION_FAILED` is a value INSIDE the written JSON; the node run is still structurally
+  `ok`). **RETRY** (`runner/retry.ts` `runNodeWithRetries`) = the runner's mechanical bounded re-run of the
+  SAME node at the same DAG position because THAT node's own execution failed (`error`/`blocked`), with an
+  optional single model escalation — a runtime loop around one node, blind to any verify verdict. **REROUTE**
+  (`rerouteTo` → `expandReroute`) = a COMPILE-TIME DAG unroll that a verify node's on-failure action triggers
+  to re-invoke an ANCESTOR PRODUCER (a bounded self-fix QA loop), gated by structural artifact presence — a
+  different code path from RETRY. **SELF-OPTIMIZATION** (`piflowctl optimize`) = an out-of-band, human-gated,
+  cross-run edit of the node/template itself — it improves the NODE, never recovers a single run. The rule:
+  judges-the-product-and-writes-a-verdict → VERIFY; re-runs the SAME node because IT broke → RETRY; a verify
+  failure re-runs an EARLIER producer → REROUTE; changes the template between runs → OPTIMIZE.
 - **An output edit is not done until its CONSUMERS are reconciled — keep a node I/O map.** A node's output
   artifact is an INTERFACE other nodes read. Change what a node writes — its format, shape, filename, or
   fields — and you silently break every downstream node still reading the old shape (moving a design doc from
@@ -354,13 +376,21 @@ them, and where an edit must be reconciled against the rest. For every node:
   final pack-and-ship) it must spawn **no `pi`**. Author it as `programmatic: true` — no `prompt`, no `tools`,
   no `return`; its `hooks`/`op` (`run`/`merge`/`project`) + `checks` ARE the node, run + gated by the engine
   (`@piflow/core` dispatches it to `runProgrammatic`, the no-pi twin of `checkpoint`/`rerouteGate`). **Whether
-  it becomes its own node is MECHANICAL, not a complexity judgment:** default = fold the mechanical work into
-  the *consuming* agent node's PRE-hook (`DRIVER-SEED`) — reuse, zero new node. Promote it to its OWN
-  programmatic node ONLY when one holds: (1) **no consuming agent node is guaranteed to run on every run** — its
-  would-be host is elided by a shipped profile (companion drops the verify phase) or a bounded `--until`, so some
-  runs END on this producing step and nothing is left to carry the pre-hook; or (2) the step needs its **own
-  node-scoped `rerouteTo`** an ancestor (reroute is node-granular — a pre-hook op cannot carry it). A programmatic
-  node is almost always a TERMINAL producer for the short runs. The lesson render is the canonical (1): it must
+  it becomes its own node is MECHANICAL, not a complexity judgment.** A template PRE-hook can do exactly ONE
+  thing — **STAGE a file the consuming model then reads** (`DRIVER-SEED` → `{when:'pre', transform:seed}`); it
+  CANNOT run a shell command and CANNOT write shared state (`run` + `promote` are POST-only — op-dispatch
+  REJECTS a `when:'pre'` run — and a pre-hook fires at `node-lifecycle.ts:452`, AFTER the host node's own paths
+  (`:198`) and prompt (`:363`) already resolved). So the default — fold the mechanical work into the
+  *consuming* agent node's PRE-hook, reuse, zero new node — holds ONLY for pure file-staging. Promote it to its
+  OWN upstream `programmatic` node when ANY holds: (1) **no consuming agent node is guaranteed to run on every
+  run** — its would-be host is elided by a shipped profile (companion drops the verify phase) or a bounded
+  `--until`, so some runs END on this producing step and nothing is left to carry the pre-hook; (2) the step
+  needs its **own node-scoped `rerouteTo`** an ancestor (reroute is node-granular — a pre-hook op cannot carry
+  it); or (3) **the step RUNS a shell command or PROMOTES a value into shared state** (e.g. a DB/id `resolve`
+  that establishes `{{state.slug}}` for every downstream path) — a pre-hook can do neither, and a promoted value
+  reaches a consumer ONLY via a completed upstream node's POST `promote` merged at the stage barrier, so this
+  whole class is ALWAYS its own UPSTREAM programmatic node, never a pre-hook. A programmatic
+  node is a TERMINAL producer under (1)/(2) but an UPSTREAM establisher under (3). The lesson render is the canonical (1): it must
   run whether or not the verify wave does, so it is its own `programmatic` render node joining composer ∥ sketch —
   never the verifier's pre-hook. **Invariant:** the step's full control logic (blocking gate · retry · reroute)
   must read identically wherever it lives — a pre-hook is not a licence to carry weaker logic than a node would.
