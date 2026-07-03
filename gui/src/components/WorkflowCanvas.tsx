@@ -60,11 +60,15 @@ import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { FusionContext, type FusionMode } from "./FusionContext";
 import { FusionSaveBar } from "./FusionSaveBar";
 import { ComposeContext } from "./ComposeContext";
+import { BasisContext } from "./BasisContext";
 import { SkillContext } from "./SkillContext";
 import { SkillPanel } from "./SkillPanel";
 import { GateRail } from "./GateRail";
 import { GateDropCard, type DropCardTarget } from "./GateDropCard";
+import { AgentRail } from "./AgentRail";
+import { AgentDropCard, type AgentCardTarget } from "./AgentDropCard";
 import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, runViewToLiveModel, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
+import type { AgentChip } from "../data/agentChips";
 import type { RailKind } from "../data/gates";
 import { deriveZones, toZoneFlowNode, type ZoneFlowNode } from "../data/zones";
 import { loadIndex, pickCurrentRun, pickRunForWorkspace, workspaceOfRun, homeWorkspace, homeRoots, type GlobalIndex } from "../data/runIndex";
@@ -102,6 +106,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // (Compose · Slice 2) the node whose compose AGENT session is mid-wire — the target renders a pending hex
   // while composing; it solidifies from the run-view re-read once the gate lands. Null when idle.
   const [composingNodeId, setComposingNodeId] = useState<string | null>(null);
+  // (Basis mode · P1) the open base-agent reassign card — an AgentRail avatar dropped on a node's basis
+  // slot opens the confirm card at it; "Set base agent" writes the template. Null = no card open.
+  const [agentCard, setAgentCard] = useState<AgentCardTarget | null>(null);
   // (Slice 1.5) bumped after a RUN-first gate bake so the run-view re-loads even for a DONE run (whose poll
   // has stopped) — the newly-applied gate then appears on the graph without a manual reload.
   const [runViewNonce, setRunViewNonce] = useState(0);
@@ -236,6 +243,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
         ]);
         if (!alive) return;
         setLoadError(null);
+        setAgentCatalog(agents); // keep the held catalog fresh on the poll path too (AgentRail reads it)
         const { nodes: n, edges: e } = toFlowGraph(view, agents); // (G6) resolve preset icons by agentType
         // Prepend the derived backdrop zones (fusion clusters; template frame is dormant) — they're flat
         // nodes recomputed each poll, painted UNDER the cards via their negative zIndex. Same RunView shape
@@ -465,7 +473,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // lands on THIS run's `.pi/run.json` (visible on the run once the run-view re-polls), the template untouched.
   // "template" PROMOTES it durably (the original write-back path); on a template write we refresh that node's
   // AUTHORED config so the compose badge re-renders with the promoted gate. config is the single source of truth.
-  const dropChip = useCallback(async (nodeId: string, chip: GateChip, target: "run" | "template" = "run"): Promise<{ ok: boolean; error?: string; stub?: boolean }> => {
+  const dropChip = useCallback(async (nodeId: string, chip: GateChip | AgentChip, target: "run" | "template" = "run"): Promise<{ ok: boolean; error?: string; stub?: boolean }> => {
     if (!activeRun) return { ok: false, error: "no active run" };
     const r = await dropChipOnNode(activeRun, nodeId, chip, target);
     if (r.ok && target === "template") {
@@ -496,6 +504,17 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // Leaving Compose mode drops the loaded configs (re-fetched fresh on re-entry) + closes any open card.
   useEffect(() => { if (mode !== "compose") { setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); setDropCard(null); setComposingNodeId(null); } }, [mode]);
 
+  // (Basis mode · P1) an AgentRail avatar dropped on a node's basis slot opens the reassign confirm card.
+  const openAgentCard = useCallback((nodeId: string, agentType: string, current?: string) => {
+    setAgentCard({ nodeId, agentType, ...(current ? { current } : {}) });
+  }, []);
+  const basisApi = useMemo(
+    () => ({ openCard: openAgentCard, targetId: agentCard?.nodeId ?? null }),
+    [openAgentCard, agentCard],
+  );
+  // Leaving Basis mode closes any open reassign card (mirrors the Compose teardown).
+  useEffect(() => { if (mode !== "basis") setAgentCard(null); }, [mode]);
+
   // A backdrop zone is non-selectable, so the expanded node is always a real card — narrow before reading data.
   const expandedNode = nodes.find((n) => n.id === expandedId);
   const expandedData = expandedNode && isFlowNode(expandedNode) ? expandedNode.data : null;
@@ -513,6 +532,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       <ViewModeContext.Provider value={viewModeApi}>
       <FusionContext.Provider value={fusionApi}>
       <ComposeContext.Provider value={composeApi}>
+      <BasisContext.Provider value={basisApi}>
       <SkillContext.Provider value={skillApi}>
       <RunStreamContext.Provider value={live}>
       <LayoutGroup>
@@ -597,6 +617,17 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
               overlay is open — both are left-anchored, and the overlay is the focus. */}
           <GateRail active={mode === "compose" && !dropCard} />
+          {/* (Basis mode · P1) the left-edge base-agent rail (drag source) — every catalog base as a
+              draggable avatar. Same hide-while-the-card-is-open law as the GateRail. */}
+          <AgentRail active={mode === "basis" && !agentCard} catalog={agentCatalog} />
+          {/* The base-agent reassign confirm card (GateDropCard idiom, simpler): dragged base vs current,
+              one action — the TEMPLATE-ONLY agentType write through the same validated node-edit path. */}
+          <AgentDropCard
+            card={mode === "basis" ? agentCard : null}
+            catalog={agentCatalog}
+            onClose={() => setAgentCard(null)}
+            dropChip={dropChip}
+          />
           {/* The left-side gate-authoring overlay (mirror of the right-side Companion), bound to the node. For
               agent-composed kinds it drives a dedicated compose `pi` session (channel=compose) + reports which
               node is mid-compose so the canvas paints a pending hex on it. */}
@@ -621,6 +652,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       </LayoutGroup>
       </RunStreamContext.Provider>
       </SkillContext.Provider>
+      </BasisContext.Provider>
       </ComposeContext.Provider>
       </FusionContext.Provider>
       </ViewModeContext.Provider>

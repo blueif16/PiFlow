@@ -366,8 +366,10 @@ export const piflowTree: Middleware = async (req, res, next) => {
 
 // A SKILL.md bundle is read+parsed for the GUI's skill panel. Unlike piflowFile (jailed to the run/workspace),
 // skill bundles live OUTSIDE that jail — a bare id `X` is resolved as `<root>/X/SKILL.md` across the run's own
-// staged skills, the workspace, and the three home discovery dirs pi/Claude look in. Reads are CONFINED to that
-// known set of roots by realpath (never an arbitrary path), and size-capped like piflowFile.
+// staged skills, core's ring roots (the SAME ordered rings the runner stages a bare id from, via
+// `skillSearchRoots`), and the extra display-only fallbacks (the legacy workspace-root shape + the home
+// discovery dirs pi/Claude look in natively). Reads are CONFINED to that known set of roots by realpath
+// (never an arbitrary path), and size-capped like piflowFile.
 const MAX_SKILL_BYTES = 256 * 1024;
 
 /** `GET /__piflow/skill/<run>?skill=<id-or-path>` — read + parse a SKILL.md bundle (name/desc/requires/mcp/body). */
@@ -384,15 +386,24 @@ export const piflowSkill: Middleware = async (req, res, next) => {
   const runDir = resolved?.runDir ?? null;
   const workspaceRoot = resolved?.workspaceRoot ?? null;
   const home = homedir();
-  const homeRoots = [
-    join(home, ".piflow", "skills"),
-    join(home, ".claude", "skills"),
-    join(home, ".pi", "agent", "skills"),
-  ];
+
+  // The workspace/home rings come from core's `skillSearchRoots` — THE ordering the runner stages a bare
+  // id by (`[<ws>/.agents/skills, <piflowHome>/skills]`, PIFLOW_HOME-aware) — so what the panel shows is
+  // what the runtime stages (display ≡ staging, one source of truth). No workspace root ⇒ only the
+  // installed ring survives (drop the workspace-relative entry).
+  const locateMod = findCore("workflow/ops/skill-locate.js");
+  if (!locateMod) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
+  const { skillSearchRoots } = (await import(pathToFileURL(locateMod).href)) as {
+    skillSearchRoots: (workspace: string, piflowHome?: string) => string[];
+  };
+  const allRings = skillSearchRoots(workspaceRoot ?? ".");
+  const ringRoots = workspaceRoot ? allRings : allRings.slice(1);
+  // Display-only extras the runner never stages from: the home dirs pi/Claude discover skills in natively.
+  const discoveryRoots = [join(home, ".claude", "skills"), join(home, ".pi", "agent", "skills")];
   // The read allowlist (the jail): a resolved SKILL.md's realpath MUST live under one of these roots or it is
   // treated as a miss — never read an arbitrary path. Missing roots are simply skipped.
   const realRoots: string[] = [];
-  for (const r of [runDir, workspaceRoot, ...homeRoots]) {
+  for (const r of [runDir, workspaceRoot, ...ringRoots, ...discoveryRoots]) {
     if (!r) continue;
     try { realRoots.push(await realpath(r)); } catch { /* skip missing */ }
   }
@@ -418,9 +429,10 @@ export const piflowSkill: Middleware = async (req, res, next) => {
     if (isAbsolute(r)) candidates.push(r);
     else { if (workspaceRoot) candidates.push(join(workspaceRoot, r)); if (runDir) candidates.push(join(runDir, r)); }
   } else {
-    if (runDir) candidates.push(join(runDir, ".pi", "skills", ref));
-    if (workspaceRoot) { candidates.push(join(workspaceRoot, ref)); candidates.push(join(workspaceRoot, ".agents", "skills", ref)); }
-    for (const hr of homeRoots) candidates.push(join(hr, ref));
+    if (runDir) candidates.push(join(runDir, ".pi", "skills", ref)); // the run's own staged copy first
+    if (workspaceRoot) candidates.push(join(workspaceRoot, ref)); // legacy workspace-root shape (display-only; the runner never stages it)
+    for (const root of ringRoots) candidates.push(join(root, ref)); // core's rings, IN staging order
+    for (const hr of discoveryRoots) candidates.push(join(hr, ref));
   }
 
   let skillPath: string | null = null;
@@ -492,7 +504,7 @@ export const piflowCheckpointReply: Middleware = async (req, res, next) => {
 };
 
 /**
- * `GET /__piflow/agents.json` — the global agent-preset catalog (icons/colors) via core loadAgentPreset,
+ * `GET /__piflow/agents.json` — the global agent-preset catalog (icons/colors) via core listAgentPresets,
  * WIDENED (P4, §2.5) to ALSO carry the built-in DRIVER catalog: the discovery-card surface joined OUTSIDE
  * core (core still enumerates nothing — the server calls the pure static `describe()`). The preset rows are
  * kept intact (each agentType id stays a top-level key so the GUI's per-agentType lookup is unchanged); the
@@ -504,12 +516,11 @@ export const piflowAgents: Middleware = async (req, res, next) => {
   const core = findCore("index.js");
   if (!mod || !core) return sendJson(res, 500, { error: "@piflow/core agent-preset dist not found — run: npm run build (at repo root)" });
   try {
-    const { defaultAgentsDir, loadAgentPreset } = await import(pathToFileURL(mod).href);
+    const { listAgentPresets } = await import(pathToFileURL(mod).href);
     // (P4, §2.5) The built-in DRIVER catalog is joined OUTSIDE core: the server calls the pure static
     // `describe()` on each built-in driver (core still enumerates nothing). Presets do NOT carry an executor
     // (decision #3), so this is a FLAT catalog surface, not a per-preset mapping.
     const { builtinDrivers } = await import(pathToFileURL(core).href);
-    const dir = defaultAgentsDir();
     // A row is the preset's FULL public identity, not just display branding: the ROLE PROMPT (the base
     // agent's system prompt), skills, and tools ride the same row so the GUI's agent hover card renders
     // what a node inherited from its base without a second endpoint. Additive — display keys unchanged.
@@ -517,20 +528,21 @@ export const piflowAgents: Middleware = async (req, res, next) => {
       label?: string; icon?: string; color?: string;
       prompt?: string; skills?: string[]; tools?: unknown; model?: string; tier?: string;
     }> = {};
-    let files: string[] = [];
-    try { files = (await readdir(dir)).filter((f) => f.endsWith(".md")); } catch { /* no catalog yet ⇒ {} */ }
-    for (const f of files) {
-      const preset = loadAgentPreset(f.slice(0, -3), dir);
-      if (preset) {
-        catalog[preset.id] = {
-          ...(preset.display ?? {}),
-          ...(preset.prompt ? { prompt: preset.prompt } : {}),
-          ...(preset.skills?.length ? { skills: preset.skills } : {}),
-          ...(preset.tools ? { tools: preset.tools } : {}),
-          ...(preset.model ? { model: preset.model } : {}),
-          ...(preset.tier ? { tier: preset.tier } : {}),
-        };
-      }
+    // Enumeration is core's `listAgentPresets` (ONE source of truth: default dir, .md filter, malformed
+    // skip); the errors lane is dropped here — the response shape is FROZEN (rows + `drivers` only).
+    const { presets } = listAgentPresets() as { presets: Array<{
+      id: string; prompt?: string; display?: Record<string, string>;
+      skills?: string[]; tools?: unknown; model?: string; tier?: string;
+    }> };
+    for (const preset of presets) {
+      catalog[preset.id] = {
+        ...(preset.display ?? {}),
+        ...(preset.prompt ? { prompt: preset.prompt } : {}),
+        ...(preset.skills?.length ? { skills: preset.skills } : {}),
+        ...(preset.tools ? { tools: preset.tools } : {}),
+        ...(preset.model ? { model: preset.model } : {}),
+        ...(preset.tier ? { tier: preset.tier } : {}),
+      };
     }
     // Widen the response: the preset rows stay top-level keys (GUI per-agentType lookup unchanged); the
     // additive `drivers` array is each built-in driver's static descriptor card (§2.5 discovery surface).

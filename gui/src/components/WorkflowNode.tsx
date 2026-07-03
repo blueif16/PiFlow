@@ -20,6 +20,8 @@ import { useViewMode } from "./ViewModeContext";
 import { agentFace } from "./agentFaces";
 import { AgentHoverCard } from "./AgentHoverCard";
 import { useCompose } from "./ComposeContext";
+import { useBasis } from "./BasisContext";
+import { NodeAgentDrop } from "./NodeAgentDrop";
 import { NodeModeStrip } from "./NodeModeStrip";
 import { NodeFusionToggle } from "./NodeFusionToggle";
 import { NodeGateChips } from "./NodeGateChips";
@@ -237,6 +239,9 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   // (Compose mode) the node the open gate-authoring overlay is bound to — kept highlighted while authoring.
   const { targetId } = useCompose();
   const isComposeTarget = mode === "compose" && targetId === id;
+  // (Basis mode) the node the open base-agent reassign card is bound to — same highlight discipline.
+  const { targetId: basisTargetId } = useBasis();
+  const isBasisTarget = mode === "basis" && basisTargetId === id;
   const status: NodeStatus = data.status ?? (selected ? "selected" : "idle");
   // (G6) a preset node leads with its branded icon, tinted by the preset's color; otherwise the default
   // agent/file accent. The icon is purely cosmetic — it never changes status, layout, or behavior.
@@ -261,6 +266,7 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       data-kind={data.kind}
       {...(hasRuntimeGlyph ? { "data-runtime": data.runtime } : {})}
       {...(isComposeTarget ? { "data-compose-target": "true" } : {})}
+      {...(isBasisTarget ? { "data-basis-target": "true" } : {})}
       role="button"
       tabIndex={0}
       aria-label={`${data.kind} ${data.title}.${isCloud ? " Runs in cloud." : ""}${isUnlocked ? " Sandbox unlocked — full filesystem access." : ""} Press Enter to expand.`}
@@ -336,7 +342,16 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
         // run-first edits as "run-scoped" (Slice 1.5).
         <NodeGateChips nodeId={id} runGateCount={data.rv?.config?.gates?.entries.length ?? 0} />
       ) : (
-        mode && <NodeModeStrip mode={mode} data={data} />
+        mode && (
+          <>
+            <NodeModeStrip mode={mode} data={data} />
+            {/* (P1 basis rail) Basis mode ADDS a slim drop slot over the passive inheritance card: a base
+                agent dragged from the AgentRail opens the reassign confirm card (template-only write). */}
+            {mode === "basis" && data.kind === "agent" && (
+              <NodeAgentDrop nodeId={id} current={data.rv?.agentType ?? data.agentType} />
+            )}
+          </>
+        )
       )}
     </motion.div>
   );

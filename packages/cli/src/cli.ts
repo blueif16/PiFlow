@@ -36,6 +36,9 @@ import { runCloudCli } from './cloud.js';
 import { runServeCli } from '@piflow/server';
 import { runTuiCli } from './tui.js';
 import { runSkillsCli } from './skills.js';
+import { runAgentsCli } from './agents.js';
+import { runCatalogCli } from './catalog.js';
+import { runSkillCli } from './skill.js';
 import { runUnderstandCli } from './understand.js';
 import { runBlueprintCli } from './blueprint.js';
 import { createRequire } from 'node:module';
@@ -103,6 +106,14 @@ USAGE
                                             host secrets, the same way a node sandbox does.
   piflowctl tui     [<rundir>] [--every <s>]  launch the terminal run viewer, scoped to the project at cwd
   piflowctl skills  install [targetDir] [--force] [--with <id>|--all|--wizard]  install the authoring skills (+ add-ons) into a repo
+  piflowctl agents  list [--json]           the agentType preset catalog (~/.piflow/agents): id · label · skills · tools
+  piflowctl catalog sync [--base-url <u>] [--max-pages <n>] [--json] mirror the MCP registry's server directory
+                                            into ~/.piflow/catalog/mcp.index.json (incremental + tombstones)
+  piflowctl catalog introspect <server> [--json]  capture ONE server's real tools/list into its per-tool entries
+  piflowctl skill   list [--json] | search <q> [--json] | add <source> [--skill <name>] [--force]
+                                            the LOCAL skill rings a node's bare skill ref resolves through
+                                            (<ws>/.agents/skills → ~/.piflow/skills): list/search the resolvable
+                                            catalog · add = install a bundle (local dir | git URL | owner/repo)
   piflowctl understand [subsystem] [--check|--rebuild]  how a subsystem works / where to change it (code slices)
   piflowctl blueprint <list | show <id>>    discover DAG topologies to stamp: list = every 'id — description';
                                             show = the full recipe (topology + wiring) before you compose
@@ -350,6 +361,19 @@ async function main(): Promise<void> {
       break;
     case 'skills':
       await runSkillsCli(rest);
+      break;
+    case 'agents':
+      // DISCOVER over the agentType preset catalog (~/.piflow/agents) — the init agent's pick-a-preset surface.
+      process.exitCode = await runAgentsCli(rest);
+      break;
+    case 'catalog':
+      // FEDERATE verbs — thin wrappers over core's syncMcpCatalog/introspectMcpServer (all network in core).
+      process.exitCode = await runCatalogCli(rest);
+      break;
+    case 'skill':
+      // SINGULAR `skill` = the local skill-ring marketplace (list/search/add). DISTINCT from `skills`
+      // (installing piflow's own authoring skills into a repo's .claude/skills) — no shadowing.
+      process.exitCode = await runSkillCli(rest);
       break;
     case 'understand':
       await runUnderstandCli(rest);
