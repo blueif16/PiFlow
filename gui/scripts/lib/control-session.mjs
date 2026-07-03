@@ -25,6 +25,12 @@ import { join } from "node:path";
 export const CONTROL_SESSION_SUBDIR = ".pi-control";
 export const controlSessionDir = (runDir) => join(runDir, CONTROL_SESSION_SUBDIR);
 
+// (Slice 2) The COMPOSE channel's session store — a DEDICATED per-run dir, separate from the Companion's
+// `.pi-control`, so a compose-gate authoring pi never pollutes the chat history list and the two pis never
+// contend over the same conversation files. The HTTP layer passes this as `opts.sessionDir` to startSession.
+export const COMPOSE_SESSION_SUBDIR = ".pi-compose";
+export const composeSessionDir = (runDir) => join(runDir, COMPOSE_SESSION_SUBDIR);
+
 // ----------------------------------------------------------------------------------------------------
 // PURE helpers (no child, no I/O) — the framing/serialization contract the test pins.
 // ----------------------------------------------------------------------------------------------------
@@ -156,7 +162,9 @@ export function startSession(run, runDir, opts = {}) {
   const existing = sessions.get(run);
   if (existing && existing.alive) return { run, pid: existing.child.pid, reused: true };
 
-  const sessDir = controlSessionDir(runDir);
+  // (Slice 2) `opts.sessionDir` overrides the default per-run `.pi-control` store — the compose channel passes
+  // its dedicated `.pi-compose` dir so its conversations stay isolated from the Companion's history list.
+  const sessDir = opts.sessionDir || controlSessionDir(runDir);
   try { mkdirSync(sessDir, { recursive: true }); } catch { /* pi also creates it; best-effort */ }
 
   // `pi --mode rpc` ONLY — no -p, no --mode json, no --provider/--model (inherit settings). Owning the
@@ -170,7 +178,7 @@ export function startSession(run, runDir, opts = {}) {
   });
 
   /** @type {Session} */
-  const session = { run, runDir, child, subscribers: new Set(), alive: true, pending: new Map() };
+  const session = { run, runDir, sessionDir: sessDir, child, subscribers: new Set(), alive: true, pending: new Map() };
   sessions.set(run, session);
 
   // DOWN-channel: stdout → strict `\n`-JSONL → fan each frame out to every subscriber. The partial-line
@@ -317,7 +325,10 @@ async function activeSessionFile(run) {
  * `active` flags the entry whose id appears in the live pi's get_state.sessionFile (or none if not live).
  */
 export async function listSessions(run, runDir) {
-  const dir = controlSessionDir(runDir);
+  // A live session knows its own store (the compose channel's `.pi-compose`); fall back to the default control
+  // dir when no pi is up yet — so a channel's history list reads ITS conversations, never the Companion's.
+  const session = sessions.get(run);
+  const dir = session?.sessionDir || controlSessionDir(runDir);
   let files;
   try { files = readdirSync(dir).filter((f) => f.endsWith(".jsonl")); } catch { return []; }
   const activeFile = await activeSessionFile(run); // null if not live
@@ -371,7 +382,7 @@ export async function selectSession(run, runDir, sessionId) {
  * first turn). No live pi → spawn fresh (no `--session`). The new conversation then shows up in listSessions.
  * Returns `{ ok, mode }`.
  */
-export async function newChat(run, runDir) {
+export async function newChat(run, runDir, opts = {}) {
   const session = sessions.get(run);
   if (session && session.alive) {
     try {
@@ -384,7 +395,8 @@ export async function newChat(run, runDir) {
     }
   }
   try {
-    const handle = startSession(run, runDir, { fresh: true });
+    // dead pi → spawn fresh, carrying the channel's session-dir (opts.sessionDir) so a respawn stays isolated.
+    const handle = startSession(run, runDir, { fresh: true, ...opts });
     return { ok: true, status: 202, body: { ok: true, mode: "spawn-fresh", ...handle } };
   } catch (e) {
     return { ok: false, status: 500, body: { error: String(e) } };

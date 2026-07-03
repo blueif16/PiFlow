@@ -9,7 +9,20 @@
 //
 // Pure functions only — no child spawn here (the live smoke test exercises the real `pi`).
 import { describe, it, expect } from "vitest";
-import { parseJsonlChunk, serializeCommand, parseSessionHeader } from "./control-session.mjs";
+import { parseJsonlChunk, serializeCommand, parseSessionHeader, controlSessionDir, composeSessionDir } from "./control-session.mjs";
+
+// Slice 2: a compose-gate authoring pi is ISOLATED from the Companion. Its conversations live in a DEDICATED
+// session dir under the run — separate from the Companion's `.pi-control` — so compose never pollutes the chat
+// history list and the two pis never fight over the same conversation files.
+describe("composeSessionDir — the isolated compose session store", () => {
+  it("is a DIFFERENT directory from the Companion's control session dir (isolation)", () => {
+    expect(composeSessionDir("/runs/x")).not.toBe(controlSessionDir("/runs/x"));
+  });
+  it("is co-located UNDER the run dir (pi's official per-run session storage)", () => {
+    expect(composeSessionDir("/runs/x").startsWith("/runs/x")).toBe(true);
+    expect(controlSessionDir("/runs/x").startsWith("/runs/x")).toBe(true);
+  });
+});
 
 describe("parseJsonlChunk — strict \\n-JSONL with carry-partial-line", () => {
   it("reassembles a JSON object SPLIT across two chunks (the carry-partial contract)", () => {
