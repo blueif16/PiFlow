@@ -1,61 +1,133 @@
-/* NodeGates — the POLICY-channel projection of a node's authored post-node consequence chain (config.gates).
-   Card variant = a compact always-on glyph row (the "short symbol"); detail variant = labeled rows in the HUD.
-   Each entry is tinted by its on-fail POLICY, but the glyph is ALSO distinct + titled — never color alone. */
+/* Gate icon vocabulary — the angular HEXAGON that the left-edge rail, the on-node icons, and the HUD "Hooks"
+   lanes all draw. Tone tints the ring + glyph (severity at a glance: block/warn/retry/escalate/human/muted/ok);
+   the glyph is ALSO distinct + titled — never color alone. config is the source of truth; this only paints it. */
 
-.ds-gates--card {
+.ds-hex {
+  --hex-size: 22px;
+  --hex-border: 1.6px;
+  --hex-fill: var(--ds-bg-surface);
+  /* a flat-top hexagon — angular, stacks + rows cleanly, reads distinct from the square node card */
+  --hex-shape: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: var(--hex-size);
+  height: var(--hex-size);
+  flex: none;
+  color: var(--ds-text-secondary); /* default tone = ok */
+}
+.ds-hex::before { /* the tone-tinted ring (border layer) */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  clip-path: var(--hex-shape);
+}
+.ds-hex::after { /* the fill, inset by the border width → the ring illusion */
+  content: "";
+  position: absolute;
+  inset: var(--hex-border);
+  background: var(--hex-fill);
+  clip-path: var(--hex-shape);
+}
+.ds-hex > svg {
+  position: relative;
+  z-index: 1;
+  width: 58%;
+  height: 58%;
+  color: currentColor;
+}
+
+/* policy tones — the ring + glyph color */
+.ds-hex[data-tone="block"] { color: var(--ds-error-fg); }
+.ds-hex[data-tone="warn"] { color: var(--ds-warning-fg); }
+.ds-hex[data-tone="retry"] { color: var(--ds-blue-600); }
+.ds-hex[data-tone="escalate"] { color: var(--ds-violet-600); }
+.ds-hex[data-tone="human"] { color: var(--ds-violet-600); }
+.ds-hex[data-tone="muted"] { color: var(--ds-text-disabled); }
+.ds-hex[data-tone="ok"] { color: var(--ds-text-secondary); }
+
+/* ── on-node hex row (observed gates — all non-compose modes). Sits on the card background, no box. ── */
+.ds-gatehexes {
   display: flex;
   align-items: center;
   gap: 5px;
   flex-wrap: wrap;
   padding: 5px 2px 1px;
-  pointer-events: none; /* the row is informational; clicks fall through to the card (expand) */
+  pointer-events: none; /* informational; clicks fall through to the card (expand) */
 }
 
-.ds-gate {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ds-text-secondary);
-}
-
-/* policy tones (glyph color) — block/warn/retry/escalate/human; muted = advisory/notify */
-.ds-gate[data-tone="block"] { color: var(--ds-error-fg); }
-.ds-gate[data-tone="warn"] { color: var(--ds-warning-fg); }
-.ds-gate[data-tone="retry"] { color: var(--ds-blue-600); }
-.ds-gate[data-tone="escalate"] { color: var(--ds-violet-600); }
-.ds-gate[data-tone="human"] { color: var(--ds-violet-600); }
-.ds-gate[data-tone="muted"] { color: var(--ds-text-disabled); }
-.ds-gate[data-tone="ok"] { color: var(--ds-text-secondary); }
-
-/* detail variant — one labeled row per consequence, in the expanded HUD */
-.ds-gates--detail { display: flex; flex-direction: column; gap: 6px; }
-.ds-gate-row {
+/* ── on-node COMPOSE drop target (authored pipeline + drop target). No box at rest; a glow on drag-over. ── */
+.ds-gatedrop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  pointer-events: auto; /* interactive — accepts a dropped rail chip */
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 4px;
+  border: 1px solid transparent; /* no container box at rest */
+  border-radius: var(--ds-radius-md);
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              border-color var(--ds-dur-fast) var(--ds-ease-standard),
+              box-shadow var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-gatedrop.is-over {
+  border-color: var(--ds-accent);
+  border-style: dashed;
+  background: var(--ds-accent-subtle, var(--ds-bg-hover));
+  box-shadow: 0 0 0 3px var(--ds-accent-ring, rgba(0, 0, 0, 0.06));
+}
+.ds-gatedrop__hexes { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.ds-gatedrop__empty {
   font-family: var(--ds-font-mono);
   font-size: var(--ds-text-xs);
-}
-.ds-gate-row .ds-gate { flex: none; }
-.ds-gate-row__label { color: var(--ds-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ds-gate-row__when {
   color: var(--ds-text-disabled);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 10px;
+  font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-.ds-gate-row__policy { margin-left: auto; color: var(--ds-text-secondary); white-space: nowrap; }
-.ds-gate-row[data-tone="block"] .ds-gate-row__policy { color: var(--ds-error-fg); }
-.ds-gate-row[data-tone="warn"] .ds-gate-row__policy { color: var(--ds-warning-fg); }
-.ds-gate-row[data-tone="retry"] .ds-gate-row__policy { color: var(--ds-blue-600); }
-.ds-gate-row[data-tone="escalate"] .ds-gate-row__policy { color: var(--ds-violet-600); }
+/* the faint placeholder hexagon shown when a node has no authored gates yet */
+.ds-hex--ghost { --hex-fill: var(--ds-bg-surface); color: var(--ds-border-strong); opacity: 0.8; }
 
-/* the HUD "After this node" policy section wrapping the detail list */
-.ds-hud__policy { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
-.ds-hud__policy-title {
+/* ── HUD "Hooks" — plain-language lanes (pre / post / human) derived from the node's config. ── */
+.ds-hooks { display: flex; flex-direction: column; gap: var(--ds-space-2); margin-top: 12px; }
+.ds-hooks__title {
   font-family: var(--ds-font-mono);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ds-text-tertiary);
+}
+.ds-hook-lane { display: flex; align-items: flex-start; gap: 8px; }
+.ds-hook-lane__tag {
+  flex: none;
+  width: 40px;
+  padding-top: 3px;
+  font-family: var(--ds-font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ds-text-tertiary);
+}
+.ds-hook-lane__items { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ds-hook {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-primary);
+}
+.ds-hook__text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ds-hook__text b { font-weight: var(--ds-weight-medium); }
+.ds-hook__policy { color: var(--ds-text-tertiary); }
+.ds-hook-lane__none { padding-top: 2px; font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-disabled); font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-gatedrop { transition: none; }
 }

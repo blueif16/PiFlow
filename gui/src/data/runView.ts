@@ -237,7 +237,7 @@ export interface AuthoredNodeConfig {
   op?: Array<{
     when?: string;
     run?: { cmd?: string };
-    gate?: { kind?: string };
+    gate?: { kind?: string; advisory?: boolean };
     action?: { kind?: string; node?: string };
     onFailure?: string;
   }>;

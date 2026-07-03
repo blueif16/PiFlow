@@ -22,7 +22,7 @@ import { ProgressBar } from "./ProgressBar";
 import { StatusPill, HudCorners } from "./HudBits";
 import { FileView, type FileTarget } from "./FileContent";
 import { CacheDonut } from "./CacheDonut";
-import { NodeGates } from "./NodeGates";
+import { NodeHooks } from "./NodeGates";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
 import { formatMs, formatBytes, formatTokens, type RunViewNode, type ScopeKind, type Tone } from "../data/runView";
@@ -342,14 +342,9 @@ function Overview({ rv, status, expected, elapsedMs }: { rv: RunViewNode; status
         {cost > 0 && <Fact k="Cost" v={`$${cost.toFixed(cost < 1 ? 3 : 2)}`} />}
       </div>
 
-      {/* (POLICY channel) The detailed "what happens after this node" chain — the node's authored gate lane +
-          policy + checkpoint, projected from observe (config.gates). The detail tier of the card's short symbol. */}
-      {rv.config?.gates && rv.config.gates.entries.length > 0 && (
-        <div className="ds-hud__policy">
-          <span className="ds-hud__policy-title">After this node</span>
-          <NodeGates variant="detail" gates={rv.config.gates} />
-        </div>
-      )}
+      {/* (POLICY channel) "Hooks" — the node's authored gate lane + policy + checkpoint in plain-language
+          pre / post / human lanes, projected from observe (config.gates). One honest rendering from config. */}
+      <NodeHooks gates={rv.config?.gates} />
 
       <div className="ds-hud__hintline">Hover a panel, or click an input file.</div>
     </div>
