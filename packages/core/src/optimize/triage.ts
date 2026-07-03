@@ -9,7 +9,10 @@
 //   • ARCH          ← a cross-node failure chain: the failure ORIGINATED upstream (digest.rootCauses, shipped).
 //   • FUNCTIONALITY ← a clean-completing node whose Tier-1 OUTCOME failed = the product code is wrong. For
 //                     game-omni the verify-milestone report IS the "product-test-as-node-outcome" v1.5 §7
-//                     said FUNCTIONALITY needs — so it is decidable now, NOT defaulted to LAPSE.
+//                     said FUNCTIONALITY needs — so it is decidable now, NOT defaulted to LAPSE. A Tier-0
+//                     disqualifier whose OWN recorded issues NAME a code/contract cause (schema breach, a
+//                     skipped schema gate, a watchdog kill, a staging race) is FUNCTIONALITY too — a concrete
+//                     signal, not a shrug (see `codeSignalOf`).
 //   • LAPSE         ← a self-originating structural failure with no code signal: the default-when-unsure.
 //   • SKILL         ← the SAME failure signature RECURRED across runs (the recurrence reader of Leg-A memory.md,
 //                     shipped): a one-off residual is LAPSE, but a signature at/over the threshold means the
@@ -18,7 +21,7 @@
 // The projector writes NOTHING and invents NO prose — the deep free-text root-cause trace the human used to
 // hand-write is the FIXER's job. This emits pointers (failing check ids, the upstream chain), never a story.
 
-import type { RunDigest, RootCause } from '../observe/telemetry.js';
+import type { RunDigest, RootCause, NodeDigest } from '../observe/telemetry.js';
 import type { NodeScore, Defect, Confidence, CriteriaFixture, Tier1Result } from './types.js';
 import { signatureOf, type RecurrenceIndex, type RecurrenceHit } from './recurrence.js';
 
@@ -37,6 +40,21 @@ const tier1Failed = (s: NodeScore): boolean => !!s.tier1 && !s.tier1.abstained &
 /** A node earns a worklist item iff it has a real problem signal — and abstained nodes never do (re-measure). */
 const isDefect = (s: NodeScore): boolean => !s.abstained && (s.tier0.disqualified || tier1Failed(s));
 
+// ── STRUCTURAL COVERAGE — a self-originating failure whose OWN recorded issues name a code/contract-level
+// cause is NOT the same as a bare "something went wrong". `node-lifecycle.ts` already stamps these into the
+// node's `issues[]` (schemaInvalid/schemaSkipped/killedTimeout/killedStall/a staged-input race/a failed
+// integrity or op check) but the fold above never reads them — a Tier-0 disqualifier with a rich, concrete
+// cause was silently indistinguishable from one with NONE, so it collapsed into the low-confidence LAPSE
+// default (the corpus-protection rule is right for a TRULY signal-less slip, wrong for a named contract
+// breach the fixer can act on). Matches the issue-string vocabulary node-lifecycle.ts actually writes.
+const CODE_SIGNAL = /contract breach|schema (gate skipped|invalid)|killed:|integrity check failed|op failed|staging/i;
+
+/** The first issue string (if any) on `node`'s own digest entry that names a code/contract-level cause. */
+function codeSignalOf(node: string, digest: RunDigest): string | null {
+  const nd = digest.nodes.find((n) => n.id === node);
+  return nd?.issues.find((i) => CODE_SIGNAL.test(i)) ?? null;
+}
+
 export function triage(scores: NodeScore[], digest: RunDigest, opts: TriageOpts = {}): Defect[] {
   const rootCauseOf = new Map(digest.rootCauses.map((rc) => [rc.failed, rc]));
   const threshold = opts.skillThreshold ?? 1;
@@ -49,13 +67,20 @@ export function triage(scores: NodeScore[], digest: RunDigest, opts: TriageOpts 
     } else if (tier1Failed(s) && !s.tier0.disqualified) {
       defects.push(functionalityDefect(s, s.tier1!));
     } else {
-      // A self-originating structural failure. It is a one-off LAPSE unless the SAME signature has RECURRED —
-      // recurrence at/over the threshold is the signal that the skill prose is wrong, not the executor (SKILL).
-      const hit = opts.recurrence?.get(signatureOf(s));
-      if (hit && hit.count >= threshold) {
-        defects.push(skillDefect(s, hit));
+      // A self-originating structural failure. A NAMED code/contract signal (schema breach, a staging race,
+      // a watchdog kill, …) is concrete and actionable — route it FUNCTIONALITY before falling back to the
+      // recurrence check. Only a truly signal-less failure is a one-off LAPSE, unless the SAME signature has
+      // RECURRED — recurrence at/over the threshold means the skill prose is wrong, not the executor (SKILL).
+      const signal = codeSignalOf(s.node, digest);
+      if (signal) {
+        defects.push(structuralDefect(s, signal));
       } else {
-        defects.push(lapseDefect(s));
+        const hit = opts.recurrence?.get(signatureOf(s));
+        if (hit && hit.count >= threshold) {
+          defects.push(skillDefect(s, hit));
+        } else {
+          defects.push(lapseDefect(s));
+        }
       }
     }
   }
@@ -97,6 +122,19 @@ function functionalityDefect(s: NodeScore, t1: Tier1Result): Defect {
       `fix-surface: product code in ${s.node}'s owns/readScope (owner traced by the fixer)`,
     ],
     confidence,
+  };
+}
+
+// ── ③b STRUCTURAL — a self-originating failure whose OWN recorded issues name a code/contract-level cause
+// (a schema breach, a skipped schema gate, a watchdog kill, a staged-input race) — a concrete, actionable
+// signal, so it does NOT collapse into the low-confidence LAPSE default the way a truly signal-less slip does.
+function structuralDefect(s: NodeScore, signal: string): Defect {
+  return {
+    node: s.node,
+    bucket: 'FUNCTIONALITY',
+    symptom: `${s.node} ${s.tier0.reason ?? 'failed'} — ${signal}`,
+    evidence: [`issue:${signal}`, `fix-surface: product code/config in ${s.node}'s owns/readScope or its staging setup`],
+    confidence: 'medium',
   };
 }
 
