@@ -31,7 +31,10 @@
   gap: var(--ds-space-5);
   overflow-y: auto;
   border-radius: 0;
-  padding: clamp(16px, 2.4vh, 26px) var(--ds-space-7) var(--ds-space-8);
+  /* top · right · bottom · left. Comfortable top + left; the tall BOTTOM (≈72–92px) is scroll headroom so the
+     rail's last rows can always be scrolled ABOVE the floating ModeBar band (bottom-left, z-popover) instead of
+     hiding behind it — nothing in the scroll content is unreachable. */
+  padding: clamp(20px, 3vh, 32px) var(--ds-space-6) clamp(72px, 9vh, 92px) var(--ds-space-7);
 }
 @supports (corner-shape: bevel) {
   .ds-digest {
@@ -98,6 +101,16 @@
   font-family: var(--ds-font-mono);
   font-size: var(--ds-text-xs);
   color: var(--ds-error-fg);
+}
+
+/* the run's source/blueprint label under the header (e.g. "Produce → Verify → Fix") */
+.ds-digest__source {
+  margin-top: calc(-1 * var(--ds-space-3));
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── totals — the cost spine, a flat stat grid (no cards) ─────────────────── */
@@ -174,3 +187,103 @@
 .ds-onset__node[data-role="origin"] { color: var(--ds-warning-fg); font-weight: var(--ds-weight-semibold); }
 .ds-onset__node[data-role="failed"] { color: var(--ds-error-fg); font-weight: var(--ds-weight-semibold); }
 .ds-onset__via { font-family: var(--ds-font-mono); font-size: 10px; color: var(--ds-text-disabled); }
+
+/* ── run-wide tool distribution (summed topTools) + flag summary ───────────── */
+.ds-digest__tools { display: flex; flex-wrap: wrap; gap: var(--ds-space-1); }
+.ds-digest__flags { display: flex; flex-wrap: wrap; gap: var(--ds-space-1); margin-top: 2px; }
+
+/* a compact flag chip — same severity tone vocabulary as the worklist */
+.ds-nflag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 1px var(--ds-space-1);
+  border-radius: var(--ds-radius-sm);
+  border-left: 2px solid var(--ds-neutral-400);
+  background: var(--ds-bg-sunken);
+  font-family: var(--ds-font-mono);
+  font-size: 10px;
+  letter-spacing: var(--ds-tracking-label);
+  color: var(--ds-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.ds-nflag b { color: var(--ds-text-primary); font-weight: var(--ds-weight-semibold); }
+.ds-nflag[data-tone="block"] { border-left-color: var(--ds-error-fg); color: var(--ds-error-fg); }
+.ds-nflag[data-tone="warn"] { border-left-color: var(--ds-warning-fg); color: var(--ds-warning-fg); }
+.ds-nflag[data-tone="retry"] { border-left-color: var(--ds-blue-600); color: var(--ds-blue-600); }
+.ds-nflag[data-tone="escalate"] { border-left-color: var(--ds-violet-600); color: var(--ds-violet-600); }
+
+/* ── per-node telemetry table — one clickable row per node ─────────────────── */
+.ds-digest__nodes { gap: 2px; }
+
+/* a node row — a full-width ghost button (like .ds-anom); an attention left-border for problem outcomes only,
+   so the eye lands on the failing/looping/pressured nodes while clean rows stay calm. Click → focus the node. */
+.ds-node-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: var(--ds-space-2);
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-node-row:hover { background: var(--ds-bg-hover); }
+.ds-node-row:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
+.ds-node-row[data-tone="block"] { border-left-color: var(--ds-error-fg); }
+.ds-node-row[data-tone="warn"] { border-left-color: var(--ds-warning-fg); }
+.ds-node-row[data-tone="retry"] { border-left-color: var(--ds-blue-600); }
+
+/* line 1 — outcome tag · label · phase · model */
+.ds-node-row__head { display: flex; align-items: baseline; gap: var(--ds-space-2); min-width: 0; }
+.ds-node-out {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-mono);
+  font-size: 10px;
+  letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase;
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-text-tertiary);
+}
+.ds-node-out[data-tone="ok"] { color: var(--ds-success-fg); }
+.ds-node-out[data-tone="block"] { color: var(--ds-error-fg); }
+.ds-node-out[data-tone="warn"] { color: var(--ds-warning-fg); }
+.ds-node-out[data-tone="retry"] { color: var(--ds-blue-600); }
+.ds-node-row__label {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ds-node-row__phase { flex: 0 0 auto; font-size: 10px; color: var(--ds-text-tertiary); text-transform: uppercase; letter-spacing: var(--ds-tracking-label); }
+.ds-node-row__model {
+  margin-left: auto;
+  flex: 0 1 auto;
+  font-family: var(--ds-font-mono);
+  font-size: 10px;
+  color: var(--ds-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* line 2 — the metric strip (duration · tokens · cost · ctx% · calls) */
+.ds-node-row__metrics { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--ds-space-1) var(--ds-space-3); }
+.ds-nm { display: inline-flex; align-items: baseline; gap: 3px; }
+.ds-nm__v { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-secondary); font-variant-numeric: tabular-nums; }
+.ds-nm__l { font-size: 10px; color: var(--ds-text-disabled); letter-spacing: var(--ds-tracking-label); }
+.ds-nm__flag { font-family: var(--ds-font-mono); font-size: 10px; color: var(--ds-warning-fg); }
+.ds-nm[data-tone="block"] .ds-nm__v { color: var(--ds-error-fg); }
+.ds-nm[data-tone="warn"] .ds-nm__v { color: var(--ds-warning-fg); }
+
+/* line 3 — top tools (ToolTags) + loop/retry/truncate flags */
+.ds-node-row__tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-1); }
