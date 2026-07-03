@@ -5,12 +5,12 @@
  * the per-node HUD view. Because it's portaled within the providers, it still
  * reads ExpandContext (Exit). (Fit view lives once, in the React Flow Controls bottom-left.)
  *
- *   [ workspace / run ▾ ]  9/9 · 1m47s   ✕ exit(node mode only)
+ *   [ ⊞ folder ] [ template / run ▾ ]  9/9 · 1m47s   ✕ exit(node mode only)
  *
- * Clicking the switch opens the workspace/run switcher — the SAME Miller-column
- * directory menu as the canvas navigator (DirectoryPanel), fed by the global
- * index snapshot (~/.piflow/index.json via the Vite middleware). Selecting a run
- * sets the active run; the live pi connection is deferred.
+ * The ⊞ pill (current folder name) opens the full-screen WorkspaceLauncher to switch
+ * folders (re-scope). The template/run switch opens the SAME Miller-column directory
+ * menu as the canvas navigator (DirectoryPanel), fed by the global index snapshot
+ * (~/.piflow/index.json via the Vite middleware); selecting a run sets the active run.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -27,7 +27,7 @@ import "../styles/startrun.css";
 // `onStartRun` deploys the StartRunPanel (owned by CanvasInner so it can wire the returned run into
 // the run-select seam). Which control server the GUI talks to is shown by the ControlPlaneChip
 // (bottom-right, beside the chat launcher), not here — this bar carries the workspace/run switcher + run actions.
-export function MenuBar({ activeRun, onSelectRun, onStartRun, onMigrateRun, ix }: { activeRun: string; onSelectRun: (run: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null }) {
+export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRun, onStartRun, onMigrateRun, ix }: { activeRun: string; workspaceName: string | null; onOpenWorkspaces: () => void; onSelectRun: (run: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null }) {
   const { expandedId, collapse } = useExpand();
   const [open, setOpen] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -48,6 +48,25 @@ export function MenuBar({ activeRun, onSelectRun, onStartRun, onMigrateRun, ix }
   return createPortal(
     <div className="ds-menubar-layer" ref={layerRef}>
       <GlassSurface variant="soft" as="nav" className="ds-menubar" legibleText aria-label="Workspace menu">
+        {/* WORKSPACE pill — the current folder + a grid glyph; opens the full-screen launcher to switch folders.
+            Always shows the workspace name (orientation), even for an empty folder with no active run. */}
+        <button
+          type="button"
+          className="ds-menubar__workspace"
+          aria-label="Switch workspace"
+          title="Switch workspace — browse & enter another folder"
+          onClick={onOpenWorkspaces}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+            <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+            <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+            <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+          </svg>
+          <span className="ds-menubar__ws-name">{workspaceName ?? "workspace"}</span>
+        </button>
+        <span className="ds-menubar__vsep" aria-hidden="true" />
+
         <button
           type="button"
           className="ds-menubar__switch"

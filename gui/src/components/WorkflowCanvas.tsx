@@ -48,6 +48,7 @@ import { NodeExpandOverlay } from "./NodeExpandOverlay";
 import { FileExpandOverlay, openFileFor, type OpenFile } from "./FileExpandOverlay";
 import { DirectoryPanel, type DirEntry } from "./DirectoryPanel";
 import { MenuBar } from "./MenuBar";
+import { WorkspaceLauncher } from "./WorkspaceLauncher";
 import { ControlPlaneChip, type ControlHealth } from "./ControlPlaneChip";
 import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
@@ -66,7 +67,7 @@ import { GateDropCard, type DropCardTarget } from "./GateDropCard";
 import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, runViewToLiveModel, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
 import type { RailKind } from "../data/gates";
 import { deriveZones, toZoneFlowNode, type ZoneFlowNode } from "../data/zones";
-import { loadIndex, pickCurrentRun, type GlobalIndex } from "../data/runIndex";
+import { loadIndex, pickCurrentRun, pickRunForWorkspace, workspaceOfRun, homeWorkspace, homeRoots, type GlobalIndex } from "../data/runIndex";
 import { useRunStream, RunStreamContext } from "../data/runStream";
 import { liveSource, shadowDiffEnabled } from "../data/liveSource";
 import { shadowDiff } from "../data/shadowDiff";
@@ -118,6 +119,13 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // fetch, error on a failed one, connecting until the first result). A pure health signal, not a data input.
   const [controlHealth, setControlHealth] = useState<ControlHealth>("connecting");
   const [activeRun, setActiveRun] = useState<string>("");
+  // (Workspace switch) the entered folder = a `product` in the index. It sits ABOVE activeRun: entering a
+  // workspace re-scopes the run set (+ the pi session). Null until the first-focus effect seeds it. The
+  // launcher (full-screen) toggles via `workspaceOpen`; `lastRunByWorkspace` restores where you were on re-entry.
+  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const lastRunByWorkspace = useRef<Record<string, string>>({});
+  const home = useMemo(() => homeRoots(), []); // the launched folder(s) — read once for the initial-focus bias
   const [dir, setDir] = useState<{ tree: DirEntry[]; fileToNode: Record<string, string> }>({ tree: [], fileToNode: {} });
   // (P3) the G6 agent-preset catalog for the SSE render path — fetched once per run (it is ~static), so the
   // enriched-live re-render doesn't re-hit /agents.json on every token delta. The poll path fetches it inline.
@@ -183,13 +191,30 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     return () => { alive = false; clearInterval(id); };
   }, [endpointBase]);
 
-  // Pick the focused run from the (live) index on first load: the REAL current run (running > newest —
-  // no demo default). Once chosen, the user drives it via the switcher.
+  // Pick the focused workspace + run on first load. Bias to the launched "home" folder (VITE_PIFLOW_HOME_ROOTS)
+  // so widening the served scope to every registered folder doesn't hijack focus to another folder's run: if the
+  // home folder has a run, focus it; else fall back to the global running/newest run (and adopt its folder). Once
+  // chosen, the user drives it via the launcher (folder) + the run switcher.
   useEffect(() => {
-    if (!ix || activeRun) return;
-    const run = pickCurrentRun(ix);
+    if (!ix || activeRun || activeWorkspace) return;
+    const homeWs = homeWorkspace(ix, home);
+    const homeRun = homeWs ? pickRunForWorkspace(ix, homeWs) : null;
+    const run = homeRun ?? pickCurrentRun(ix);
+    const ws = homeRun ? homeWs : run ? workspaceOfRun(ix, run) : homeWs;
+    if (ws) setActiveWorkspace(ws);
     if (run) setActiveRun(run);
-  }, [ix, activeRun]);
+  }, [ix, activeRun, activeWorkspace, home]);
+
+  // Keep the workspace tier in sync with the run + remember the last run per folder (so re-entering a workspace
+  // restores where you were). Also adopts the folder when a run is picked directly from the run switcher (which
+  // lists every folder's runs), keeping the MenuBar workspace pill honest.
+  useEffect(() => {
+    if (!ix || !activeRun) return;
+    const ws = workspaceOfRun(ix, activeRun);
+    if (!ws) return;
+    lastRunByWorkspace.current[ws] = activeRun;
+    if (ws !== activeWorkspace) setActiveWorkspace(ws);
+  }, [ix, activeRun, activeWorkspace]);
 
   // ONE graph path for EVERY run: distill the run's real `.pi/` via the run-view endpoint (live,
   // historical, or foreign alike). While the run is still going, re-poll so status + telemetry stay
@@ -343,6 +368,17 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     setOpenFile(null);
   }, []);
 
+  // (Workspace switch) ENTER a folder → re-scope to it. Prefer the last run viewed there (if still in the index),
+  // else the folder's current run (running > newest); an empty folder clears the canvas. selectRun re-points the
+  // run-view poll / SSE / companion (all keyed on activeRun) to the new folder's run.
+  const enterWorkspace = useCallback((productId: string) => {
+    if (!ix) return;
+    setActiveWorkspace(productId);
+    const remembered = lastRunByWorkspace.current[productId];
+    const restore = remembered && workspaceOfRun(ix, remembered) === productId ? remembered : null;
+    selectRun(restore ?? pickRunForWorkspace(ix, productId) ?? "");
+  }, [ix, selectRun]);
+
   // migrate done → re-point the whole console to the target serve (baseUrl + token) and follow the run to its
   // new home. setEndpoint drives the index poll / run-view loader / stream hooks to reconnect (endpointBase deps);
   // the run-view loader already retries, so it picks the run up once the target has adopted + resumed it.
@@ -464,6 +500,14 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const expandedNode = nodes.find((n) => n.id === expandedId);
   const expandedData = expandedNode && isFlowNode(expandedNode) ? expandedNode.data : null;
 
+  // (Workspace switch) the entered folder's display name for the MenuBar pill; and whether the current run is
+  // LIVE-streaming (switching folders while live routes through the launcher's detach-the-session confirm).
+  const workspaceName = useMemo(
+    () => (ix && activeWorkspace ? ix.products.find((p) => p.id === activeWorkspace)?.name ?? null : null),
+    [ix, activeWorkspace],
+  );
+  const liveRun = live.status === "live" && activeRun ? activeRun : null;
+
   return (
     <ExpandContext.Provider value={expandApi}>
       <ViewModeContext.Provider value={viewModeApi}>
@@ -541,11 +585,14 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           />
           {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
               scrim (by design), so opening one must close the other or they stack. */}
-          <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} />
+          <MenuBar activeRun={activeRun} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} />
+          {/* Full-screen "switch workspace" launcher (opened by the MenuBar ⊞ pill). Entering a folder re-scopes
+              the console via enterWorkspace; a live run routes through its detach-the-session confirm. */}
+          <WorkspaceLauncher open={workspaceOpen} ix={ix} activeWorkspace={activeWorkspace} liveRun={liveRun} onEnter={enterWorkspace} onClose={() => setWorkspaceOpen(false)} />
           {/* Consolidated control-plane control (bottom-right, beside the chat launcher): the local ⇄ cloud
               switch + connect-a-remote, with a liveness dot (green reachable / red unreachable). */}
           <ControlPlaneChip health={controlHealth} />
-          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen} />
+          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen || workspaceOpen} />
           <FusionSaveBar active={mode === "fusion"} />
           {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
               overlay is open — both are left-anchored, and the overlay is the focus. */}
