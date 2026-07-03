@@ -149,6 +149,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[game-omni-reference-product]]
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
+- [[harden-write-forcing-experiment]]
 - [[local-docker-sandbox-mode]]
 - [[memory-legs-coordination]]
 - [[minimax-thinking-cap-noop]]
@@ -176,5 +177,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-03 · arc=26 commits · files=19 · lessons=30</sub>
+<sub>derived 2026-07-03 · arc=26 commits · files=19 · lessons=31</sub>
 <!-- okf:auto-end -->

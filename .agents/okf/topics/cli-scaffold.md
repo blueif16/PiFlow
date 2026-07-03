@@ -223,6 +223,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
 - [[harden-node-completes-run-to-completion]]
+- [[harden-write-forcing-experiment]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
@@ -269,5 +270,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:702) — 3 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 - `scaffoldNew` (packages/cli/src/scaffold.ts:396) — 4 callers in `packages/cli/src/blueprint-stamp.ts`, `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=135 commits · files=8 · lessons=61</sub>
+<sub>derived 2026-07-03 · arc=135 commits · files=8 · lessons=62</sub>
 <!-- okf:auto-end -->

@@ -32,7 +32,7 @@ SOURCE
 - `gui/src/data/runIndex.ts:60` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
 SHAPE
 - `gui/src/data/runView.ts:172` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
-- `gui/src/data/runView.ts:680` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
+- `gui/src/data/runView.ts:706` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
 RENDER
 - `gui/src/components/WorkflowCanvas.tsx:139` — index→view→graph wiring (loadRunView+loadAgentCatalog→toFlowGraph)
 - `gui/src/components/WorkflowNode.tsx:274` — paints `NodeModeStrip` under the card when a view-mode is active
@@ -166,6 +166,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
 - [[harden-node-completes-run-to-completion]]
+- [[harden-write-forcing-experiment]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
 - [[minimax-thinking-cap-noop]]
@@ -195,9 +196,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:680) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:174) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
 
-<sub>derived 2026-07-03 · arc=83 commits · files=8 · lessons=43</sub>
+<sub>derived 2026-07-03 · arc=83 commits · files=8 · lessons=44</sub>
 <!-- okf:auto-end -->
