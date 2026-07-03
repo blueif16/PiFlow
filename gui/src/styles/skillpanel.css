@@ -1,0 +1,97 @@
+/* ============================================================================
+   SkillPanel — the left-edge skill-bundle inspector, opened from a skill chip.
+   A full-height glass rail on the LEFT (mirroring the Companion's right rail),
+   layered with NO backdrop. Sits at z-modal so it's visible whether opened from
+   the canvas or from inside an open NodeHud (which lives at z-overlay).
+   ========================================================================== */
+.ds-skillpanel-layer {
+  position: fixed;
+  inset: 0 auto 0 0;                       /* left edge, full height */
+  z-index: var(--ds-z-modal);             /* above the HUD overlay (1000), below the top chrome (1200) */
+  pointer-events: none;                    /* only the rail is interactive */
+}
+.ds-skillpanel-layer > * { pointer-events: auto; }
+
+.ds-skillpanel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(42vw, 480px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-4);
+  padding: var(--ds-space-6) var(--ds-space-6) var(--ds-space-5);
+  border-radius: 0;
+  overflow-y: auto;
+}
+/* one beveled inner (top-right) corner = the sci-fi-rectangle silhouette, mirrored from the Companion */
+@supports (corner-shape: bevel) {
+  .ds-skillpanel {
+    border-start-start-radius: 0;
+    border-end-end-radius: 0;
+    border-start-end-radius: 16px;
+    corner-shape: bevel;
+  }
+}
+
+.ds-skillpanel__head { display: flex; align-items: flex-start; gap: var(--ds-space-3); }
+.ds-skillpanel__title { flex: 1 1 auto; min-width: 0; }
+.ds-skillpanel__eyebrow {
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); text-transform: uppercase;
+  letter-spacing: var(--ds-tracking-label); color: var(--ds-accent);
+}
+.ds-skillpanel__name { margin: 2px 0 0; font-size: var(--ds-text-lg); font-weight: var(--ds-weight-semibold); color: var(--ds-text-primary); word-break: break-word; }
+.ds-skillpanel__close {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: none; background: transparent; color: var(--ds-text-tertiary); border-radius: var(--ds-radius-md); cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast);
+}
+.ds-skillpanel__close:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-skillpanel__close:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+.ds-skillpanel__muted { font-size: var(--ds-text-sm); color: var(--ds-text-tertiary); }
+.ds-skillpanel__muted code { font-family: var(--ds-font-mono); color: var(--ds-text-secondary); }
+
+.ds-skillpanel__body { display: flex; flex-direction: column; gap: var(--ds-space-4); min-height: 0; }
+.ds-skillpanel__desc { margin: 0; font-size: var(--ds-text-base); line-height: var(--ds-leading-relaxed); color: var(--ds-text-secondary); }
+.ds-skillpanel__desc--muted { color: var(--ds-text-tertiary); font-style: italic; }
+
+.ds-skillpanel__badges { display: flex; flex-wrap: wrap; gap: var(--ds-space-2); }
+.ds-skillpanel__badge {
+  display: inline-flex; align-items: center; padding: 2px var(--ds-space-2); border-radius: var(--ds-radius-sm);
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); letter-spacing: var(--ds-tracking-label);
+  text-transform: uppercase; color: var(--ds-text-secondary); background: var(--ds-bg-sunken);
+  border: 1px solid var(--ds-border-hairline);
+}
+.ds-skillpanel__badge[data-on="true"] { color: var(--ds-accent); border-color: var(--ds-border-accent); background: var(--ds-accent-subtle); }
+.ds-skillpanel__badge--muted { color: var(--ds-text-tertiary); }
+
+.ds-skillpanel__row { display: flex; flex-direction: column; gap: var(--ds-space-2); }
+.ds-skillpanel__key {
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); text-transform: uppercase;
+  letter-spacing: var(--ds-tracking-label); color: var(--ds-text-tertiary);
+}
+.ds-skillpanel__tags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* the SKILL.md content preview — partial by default (bounded height + fade), expandable to the full body */
+.ds-skillpanel__content { display: flex; flex-direction: column; gap: var(--ds-space-2); min-height: 0; }
+.ds-skillpanel__md {
+  position: relative; max-height: 200px; overflow: hidden;
+  padding: var(--ds-space-3); border-radius: var(--ds-radius-md);
+  background: var(--ds-bg-sunken); border: 1px solid var(--ds-border-hairline);
+}
+.ds-skillpanel__md::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 48px; pointer-events: none;
+  background: linear-gradient(transparent, var(--ds-bg-sunken));
+}
+.ds-skillpanel__md.is-full { max-height: none; overflow: visible; }
+.ds-skillpanel__md.is-full::after { display: none; }
+.ds-skillpanel__md .ds-md { font-size: var(--ds-text-sm); color: var(--ds-text-secondary); }
+.ds-skillpanel__more {
+  align-self: flex-start; border: none; background: transparent; color: var(--ds-accent);
+  font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); cursor: pointer; padding: 2px 0;
+}
+.ds-skillpanel__more:hover { text-decoration: underline; }
+
+.ds-skillpanel__from { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-tertiary); word-break: break-all; }

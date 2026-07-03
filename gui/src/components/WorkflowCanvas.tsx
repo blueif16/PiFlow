@@ -59,6 +59,8 @@ import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { FusionContext, type FusionMode } from "./FusionContext";
 import { FusionSaveBar } from "./FusionSaveBar";
 import { ComposeContext } from "./ComposeContext";
+import { SkillContext } from "./SkillContext";
+import { SkillPanel } from "./SkillPanel";
 import { GateRail } from "./GateRail";
 import { GateDropCard, type DropCardTarget } from "./GateDropCard";
 import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, runViewToLiveModel, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
@@ -102,6 +104,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // (Slice 1.5) bumped after a RUN-first gate bake so the run-view re-loads even for a DONE run (whose poll
   // has stopped) — the newly-applied gate then appears on the graph without a manual reload.
   const [runViewNonce, setRunViewNonce] = useState(0);
+  const [openSkill, setOpenSkill] = useState<string | null>(null); // the skill id shown in the left SkillPanel (null = closed)
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
   const [digestOpen, setDigestOpen] = useState(false); // left-edge run digest; launched by the "D" key
   const [startOpen, setStartOpen] = useState(false); // the "Start a run" launcher modal (from the MenuBar)
@@ -362,6 +365,12 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     [expandedId],
   );
 
+  // (Skill panel) which skill the left inspector shows — a skill chip anywhere calls openSkill(id).
+  const skillApi = useMemo(
+    () => ({ open: openSkill, openSkill: setOpenSkill, close: () => setOpenSkill(null) }),
+    [openSkill],
+  );
+
   const viewModeApi = useMemo(
     () => ({ mode, setMode, toggle: (m: ViewMode) => setMode((cur) => (cur === m ? null : m)) }),
     [mode],
@@ -460,6 +469,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       <ViewModeContext.Provider value={viewModeApi}>
       <FusionContext.Provider value={fusionApi}>
       <ComposeContext.Provider value={composeApi}>
+      <SkillContext.Provider value={skillApi}>
       <RunStreamContext.Provider value={live}>
       <LayoutGroup>
         <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--ds-bg-canvas)" }}>
@@ -551,6 +561,8 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             onComposingChange={setComposingNodeId}
           />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
+          {/* Left-edge skill inspector — opened by clicking a loaded skill chip (node card / NodeHud). */}
+          <SkillPanel activeRun={activeRun} />
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.
               Clicking an anomaly/onset node focuses that node on the canvas. */}
           <RunDigestPanel activeRun={activeRun} open={digestOpen} liveStatus={live.status} liveSig={digestSig} onFocusNode={setExpandedId} onClose={() => setDigestOpen(false)} />
@@ -561,6 +573,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
         </div>
       </LayoutGroup>
       </RunStreamContext.Provider>
+      </SkillContext.Provider>
       </ComposeContext.Provider>
       </FusionContext.Provider>
       </ViewModeContext.Provider>

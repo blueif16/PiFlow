@@ -12,7 +12,7 @@
  * catalog entry (`data.agentPreset`) resolved through the observation plane. Visibility is CSS-only
  * (glass.css `.ds-node:hover .ds-agentcard`).
  */
-import { useExpand } from "./ExpandContext";
+import { useSkill } from "./SkillContext";
 import { AgentAvatar, type FlowNodeData } from "./WorkflowNode";
 
 /** `{{WORKSPACE}}/packages/skills/harden-blueprint/SKILL.md` → `harden-blueprint` (display; full in title). */
@@ -52,8 +52,8 @@ function TagRow({ k, tags, title }: { k: string; tags: string[]; title?: (t: str
   );
 }
 
-export function AgentHoverCard({ nodeId, data }: { nodeId: string; data: FlowNodeData }) {
-  const { expand } = useExpand();
+export function AgentHoverCard({ data }: { data: FlowNodeData }) {
+  const { openSkill } = useSkill();
   const rv = data.rv;
   const preset = data.agentPreset;
   const base = data.agentType;
@@ -77,7 +77,7 @@ export function AgentHoverCard({ nodeId, data }: { nodeId: string; data: FlowNod
         <span className="ds-agentcard__base">{base ? `base agent · ${base}` : "bespoke · no base"}</span>
       </div>
 
-      {/* THE DEFINITION — skill first (a real button: click → the node's detail view), then the role prompt */}
+      {/* THE DEFINITION — skill first (a real button: click → the left skill-bundle panel), then the role prompt */}
       {skills.length > 0 && (
         <div className="ds-agentcard__row">
           <span className="ds-agentcard__key">skill</span>
@@ -87,8 +87,8 @@ export function AgentHoverCard({ nodeId, data }: { nodeId: string; data: FlowNod
                 key={s}
                 type="button"
                 className="ds-agentcard__tag ds-agentcard__tag--skill"
-                title={`${s} — open node detail`}
-                onClick={(e) => { e.stopPropagation(); expand(nodeId); }}
+                title={`${s} — open skill bundle`}
+                onClick={(e) => { e.stopPropagation(); openSkill(s); }}
               >
                 <SkillGlyph />
                 {skillName(s)}

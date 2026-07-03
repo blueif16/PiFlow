@@ -325,6 +325,37 @@ export interface AgentDisplay {
 /** agentType id → its public identity, from `~/.piflow/agents/` via `/__piflow/agents.json`. */
 export type AgentCatalog = Record<string, AgentDisplay>;
 
+/** A resolved SKILL.md bundle, as `/__piflow/skill` returns it — the skill panel's source of truth. Mirrors
+ *  the server handler shape: core's `parseSkillManifest` fields (`requires` floor / `allowed` ceiling / display)
+ *  plus the frontmatter `description`, the markdown `body`, and a derived `needsMcp`. `requires`/`allowed` are
+ *  EMPTY for a skill that declares no manifest (the permissive default) — render that as "native tools · none
+ *  declared", never as an error. */
+export interface SkillBundle {
+  id: string;
+  name: string;
+  description?: string;
+  requires: string[];
+  allowed: string[];
+  needsMcp: boolean;
+  display?: { label?: string; icon?: string; color?: string };
+  body: string;
+  resolvedFrom?: string;
+}
+
+/** Fetch a resolved skill bundle for the panel (`/__piflow/skill/<run>?skill=<id-or-path>`). The server
+ *  resolves the id/path across pi's skill dirs, reads the SKILL.md, and parses it with core's shared parser.
+ *  Returns null when the skill can't be resolved (404) or the endpoint is unavailable — the panel shows a
+ *  graceful "couldn't load" state rather than throwing. */
+export async function loadSkill(run: string, skill: string): Promise<SkillBundle | null> {
+  try {
+    const res = await apiFetch(`/__piflow/skill/${encodeURIComponent(run)}?skill=${encodeURIComponent(skill)}`);
+    if (!res.ok) return null;
+    return (await res.json()) as SkillBundle;
+  } catch {
+    return null;
+  }
+}
+
 /** Fetch the agent-preset catalog (id → {icon,label,color}) from the dev middleware. The display lives in
  *  `~/.piflow/agents/`, never on the node (decision #3). Absent/unreachable ⇒ {} (nodes render default chips). */
 export async function loadAgentCatalog(): Promise<AgentCatalog> {

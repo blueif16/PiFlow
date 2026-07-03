@@ -185,6 +185,10 @@
 .ds-hud__defval { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .ds-chip--skill { border-left: 2px solid var(--ds-accent); color: var(--ds-accent); }
 .ds-chip--owns { border-left: 2px solid var(--ds-success); }
+/* a clickable chip (the skill chip → opens the skill panel) */
+.ds-chip--btn { border: none; border-left: 2px solid var(--ds-accent); cursor: pointer; font: inherit; transition: background var(--ds-dur-fast) var(--ds-ease-standard); }
+.ds-chip--btn:hover { background: var(--ds-accent-subtle); }
+.ds-chip--btn:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
 .ds-tooltag--deny { opacity: 0.6; text-decoration: line-through; }
 /* the role prompt — a bounded, scrollable pre so a long system prompt is visible but never floods the panel */
 .ds-hud__prompt { display: flex; flex-direction: column; gap: 3px; }

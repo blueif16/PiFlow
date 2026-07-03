@@ -23,6 +23,7 @@ import { StatusPill, HudCorners } from "./HudBits";
 import { FileView, type FileTarget } from "./FileContent";
 import { CacheDonut } from "./CacheDonut";
 import { NodeHooks } from "./NodeGates";
+import { useSkill } from "./SkillContext";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
 import { formatMs, formatBytes, formatTokens, type RunViewNode, type ScopeKind, type Tone } from "../data/runView";
@@ -378,6 +379,7 @@ function loopSignal(rv: RunViewNode): { label: string; tone: "warn" | "high" } |
  *  loadout (`rv.config`) with the preset as fallback — the SAME sources the AgentHoverCard reads, promoted
  *  from hover into the default view. Renders nothing when a node carries no loadout at all. */
 function AgentDefinition({ rv, data, onPinTools }: { rv: RunViewNode; data: FlowNodeData; onPinTools: () => void }) {
+  const { openSkill } = useSkill();
   const preset = data.agentPreset;
   const skill = rv.config?.skill ?? preset?.skills?.[0];
   const tools = rv.config?.tools?.allow ?? preset?.tools?.allow ?? [];
@@ -394,7 +396,9 @@ function AgentDefinition({ rv, data, onPinTools }: { rv: RunViewNode; data: Flow
       {skill && (
         <div className="ds-hud__defrow">
           <span className="ds-hud__defkey">skill</span>
-          <span className="ds-chip ds-chip--skill" title={skill}>{skillName(skill)}</span>
+          <button type="button" className="ds-chip ds-chip--skill ds-chip--btn" title={`${skill} — open skill bundle`} onClick={() => openSkill(skill)}>
+            {skillName(skill)}
+          </button>
         </div>
       )}
       {tools.length > 0 && (
