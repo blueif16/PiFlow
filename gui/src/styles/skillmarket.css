@@ -252,3 +252,13 @@
 @media (prefers-reduced-motion: reduce) {
   .ds-skillcard, .ds-skilldrop { transition: none; }
 }
+
+/* ONLINE lane: the index badge on a remote result card + the outbound source link */
+.ds-skillcard__ring[data-ring="online"] { color: var(--ds-text-muted); border-style: dashed; }
+.ds-skillcard__srclink {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--ds-text-muted);
+  text-decoration: none;
+}
+.ds-skillcard__srclink:hover { color: var(--ds-accent); text-decoration: underline; }

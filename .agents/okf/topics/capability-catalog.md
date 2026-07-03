@@ -33,7 +33,7 @@ REGISTER
 - `packages/core/src/tools/ingest.ts:38` — `mcpToolsToEntries()` — PURE listing→`ToolEntry[]` transform shared by write+run side
 - `packages/core/src/tools/registry.ts:32` — `DefaultToolRegistry` — addresses tools by `namespace:name`, resolves a selection to pi `--tools` + `-e`
 INTROSPECT
-- `packages/core/src/catalog/introspect.ts:100` — `introspectMcpServer()` — fetch one server's `tools/list`, UPSERT its per-tool rows
+- `packages/core/src/catalog/introspect.ts:109` — `introspectMcpServer()` — fetch one server's `tools/list`, UPSERT its per-tool rows
 - `packages/tool-bridge/src/index.ts:105` — `listServerTools()` — the real MCP `tools/list` client (the introspect default seam)
 BIND
 - `packages/core/src/catalog/client.ts:110` — `catalogForSpec()` — slice the cached rows + server configs a spec's `mcp.*` selects
@@ -94,6 +94,8 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `b5972f2` 2026-06-26 — feat(skills): wire node.skill — stage the skill folder into the sandbox + emit --skill (reuse the seed seam)
 - `7126ce1` 2026-06-28 — feat(core): skill requires/allowed manifest + resolver + preflight (SA-A)
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
+- `762c08f` 2026-07-03 — feat(core+cli): catalog introspect --as <alias> — bridge registry names to local bind names
 
 ### Lessons — memory cluster
 
@@ -145,11 +147,11 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 
 ### Code anchors / blast radius (codegraph)
 
-- `resolveRunTools` (packages/core/src/runner/entry.ts:39) — 2 callers in `packages/core/src/runner/entry.ts`; ⚠ no covering tests found
+- `resolveRunTools` (packages/core/src/runner/entry.ts:40) — 2 callers in `packages/core/src/runner/entry.ts`; ⚠ no covering tests found
 - `listServerTools` (packages/tool-bridge/src/index.ts:105) — 2 callers in `packages/core/src/catalog/introspect.ts`; tests: `packages/tool-bridge/test/list-server-tools.test.ts`
 - `seededRegistry` (packages/core/src/tools/catalog.ts:58) — 8 callers in `packages/cli/src/inspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog.test.ts`
-- `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/tool-config.test.ts`
-- `introspectMcpServer` (packages/core/src/catalog/introspect.ts:100) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
+- `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/tool-config.test.ts`, `packages/core/test/catalog-introspect.test.ts`
+- `introspectMcpServer` (packages/core/src/catalog/introspect.ts:109) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
 
-<sub>derived 2026-07-03 · arc=28 commits · files=9 · lessons=44</sub>
+<sub>derived 2026-07-03 · arc=30 commits · files=9 · lessons=44</sub>
 <!-- okf:auto-end -->

@@ -86,6 +86,31 @@ describe('piflowctl skill search <q> --remote — dispatch to the injected searc
     expect(seen?.limit).toBe(5);
   });
 
+  it('forwards --source (csv) to searchRemote as the sources list', async () => {
+    let seen: SearchRemoteOpts | undefined;
+    const r = await run(['search', 'telemetry', '--remote', '--source', 'skillsmp,agentskill'], {
+      searchRemote: async (_q, opts) => {
+        seen = opts;
+        return ROWS;
+      },
+    });
+    expect(r.code).toBe(0);
+    expect(seen?.sources).toEqual(['skillsmp', 'agentskill']);
+  });
+
+  it('--source without a value is usage: exit 1, searchRemote never called', async () => {
+    let called = false;
+    const r = await run(['search', 'telemetry', '--remote', '--source'], {
+      searchRemote: async () => {
+        called = true;
+        return ROWS;
+      },
+    });
+    expect(r.code).toBe(1);
+    expect(called).toBe(false);
+    expect(r.err).toContain('source');
+  });
+
   it('a non-numeric --limit is usage: exit 1, searchRemote never called', async () => {
     let called = false;
     const r = await run(['search', 'telemetry', '--remote', '--limit', 'abc'], {

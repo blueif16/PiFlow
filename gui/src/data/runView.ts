@@ -403,6 +403,32 @@ export async function loadSkills(run: string): Promise<SkillMarket | null> {
   }
 }
 
+/** One ONLINE marketplace row, as `/__piflow/skill-search` (core's `searchRemote`) returns it. `source` is
+ *  the installable repo URL fed verbatim to `piflowctl skill add <source>`; `index` names which remote
+ *  index surfaced the row (topagentskills / agentskill / claude-plugins / claudskills / …). */
+export interface RemoteSkill {
+  slug: string;
+  name: string;
+  description: string;
+  source: string;
+  author?: string;
+  index: string;
+}
+
+/** Search the LIVE remote skill indexes through the server's `/__piflow/skill-search` adapter (online-first:
+ *  the local rings are just the offload cache). Returns the rows, or an `{ error }` the panel shows honestly
+ *  (a 502 carries the failing index's one-line message — worth surfacing, unlike a marketplace-endpoint miss). */
+export async function searchRemoteSkills(q: string, limit = 30): Promise<{ rows: RemoteSkill[] } | { error: string }> {
+  try {
+    const res = await apiFetch(`/__piflow/skill-search?q=${encodeURIComponent(q)}&limit=${limit}`);
+    const body = (await res.json()) as { rows?: RemoteSkill[]; error?: string };
+    if (!res.ok || !body.rows) return { error: body.error ?? `search failed (HTTP ${res.status})` };
+    return { rows: body.rows };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Fetch the agent-preset catalog (id → {icon,label,color}) from the dev middleware. The display lives in
  *  `~/.piflow/agents/`, never on the node (decision #3). Absent/unreachable ⇒ {} (nodes render default chips). */
 export async function loadAgentCatalog(): Promise<AgentCatalog> {

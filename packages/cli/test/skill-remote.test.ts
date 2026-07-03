@@ -1,5 +1,7 @@
-// `searchRemote` — the ONLINE discovery lane over remote skill indexes (ClaudSkills default, SkillsMP
-// optional secondary). This is EXTERNAL-API GLUE (test-discipline §0): the network seam (`fetchImpl`) is
+// `searchRemote` — the ONLINE discovery lane over remote skill indexes (now in @piflow/core; this suite
+// exercises it through the CLI re-export and pins the ClaudSkills + SkillsMP source behaviors — the newer
+// sources and the quality-first default order are pinned by core's skill-remote-sources.test.ts).
+// This is EXTERNAL-API GLUE (test-discipline §0): the network seam (`fetchImpl`) is
 // ALWAYS injected here — zero real network in this suite. Two levels of fixture:
 //   • a FROZEN-SCHEMA snippet taken VERBATIM from a live probe of each index (2026-07-03) — asserts the
 //     fields we actually consume still exist on the real response shape.
@@ -140,14 +142,14 @@ const CS_MULTI_PAGE2 = {
   offset: 200,
 };
 
-describe('searchRemote — claudskills (default source)', () => {
+describe('searchRemote — claudskills (sources: [claudskills])', () => {
   it('filters a single page client-side and maps the matching row', async () => {
     const calls: string[] = [];
     const fetchImpl = async (url: string) => {
       calls.push(url);
       return jsonResponse(200, CS_SINGLE_PAGE);
     };
-    const rows = await searchRemote('telemetry', { fetchImpl });
+    const rows = await searchRemote('telemetry', { fetchImpl, sources: ['claudskills'] });
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual<RemoteSkillRow>({
       slug: 'alpha-telemetry',
@@ -163,7 +165,7 @@ describe('searchRemote — claudskills (default source)', () => {
   it('walks to page 2 when the match is not on page 1 (client-side pagination)', async () => {
     let call = 0;
     const fetchImpl = async () => jsonResponse(200, call++ === 0 ? CS_MULTI_PAGE1 : CS_MULTI_PAGE2);
-    const rows = await searchRemote('research brief', { fetchImpl });
+    const rows = await searchRemote('research brief', { fetchImpl, sources: ['claudskills'] });
     expect(rows).toHaveLength(1);
     expect(rows[0].slug).toBe('beta-research-brief');
     expect(call).toBe(2);
@@ -172,7 +174,7 @@ describe('searchRemote — claudskills (default source)', () => {
   it('a query matching nothing across every page returns an empty array', async () => {
     let call = 0;
     const fetchImpl = async () => jsonResponse(200, call++ === 0 ? CS_MULTI_PAGE1 : CS_MULTI_PAGE2);
-    const rows = await searchRemote('nonexistent-xyz', { fetchImpl });
+    const rows = await searchRemote('nonexistent-xyz', { fetchImpl, sources: ['claudskills'] });
     expect(rows).toEqual([]);
   });
 
@@ -185,7 +187,7 @@ describe('searchRemote — claudskills (default source)', () => {
       ],
     };
     const fetchImpl = async () => jsonResponse(200, page);
-    const rows = await searchRemote('match token', { fetchImpl, limit: 1 });
+    const rows = await searchRemote('match token', { fetchImpl, limit: 1, sources: ['claudskills'] });
     expect(rows).toHaveLength(1);
     expect(rows[0].slug).toBe('match-one');
   });
@@ -196,21 +198,21 @@ describe('searchRemote — claudskills (default source)', () => {
       call++;
       return jsonResponse(200, CS_MULTI_PAGE1); // matches on 'unrelated', and ALWAYS has a `next`
     };
-    const rows = await searchRemote('unrelated', { fetchImpl, limit: 1 });
+    const rows = await searchRemote('unrelated', { fetchImpl, limit: 1, sources: ['claudskills'] });
     expect(rows).toHaveLength(1);
     expect(call).toBe(1); // the cap was hit on page 1 — must not chase `next` further
   });
 
   it('an HTTP error surfaces as a thrown Error identifying the source and status', async () => {
     const fetchImpl = async () => jsonResponse(500, { error: 'boom' });
-    await expect(searchRemote('anything', { fetchImpl })).rejects.toThrow(/claudskills.*500/i);
+    await expect(searchRemote('anything', { fetchImpl, sources: ['claudskills'] })).rejects.toThrow(/claudskills.*500/i);
   });
 
   it('a network failure (fetch rejects) propagates rather than being swallowed', async () => {
     const fetchImpl = async () => {
       throw new TypeError('fetch failed');
     };
-    await expect(searchRemote('anything', { fetchImpl })).rejects.toThrow(/fetch failed/);
+    await expect(searchRemote('anything', { fetchImpl, sources: ['claudskills'] })).rejects.toThrow(/fetch failed/);
   });
 });
 
@@ -247,12 +249,19 @@ describe('searchRemote — skillsmp (opt-in secondary)', () => {
     });
   });
 
-  it('is NOT queried by default (claudskills-only default source list)', async () => {
+  it('is NOT queried by default (its 50/day anon quota keeps it opt-in — see core DEFAULT_SOURCES)', async () => {
     let called = false;
-    const fetchImpl = async (url: string) => {
-      if (url.includes('skillsmp.com')) called = true;
-      return jsonResponse(200, CS_SINGLE_PAGE);
-    };
+    // Route every default source to an empty result so the whole default chain runs dry — skillsmp must
+    // still never be touched.
+    const fetchImpl = (async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes('skillsmp.com')) called = true;
+      if (u.includes('top-agent-skills.com'))
+        return { ok: true, status: 200, text: async () => '# empty\n', json: async () => ({}) } as Response;
+      if (u.includes('agentskill.sh')) return jsonResponse(200, { results: [] });
+      if (u.includes('claude-plugins.dev')) return jsonResponse(200, { skills: [] });
+      return jsonResponse(200, { data: [], next: null, total: 0, limit: 200, offset: 0 });
+    }) as typeof fetch;
     await searchRemote('alpha', { fetchImpl });
     expect(called).toBe(false);
   });

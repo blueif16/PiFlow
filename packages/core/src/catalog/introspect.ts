@@ -37,6 +37,13 @@ export interface IntrospectMcpServerOpts {
   /** The MCP server name — the address namespace (`mcp.<server>:<tool>`) + the `directory` key. */
   server: string;
   /**
+   * The LOCAL alias to write under instead of `server`. Registry names (`ai.exa/exa`) never match the short
+   * name a spec/skill selects (`mcp.exa:*`) — with `as`, the rows land under `mcp.<as>:<tool>` AND the
+   * resolved config is copied to `servers[<as>]` so the read side (`catalogForSpec` → `servers[alias]`)
+   * provisions the run. The registry-name config + `directory[server]` provenance stay untouched.
+   */
+  as?: string;
+  /**
    * The INJECTED network seam: fetch this server's `tools/list` listing. OPTIONAL — when omitted, introspect
    * DEFAULTS to the real `listServerTools` bridge client against the resolved `serverConfig` (below). Pass it
    * to replay a recorded tape with zero net.
@@ -58,9 +65,11 @@ export interface IntrospectMcpServerOpts {
 export interface IntrospectResult {
   /** The server introspected. */
   server: string;
+  /** The local alias the rows were written under (present ONLY when `opts.as` was passed). */
+  as?: string;
   /** Tool rows written for this server (= the listing length). */
   toolCount: number;
-  /** The `mcp.<server>:<tool>` addresses written, in listing order. */
+  /** The `mcp.<server>:<tool>` addresses written, in listing order (`<server>` = the alias when given). */
   addresses: string[];
 }
 
@@ -133,13 +142,21 @@ export async function introspectMcpServer(opts: IntrospectMcpServerOpts): Promis
         });
 
   // Fetch the listing (the ONE network call) and map it to rows via the SHARED transform — no reinvention.
+  // With `as`, the ALIAS is the namespace written (address + piName) — the name specs actually select.
+  const namespace = opts.as ?? server;
   const listings = await listTools();
-  const rows = mcpToolsToEntries(server, listings);
+  const rows = mcpToolsToEntries(namespace, listings);
 
-  // UPSERT: drop every PRIOR row for THIS server (refresh, never duplicate), keep all others, append fresh.
-  const serverPrefix = `mcp.${server}:`;
+  // UPSERT: drop every PRIOR row for THIS namespace (refresh, never duplicate), keep all others, append fresh.
+  const serverPrefix = `mcp.${namespace}:`;
   const kept = (slice.entries ?? []).filter((e) => !e.address.startsWith(serverPrefix));
   const entries: ToolEntry[] = [...kept, ...rows];
+
+  // The load-bearing alias copy: `catalogForSpec` provisions `servers[<alias>]` for a `mcp.<alias>:*`
+  // selection, so without this the alias rows bind an address the bridge cannot reach.
+  if (opts.as && opts.as !== server && config) {
+    slice.servers = { ...slice.servers, [opts.as]: config };
+  }
 
   // Stamp introspectedAt ONLY if a directory record for this server already exists (don't fabricate one).
   const directory = slice.directory;
@@ -152,5 +169,10 @@ export async function introspectMcpServer(opts: IntrospectMcpServerOpts): Promis
   const out: SliceFile = { ...slice, entries };
   fssync.writeFileSync(indexPath, `${JSON.stringify(out, null, 2)}\n`, 'utf8');
 
-  return { server, toolCount: rows.length, addresses: rows.map((r) => r.address) };
+  return {
+    server,
+    ...(opts.as ? { as: opts.as } : {}),
+    toolCount: rows.length,
+    addresses: rows.map((r) => r.address),
+  };
 }

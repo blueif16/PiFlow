@@ -534,6 +534,44 @@ export const piflowSkillsMarketplace: Middleware = async (req, res, next) => {
   }
 };
 
+/** `GET /__piflow/skill-search?q=<text>[&sources=a,b][&limit=n]` — the marketplace's ONLINE lane: a thin
+ *  adapter over core's `searchRemote` (one impl shared with `piflowctl skill search --remote`), so the GUI
+ *  panel can search the live remote indexes instead of only the local rings (online-first; the rings are
+ *  the offload cache). q is required; sources is a csv of index ids; limit a positive integer. An upstream
+ *  index failure is a 502 with the source's one-line message — never a stack, never a 500 disguise. */
+export const piflowSkillSearch: Middleware = async (req, res, next) => {
+  if (!req.url?.startsWith("/__piflow/skill-search")) return next();
+  const params = new URL(req.url, "http://localhost").searchParams;
+  const q = params.get("q");
+  if (!q) return sendJson(res, 400, { error: "missing ?q=<text>" });
+
+  const opts: { sources?: string[]; limit?: number } = {};
+  const sourcesRaw = params.get("sources");
+  if (sourcesRaw) {
+    const sources = sourcesRaw.split(",").map((s) => s.trim()).filter(Boolean);
+    if (sources.length) opts.sources = sources;
+  }
+  const limitRaw = params.get("limit");
+  if (limitRaw !== null) {
+    const n = Number(limitRaw);
+    if (!Number.isInteger(n) || n <= 0) return sendJson(res, 400, { error: `limit must be a positive integer (got '${limitRaw}')` });
+    opts.limit = n;
+  }
+
+  const mod = findCore("workflow/ops/skill-remote.js");
+  if (!mod) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
+  try {
+    const { searchRemote } = (await import(pathToFileURL(mod).href)) as {
+      searchRemote: (q: string, opts?: { sources?: string[]; limit?: number }) => Promise<unknown[]>;
+    };
+    const rows = await searchRemote(q, opts);
+    sendJson(res, 200, { rows });
+  } catch (e) {
+    // Upstream index failures (HTTP/network/unknown-source) — the caller shows the one-line message.
+    sendJson(res, 502, { error: e instanceof Error ? e.message : String(e) });
+  }
+};
+
 /** `POST /__piflow/checkpoint/<run>` — dumb courier: write a human's reply to the run's checkpoint file. */
 export const piflowCheckpointReply: Middleware = async (req, res, next) => {
   const m = req.url?.match(/^\/__piflow\/checkpoint\/([^/?]+)/);
@@ -869,6 +907,7 @@ export const apiHandlers: Middleware[] = [
   piflowTree,
   piflowSkill,
   piflowSkillsMarketplace,
+  piflowSkillSearch,
   piflowCheckpointReply,
   piflowAgents,
   piflowNodeWriteback,

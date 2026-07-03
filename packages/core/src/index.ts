@@ -115,6 +115,11 @@ export type { SkillLocateResult, SkillListEntry } from './workflow/ops/skill-loc
 // installers (`piflowctl skill add`) can refuse a broken bundle at install time, not at run time.
 export { parseSkillManifest } from './workflow/ops/skill-manifest.js';
 export type { SkillManifest } from './workflow/ops/skill-manifest.js';
+// The ONLINE discovery lane (remote skill indexes; probed shapes pinned in the module header) — ONE
+// implementation shared by the CLI verb (`skill search --remote`) and the control-plane server (the GUI's
+// marketplace panel searches online through it). Local rings are the offload cache, not the catalog.
+export { searchRemote, remoteSourceIds } from './workflow/ops/skill-remote.js';
+export type { RemoteSkillRow, SearchRemoteOpts } from './workflow/ops/skill-remote.js';
 
 // U7 — the `promote` POST-op (lift a node output into a RunState channel via the reducer) + the
 // stage-barrier merge (serial+deterministic parallel-promote merge; a `set` channel with two concurrent

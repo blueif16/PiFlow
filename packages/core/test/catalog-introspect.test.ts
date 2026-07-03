@@ -186,6 +186,83 @@ describe('introspectMcpServer — writes a server`s tools/list into the ~/.piflo
   });
 });
 
+// ── ALIAS (`as`): registry names (`ai.exa/exa`) never match the LOCAL alias a spec selects (`mcp.exa:*`) ──
+// A registry-synced server is unbindable by its short name until aliased: `as` writes the rows under the
+// ALIAS namespace and copies the resolved config to `servers[<as>]`, so the read side (`catalogForSpec` →
+// `servers[alias]`) provisions the run. Without the config copy the alias rows bind an address but the
+// bridge has no server to reach — the copy is load-bearing, not cosmetic.
+describe('introspectMcpServer — `as` aliases a registry-named server to the local name specs select', () => {
+  it('writes the rows under the ALIAS namespace (address + piName) and reports the alias in the summary', async () => {
+    const res = await introspectMcpServer({
+      server: 'ai.exa/exa',
+      as: 'exa',
+      listTools: tapeListTools(TAPE),
+      home,
+      now: NOW,
+    });
+
+    expect(res).toEqual({
+      server: 'ai.exa/exa',
+      as: 'exa',
+      toolCount: 2,
+      addresses: ['mcp.exa:echo', 'mcp.exa:add'],
+    });
+
+    const { entries } = loadMcpCatalog(home);
+    const byAddr = new Map(entries.map((e) => [e.address, e]));
+    expect(byAddr.get('mcp.exa:echo')?.piName).toBe('exa_echo');
+    expect(byAddr.get('mcp.exa:add')?.parameters).toEqual(ADD_SCHEMA);
+    // NOTHING lands under the registry namespace — the alias is the one namespace written.
+    expect(entries.some((e) => e.address.startsWith('mcp.ai.exa/exa:'))).toBe(false);
+  });
+
+  it('BIND PROOF: copies the registry-name config to servers[<as>] so a spec selecting the alias provisions it', async () => {
+    // The synced slice knows the server ONLY by its registry name.
+    seedCatalog('mcp.index.json', {
+      entries: [],
+      servers: { 'ai.exa/exa': { transport: 'http', url: 'https://mcp.exa.ai/mcp' } },
+    });
+
+    await introspectMcpServer({ server: 'ai.exa/exa', as: 'exa', listTools: tapeListTools(TAPE), home, now: NOW });
+
+    const spec = specSelecting('mcp.exa:echo');
+    const { extraEntries, servers } = catalogForSpec(spec, home);
+    expect(extraEntries.map((e) => e.address)).toContain('mcp.exa:echo');
+    // The load-bearing copy: the run provisions the ALIAS key, carrying the registry entry's config.
+    expect(servers.exa).toEqual({ transport: 'http', url: 'https://mcp.exa.ai/mcp' });
+
+    // The registry-name config is preserved verbatim alongside the alias copy.
+    const index = readCatalog('mcp.index.json');
+    expect(index.servers['ai.exa/exa']).toEqual({ transport: 'http', url: 'https://mcp.exa.ai/mcp' });
+  });
+
+  it('REFRESH under the alias: re-introspecting REPLACES prior alias rows (no dupes), preserving other servers', async () => {
+    const staleAlias: ToolEntry = {
+      address: 'mcp.exa:echo',
+      source: 'mcp',
+      piName: 'exa_echo',
+      description: 'STALE',
+      origin: { kind: 'mcp-server', ref: 'exa' },
+    };
+    const otherRow: ToolEntry = {
+      address: 'mcp.other:ping',
+      source: 'mcp',
+      piName: 'other_ping',
+      description: 'ping',
+      origin: { kind: 'mcp-server', ref: 'other' },
+    };
+    seedCatalog('mcp.index.json', { entries: [staleAlias, otherRow], servers: {} });
+
+    await introspectMcpServer({ server: 'ai.exa/exa', as: 'exa', listTools: tapeListTools(TAPE), home, now: NOW });
+
+    const index = readCatalog('mcp.index.json');
+    const aliasRows = (index.entries as ToolEntry[]).filter((e) => e.address.startsWith('mcp.exa:'));
+    expect(aliasRows.map((e) => e.address).sort()).toEqual(['mcp.exa:add', 'mcp.exa:echo']);
+    expect(aliasRows.find((e) => e.address === 'mcp.exa:echo')!.description).toBe('Echo back the input.');
+    expect((index.entries as ToolEntry[]).find((e) => e.address === 'mcp.other:ping')).toEqual(otherRow);
+  });
+});
+
 // ── INTEGRATION: the DEFAULT listTools seam — through the REAL tool-bridge to a REAL MCP server ─────────
 // No tape, no injected seam: introspect must DEFAULT to `listServerTools` (packages/tool-bridge) when given
 // a `serverConfig`, connecting through the real client → transport → server `tools/list` path. Only the
