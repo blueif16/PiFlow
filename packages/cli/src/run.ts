@@ -648,9 +648,16 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     const credList = cloudSecrets.join(', ');
     const bootFrom = rawImage ? `image ${rawImage}` : `snapshot ${snapshot}`;
     print(`piflowctl run: cloud (daytona) — booting from ${bootFrom}.`);
+    // A gateway with a LITERAL apiKey (e.g. mmgw) needs NO cred var — its key rides inline in the staged
+    // models.json — so an empty cloudSecrets is NOT "unresolved". Signal on (staged config OR forwarded cred);
+    // warn only when NEITHER resolved (else the run would truly have no model).
+    const staged = [
+      stageHome ? `staged ~/.pi/agent/models.json[${effProvider}]` : '',
+      cloudSecrets.length ? `forwarding ${credList}` : '',
+    ].filter(Boolean).join(' + ');
     print(
-      cloudSecrets.length
-        ? `piflowctl run: cloud (daytona) — ${stageHome ? `staged ~/.pi/agent/models.json[${effProvider}] + ` : ''}forwarding ${credList} into the VM (allowlisted; the raw value never leaves the resolver seam).`
+      staged
+        ? `piflowctl run: cloud (daytona) — ${staged} into the VM (allowlisted; the raw value never leaves the resolver seam).`
         : `piflowctl run: ⚠ cloud (daytona) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the VM will have no model key.`,
     );
   } else if (parsed.sandbox === 'e2b') {
@@ -680,9 +687,14 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     const credList = cloudSecrets.join(', ');
     const bootFrom = template ? `template ${template}` : 'the E2B default base template (no pi baked — set E2B_TEMPLATE)';
     print(`piflowctl run: cloud (e2b) — booting from ${bootFrom}; egress OPEN by default.`);
+    // (see daytona) a LITERAL-key gateway needs no cred var — signal on staged-OR-forwarded, warn only when neither.
+    const staged = [
+      stageHome ? `staged ~/.pi/agent/models.json[${effProvider}]` : '',
+      cloudSecrets.length ? `forwarding ${credList}` : '',
+    ].filter(Boolean).join(' + ');
     print(
-      cloudSecrets.length
-        ? `piflowctl run: cloud (e2b) — ${stageHome ? `staged ~/.pi/agent/models.json[${effProvider}] + ` : ''}forwarding ${credList} into the sandbox (allowlisted; the raw value never leaves the resolver seam).`
+      staged
+        ? `piflowctl run: cloud (e2b) — ${staged} into the sandbox (allowlisted; the raw value never leaves the resolver seam).`
         : `piflowctl run: ⚠ cloud (e2b) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the sandbox will have no model key.`,
     );
   } else if (parsed.sandbox === 'docker') {
@@ -712,9 +724,14 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     const credList = cloudSecrets.join(', ');
     const bootFrom = image ? `image ${image}` : 'the auto-built pi node-runtime image (built on first use)';
     print(`piflowctl run: local (docker) — booting one container per run from ${bootFrom}; egress OPEN by default.`);
+    // (see daytona) a LITERAL-key gateway needs no cred var — signal on staged-OR-forwarded, warn only when neither.
+    const staged = [
+      stageHome ? `staged ~/.pi/agent/models.json[${effProvider}]` : '',
+      cloudSecrets.length ? `forwarding ${credList}` : '',
+    ].filter(Boolean).join(' + ');
     print(
-      cloudSecrets.length
-        ? `piflowctl run: local (docker) — ${stageHome ? `staged ~/.pi/agent/models.json[${effProvider}] + ` : ''}forwarding ${credList} into the container (allowlisted; the raw value never leaves the resolver seam).`
+      staged
+        ? `piflowctl run: local (docker) — ${staged} into the container (allowlisted; the raw value never leaves the resolver seam).`
         : `piflowctl run: ⚠ local (docker) — no provider config/credential resolved for --provider "${effProvider ?? '(default)'}"; add a custom gateway to ~/.pi/agent/models.json, or declare the key with --cloud-secret NAME, or pi in the container will have no model key.`,
     );
   }
