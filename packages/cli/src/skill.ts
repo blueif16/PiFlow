@@ -8,6 +8,11 @@
 // provenance in `<dest>/.install.json` { source, sha256, installedAt } — the sha256 is a DETERMINISTIC
 // content hash over the bundle's files (sorted relative paths + bytes; `.git`/`.install.json` excluded),
 // so the same source always yields the same hash (an integrity anchor, not a timestamp).
+//
+// `search <q> --remote` is a SECOND, ONLINE lane bolted onto the same verb: it hits remote skill indexes
+// (skill-remote.ts's `searchRemote` — ClaudSkills by default) instead of the local rings, purely for
+// DISCOVERY — every emitted row's `source` feeds this same `add <source>` verbatim. A network/HTTP failure
+// there is caught HERE and turned into one clean stderr line (never a stack trace).
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -16,6 +21,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { listSkills, parseSkillManifest, type SkillListEntry } from '@piflow/core';
+import { searchRemote, type RemoteSkillRow, type SearchRemoteOpts } from './skill-remote.js';
 
 /** Injectable sinks + ring roots so the verb is testable against temp dirs (no real ~/.piflow, no cwd). */
 export interface SkillDeps {
@@ -27,11 +33,13 @@ export interface SkillDeps {
   piflowHome?: string;
   /** The `.install.json` `installedAt` stamp (default `new Date().toISOString()`). */
   now?: () => string;
+  /** The `search --remote` network seam (default the real `searchRemote`) — inject a fake for zero-net tests. */
+  searchRemote?: (q: string, opts?: SearchRemoteOpts) => Promise<RemoteSkillRow[]>;
 }
 
 const USAGE =
   `usage: piflowctl skill list [--json]\n` +
-  `       piflowctl skill search <q> [--json]\n` +
+  `       piflowctl skill search <q> [--remote] [--limit <n>] [--json]\n` +
   `       piflowctl skill add <source> [--skill <name>] [--force]\n`;
 
 /** The global piflow home — the SAME resolution core's `skillSearchRoots`/`defaultAgentsDir` use. */
@@ -156,6 +164,22 @@ function renderEntries(entries: SkillListEntry[], out: (s: string) => void): voi
   for (const r of rows) out(line(r));
 }
 
+/** Cell truncation for the human table — a remote description/source can run to hundreds of chars
+ *  (unlike a local SKILL.md's), so a cell over `max` is clipped with an ellipsis. `--json` stays verbatim. */
+function truncateCell(s: string, max: number): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+/** Render remote rows as the human table (SLUG · NAME · DESCRIPTION · SOURCE, cells truncated sanely). */
+function renderRemoteRows(rows: RemoteSkillRow[], out: (s: string) => void): void {
+  const cells = rows.map((r) => [r.slug, r.name, truncateCell(r.description, 60), truncateCell(r.source, 50)]);
+  const header = ['SLUG', 'NAME', 'DESCRIPTION', 'SOURCE'];
+  const widths = header.map((h, i) => Math.max(h.length, ...cells.map((c) => c[i].length)));
+  const line = (c: string[]) => c.map((v, i) => v.padEnd(widths[i])).join('  ').trimEnd() + '\n';
+  out(line(header));
+  for (const c of cells) out(line(c));
+}
+
 /** `--name <value>` lookup (the blueprint.ts flag convention). */
 function flag(argv: string[], name: string): string | undefined {
   const i = argv.indexOf(`--${name}`);
@@ -270,10 +294,13 @@ async function runAdd(rest: string[], deps: SkillDeps, out: (s: string) => void,
 }
 
 /**
- * `piflowctl skill <list | search <q> | add <source>> [--json] [--skill <name>] [--force]`.
- *   • list        → every resolvable bundle across BOTH rings, ring-tagged (+ shadow/error flags).
- *   • search <q>  → the same rows, filtered case-insensitively over id + description.
- *   • add <src>   → install a bundle into the home ring (see `runAdd`).
+ * `piflowctl skill <list | search <q> [--remote] | add <source>> [--json] [--limit <n>] [--skill <name>]
+ * [--force]`.
+ *   • list                → every resolvable bundle across BOTH rings, ring-tagged (+ shadow/error flags).
+ *   • search <q>          → the same rows, filtered case-insensitively over id + description (LOCAL rings).
+ *   • search <q> --remote → the ONLINE lane: rows from `searchRemote` (skill-remote.ts) instead of the
+ *                           local rings — discovery only; each row's `source` feeds `add` verbatim.
+ *   • add <src>           → install a bundle into the home ring (see `runAdd`).
  * Returns the process exit code (0 = ok). The `deps` sinks default to real stdout/stderr + cwd + ~/.piflow.
  */
 export async function runSkillCli(argv: string[], deps: SkillDeps = {}): Promise<number> {
@@ -299,6 +326,32 @@ export async function runSkillCli(argv: string[], deps: SkillDeps = {}): Promise
         err(`piflowctl skill search <q> — a query is required.\n${USAGE}`);
         return 1;
       }
+
+      if (rest.includes('--remote')) {
+        const opts: SearchRemoteOpts = {};
+        const limitRaw = flag(rest, 'limit');
+        if (limitRaw !== undefined) {
+          const n = Number(limitRaw);
+          if (!Number.isInteger(n) || n <= 0) {
+            err(`piflowctl skill search --remote: --limit must be a positive integer (got '${limitRaw}').\n`);
+            return 1;
+          }
+          opts.limit = n;
+        }
+        const search = deps.searchRemote ?? searchRemote;
+        let rows: RemoteSkillRow[];
+        try {
+          rows = await search(q, opts);
+        } catch (e) {
+          err(`piflowctl skill search --remote: ${e instanceof Error ? e.message : String(e)}\n`);
+          return 1;
+        }
+        if (json) out(JSON.stringify(rows, null, 2) + '\n');
+        else if (rows.length === 0) out(`no remote skills match '${q}'\n`);
+        else renderRemoteRows(rows, out);
+        return 0;
+      }
+
       const needle = q.toLowerCase();
       const entries = (await listSkills(rings)).filter(
         (e) => e.id.toLowerCase().includes(needle) || e.description.toLowerCase().includes(needle),
