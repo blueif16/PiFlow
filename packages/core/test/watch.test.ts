@@ -452,3 +452,105 @@ describe('watchRun — enriched snapshot mirrors buildRunView per-node (pi + Cla
     expect(snapshot!.model.tokenTotal?.cost).toBeCloseTo(view.tokenTotal?.cost ?? -1, 9);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// (f) Defect F, SSE≡run-view PARITY — a REUSED node carrying a STALE prior-run durationMs, with a REAL
+//     cross-run baseline (historyDirs), reports the honest expectedMs (the real mean, not a self-fallback)
+//     but NO fabricated `derived.time` tone — on BOTH the live snapshot AND the batch oracle, from the SAME
+//     historyDirs the caller passes to each (the exact reported symptom: a reused node painting a spurious
+//     "slow" bar because its carried-forward duration was compared against nothing, or against itself).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe('watchRun ≡ buildRunView — a reused node with real cross-run history gets no fabricated live time tone (Defect F)', () => {
+  it('both the live snapshot and the batch oracle report the real expectedMs mean and a null derived.time', async () => {
+    // A sibling HISTORY run where `gameplay` really ran (durationMs 536000) — buildHistory's mean source.
+    const historyDir = mkRunDir();
+    await writeRunJson(historyDir, {
+      run: 'hist1', startedAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:10:00.000Z',
+      done: true, ok: true, durationMs: 536000, stage: null, totals: { nodes: 1, ok: 1, failed: 0 },
+      nodes: { gameplay: rec('gameplay', 'Gameplay', 'ok', { durationMs: 536000 }) },
+    });
+
+    // The CURRENT run: `gameplay` is REUSED, carrying a much OLDER real duration verbatim (914045ms) —
+    // exactly the shape a `--from` resume produces (runner.ts's seedNode, out of scope to change).
+    const runDir = mkRunDir();
+    const status: RunStatus = {
+      run: 'cur1', startedAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:05.000Z',
+      done: false, ok: null, durationMs: null, stage: null, totals: null,
+      nodes: { gameplay: rec('gameplay', 'Gameplay', 'reused', { durationMs: 914045 }) },
+    };
+    await writeRunJson(runDir, status);
+    await writeNodeFixture(runDir, { id: 'gameplay', label: 'Gameplay', phase: null, reads: [], writes: [], promotes: [], status: 'reused' }, []);
+
+    // ── the ORACLE (batch builder), given the SAME historyDirs a caller would pass. ──
+    const { view } = buildRunView(runDir, { historyDirs: [historyDir] });
+    const oracle = view.nodes.find((n) => n.id === 'gameplay')!;
+
+    // ── the STREAM (live fold), given the SAME historyDirs. ──
+    const ctrl = new AbortController();
+    let snapshot: Extract<RunUpdate, { kind: 'snapshot' }> | null = null;
+    for await (const u of watchRun(runDir, { signal: ctrl.signal, pollMs: 10, historyDirs: [historyDir] })) {
+      if (u.kind === 'snapshot') { snapshot = u; ctrl.abort(); break; }
+    }
+    expect(snapshot).toBeTruthy();
+    const stream = snapshot!.model.nodes.find((n) => n.id === 'gameplay')!;
+
+    // expectedMs is a RunViewNode-only field (NodeView carries no cross-run scalar) — checked on the oracle.
+    expect(oracle.expectedMs).toBe(536000); // the HONEST real cross-run mean (F2) — not the self-fallback
+    // derived.time DOES flow onto the live wire node (mergeEnriched copies `derived` verbatim) — the status
+    // gate (F1) must hold on BOTH, or the live graph and the loaded view disagree on the exact reported bug.
+    expect(oracle.derived?.time ?? null).toBeNull();
+    expect(stream.derived?.time ?? null).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// (g) fold-signature REGRESSION uncovered by the F2 fix: `foldSignature` relied on `derived.time`
+//     flipping from null (running) to a real tone (settled) as its ONLY signal that a node just settled.
+//     Once F2 makes `time` stay null for a settled node with NO cross-run history (the honest "no
+//     baseline" case), that implicit signal disappears — a node that settles with UNCHANGED tokens/tones
+//     emits NO further `node-enriched` delta, so the live graph never learns its final `durationMs`. Fixed
+//     by including `durationMs`/`status` directly in the signature (a settle is a real event regardless of
+//     whether any tone happens to flip).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe('watchRun — a node-enriched delta fires when a node SETTLES even if every tone/token stays unchanged (fold-signature regression)', () => {
+  it('emits a node-enriched delta carrying the real durationMs when status flips running→ok with NO tone change', async () => {
+    const runDir = mkRunDir();
+    const status: RunStatus = {
+      run: 'settle1', provider: 'cp', model: 'm1',
+      startedAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:01.000Z',
+      done: false, ok: null, durationMs: null, stage: null, totals: null,
+      nodes: { r0: rec('r0', 'Runner', 'running', { model: 'm1' }) },
+    };
+    await writeRunJson(runDir, status);
+    // No cross-run history is passed (matching the reported scenario) — a settled node with no baseline
+    // has derived.time:null BEFORE settling (running) AND AFTER (ok), so the tone never flips.
+    await writeNodeFixture(runDir, { id: 'r0', label: 'Runner', phase: null, reads: [], writes: [], promotes: [], status: 'running' }, []);
+
+    const ctrl = new AbortController();
+    const updates: RunUpdate[] = [];
+
+    const driver = (async () => {
+      while (!updates.some((u) => u.kind === 'snapshot')) await sleep(5);
+      // Settle the node — durationMs newly populated, but NO usage/tool events at all (tokens/tones unchanged).
+      status.done = true; status.ok = true; status.durationMs = 1000;
+      status.nodes.r0.status = 'ok'; status.nodes.r0.durationMs = 1000;
+      await writeRunJson(runDir, status);
+      while (!updates.some((u) => u.kind === 'done')) await sleep(5);
+    })();
+
+    for await (const u of watchRun(runDir, { signal: ctrl.signal, pollMs: 10 })) {
+      updates.push(u);
+      if (u.kind === 'done') break;
+    }
+    await driver;
+
+    const enriched = updates.find((u): u is Extract<RunUpdate, { kind: 'node-enriched' }> => u.kind === 'node-enriched' && u.id === 'r0');
+    expect(enriched).toBeTruthy(); // the delta must fire — a settle is a real event even with no tone change
+    expect(enriched!.node.status).toBe('ok');
+
+    // The ORACLE agrees: buildRunView over the final on-disk state reports the same real durationMs.
+    const { view } = buildRunView(runDir);
+    const oracle = view.nodes.find((n) => n.id === 'r0')!;
+    expect(oracle.durationMs).toBe(1000);
+  });
+});

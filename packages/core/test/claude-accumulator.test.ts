@@ -26,7 +26,7 @@ import { claudeCodeDriver } from '../src/runner/drivers/claude-code.js';
 import { piDriver } from '../src/runner/drivers/pi.js';
 import { builtinDrivers } from '../src/runner/drivers/table.js';
 import { createNodeAccumulator, type NodeAccumulator } from '../src/observe/distill.js';
-import { assembleNode, type AssembleNodeCtx, type NodeIoLedger } from '../src/observe/runView.js';
+import { assembleNode, nodeTokenSpine, type AssembleNodeCtx, type NodeIoLedger } from '../src/observe/runView.js';
 import { loadModelCatalog } from '../src/observe/models.js';
 import type { PiEvent } from '../src/runner/events.js';
 import type { NodeUsage } from '../src/runner/status.js';
@@ -42,6 +42,7 @@ function fixtureLines(name: string): PiEvent[] {
 }
 const CLAUDE_TOOLS = 'claude-stream-json-tools.ndjson';
 const CLAUDE_TOOL_ERROR = 'claude-stream-json-tool-error.ndjson';
+const CLAUDE_USAGE = 'claude-stream-json-usage.ndjson';
 
 // ── HAND-COUNT ORACLE (independently justified from the fixture, NOT copied from any output) ──────────────
 // The fixture pairs one assistant `tool_use` with the next user `tool_result`, in this order:
@@ -225,5 +226,109 @@ describe('executor is folded onto the assembled wire node (P5, behavior 4)', () 
     const rec = { id: 'p0', label: 'Pi Node', status: 'ok' as const, driverId: 'pi', artifacts: [], issues: [] };
     const node = assembleNode(rec, blankRich(), io, ctx);
     expect(node.executor).toBe('pi');
+  });
+});
+
+// ── Defect E2 — the Claude accumulator accumulates tokens/model/modelCalls from the stream-json it
+// already parses, so a LEGACY run (no rec.usage) stops rendering model:null + all-zero tokens. ────────
+//
+// THE FIXTURE (claude-stream-json-usage.ndjson) is copied VERBATIM from a real legacy run's events.jsonl
+// (game-omni p09's `guidance` node, whose run.json carries driverId:null and no rec.usage for every node —
+// the exact defect repro). It has a load-bearing real-world wrinkle the synthetic tools fixture doesn't:
+// ONE logical model turn is reported across MULTIPLE "assistant" lines sharing the SAME top-level
+// `request_id`, each repeating the IDENTICAL usage (the CLI echoes the in-flight message's usage once per
+// streamed content chunk). Summing every line naively TRIPLES the real totals. The real data also shows
+// usage growing monotonically ACROSS request_ids (turn 2's cache_read = turn 1's cache_creation), which is
+// the independent evidence that request_id (falling back to message.id, matching the OTHER shipped fixture's
+// shape) is the correct per-turn dedup key — not an assumption, a fact read off the two fixtures' own numbers.
+//
+// HAND-COMPUTED ORACLE (from the copied lines, NOT copied from any code output):
+//   turn A (request_id req_...HGm2XZ...): input=2 output=2 cacheWrite=12175 cacheRead=0     (3 dupe lines → 1)
+//   turn B (request_id req_...HH2G4T...): input=2 output=2 cacheWrite=35776 cacheRead=12175 (3 dupe lines → 1)
+//   turn C (request_id req_...HJfkqG...): input=2 output=3 cacheWrite=2592  cacheRead=47951 (2 dupe lines → 1)
+//   totals: input=6 output=7 cacheWrite=50543 cacheRead=60126 modelCalls=3 model='claude-sonnet-5'
+// A naive (non-deduped) sum would instead yield input=16 output=18 cacheWrite=149037 cacheRead=132427
+// modelCalls=8 — clearly distinguishable, so this test has real teeth against a dedup regression.
+describe('claudeCodeDriver.eventAccumulator() — accumulates tokens/model/modelCalls (Defect E2)', () => {
+  it('folds the REAL legacy fixture into the deduped-by-turn oracle totals', () => {
+    const acc = claudeCodeDriver.eventAccumulator();
+    expect(acc).toBeDefined();
+    const rich = foldAll(acc!, fixtureLines(CLAUDE_USAGE));
+
+    expect(rich.model).toBe('claude-sonnet-5');
+    expect(rich.modelCalls).toBe(3); // 3 distinct turns, NOT 8 assistant lines
+    expect(rich.tokens.input).toBe(6);
+    expect(rich.tokens.output).toBe(7);
+    expect(rich.tokens.cacheWrite).toBe(50543);
+    expect(rich.tokens.cacheRead).toBe(60126);
+    expect(rich.tokens.billable).toBe(6 + 7);
+    // no principled price source in core (P5.x scope) — cost stays 0, never a hardcoded price table.
+    expect(rich.tokens.cost).toBe(0);
+    // the count-only tool signal is untouched by this fixture (no tool_use blocks in it).
+    expect(rich.toolCalls).toBe(0);
+  });
+
+  it('does NOT collapse two DIFFERENT turns (different request_id) into one', () => {
+    const acc = claudeCodeDriver.eventAccumulator()!;
+    const events: PiEvent[] = [
+      { type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-5', usage: { input_tokens: 10, output_tokens: 5 } }, request_id: 'req_A' } as unknown as PiEvent,
+      { type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-5', usage: { input_tokens: 10, output_tokens: 5 } }, request_id: 'req_A' } as unknown as PiEvent, // dupe chunk of turn A — collapses
+      { type: 'assistant', message: { role: 'assistant', model: 'claude-sonnet-5', usage: { input_tokens: 20, output_tokens: 8 } }, request_id: 'req_B' } as unknown as PiEvent, // a genuinely NEW turn
+    ];
+    const rich = foldAll(acc, events);
+    expect(rich.modelCalls).toBe(2); // A (deduped) + B, not 3
+    expect(rich.tokens.input).toBe(10 + 20);
+    expect(rich.tokens.output).toBe(5 + 8);
+  });
+
+  it('falls back to message.id as the turn key when request_id is absent (the shipped tools-fixture shape)', () => {
+    const acc = claudeCodeDriver.eventAccumulator()!;
+    const events: PiEvent[] = [
+      { type: 'assistant', message: { role: 'assistant', model: 'claude-haiku-4-5-20251001', id: 'msg_A', usage: { input_tokens: 10, output_tokens: 4 } } } as unknown as PiEvent,
+      { type: 'assistant', message: { role: 'assistant', model: 'claude-haiku-4-5-20251001', id: 'msg_A', usage: { input_tokens: 10, output_tokens: 4 } } } as unknown as PiEvent, // dupe chunk, same id
+      { type: 'assistant', message: { role: 'assistant', model: 'claude-haiku-4-5-20251001', id: 'msg_B', usage: { input_tokens: 12, output_tokens: 6 } } } as unknown as PiEvent,
+    ];
+    const rich = foldAll(acc, events);
+    expect(rich.modelCalls).toBe(2); // msg_A (deduped) + msg_B
+    expect(rich.tokens.input).toBe(10 + 12);
+    expect(rich.tokens.output).toBe(4 + 6);
+  });
+
+  it('treats each line as its OWN turn when NEITHER request_id NOR message.id is present (no false collapse)', () => {
+    const acc = claudeCodeDriver.eventAccumulator()!;
+    const events: PiEvent[] = [
+      { type: 'assistant', message: { role: 'assistant', model: 'm', usage: { input_tokens: 5, output_tokens: 1 } } } as unknown as PiEvent,
+      { type: 'assistant', message: { role: 'assistant', model: 'm', usage: { input_tokens: 5, output_tokens: 1 } } } as unknown as PiEvent,
+    ];
+    const rich = foldAll(acc, events);
+    expect(rich.modelCalls).toBe(2); // no correlator ⇒ never dedup away a real turn
+    expect(rich.tokens.input).toBe(10);
+    expect(rich.tokens.output).toBe(2);
+  });
+
+  it('the LIVE metrics() (mid-run, no finalize) also reports the accumulated tokens/model — not just finalize()', () => {
+    const acc = claudeCodeDriver.eventAccumulator()!;
+    for (const e of fixtureLines(CLAUDE_USAGE)) acc.push(e);
+    const live = acc.metrics();
+    expect(live.model).toBe('claude-sonnet-5');
+    expect(live.tokens.input).toBe(6);
+    expect(live.tokens.output).toBe(7);
+  });
+});
+
+// ── nodeTokenSpine's rec.usage-vs-event-replay fallback (runView.ts) already reads `rich.tokens`/`rich.model`
+// verbatim when `usage` is undefined — so once the accumulator (above) carries real numbers, the spine picks
+// them up with NO nodeTokenSpine code change. This test pins that wiring so a future edit to the ternary
+// can't silently drop the fallback.
+describe('nodeTokenSpine — the Claude accumulator fallback flows through with NO usage present (Defect E2 wiring)', () => {
+  it('sources tokens/model from the Claude accumulator rich node when rec.usage is undefined (legacy run)', () => {
+    const acc = claudeCodeDriver.eventAccumulator()!;
+    const rich = foldAll(acc, fixtureLines(CLAUDE_USAGE));
+    const spine = nodeTokenSpine(undefined, rich, catalog, null);
+
+    expect(spine.model).toBe('claude-sonnet-5'); // NOT null — the legacy defect symptom
+    expect(spine.tokens.input).toBe(6);
+    expect(spine.tokens.output).toBe(7);
+    expect(spine.tokens.billable).toBe(6 + 7); // NOT all-zero — the legacy defect symptom
   });
 });

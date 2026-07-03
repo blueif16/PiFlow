@@ -133,9 +133,13 @@ function buildAssembleCtx(runDir: string, catalog: ModelCatalog, opts: WatchOpts
 }
 
 /** The STABLE fold-signature of an enriched node — a change in ANY of these emits a `node-enriched` delta.
- *  It is `tokens.billable | tokens.contextPeak | toolCalls | any derived tone/flag`, and EXCLUDES every live
- *  clock / `updatedAt` / elapsed (those tick every poll and would defeat the cost win; `deriveNode.time` is
- *  already `null` for a running node, so the signature is stable). (DR3.) */
+ *  It is `status | durationMs | tokens.billable | tokens.contextPeak | toolCalls | any derived tone/flag`,
+ *  and EXCLUDES every live clock / `updatedAt` / elapsed (those tick every poll and would defeat the cost
+ *  win). `status`/`durationMs` are included EXPLICITLY (not inferred from a tone flip): a node settling
+ *  with NO cross-run baseline has `derived.time:null` both BEFORE (running) and AFTER (settled) — the
+ *  honest F2 fix — so a tone-only signature would miss the settle entirely and the live graph would never
+ *  learn the node's final durationMs. `durationMs` itself never ticks mid-run (it is unset while running,
+ *  stamped ONCE at settle), so it stays as stable as the tone fields it now backstops. (DR3.) */
 function foldSignature(node: RunViewNode): string {
   const d = node.derived;
   const tones = d
@@ -144,7 +148,7 @@ function foldSignature(node: RunViewNode): string {
         d.time?.tone ?? '', d.dominance.dominant ? 'D' : '',
       ].join('|')
     : '';
-  return [node.tokens?.billable ?? 0, node.tokens?.contextPeak ?? 0, node.toolCalls, tones].join('~');
+  return [node.status, node.durationMs ?? -1, node.tokens?.billable ?? 0, node.tokens?.contextPeak ?? 0, node.toolCalls, tones].join('~');
 }
 
 /** Merge the enriched fields `assembleNode` produced onto the lean snapshot NodeView (M4: the WHOLE node,
@@ -252,12 +256,16 @@ export async function* watchRun(runDir: string, opts: WatchOpts = {}): AsyncIter
     // model); a node that first appears later is seeded in the delta branch below.
     const seedNode = (id: string): void => {
       // DRIVER-SELECTED accumulator (P5): pick by the node's stamped driverId (rec.usage-neutral) so a
-      // claude-code node seeds the count-only stream-json decoder, pi seeds createNodeAccumulator. Unstamped
-      // (mid-run before finishNode / legacy) ⇒ get(undefined) ⇒ pi; `?? createNodeAccumulator()` covers a
-      // driver with no accumulator so seeding never crashes.
-      const acc = drivers.get(recById[id]?.driverId).eventAccumulator?.() ?? createNodeAccumulator();
+      // claude-code node seeds the count-only stream-json decoder, pi seeds createNodeAccumulator. An
+      // UNSTAMPED record (mid-run before finishNode, or a legacy run that never stamped one) is FORMAT-
+      // DETECTED from the seeded events via `drivers.detectUnstamped` (Defect E1) — the SAME detection
+      // `replayEvents` (runView.ts) applies, so the live seed and the batch replay pick the SAME accumulator
+      // KIND for the SAME node; `?? createNodeAccumulator()` covers a driver with no accumulator so seeding
+      // never crashes.
       const file = nodeEventsFile(runDir, id);
       const { events, offset, carry: nextCarry } = tailEvents(file, 0, '');
+      const driverId = recById[id]?.driverId;
+      const acc = (driverId != null ? drivers.get(driverId) : drivers.detectUnstamped(events)).eventAccumulator?.() ?? createNodeAccumulator();
       for (const e of events) acc.push(e);
       accs.set(id, acc);
       offsets.set(id, offset);

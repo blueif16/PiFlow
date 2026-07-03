@@ -115,6 +115,41 @@ describe('assembleNode — builds the RunViewNode (spine + derived stamp)', () =
     expect(node.derived!.outputs.some((o) => o.path === 'out.txt' && o.ok)).toBe(true);
   });
 
+  // ── Defect F2 — expectedMs no longer self-falls-back to the node's OWN durationMs. Before the fix,
+  // `ctx.expected[id] ?? rec.durationMs ?? null` meant a node with ZERO cross-run history got its expectedMs
+  // pinned to ITS OWN duration, fabricating a `derived.time.ratio` of EXACTLY 1.0 ("on-target") — a lie, not
+  // an honest "no baseline". The honest value is null.
+  it('(F2) expectedMs is null (not the node\'s own durationMs) when there is NO cross-run history', () => {
+    const rec = { id: 'x', label: 'X', status: 'ok' as const, durationMs: 12345, artifacts: [], issues: [] };
+    const node = assembleNode(rec, blankRich(), null, ctx); // ctx.expected = {} — no history
+    expect(node.expectedMs).toBeNull();
+    // and the fabricated on-target ratio is gone with it — no live tone without a real baseline.
+    expect(node.derived!.time).toBeNull();
+  });
+
+  it('(F2 regression guard) expectedMs still reports the REAL cross-run mean when history exists', () => {
+    const ctxWithHistory: AssembleNodeCtx = { ...ctx, expected: { x: 5000 }, samples: { x: 3 } };
+    const rec = { id: 'x', label: 'X', status: 'ok' as const, durationMs: 12345, artifacts: [], issues: [] };
+    const node = assembleNode(rec, blankRich(), null, ctxWithHistory);
+    expect(node.expectedMs).toBe(5000); // the honest cross-run mean, NOT durationMs
+    expect(node.priorSamples).toBe(3);
+    expect(node.derived!.time).not.toBeNull();
+    expect(node.derived!.time!.ratio).toBeCloseTo(12345 / 5000, 6);
+  });
+
+  // ── Defect F1+F2 combined, at the assembleNode seam — the EXACT end-to-end shape of the reported bug:
+  // a REUSED node (carries a stale prior-run durationMs) with a REAL cross-run baseline still must not paint
+  // a live time tone (status gate wins), even though expectedMs itself is now honest (F2 sources the real
+  // mean, not a self-fallback).
+  it('(F1+F2) a REUSED node with real cross-run history reports the honest expectedMs but NO derived.time tone', () => {
+    const ctxWithHistory: AssembleNodeCtx = { ...ctx, expected: { gameplay: 536000 }, samples: { gameplay: 4 } };
+    const rec = { id: 'gameplay', label: 'Gameplay', status: 'reused' as const, durationMs: 914045, artifacts: [], issues: [] };
+    const node = assembleNode(rec, blankRich(), null, ctxWithHistory);
+    expect(node.expectedMs).toBe(536000); // honest — the real cross-run mean, not self-fallback
+    expect(node.status).toBe('reused');
+    expect(node.derived!.time).toBeNull(); // the status gate — no fabricated tone for a cache-hit node
+  });
+
   it('a pending checkpoint marker flips the shown status to awaiting-input', () => {
     const ctxCk: AssembleNodeCtx = {
       ...ctx,

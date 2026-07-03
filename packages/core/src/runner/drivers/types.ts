@@ -14,6 +14,7 @@ import type { NodeAccumulator } from '../../observe/distill.js';
 import type { ModelCatalog } from '../../observe/models.js';
 import type { CommandContext } from '../command.js';
 import type { NodeRouting, RunRouting } from '../model-routing.js';
+import type { PiEvent } from '../events.js';
 
 /** The raw output of one node's executor run, as the runner has it at the spawn seam. */
 export interface RawRun {
@@ -127,4 +128,12 @@ export interface AgentDriver {
   eventAccumulator?(): NodeAccumulator | undefined;
   /** the context-window denominator when the run didn't self-report one (pi: contextWindowFor; claude: usage cap). */
   modelCaps(model: string | null, catalog: ModelCatalog): number | null;
+  /**
+   * (Defect E1) Recognize THIS driver's event VOCABULARY from a small parsed sample — the seam an UNSTAMPED
+   * record (`driverId` absent — mid-run, or a run written before P3 stamped it) is format-DETECTED through
+   * (`DriverTable.detectUnstamped`) instead of silently defaulting to pi's accumulator, which no-ops on a
+   * foreign vocabulary. Absent ⇒ this driver is never format-detected (only reachable via a stamped id) —
+   * `pi` deliberately omits it, since it is the table's own fallback when no driver claims the sample.
+   */
+  sniffsEvents?(sample: PiEvent[]): boolean;
 }

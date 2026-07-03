@@ -123,4 +123,13 @@ export const claudeCodeDriver: AgentDriver = {
   modelCaps(model, catalog) {
     return contextWindowFor(model, catalog);
   },
+
+  // (Defect E1) Recognize Claude's stream-json vocabulary from a parsed sample — an UNSTAMPED legacy run
+  // (no driverId, e.g. game-omni's old engine) is format-DETECTED here instead of silently folding through
+  // pi's no-op accumulator. 'assistant'/'result' are top-level event types pi NEVER emits (pi's vocabulary is
+  // message_start/message_end/tool_execution_*/thinking_delta/auto_retry_start — distill.ts), so their
+  // presence is an unambiguous Claude stream-json signal.
+  sniffsEvents(sample) {
+    return sample.some((e) => e && (e.type === 'assistant' || e.type === 'result'));
+  },
 };

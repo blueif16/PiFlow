@@ -49,6 +49,10 @@ export interface NodeDerived {
 
 /** The structural subset of a RunViewNode `deriveNode` reads. A RunViewNode satisfies it verbatim. */
 export interface DeriveInput {
+  /** gates the `time` zone: a 'reused' (cache-hit, --from resume) node carries its PRIOR run's durationMs
+   *  verbatim (runner.ts's seedNode, by design) — comparing it against a baseline is meaningless, so `time`
+   *  is null regardless of durationMs/expectedMs. Every other status derives `time` as before. */
+  status: string;
   tokens?: { input: number; cacheRead: number; contextPeak: number } | null;
   contextWindow?: number | null;
   durationMs?: number | null;
@@ -100,10 +104,14 @@ export function deriveNode(n: DeriveInput): NodeDerived {
   const context = { frac: ctxFrac, tone: contextTone(ctxFrac) };
 
   // time vs the cross-run mean — SETTLED nodes only (a running node has no final durationMs; the live
-  // elapsed tick is a clock concern that stays in the view).
+  // elapsed tick is a clock concern that stays in the view). A 'reused' node's durationMs is its PRIOR
+  // run's carried-forward value (it did not run THIS time), so no live tone is derived for it regardless
+  // of what durationMs/expectedMs happen to hold.
   const dur = n.durationMs ?? null;
   const avg = n.expectedMs ?? null;
-  const time = dur != null && avg != null && avg > 0 ? { ratio: dur / avg, tone: timeTone(dur / avg) } : null;
+  const time = n.status !== 'reused' && dur != null && avg != null && avg > 0
+    ? { ratio: dur / avg, tone: timeTone(dur / avg) }
+    : null;
 
   const retries = { count: n.retries, tone: retriesTone(n.retries) };
 

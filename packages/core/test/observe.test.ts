@@ -546,8 +546,9 @@ describe('buildRunView — stamps node.derived (the shared display zones every v
     expect(d.cacheHit!.ratio).toBeCloseTo(0.9, 10);
     // context peak 1000 over the default window (m1 not in the catalog ⇒ contextWindow null ⇒ default)
     expect(d.context.frac).toBeCloseTo(1000 / DEFAULT_CONTEXT_WINDOW, 10);
-    // settled: no history ⇒ expectedMs falls back to own duration ⇒ ratio 1 ⇒ ok
-    expect(d.time).toEqual({ ratio: 1, tone: 'ok' });
+    // (Defect F2) settled, but NO cross-run history ⇒ expectedMs is null (honest "no baseline"), NEVER a
+    // self-fallback to the node's own durationMs — that used to fabricate a ratio of exactly 1.0 ("on-target").
+    expect(d.time).toBeNull();
     // unified outputs from the declared, on-disk artifact
     expect(d.outputs).toEqual([{ path: 'out/a.txt', bytes: 10, ok: true }]);
   });
