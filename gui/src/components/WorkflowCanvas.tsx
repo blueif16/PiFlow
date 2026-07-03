@@ -473,8 +473,10 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             onOpenNode={(nodeId) => { setOpenFile(null); setExpandedId(nodeId); }}
             onClose={() => setOpenFile(null)}
           />
-          <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => setStartOpen(true)} onMigrateRun={() => setMigrateOpen(true)} ix={ix} />
-          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} />
+          {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
+              scrim (by design), so opening one must close the other or they stack. */}
+          <MenuBar activeRun={activeRun} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} />
+          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen} />
           <FusionSaveBar active={mode === "fusion"} />
           <ChipPalette active={mode === "compose"} />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />

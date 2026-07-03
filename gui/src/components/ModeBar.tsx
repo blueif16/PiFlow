@@ -15,11 +15,13 @@ import { useViewMode, VIEW_MODES } from "./ViewModeContext";
 import "../styles/modes.css";
 
 /** Press P to launch the bottom-right pi chat (the companion), D for the left-edge run digest. Owned here
- *  with the view-mode keys so the whole bottom-left key cluster lives in one handler. */
-export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest }: { chatOpen: boolean; onToggleChat: () => void; digestOpen: boolean; onToggleDigest: () => void }) {
+ *  with the view-mode keys so the whole bottom-left key cluster lives in one handler. `muted` silences the
+ *  keys while a true modal (Start-run / Migrate-run) is open — a keypress must not act beneath its scrim. */
+export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, muted = false }: { chatOpen: boolean; onToggleChat: () => void; digestOpen: boolean; onToggleDigest: () => void; muted?: boolean }) {
   const { mode, toggle } = useViewMode();
 
   useEffect(() => {
+    if (muted) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target as HTMLElement | null;
@@ -34,7 +36,7 @@ export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest }: 
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, onToggleChat, onToggleDigest]);
+  }, [toggle, onToggleChat, onToggleDigest, muted]);
 
   return createPortal(
     <div className="ds-modebar-layer">

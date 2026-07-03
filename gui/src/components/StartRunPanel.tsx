@@ -59,6 +59,14 @@ export function StartRunPanel({ open, onClose, onStarted }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Escape closes — the same convention every other overlay (Node/File HUD, switcher popup) obeys.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   const product = useMemo(() => ix?.products.find((p) => p.id === productId) ?? null, [ix, productId]);
 
   // When the product changes, snap the workflow to its first namespace.
