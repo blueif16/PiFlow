@@ -36,7 +36,7 @@ CONSUMED
 PASSED THROUGH
 - `packages/core/src/observe/runView.ts:291` — agentType passthrough into `RunViewNode`
 RENDERED
-- `gui/src/data/runView.ts:587` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
+- `gui/src/data/runView.ts:602` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
 - `gui/src/components/NodeModeStrip.tsx:85` — renders the base-agent chip
 
 # Freshness (anti-drift)

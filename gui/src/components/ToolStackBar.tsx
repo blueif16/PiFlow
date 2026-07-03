@@ -9,7 +9,7 @@
  *
  * Segments + legend are sorted descending by count. Empty breakdown renders nothing.
  */
-import { toolTone } from "./NodeHud";
+import { toolTone, ToolGlyph } from "./toolMeta";
 
 export interface ToolStackBarProps {
   breakdown: Record<string, number>;
@@ -38,8 +38,8 @@ export function ToolStackBar({ breakdown }: ToolStackBarProps) {
       </div>
       <div className="ds-toolstack-legend">
         {segs.map(([t, c]) => (
-          <span key={t} className="ds-toolstack-legend__item">
-            <span className={`ds-toolstack-legend__dot ds-toolstack__seg`} data-tone={toolTone(t)} />
+          <span key={t} className="ds-toolstack-legend__item" data-tone={toolTone(t)}>
+            <ToolGlyph name={t} size={11} />
             {t} {c}
           </span>
         ))}

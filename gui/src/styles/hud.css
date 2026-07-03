@@ -84,11 +84,19 @@
 .ds-hud-stat__v { font-size: var(--ds-text-lg); font-weight: var(--ds-weight-semibold); letter-spacing: var(--ds-tracking-display); color: var(--ds-text-primary); font-family: var(--ds-font-mono); font-variant-numeric: tabular-nums; }
 .ds-hud-stat__k { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-tertiary); }
 .ds-hud-stat__k--wrap { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+/* the shared tool pill: a tone-tinted glyph + the tool name + an optional count. Icon carries the type,
+   the label reads it out. The button variant (clickable tool) lifts subtly on hover. */
 .ds-tooltag {
-  display: inline-flex; align-items: center; padding: 1px 6px; border-radius: var(--ds-radius-sm);
-  font-size: 10px; color: var(--ds-text-secondary); background: var(--ds-bg-sunken);
+  display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px 1px 5px; border-radius: var(--ds-radius-sm);
+  font-family: var(--ds-font-mono); font-size: 10px; color: var(--ds-text-secondary); background: var(--ds-bg-sunken);
   border-left: 2px solid var(--tone, var(--ds-neutral-400));
 }
+.ds-tooltag .ds-toolicon { color: var(--tone, var(--ds-neutral-500)); flex: 0 0 auto; }
+.ds-tooltag__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-tooltag__count { color: var(--ds-text-primary); font-variant-numeric: tabular-nums; }
+.ds-tooltag--btn { border: none; border-left: 2px solid var(--tone, var(--ds-neutral-400)); cursor: pointer; transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast); }
+.ds-tooltag--btn:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-tooltag--btn:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }
 
 /* --- scope tone + tool tone vars ---------------------------------------- */
 [data-scope="run"]      { --scope: var(--ds-accent); }
@@ -163,6 +171,24 @@
 .ds-hud__fact-k { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); text-transform: uppercase; letter-spacing: var(--ds-tracking-label); color: var(--ds-text-tertiary); }
 .ds-hud__fact-v { font-size: var(--ds-text-sm); color: var(--ds-text-primary); font-variant-numeric: tabular-nums; }
 .ds-hud__hintline { margin-top: var(--ds-space-1); font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-tertiary); }
+
+/* a small toned flag rendered inline as a fact value (e.g. the Loop signal) */
+.ds-fact-flag { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: var(--ds-radius-sm); font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--tone, var(--ds-text-primary)); background: color-mix(in srgb, var(--tone, var(--ds-neutral-400)) 14%, transparent); }
+
+/* ── the agent DEFINITION block in the resting Overview (skill · tools · scope · carries · prompt) ──
+   Promoted from the hover-only card into the default view. Rides on the frosted scrim with a hairline
+   top rule; each row is a mono key + wrapping tags/value. */
+.ds-hud__agentdef { display: flex; flex-direction: column; gap: var(--ds-space-2); padding-top: var(--ds-space-2); border-top: 1px solid var(--ds-border-hairline); }
+.ds-hud__defrow { display: flex; gap: var(--ds-space-2); align-items: baseline; }
+.ds-hud__defkey { flex: 0 0 64px; font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); text-transform: uppercase; letter-spacing: var(--ds-tracking-label); color: var(--ds-text-tertiary); }
+.ds-hud__deftags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.ds-hud__defval { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); color: var(--ds-text-secondary); min-width: 0; overflow-wrap: anywhere; }
+.ds-chip--skill { border-left: 2px solid var(--ds-accent); color: var(--ds-accent); }
+.ds-chip--owns { border-left: 2px solid var(--ds-success); }
+.ds-tooltag--deny { opacity: 0.6; text-decoration: line-through; }
+/* the role prompt — a bounded, scrollable pre so a long system prompt is visible but never floods the panel */
+.ds-hud__prompt { display: flex; flex-direction: column; gap: 3px; }
+.ds-hud__prompttext { margin: 0; max-height: 132px; overflow-y: auto; padding: var(--ds-space-2) var(--ds-space-3); border-radius: var(--ds-radius-sm); background: var(--ds-bg-sunken); font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); line-height: var(--ds-leading-snug); color: var(--ds-text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* CENTER in-place panel — a region detail / file reader rendered DIRECTLY in the middle
    (no card, no background): it rides on the frosted scrim and reads as a swap of the same

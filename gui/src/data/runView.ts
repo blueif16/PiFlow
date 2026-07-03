@@ -106,6 +106,19 @@ export interface RunViewNode {
   contextWindow?: number | null;
   toolCalls: number;
   toolBreakdown: Record<string, number>;
+  /** # of assistant completions (model invocations). core ships it; the cheapest loop/cost signal. Optional
+   *  because the lean SSE live node doesn't carry it — guard on presence before rendering. */
+  modelCalls?: number;
+  /** most times ONE tool ran with identical full args (≥3 ⇒ probable tool loop). core-shipped, poll-path only. */
+  maxToolRepeat?: number;
+  /** the tool behind `maxToolRepeat`. */
+  repeatedTool?: string | null;
+  /** longest run of CONSECUTIVE near-identical calls (a stuck back-to-back loop the peak misses). */
+  loopScore?: number;
+  /** cross-run mean billable tokens = the cost-spike baseline (paired with `tokens.billable`). */
+  expectedBillable?: number | null;
+  /** cross-run mean $ cost = the cost-spike baseline (paired with `tokens.cost`). */
+  expectedCost?: number | null;
   timeline: TimelineSpan[];
   reads: ReadRef[];
   scopes: ScopeBucket[];

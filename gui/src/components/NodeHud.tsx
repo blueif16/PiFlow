@@ -66,12 +66,11 @@ const SCOPE_META: Record<ScopeKind, { label: string; hint: string }> = {
   repo: { label: "Repo source", hint: "repo" },
 };
 
-// tool → accent class (read=accent, write/edit=success, others neutral) for the bar chart + tags.
-export const TOOL_TONE: Record<string, string> = {
-  read: "accent", grep: "accent", ls: "muted", find: "muted",
-  edit: "success", write: "success", bash: "warn", submit_result: "accent",
-};
-export const toolTone = (t: string) => TOOL_TONE[t] ?? "muted";
+// tool → accent class + the shared tool-icon vocabulary live in one module (toolMeta) so every surface
+// (this HUD, the ToolStackBar legend, the agent-definition tool row) tints + icons tools identically.
+// Imported for local use AND re-exported for the existing importers (ToolStackBar).
+import { TOOL_TONE, toolTone, ToolTag } from "./toolMeta";
+export { TOOL_TONE, toolTone };
 
 // Tone → the flag's CSS data-tone vocabulary. A pure VIEW mapping: the attention level is computed in the
 // observe surface (node.derived.*); here we only pick the class the HUD styles (high→error, warn→warn, ok→muted).
@@ -177,7 +176,7 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
             <span className="ds-hud-stat__v">{rv.toolCalls}</span>
             <span className="ds-hud-stat__k ds-hud-stat__k--wrap">
               {topTools.map((b) => (
-                <span key={b.name} className="ds-tooltag" data-tone={toolTone(b.name)}>{b.name} {b.count}</span>
+                <ToolTag key={b.name} name={b.name} count={b.count} onClick={() => pin("tools")} title={`${b.name} · ${b.count} calls`} />
               ))}
             </span>
           </div>
@@ -218,7 +217,7 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
         style={{ gridArea: "mid" }}
         onClick={(e) => { if (e.target === e.currentTarget) reset(); }}
       >
-        {view === null && <Overview rv={rv} status={status} expected={expected} elapsedMs={elapsedMs} />}
+        {view === null && <Overview rv={rv} data={data} status={status} expected={expected} elapsedMs={elapsedMs} onPinTools={() => pin("tools")} />}
         {pinnedRegion && (
           <CenterPanel key={`r-${pinnedRegion}`} title={DETAIL_TITLE[pinnedRegion]} onBack={reset} reduce={reduce}>
             <Detail region={pinnedRegion} rv={rv} expected={expected} elapsedMs={elapsedMs} pct={pct} onOpenFile={openFile} />
@@ -309,12 +308,13 @@ function Identity({ id, data, reduce, onClose, status }: { id: string; data: Flo
    region/file panel on hover/click. Tokens/cost render only when non-zero: legacy Claude replay is
    fixed upstream (driver-sniffed accumulator), and a subscription-flat executor's honest cost IS 0 —
    a "$0.00" row would read as broken, so zero stays silent. ── */
-function Overview({ rv, status, expected, elapsedMs }: { rv: RunViewNode; status: NonNullable<FlowNodeData["status"]>; expected: number | null; elapsedMs: number | null }) {
+function Overview({ rv, data, status, expected, elapsedMs, onPinTools }: { rv: RunViewNode; data: FlowNodeData; status: NonNullable<FlowNodeData["status"]>; expected: number | null; elapsedMs: number | null; onPinTools: () => void }) {
   const ctxPeak = rv.tokens?.contextPeak ?? 0;
   const tokIn = rv.tokens?.input ?? 0;
   const tokOut = rv.tokens?.output ?? 0;
   const cost = rv.tokens?.cost ?? 0;
   const running = status === "running";
+  const loop = loopSignal(rv);
   return (
     <div className="ds-hud__overview">
       {rv.summary
@@ -332,23 +332,117 @@ function Overview({ rv, status, expected, elapsedMs }: { rv: RunViewNode; status
         </div>
       )}
 
+      {/* The agent DEFINITION, surfaced in the resting default view (no longer hover-only): the loadout
+          (skill · tools · read/write scope · carries) + the role prompt — the "associated context" at a
+          glance. Tools are clickable → the per-tool telemetry breakdown. */}
+      <AgentDefinition rv={rv} data={data} onPinTools={onPinTools} />
+
       <div className="ds-hud__facts">
         {rv.phase && <Fact k="Phase" v={rv.phase} />}
         <Fact k="Status" v={STATUS_LABEL[status]} />
         <Fact k={running ? "Elapsed" : "Duration"} v={formatMs(elapsedMs)} />
         {expected != null && <Fact k="Avg / prior" v={`${formatMs(expected)} · ${rv.priorSamples || 1} run${(rv.priorSamples || 1) === 1 ? "" : "s"}`} />}
+        <Fact k="Tool calls" v={rv.modelCalls != null ? `${rv.toolCalls} · ${rv.modelCalls} model call${rv.modelCalls === 1 ? "" : "s"}` : String(rv.toolCalls)} />
         {ctxPeak > 0 && <Fact k="Context peak" v={`${ctxPeak.toLocaleString()} tok`} />}
         {(tokIn > 0 || tokOut > 0) && <Fact k="Tokens" v={`${formatTokens(tokIn)} in · ${formatTokens(tokOut)} out`} />}
-        {cost > 0 && <Fact k="Cost" v={`$${cost.toFixed(cost < 1 ? 3 : 2)}`} />}
+        {cost > 0 && <Fact k="Cost" v={rv.expectedCost != null && rv.expectedCost > 0 ? `$${cost.toFixed(cost < 1 ? 3 : 2)} · avg $${rv.expectedCost.toFixed(rv.expectedCost < 1 ? 3 : 2)}` : `$${cost.toFixed(cost < 1 ? 3 : 2)}`} />}
+        {rv.stopReason && <Fact k="Finish" v={rv.stopReason} />}
+        {loop && <Fact k="Loop" v={<span className="ds-fact-flag" data-tone={loop.tone}>{loop.label}</span>} />}
       </div>
 
       {/* (POLICY channel) "Hooks" — the node's authored gate lane + policy + checkpoint in plain-language
           pre / post / human lanes, projected from observe (config.gates). One honest rendering from config. */}
       <NodeHooks gates={rv.config?.gates} />
 
-      <div className="ds-hud__hintline">Hover a panel, or click an input file.</div>
+      <div className="ds-hud__hintline">Hover a panel, click a tool tag, or open an input file.</div>
     </div>
   );
+}
+
+/** A stuck-loop signal from the cross-run loop metrics core ships: the longest CONSECUTIVE near-identical
+ *  run (`loopScore`) and the peak identical-args repeat (`maxToolRepeat` on `repeatedTool`). Returns a
+ *  toned label, or null when neither trips (loopScore ≥3 or maxToolRepeat ≥3 = a probable stuck loop). */
+function loopSignal(rv: RunViewNode): { label: string; tone: "warn" | "high" } | null {
+  const loopScore = rv.loopScore ?? 0;
+  const maxRepeat = rv.maxToolRepeat ?? 0;
+  if (loopScore < 3 && maxRepeat < 3) return null;
+  const tone = loopScore >= 3 || maxRepeat >= 5 ? "high" : "warn";
+  const label = rv.repeatedTool
+    ? `${rv.repeatedTool} ×${Math.max(maxRepeat, loopScore)}`
+    : `×${Math.max(maxRepeat, loopScore)} repeats`;
+  return { label, tone };
+}
+
+/** The agent's DEFINITION block for the resting Overview: skill (chip) · tools (clickable ToolTags) ·
+ *  read/write scope · carries (model·tier·executor) · role prompt. An honest projection of the recorded
+ *  loadout (`rv.config`) with the preset as fallback — the SAME sources the AgentHoverCard reads, promoted
+ *  from hover into the default view. Renders nothing when a node carries no loadout at all. */
+function AgentDefinition({ rv, data, onPinTools }: { rv: RunViewNode; data: FlowNodeData; onPinTools: () => void }) {
+  const preset = data.agentPreset;
+  const skill = rv.config?.skill ?? preset?.skills?.[0];
+  const tools = rv.config?.tools?.allow ?? preset?.tools?.allow ?? [];
+  const deny = rv.config?.tools?.deny ?? preset?.tools?.deny ?? [];
+  const readScope = rv.config?.sandbox?.readScope ?? [];
+  const owns = rv.config?.sandbox?.owns ?? [];
+  const prompt = preset?.prompt;
+  const carries = [rv.model ?? rv.config?.model ?? preset?.model, rv.config?.tier ?? preset?.tier, rv.executor ?? "pi"]
+    .filter(Boolean).join(" · ");
+  const nothing = !skill && tools.length === 0 && !prompt && readScope.length === 0 && owns.length === 0 && !carries;
+  if (nothing) return null;
+  return (
+    <div className="ds-hud__agentdef">
+      {skill && (
+        <div className="ds-hud__defrow">
+          <span className="ds-hud__defkey">skill</span>
+          <span className="ds-chip ds-chip--skill" title={skill}>{skillName(skill)}</span>
+        </div>
+      )}
+      {tools.length > 0 && (
+        <div className="ds-hud__defrow">
+          <span className="ds-hud__defkey">tools</span>
+          <span className="ds-hud__deftags">
+            {tools.map((t) => (
+              <ToolTag key={t} name={t} onClick={onPinTools} title={`${t} — see tool-call breakdown`} />
+            ))}
+            {deny.map((t) => <ToolTag key={`deny-${t}`} name={t} title={`${t} — denied`} className="ds-tooltag--deny" />)}
+          </span>
+        </div>
+      )}
+      {(readScope.length > 0 || owns.length > 0) && (
+        <div className="ds-hud__defrow">
+          <span className="ds-hud__defkey">scope</span>
+          <span className="ds-hud__deftags">
+            {readScope.map((p) => <span key={`r-${p}`} className="ds-chip" title={`reads ${p}`}>{scopeTag(p)}</span>)}
+            {owns.map((p) => <span key={`o-${p}`} className="ds-chip ds-chip--owns" title={`owns ${p}`}>{scopeTag(p)}</span>)}
+          </span>
+        </div>
+      )}
+      {carries && (
+        <div className="ds-hud__defrow">
+          <span className="ds-hud__defkey">carries</span>
+          <span className="ds-hud__defval">{carries}</span>
+        </div>
+      )}
+      {prompt && (
+        <div className="ds-hud__prompt">
+          <span className="ds-hud__defkey">role prompt</span>
+          <pre className="ds-hud__prompttext">{prompt}</pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** `…/harden-blueprint/SKILL.md` → `harden-blueprint`; a bare id passes through. */
+function skillName(p: string): string {
+  const parts = p.replace(/\/SKILL\.md$/i, "").split("/");
+  return parts[parts.length - 1] || p;
+}
+/** Shorten a scope path for a tag: keep tokens (`{{RUN}}`)/globs as-is, else the last 2 segments. */
+function scopeTag(p: string): string {
+  if (p.startsWith("{{")) return p;
+  const parts = p.split("/").filter(Boolean);
+  return parts.length > 2 ? parts.slice(-2).join("/") : p;
 }
 
 function Fact({ k, v }: { k: string; v: ReactNode }) {
@@ -457,13 +551,18 @@ function Detail({ region, rv, expected, elapsedMs, pct, onOpenFile }: { region: 
           <KV k="Model" v={rv.model ?? "—"} mono />
           <KV k="Provider" v={rv.provider ?? "—"} mono />
           <KV k="API" v={rv.api ?? "—"} mono />
+          {rv.contextWindow != null && <KV k="Context window" v={rv.contextWindow.toLocaleString()} />}
           {t && <>
             <KV k="Input tokens" v={t.input.toLocaleString()} />
             <KV k="Output tokens" v={t.output.toLocaleString()} />
             <KV k="Cache read" v={t.cacheRead.toLocaleString()} />
+            <KV k="Cache write" v={t.cacheWrite.toLocaleString()} />
             <KV k="Billable" v={t.billable.toLocaleString()} />
             <KV k="Context peak" v={t.contextPeak.toLocaleString()} />
+            {t.cost > 0 && <KV k="Cost" v={`$${t.cost.toFixed(t.cost < 1 ? 3 : 2)}`} />}
           </>}
+          {rv.modelCalls != null && <KV k="Model calls" v={String(rv.modelCalls)} />}
+          {rv.thinkingChars > 0 && <KV k="Thinking" v={`${rv.thinkingChars.toLocaleString()} chars`} />}
         </div>
         {rv.derived?.cacheHit && <CacheDonut hit={rv.derived.cacheHit} />}
       </div>
@@ -481,10 +580,16 @@ function Detail({ region, rv, expected, elapsedMs, pct, onOpenFile }: { region: 
     const d = rv.derived;
     const bars = d?.topTools ?? [];
     const max = Math.max(1, ...bars.map((b) => b.count));
+    const loop = loopSignal(rv);
     return (
       <div className="ds-tools-detail">
         <div className="ds-tools-flags">
-          <span className="ds-tools-total"><b>{rv.toolCalls}</b> calls · {bars.length} tool{bars.length === 1 ? "" : "s"}</span>
+          <span className="ds-tools-total"><b>{rv.toolCalls}</b> calls · {rv.modelCalls != null ? `${rv.modelCalls} model · ` : ""}{bars.length} tool{bars.length === 1 ? "" : "s"}</span>
+          {loop && (
+            <span className="ds-flag" data-tone={loop.tone === "high" ? "error" : "warn"} title="repeated near-identical tool calls — possible stuck loop">
+              loop · {loop.label}
+            </span>
+          )}
           {d && d.toolError.errors > 0 && (
             <span className="ds-flag" data-tone={toneToFlag(d.toolError.tone)} title="failed tool-call spans / total calls">
               {d.toolError.errors} error{d.toolError.errors === 1 ? "" : "s"} · {Math.round(d.toolError.rate * 100)}%

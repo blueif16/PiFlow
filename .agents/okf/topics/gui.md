@@ -31,8 +31,8 @@ SOURCE
 - `packages/server/src/handlers.ts:35` — `piflowRunStream` — `/__piflow/stream/<run>` SSE feed of `observe.watchRun`
 - `gui/src/data/runIndex.ts:60` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
 SHAPE
-- `gui/src/data/runView.ts:157` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
-- `gui/src/data/runView.ts:587` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
+- `gui/src/data/runView.ts:172` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
+- `gui/src/data/runView.ts:602` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
 RENDER
 - `gui/src/components/WorkflowCanvas.tsx:139` — index→view→graph wiring (loadRunView+loadAgentCatalog→toFlowGraph)
 - `gui/src/components/WorkflowNode.tsx:274` — paints `NodeModeStrip` under the card when a view-mode is active
