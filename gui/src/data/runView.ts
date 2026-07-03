@@ -295,9 +295,19 @@ export function gatePipelineLabels(cfg: AuthoredNodeConfig | null | undefined): 
   return labels;
 }
 
-/** (G6) A preset's branding, as the catalog endpoint returns it (the node carries only `agentType`). */
-export interface AgentDisplay { label?: string; icon?: string; color?: string; }
-/** agentType id → its display branding, from `~/.piflow/agents/` via `/__piflow/agents.json`. */
+/** (G6) A preset's PUBLIC IDENTITY, as the catalog endpoint returns it (the node carries only `agentType`):
+ *  the display branding PLUS the base agent's role prompt / skills / tools — what a node INHERITED from its
+ *  base, rendered by the agent hover card. All optional; a display-only row still renders branded chips. */
+export interface AgentDisplay {
+  label?: string; icon?: string; color?: string;
+  /** The base agent's canonical ROLE prompt (its system prompt; the node's task is appended below it). */
+  prompt?: string;
+  skills?: string[];
+  tools?: { allow?: string[]; deny?: string[] };
+  model?: string;
+  tier?: string;
+}
+/** agentType id → its public identity, from `~/.piflow/agents/` via `/__piflow/agents.json`. */
 export type AgentCatalog = Record<string, AgentDisplay>;
 
 /** Fetch the agent-preset catalog (id → {icon,label,color}) from the dev middleware. The display lives in
@@ -586,9 +596,12 @@ export function toFlowGraph(view: RunView, catalog: AgentCatalog = {}): { nodes:
       kind: "agent",
       typeLabel: rv.phase ?? "node",
       ...(skin !== "flat" ? { runtime: skin } : {}),
-      // (G6) the preset's branding, resolved from the catalog by the node's agentType label. The icon is
-      // a KEY the chip maps to a bundled glyph; absent/unknown ⇒ the default agent glyph (never blocks).
-      ...(preset ? { agentIcon: preset.icon, agentColor: preset.color, agentLabel: preset.label ?? rv.agentType } : {}),
+      // (G6) the base-agent IDENTITY, resolved from the catalog by the node's agentType label: the id itself
+      // (the face/avatar keys off the STABLE preset id), the branding trio, and the FULL catalog entry (the
+      // hover card's source: role prompt / skills / tools). The icon is a KEY the chip maps to a bundled
+      // glyph; absent/unknown ⇒ the default agent glyph (never blocks). Passed BY REFERENCE — render-only.
+      ...(rv.agentType ? { agentType: rv.agentType } : {}),
+      ...(preset ? { agentIcon: preset.icon, agentColor: preset.color, agentLabel: preset.label ?? rv.agentType, agentPreset: preset } : {}),
       status: toNodeStatus(rv.status),
       preview: rv.summary ? truncate(rv.summary, 84) : `${rv.toolCalls} tools · ${rv.reads.length} reads`,
       progress: rv.status === "running" ? undefined : 1,

@@ -23,7 +23,7 @@ import { NodeGateChips } from "./NodeGateChips";
 import { NodeGates } from "./NodeGates";
 import { ProgressBar } from "./ProgressBar";
 import type { FieldTone } from "./FieldBlock";
-import type { RunViewNode } from "../data/runView";
+import type { AgentDisplay, RunViewNode } from "../data/runView";
 
 export type NodeStatus = "idle" | "selected" | "running" | "success" | "error";
 
@@ -92,6 +92,10 @@ export type FlowNodeData = {
   agentIcon?: string;
   agentColor?: string;
   agentLabel?: string;
+  /** (G6 inheritance) The BASE-AGENT identity: the stable preset id (the face/avatar keys off it) and the
+   *  full catalog entry (role prompt / skills / tools — the hover card's source). Absent ⇒ bespoke node. */
+  agentType?: string;
+  agentPreset?: AgentDisplay;
 };
 
 export type FlowNode = Node<FlowNodeData, "flowNode">;

@@ -409,12 +409,27 @@ export const piflowAgents: Middleware = async (req, res, next) => {
     // (decision #3), so this is a FLAT catalog surface, not a per-preset mapping.
     const { builtinDrivers } = await import(pathToFileURL(core).href);
     const dir = defaultAgentsDir();
-    const catalog: Record<string, { label?: string; icon?: string; color?: string }> = {};
+    // A row is the preset's FULL public identity, not just display branding: the ROLE PROMPT (the base
+    // agent's system prompt), skills, and tools ride the same row so the GUI's agent hover card renders
+    // what a node inherited from its base without a second endpoint. Additive — display keys unchanged.
+    const catalog: Record<string, {
+      label?: string; icon?: string; color?: string;
+      prompt?: string; skills?: string[]; tools?: unknown; model?: string; tier?: string;
+    }> = {};
     let files: string[] = [];
     try { files = (await readdir(dir)).filter((f) => f.endsWith(".md")); } catch { /* no catalog yet ⇒ {} */ }
     for (const f of files) {
       const preset = loadAgentPreset(f.slice(0, -3), dir);
-      if (preset) catalog[preset.id] = preset.display ?? {};
+      if (preset) {
+        catalog[preset.id] = {
+          ...(preset.display ?? {}),
+          ...(preset.prompt ? { prompt: preset.prompt } : {}),
+          ...(preset.skills?.length ? { skills: preset.skills } : {}),
+          ...(preset.tools ? { tools: preset.tools } : {}),
+          ...(preset.model ? { model: preset.model } : {}),
+          ...(preset.tier ? { tier: preset.tier } : {}),
+        };
+      }
     }
     // Widen the response: the preset rows stay top-level keys (GUI per-agentType lookup unchanged); the
     // additive `drivers` array is each built-in driver's static descriptor card (§2.5 discovery surface).

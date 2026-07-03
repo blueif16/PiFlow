@@ -149,3 +149,38 @@ describe("toFlowGraph — renders the surface's `derived`, computes nothing", ()
     expect(nodes[0].data.rv?.derived).toBeUndefined();
   });
 });
+
+// (G6 inheritance) The BASE-AGENT identity contract: a node that adopts a base agent (`agentType`) must
+// carry that identity onto the rendered FlowNode — the id itself (`agentType`, so the face/avatar can key
+// off the STABLE preset id) and the full catalog entry (`agentPreset`, so the hover card can show the
+// base's role prompt / tools / skills) — BY REFERENCE, render-only, nothing re-derived. These FAIL if the
+// graph mapping drops the id, fabricates identity for a bespoke node, or copies the catalog entry.
+describe("toFlowGraph — base-agent identity passthrough (agentType + agentPreset)", () => {
+  const node = (p: Partial<RunViewNode>): RunViewNode => ({
+    id: "n", label: "n", phase: null, status: "ok",
+    toolCalls: 0, toolBreakdown: {}, timeline: [], reads: [], scopes: [], writes: [], artifacts: [],
+    bash: [], retries: 0, stopReason: null, truncated: false, thinkingChars: 0, ...p,
+  });
+
+  it("stamps the node's agentType and the FULL catalog entry (by reference) when the catalog has it", () => {
+    const entry = { label: "Coder", icon: "code", color: "#4f46e5", prompt: "You are a disciplined implementer.", skills: ["test-discipline"], tools: { allow: ["read", "write"] } };
+    const view: RunView = { run: "r", stages: [], edges: [], nodes: [node({ id: "a", agentType: "coder" })] };
+    const { nodes } = toFlowGraph(view, { coder: entry });
+    expect(nodes[0].data.agentType).toBe("coder");
+    expect(nodes[0].data.agentPreset).toBe(entry); // the SAME object — render-only, never a re-derived copy
+  });
+
+  it("stamps agentType even when the catalog has no entry (the id is the identity; branding degrades)", () => {
+    const view: RunView = { run: "r", stages: [], edges: [], nodes: [node({ id: "a", agentType: "mystery" })] };
+    const { nodes } = toFlowGraph(view, {});
+    expect(nodes[0].data.agentType).toBe("mystery");
+    expect(nodes[0].data.agentPreset).toBeUndefined();
+  });
+
+  it("fabricates NO identity for a bespoke node (no agentType)", () => {
+    const view: RunView = { run: "r", stages: [], edges: [], nodes: [node({ id: "a" })] };
+    const { nodes } = toFlowGraph(view, { coder: { label: "Coder" } });
+    expect(nodes[0].data.agentType).toBeUndefined();
+    expect(nodes[0].data.agentPreset).toBeUndefined();
+  });
+});

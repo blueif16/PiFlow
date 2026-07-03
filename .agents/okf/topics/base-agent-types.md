@@ -36,7 +36,7 @@ CONSUMED
 PASSED THROUGH
 - `packages/core/src/observe/runView.ts:291` — agentType passthrough into `RunViewNode`
 RENDERED
-- `gui/src/data/runView.ts:573` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
+- `gui/src/data/runView.ts:583` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
 - `gui/src/components/NodeModeStrip.tsx:85` — renders the base-agent chip
 
 # Freshness (anti-drift)
@@ -183,5 +183,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `packages/core/src/workflow/template/render.ts`, `packages/cli/src/scaffold.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
 - `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
 
-<sub>derived 2026-07-02 · arc=98 commits · files=8 · lessons=12</sub>
+<sub>derived 2026-07-03 · arc=98 commits · files=8 · lessons=12</sub>
 <!-- okf:auto-end -->
