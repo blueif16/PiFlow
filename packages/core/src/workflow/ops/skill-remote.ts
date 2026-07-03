@@ -157,19 +157,30 @@ async function searchClaudskills(
 ): Promise<RemoteSkillRow[]> {
   const f = fetchImpl ?? fetch;
   const needle = q.toLowerCase();
+  // Fire the whole bounded page window CONCURRENTLY — the sequential scan cost ~11s wall-clock live
+  // (10 round trips); concurrent it is one. A page past the catalog end returns an empty body (harmless),
+  // a single dead page degrades to empty (page order preserved); ALL pages dead throws the first failure.
+  const settled = await Promise.allSettled(
+    Array.from({ length: CLAUDSKILLS_MAX_SCAN_PAGES }, (_, page) => {
+      const offset = page * CLAUDSKILLS_PAGE_SIZE;
+      return f(`${CLAUDSKILLS_BASE}/skills?limit=${CLAUDSKILLS_PAGE_SIZE}&offset=${offset}`).then(async (res) => {
+        if (!res.ok) throw new Error(`claudskills: search request failed (HTTP ${res.status})`);
+        return (await res.json()) as ClaudskillsPage;
+      });
+    }),
+  );
+  if (settled.every((s) => s.status === 'rejected')) throw (settled[0] as PromiseRejectedResult).reason;
+
   const rows: RemoteSkillRow[] = [];
-  for (let page = 0; page < CLAUDSKILLS_MAX_SCAN_PAGES && rows.length < limit; page++) {
-    const offset = page * CLAUDSKILLS_PAGE_SIZE;
-    const res = await f(`${CLAUDSKILLS_BASE}/skills?limit=${CLAUDSKILLS_PAGE_SIZE}&offset=${offset}`);
-    if (!res.ok) throw new Error(`claudskills: search request failed (HTTP ${res.status})`);
-    const body = (await res.json()) as ClaudskillsPage;
-    for (const r of body.data ?? []) {
+  for (const s of settled) {
+    if (rows.length >= limit) break;
+    if (s.status !== 'fulfilled') continue;
+    for (const r of s.value.data ?? []) {
       if (rows.length >= limit) break;
       if (!claudskillsMatches(r, needle)) continue;
       const mapped = mapClaudskillsRow(r);
       if (mapped) rows.push(mapped);
     }
-    if (!body.next || !body.data?.length) break;
   }
   return rows;
 }
@@ -246,35 +257,37 @@ async function searchAgentskill(
   const res = await f(`${AGENTSKILL_BASE}/agent/search?q=${encodeURIComponent(q)}`);
   if (!res.ok) throw new Error(`agentskill: search request failed (HTTP ${res.status})`);
   const body = (await res.json()) as AgentskillResponse;
-  const rows: RemoteSkillRow[] = [];
-  for (const r of body.results ?? []) {
-    if (rows.length >= limit) break;
-    // Resolve the repo via the per-row detail endpoint (bounded by `limit`). `repositoryUrl` wins; else
-    // derive the github root. A failed/eventless resolve DROPS the row — we never invent a browse URL
-    // agentskill has not published, and discovery must not throw on one row.
-    try {
-      const dr = await f(`${AGENTSKILL_BASE}/skills/${encodeURIComponent(r.slug)}`);
-      if (!dr.ok) continue;
-      const detail = ((await dr.json()) as AgentskillDetailResponse).data;
-      const source =
-        detail?.repositoryUrl ||
-        (detail?.githubOwner && detail?.githubRepo
-          ? `https://github.com/${detail.githubOwner}/${detail.githubRepo}`
-          : '');
-      if (!source) continue;
-      rows.push({
-        slug: r.slug,
-        name: r.name,
-        description: r.description ?? '',
-        source,
-        author: r.owner,
-        index: 'agentskill',
-      });
-    } catch {
-      /* drop the row — one dead detail must not kill the whole search */
-    }
-  }
-  return rows;
+  // Resolve the repo via the per-row detail endpoint, CONCURRENTLY (a serial N+1 here made the whole
+  // default fan-out crawl). `repositoryUrl` wins; else derive the github root. A failed/repo-less resolve
+  // DROPS that row — we never invent a browse URL agentskill has not published, and one dead detail must
+  // not kill the whole search.
+  const kept = (body.results ?? []).slice(0, limit);
+  const resolved = await Promise.all(
+    kept.map(async (r): Promise<RemoteSkillRow | undefined> => {
+      try {
+        const dr = await f(`${AGENTSKILL_BASE}/skills/${encodeURIComponent(r.slug)}`);
+        if (!dr.ok) return undefined;
+        const detail = ((await dr.json()) as AgentskillDetailResponse).data;
+        const source =
+          detail?.repositoryUrl ||
+          (detail?.githubOwner && detail?.githubRepo
+            ? `https://github.com/${detail.githubOwner}/${detail.githubRepo}`
+            : '');
+        if (!source) return undefined;
+        return {
+          slug: r.slug,
+          name: r.name,
+          description: r.description ?? '',
+          source,
+          author: r.owner,
+          index: 'agentskill',
+        };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  return resolved.filter((r): r is RemoteSkillRow => r !== undefined);
 }
 
 // ── Claude Plugins (claude-plugins.dev) ──────────────────────────────────────────────────────────────
@@ -362,30 +375,25 @@ async function searchSkillsRe(
   });
   if (!res.ok) throw new Error(`skills-re: search request failed (HTTP ${res.status})`);
   const body = (await res.json()) as SkillsReSearchResponse;
-  const rows: RemoteSkillRow[] = [];
-  for (const r of body.page ?? []) {
-    if (rows.length >= limit) break;
-    // Search rows carry no repo field (see the header): resolve each kept row via the documented
-    // resolve-install endpoint (bounded by `limit`); a failed resolve degrades to the browse page.
-    let source = `https://skills.re/skills/${r.slug}`;
-    try {
-      const rr = await f(`${SKILLS_RE_BASE}/cli/skills/resolve-install?skill=${encodeURIComponent(r.slug)}`);
-      if (rr.ok) {
-        const resolved = (await rr.json()) as SkillsReResolveResponse;
-        if (resolved.lockEntry?.sourceUrl) source = resolved.lockEntry.sourceUrl;
+  // Search rows carry no repo field (see the header): resolve each kept row via the documented
+  // resolve-install endpoint, CONCURRENTLY (bounded by `limit`); a failed resolve degrades to the
+  // browse page — discovery must not fail on one row's resolve.
+  const kept = (body.page ?? []).slice(0, limit);
+  return Promise.all(
+    kept.map(async (r): Promise<RemoteSkillRow> => {
+      let source = `https://skills.re/skills/${r.slug}`;
+      try {
+        const rr = await f(`${SKILLS_RE_BASE}/cli/skills/resolve-install?skill=${encodeURIComponent(r.slug)}`);
+        if (rr.ok) {
+          const resolved = (await rr.json()) as SkillsReResolveResponse;
+          if (resolved.lockEntry?.sourceUrl) source = resolved.lockEntry.sourceUrl;
+        }
+      } catch {
+        /* degrade to the browse page */
       }
-    } catch {
-      /* degrade to the browse page — discovery must not fail on one row's resolve */
-    }
-    rows.push({
-      slug: r.slug,
-      name: r.title ?? r.slug,
-      description: r.description ?? '',
-      source,
-      index: 'skills-re',
-    });
-  }
-  return rows;
+      return { slug: r.slug, name: r.title ?? r.slug, description: r.description ?? '', source, index: 'skills-re' };
+    }),
+  );
 }
 
 // ── Top Agent Skills (curated, quality-ranked, static) ──────────────────────────────────────────────
@@ -526,19 +534,35 @@ export async function searchRemote(q: string, opts: SearchRemoteOpts = {}): Prom
     throw new Error(`searchRemote: limit must be a positive integer (got ${opts.limit})`);
   }
   const ids = opts.sources ?? DEFAULT_SOURCES;
+  // Validate EVERY id before firing anything — an unknown id is caller error, not a degraded source.
+  for (const id of ids) {
+    if (!SOURCES[id]) throw new Error(`searchRemote: unknown source '${id}' (known: ${Object.keys(SOURCES).sort().join(', ')})`);
+  }
+
+  // Fire ALL sources CONCURRENTLY (wall-clock is the contract — a sequential fill made the GUI's live
+  // search feel dead), then fill in priority order with cross-source dedup. Each source is asked for the
+  // full `limit` (we can't know the earlier sources' yield before they resolve; the trim happens here).
+  const settled = await Promise.allSettled(
+    ids.map((id) => SOURCES[id].search(q, { fetchImpl: opts.fetchImpl, limit })),
+  );
+
   const rows: RemoteSkillRow[] = [];
   const seen = new Set<string>();
-  for (const id of ids) {
+  for (const s of settled) {
     if (rows.length >= limit) break;
-    const source = SOURCES[id];
-    if (!source) throw new Error(`searchRemote: unknown source '${id}' (known: ${Object.keys(SOURCES).sort().join(', ')})`);
-    const got = await source.search(q, { fetchImpl: opts.fetchImpl, limit: limit - rows.length });
-    for (const r of got) {
+    if (s.status !== 'fulfilled') continue; // a dead source degrades; the healthy ones still answer
+    for (const r of s.value) {
+      if (rows.length >= limit) break;
       const key = dedupKey(r);
       if (seen.has(key)) continue;
       seen.add(key);
       rows.push(r);
     }
   }
+
+  // No rows AND at least one failure ⇒ surface the first failure — an all-dead (or lone-source-dead)
+  // search must not masquerade as "no skills match".
+  const firstFailure = settled.find((s) => s.status === 'rejected') as PromiseRejectedResult | undefined;
+  if (rows.length === 0 && firstFailure) throw firstFailure.reason;
   return rows;
 }

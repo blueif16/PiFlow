@@ -401,7 +401,9 @@ describe('skillregistry source', () => {
 
 // ── searchRemote orchestration: default order, laziness, dedup ───────────────────────────────────────
 describe('searchRemote defaults + dedup', () => {
-  it('defaults are quality-first: topagentskills fills the limit and the giants are NEVER fetched', async () => {
+  it('defaults fire CONCURRENTLY (wall-clock) but results keep the quality-first priority order', async () => {
+    // Every default source is REQUESTED up front (no lazy sequential fill — speed is the contract now),
+    // yet the returned rows still lead with the higher-priority source.
     const { impl, requested } = fakeFetch([
       ['top-agent-skills.com/llms-full.txt', LLMS_FULL_TXT, { text: true }],
       ['agentskill.sh/api/agent/search', { results: [AGENTSKILL_SEARCH_ROW] }],
@@ -411,8 +413,34 @@ describe('searchRemote defaults + dedup', () => {
     ]);
     const rows = await searchRemote('stripe', { fetchImpl: impl, limit: 1 });
     expect(rows).toHaveLength(1);
-    expect(rows[0].index).toBe('topagentskills');
-    expect(requested).toEqual(['https://top-agent-skills.com/llms-full.txt']);
+    expect(rows[0].index).toBe('topagentskills'); // priority order survives the parallel fan-out
+    // all four default sources fired (the parallel contract): one URL per source at minimum.
+    const hosts = new Set(requested.map((u) => new URL(u).host));
+    expect(hosts).toContain('top-agent-skills.com');
+    expect(hosts).toContain('agentskill.sh');
+    expect(hosts).toContain('claude-plugins.dev');
+    expect(hosts).toContain('claudskills.com');
+  });
+
+  it('one source failing does NOT kill the search when others return rows (degrade, do not die)', async () => {
+    const { impl } = fakeFetch([
+      ['top-agent-skills.com/llms-full.txt', LLMS_FULL_TXT, { text: true }],
+      ['agentskill.sh/api/agent/search', { results: [] }],
+      ['claude-plugins.dev', { error: 'boom' }, { status: 503 }],
+      ['claudskills.com', { data: [], next: null, total: 0, limit: 200, offset: 0 }],
+    ]);
+    const rows = await searchRemote('stripe', { fetchImpl: impl, limit: 5 });
+    expect(rows.map((r) => r.index)).toContain('topagentskills');
+  });
+
+  it('EVERY source failing throws the first failure (an all-dead search must not look like no-match)', async () => {
+    const { impl } = fakeFetch([
+      ['top-agent-skills.com/llms-full.txt', 'down', { status: 500, text: true }],
+      ['agentskill.sh/api/agent/search', { error: 'down' }, { status: 500 }],
+      ['claude-plugins.dev', { error: 'down' }, { status: 500 }],
+      ['claudskills.com', { error: 'down' }, { status: 500 }],
+    ]);
+    await expect(searchRemote('stripe', { fetchImpl: impl, limit: 5 })).rejects.toThrow(/HTTP 500/);
   });
 
   it('cross-source dedup: the same name+repo from a later source is dropped (earlier source wins)', async () => {
