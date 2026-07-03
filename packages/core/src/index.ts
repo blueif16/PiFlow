@@ -45,8 +45,8 @@ export type { RenderOpts } from './workflow/template/render.js';
 
 // G6 — agentType presets: the PURE author-time merge utility + the read-only catalog adapter. The catalog
 // (named types, icons, role-prompts) is PRODUCT DATA in ~/.piflow/agents/ — only this LOGIC lives in core.
-export { mergePreset, parseAgentPreset, loadAgentPreset, defaultAgentsDir } from './workflow/agent-preset.js';
-export type { AgentPreset, PresetMergeable } from './workflow/agent-preset.js';
+export { mergePreset, parseAgentPreset, loadAgentPreset, listAgentPresets, defaultAgentsDir } from './workflow/agent-preset.js';
+export type { AgentPreset, AgentPresetListing, PresetMergeable } from './workflow/agent-preset.js';
 
 // (SA-B · expert-representations) Gate authoring → op[] surface. Author-time gate descriptors +
 // cost-ladder ordering + compile-time lowering to the canonical `op[]` envelope. Zero new runtime.
@@ -105,6 +105,12 @@ export { applyProjectionOp, runProjection } from './workflow/ops/project.js';
 export type { ProjectionResult, ProjectionMarker, ProjectionSummary } from './workflow/ops/project.js';
 export { applyMergeOp, runMerge } from './workflow/ops/merge.js';
 export type { MergeResult, MergeSpec } from './workflow/ops/merge.js';
+
+// SKILL location + enumeration — the impure ring-search twin of `resolveSkillStage` (skill.ts stays pure).
+// `skillSearchRoots` is the ONE ring ordering (workspace `.agents/skills` → `<piflowHome>/skills`) the
+// runner stages by and the server display path must share; `listSkills` enumerates both rings.
+export { locateSkillStage, skillSearchRoots, isBareSkillId, listSkills } from './workflow/ops/skill-locate.js';
+export type { SkillLocateResult, SkillListEntry } from './workflow/ops/skill-locate.js';
 
 // U7 — the `promote` POST-op (lift a node output into a RunState channel via the reducer) + the
 // stage-barrier merge (serial+deterministic parallel-promote merge; a `set` channel with two concurrent

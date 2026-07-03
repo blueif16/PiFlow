@@ -27,7 +27,7 @@ import { NodeRecorder, recordingSandbox } from './events.js';
 // `AgentVerdict.selfReport` cannot carry — so we still recover it here, GATED by the driver descriptor.
 import { resolveTokens, resolveAll, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
 import { stageSeed } from '../workflow/ops/seed.js';
-import { resolveSkillStage } from '../workflow/ops/skill.js';
+import { locateSkillStage } from '../workflow/ops/skill-locate.js';
 import { runMerge, applyMergeOp } from '../workflow/ops/merge.js';
 import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
@@ -416,20 +416,29 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     }
 
     // SKILL stage: a node's `skill` (an Agent-Skill dir) is a forced read-only PRE-stage — so it REUSES the
-    // seed seam. Copy the source onto the host run dir at `.pi/skills/<name>/` (pi's native discovery dir),
-    // mirror it INTO the sandbox via `stageHostPathIntoSandbox`, and point `--skill` at the in-sandbox path.
-    // Staged UNDER the workdir ⇒ jail-readable by construction (no readScope widening); the bytes ride into a
-    // cloud VM like every other staged input. An ABSENT source is a graceful skip (mirrors a missing seed);
-    // a real staging failure fails the node loudly (never a silent half-stage).
+    // seed seam. The ref resolves through `locateSkillStage`: a PATH-LIKE ref keeps the pure workspace-rooted
+    // `resolveSkillStage` semantics byte-identically; a BARE id searches the two local rings (workspace
+    // `.agents/skills/<id>`, then `<piflowHome>/skills/<id>`) — the SAME ordering the display path uses, so a
+    // skill a viewer can show is a skill this stage actually wires. Copy the source onto the host run dir at
+    // `.pi/skills/<name>/` (pi's native discovery dir), mirror it INTO the sandbox via
+    // `stageHostPathIntoSandbox`, and point `--skill` at the in-sandbox path. Staged UNDER the workdir ⇒
+    // jail-readable by construction (no readScope widening); the bytes ride into a cloud VM like every other
+    // staged input. A DECLARED skill that cannot be found is LOUD but ADVISORY (the old silent skip is gone):
+    // console.warn now (the driver-fit precedent) + a skill-missing note carried onto the node's `issues` at
+    // the verdict — the node still runs, just without `--skill`. A real staging failure still fails the node
+    // loudly (never a silent half-stage).
     let skillPath: string | undefined;
+    let skillMissing: string | undefined;
     try {
-      const skillStage = resolveSkillStage(node.skill, resolveCtx);
-      const exists = skillStage && (await fs.stat(skillStage.source).then(() => true, () => false));
-      if (skillStage && exists) {
-        const skillRel = path.posix.join('.pi', 'skills', skillStage.name);
-        await fs.cp(skillStage.source, path.resolve(ctx.outDir, skillRel), { recursive: true, force: true });
+      const located = await locateSkillStage(node.skill, resolveCtx);
+      if (located?.found) {
+        const skillRel = path.posix.join('.pi', 'skills', located.stage.name);
+        await fs.cp(located.stage.source, path.resolve(ctx.outDir, skillRel), { recursive: true, force: true });
         await stageHostPathIntoSandbox(sandbox, ctx.outDir, skillRel);
         skillPath = path.posix.join(stageRoot, node.sandbox.workspace || '.', skillRel);
+      } else if (located) {
+        skillMissing = `skill missing — "${located.ref}" not found (searched: ${located.searched.join(', ')})`;
+        console.warn(`[skill-missing] node "${node.id}": ${skillMissing}`);
       }
     } catch (e) {
       return finishNode(ctx, node, rec, t0, 'error', `skill staging failed: ${(e as Error).message}`, [], [(e as Error).message]);
@@ -823,6 +832,8 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // (M5 · #18) A `warn`-routed op failure surfaces an issue but never blocks (NOT swallowed, NOT fatal).
     if (warningOpFailures.length) issues.push(`op warn — ${warningOpFailures.map((f) => f.detail).join(' | ')}`);
     if (schema.skipped) issues.push(`schema gate skipped — ${schema.skipped}`);
+    // The LOUD skill-missing note recorded at stage time rides the node's issues (never a silent skip).
+    if (skillMissing) issues.push(skillMissing);
     if (parsed?.issues?.length) issues.push(...parsed.issues);
 
     // POST hooks — fire with the node's outcome; a blocking failure downgrades the node to error.

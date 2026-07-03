@@ -12,7 +12,7 @@
 
 import os from 'node:os';
 import path from 'node:path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import type { ToolSelection } from '../types.js';
 
 /**
@@ -221,4 +221,33 @@ export function loadAgentPreset(id: string, dir: string = defaultAgentsDir()): A
   } catch {
     return null;
   }
+}
+
+/** The full catalog listing: every parseable preset + a note per `.md` file that failed to parse. */
+export interface AgentPresetListing {
+  presets: AgentPreset[];
+  errors: string[];
+}
+
+/**
+ * Enumerate the preset catalog dir (default `~/.piflow/agents/`) — the readdir + loadAgentPreset loop
+ * the server used to inline. READ-ONLY, never throws: a missing dir ⇒ an empty listing; a non-`.md`
+ * file is skipped; a MALFORMED `.md` (loadAgentPreset ⇒ null) is skipped WITH an error note naming the
+ * file — it never sinks the rest of the listing.
+ */
+export function listAgentPresets(dir: string = defaultAgentsDir()): AgentPresetListing {
+  let files: string[];
+  try {
+    files = readdirSync(dir).filter((f) => f.endsWith('.md')).sort();
+  } catch {
+    return { presets: [], errors: [] }; // no catalog yet ⇒ empty (mirrors loadAgentPreset's posture)
+  }
+  const presets: AgentPreset[] = [];
+  const errors: string[] = [];
+  for (const f of files) {
+    const preset = loadAgentPreset(f.slice(0, -3), dir);
+    if (preset) presets.push(preset);
+    else errors.push(`${f}: unparseable preset (missing/invalid frontmatter or id)`);
+  }
+  return { presets, errors };
 }
