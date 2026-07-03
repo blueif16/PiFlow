@@ -27,6 +27,8 @@
 //                     ("no product in scope") — POST /api/runs/start keys on the product id, not the workflow.)
 //   PIFLOW_SANDBOX    sandbox backend the run executes under (default: e2b — the only honest Railway choice).
 //   PIFLOW_EXECUTOR   pi | claude-code (default: pi). Use claude-code to exercise check E's OAuth note.
+//   PIFLOW_PROVIDER   OPTIONAL per-run override; unset ⇒ omitted ⇒ the plane's staged system default wins.
+//   PIFLOW_MODEL      OPTIONAL per-run override; unset ⇒ omitted ⇒ the plane's staged system default wins.
 //   SMOKE_TIMEOUT_MS  overall per-run wait cap for the SSE done (default 240000 = 4m).
 //   READY_TIMEOUT_MS  how long to poll for the origin to answer before the ordered checks (default 90000 = 90s).
 //
@@ -42,11 +44,12 @@ const TOKEN = process.env.PIFLOW_TOKEN ?? "";
 const PRODUCT = process.env.PIFLOW_PRODUCT ?? "demo";
 const SANDBOX = process.env.PIFLOW_SANDBOX ?? "e2b";
 const EXECUTOR = process.env.PIFLOW_EXECUTOR ?? "pi";
-// The pi node needs a resolvable model credential in the worker: `cloud up --provider nebius` stages the
-// nebius gateway + NEBIUS_API_KEY on the plane, so the run must select nebius (the default provider `cp`
-// needs an ANTHROPIC key the billing guard forbids → pi would boot with no model → exit 1). Env-overridable.
-const PROVIDER = process.env.PIFLOW_PROVIDER ?? "nebius";
-const MODEL = process.env.PIFLOW_MODEL ?? "zai-org/GLM-5.2";
+// Provider/model are NOT hardcoded here. `cloud up --provider <gw>` stages the plane's single system default
+// (settings.json defaultProvider/defaultModel), so a run that sends NEITHER inherits the deployed provider+model
+// via the runner's loadPiDefaults() — swap the deployed model and this smoke is unchanged. An operator can still
+// override per-run with PIFLOW_PROVIDER / PIFLOW_MODEL; unset ⇒ omitted from the body ⇒ the plane default wins.
+const PROVIDER = process.env.PIFLOW_PROVIDER;
+const MODEL = process.env.PIFLOW_MODEL;
 const RUN_TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS) || 240_000;
 const READY_TIMEOUT_MS = Number(process.env.READY_TIMEOUT_MS) || 90_000;
 
@@ -150,7 +153,13 @@ async function main() {
   // ── B. POST /api/runs/start for the baked greet product → 202 {run} ─────────────────────────
   let run = null, streamUrl = null, runViewUrl = null;
   {
-    const body = { product: PRODUCT, sandbox: SANDBOX, executor: EXECUTOR, provider: PROVIDER, model: MODEL, thinking: "low", args: {} };
+    // Omit provider/model unless explicitly overridden — an absent pair makes the plane resolve its staged
+    // system default (settings.json), the whole point of the no-hardcoded-name design.
+    const body = {
+      product: PRODUCT, sandbox: SANDBOX, executor: EXECUTOR, thinking: "low", args: {},
+      ...(PROVIDER ? { provider: PROVIDER } : {}),
+      ...(MODEL ? { model: MODEL } : {}),
+    };
     let code = -1, json = null;
     try {
       const r = await fetch(`${BASE}/api/runs/start`, {
