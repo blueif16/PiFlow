@@ -449,23 +449,32 @@
   z-index: 900 !important;
 }
 
+/* slim identity anchor — a tiny face + the base id, deliberately quiet (the card leads with the
+   DEFINING substance below: prompt · tools · skill; never a branding repeat of the node header) */
 .ds-agentcard__head { display: flex; align-items: center; gap: var(--ds-space-2); }
 .ds-agentcard__face {                  /* circular face slot, tinted by the base's color (inline style) */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 20px;
+  height: 20px;
   flex: none;
   border-radius: var(--ds-radius-full);
   background: var(--ds-bg-base, rgba(0, 0, 0, 0.04));
   border: 1px solid var(--ds-border-strong);
 }
-.ds-agentcard__face .ds-agentface { width: 26px; height: 26px; border: none; }
-.ds-agentcard__face svg { width: 15px; height: 15px; }
-.ds-agentcard__who { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
-.ds-agentcard__label { color: var(--ds-text-primary); font-weight: var(--ds-weight-medium); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ds-agentcard__base { color: var(--ds-text-tertiary); font-size: var(--ds-text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ds-agentcard__face .ds-agentface { width: 18px; height: 18px; border: none; }
+.ds-agentcard__face svg { width: 12px; height: 12px; }
+.ds-agentcard__base {
+  color: var(--ds-text-tertiary);
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ds-tracking-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 .ds-agentcard__rows { display: flex; flex-direction: column; gap: 3px; }
 .ds-agentcard__row { display: flex; gap: var(--ds-space-2); align-items: baseline; }
@@ -481,10 +490,11 @@
 .ds-agentcard__val { color: var(--ds-text-secondary); min-width: 0; overflow-wrap: anywhere; }
 .ds-agentcard__val--mono { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); }
 
+/* the defining prompt gets the card's space — generous, scrollable */
 .ds-agentcard__prompt { display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--ds-border-hairline); padding-top: var(--ds-space-2); }
 .ds-agentcard__prompttext {
   margin: 0;
-  max-height: 108px;
+  max-height: 170px;
   overflow-y: auto;
   white-space: pre-wrap;
   font-family: var(--ds-font-mono);
@@ -492,6 +502,7 @@
   line-height: 1.45;
   color: var(--ds-text-secondary);
 }
+.ds-agentcard__rows { border-top: 1px solid var(--ds-border-hairline); padding-top: var(--ds-space-2); }
 
 @media (prefers-reduced-motion: reduce) {
   .ds-agentcard { transition: opacity var(--ds-dur-fast); transform: none; }

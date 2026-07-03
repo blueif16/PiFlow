@@ -67,6 +67,7 @@ const NODE_FIELDS = [
   "tokens", "derived", "model", "provider", "contextWindow", "toolCalls", "toolBreakdown",
   "reads", "writes", "artifacts", "retries", "stopReason", "truncated", "summary",
   "durationMs", "stageIndex", "lane",
+  "agentType", // (G6) rendered identity: face avatar + hover card + basis chip key off it
 ] as const satisfies readonly (keyof RunViewNode)[];
 
 /** Compare two node lists by id; a node on one side only is a divergence, else diff the field key. */

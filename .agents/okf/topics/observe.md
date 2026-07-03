@@ -151,6 +151,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
 - `5bd9143` 2026-07-02 — feat(server): POST /__piflow/templates — install a pushed template (no rebuild)
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
 
 ### Lessons — memory cluster
 
@@ -210,5 +211,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:274) — 2 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:113) — 13 callers in `packages/core/src/observe/assess.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/assess-probe.test.ts`, `packages/core/test/observe-assess.test.ts`
 
-<sub>derived 2026-07-03 · arc=62 commits · files=13 · lessons=46</sub>
+<sub>derived 2026-07-03 · arc=63 commits · files=13 · lessons=46</sub>
 <!-- okf:auto-end -->

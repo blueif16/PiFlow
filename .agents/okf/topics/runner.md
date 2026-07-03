@@ -195,11 +195,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `runNode` (packages/core/src/runner/node-lifecycle.ts:99) — 1 caller in `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 - `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 6 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
-- `RunContext` (packages/core/src/runner/run-context.ts:32) — 3 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:643) — 11 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/sandbox/local.ts`, `packages/docker/src/docker.ts` +2 more; ⚠ no covering tests found
+- `RunContext` (packages/core/src/runner/run-context.ts:32) — 8 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
+- `RunScope` (packages/core/src/types.ts:643) — 11 callers in `packages/core/src/runner/resume.ts`, `packages/core/src/sandbox/local.ts`, `packages/docker/src/docker.ts`, `packages/core/src/runner/runner.ts` +2 more; ⚠ no covering tests found
 
 <sub>derived 2026-07-03 · arc=124 commits · files=7 · lessons=9</sub>
 <!-- okf:auto-end -->

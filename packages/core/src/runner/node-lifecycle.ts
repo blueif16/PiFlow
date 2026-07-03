@@ -961,6 +961,7 @@ export function buildNodeConfig(node: NodeSpec): NodeConfig {
     if (tools.allow !== undefined) cfg.tools.allow = tools.allow;       // types.ts: ToolSelection.allow
     if (tools.deny !== undefined) cfg.tools.deny = tools.deny;          // types.ts: ToolSelection.deny
   }
+  if (node.skill !== undefined) cfg.skill = node.skill;                // types.ts: NodeSpec.skill (loadout)
   const sandbox = node.sandbox;                                        // types.ts: NodeSpec.sandbox
   if (sandbox?.timeoutMs !== undefined) cfg.timeoutMs = sandbox.timeoutMs; // types.ts: SandboxSpec.timeoutMs
   if (node.io.retries !== undefined) cfg.retries = node.io.retries;    // types.ts: NodeIO.retries (per-node budget)

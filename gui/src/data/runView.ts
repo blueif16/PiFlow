@@ -39,6 +39,8 @@ export interface NodeConfig {
   provider?: string;
   tier?: string;
   tools?: { allow?: string[]; deny?: string[]; };
+  /** The skill this node loads (`node.skill`) — the loadout half beside `tools`. Mirrors core. */
+  skill?: string;
   timeoutMs?: number;
   retries?: number;
   agentType?: string;
@@ -452,6 +454,7 @@ function liveNodeToRunViewNode(n: LiveNode): RunViewNode {
     phase: n.phase,
     status: n.status,
     ...(n.executor ? { executor: n.executor } : {}), // (P5) stamped executor/driver id → badge
+    ...(n.agentType ? { agentType: n.agentType } : {}), // (G6) base-agent identity → face avatar + hover card
     model: n.model ?? null,
     // provider is PER-NODE (detected from the node's own events; null when undeterminable) — carried on the
     // enriched wire node (watch.ts mergeEnriched), so it matches buildRunView's per-node provider EXACTLY. A
@@ -522,6 +525,7 @@ function runViewNodeToLiveNode(n: RunViewNode): LiveNode {
     stageIndex: n.stageIndex ?? 1,
     lane: n.lane ?? 0,
     ...(n.executor ? { executor: n.executor } : {}), // (P5) stamped executor/driver id → badge
+    ...(n.agentType ? { agentType: n.agentType } : {}), // (G6) identity survives the DR6 reconcile
     tokens: n.tokens,
     derived: n.derived,
     model: n.model ?? null,

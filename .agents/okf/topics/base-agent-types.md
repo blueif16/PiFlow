@@ -36,7 +36,7 @@ CONSUMED
 PASSED THROUGH
 - `packages/core/src/observe/runView.ts:291` — agentType passthrough into `RunViewNode`
 RENDERED
-- `gui/src/data/runView.ts:583` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
+- `gui/src/data/runView.ts:587` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
 - `gui/src/components/NodeModeStrip.tsx:85` — renders the base-agent chip
 
 # Freshness (anti-drift)
@@ -158,6 +158,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `80aafdb` 2026-07-02 — test(P6): failing tests + stubs for cost-spike + loopScore (RED)
 - `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
+- `e25231f` 2026-07-02 — feat(gui): unified agent identity surface — face avatars inherit through agentType + inherent hover card on every agent node
 
 ### Lessons — memory cluster
 
@@ -183,5 +185,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `packages/core/src/workflow/template/render.ts`, `packages/cli/src/scaffold.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
 - `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
 
-<sub>derived 2026-07-03 · arc=98 commits · files=8 · lessons=12</sub>
+<sub>derived 2026-07-03 · arc=100 commits · files=8 · lessons=12</sub>
 <!-- okf:auto-end -->
