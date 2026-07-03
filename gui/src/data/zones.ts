@@ -42,12 +42,19 @@ export type ZoneFlowNode = Node<ZoneData, "zone">;
 const GENERATED = /-(p\d+|obl)$/;
 
 /** Padding inset around a cluster's tight member box → the frame breathes around the cards. */
-const PAD = 22;
+const PAD = 30;
 
-/** Inflate a set of member ids into one absolute box. Mirrors `toFlowGraph` placement EXACTLY: each member's
- *  top-left anchor is `nodePosition(stageIndex, lane)`; the box spans from the min anchor to the max anchor +
- *  the card size (NODE_W/NODE_H), then insets by PAD on all sides. Multi-lane / multi-stage clusters are
- *  handled by the min/max over every member. Members absent from the view are skipped. */
+/** Effective card height for the box's VERTICAL extent. NODE_H (64) is the card MIN-height used for lane
+ *  stride, but the REAL rendered card (header + body + underline, and a fusion-toggle row on the judge) is
+ *  taller — so measuring the box off NODE_H left the frame's bottom cutting through the lowest card. CARD_H is
+ *  a generous real-height estimate so the frame fully clears the cards. (Width is exact: cards are a fixed
+ *  NODE_W, so the horizontal extent still uses NODE_W.) */
+const CARD_H = 104;
+
+/** Inflate a set of member ids into one absolute box. Mirrors `toFlowGraph` placement: each member's top-left
+ *  anchor is `nodePosition(stageIndex, lane)`; the box spans from the min anchor to the max anchor + the card
+ *  size (NODE_W wide, CARD_H tall — the real rendered height, not the NODE_H min), then insets by PAD on all
+ *  sides. Multi-lane / multi-stage clusters are handled by the min/max over every member; absent members skip. */
 export function bbox(memberIds: string[], view: RunView): { x: number; y: number; width: number; height: number } | null {
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -58,7 +65,7 @@ export function bbox(memberIds: string[], view: RunView): { x: number; y: number
     minX = Math.min(minX, x);
     minY = Math.min(minY, y);
     maxX = Math.max(maxX, x + NODE_W);
-    maxY = Math.max(maxY, y + NODE_H);
+    maxY = Math.max(maxY, y + CARD_H);
   }
   if (minX === Infinity) return null; // no member resolved
   return { x: minX - PAD, y: minY - PAD, width: maxX - minX + 2 * PAD, height: maxY - minY + 2 * PAD };
