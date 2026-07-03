@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { loadRunDigest, type RunDigest, type AnomalyKind } from "../data/runDigest";
+import { formatTokens } from "../data/runView";
 import "../styles/digest.css";
 
 const KIND_LABEL: Record<AnomalyKind, string> = {
@@ -38,13 +39,6 @@ const KIND_TONE: Record<AnomalyKind, string> = {
   "cost-spike": "retry",
   retries: "escalate",
 };
-
-/** compact token count: 1234 → "1.2k", 45000 → "45k". */
-function fmtTokens(n: number): string {
-  if (n < 1000) return String(n);
-  const k = n / 1000;
-  return `${k >= 10 ? Math.round(k) : k.toFixed(1)}k`;
-}
 
 export function RunDigestPanel({
   open,
@@ -119,9 +113,9 @@ export function RunDigestPanel({
         {t && (
           <div className="ds-digest__totals" aria-label="Run totals">
             <Stat label="nodes" value={`${t.ok}/${t.nodes}`} sub={t.failed ? `${t.failed} failed` : "ok"} tone={t.failed ? "block" : "ok"} />
-            <Stat label="tokens" value={`${fmtTokens(t.inputTokens)}→${fmtTokens(t.outputTokens)}`} sub="in→out" />
+            <Stat label="tokens" value={`${formatTokens(t.inputTokens)}→${formatTokens(t.outputTokens)}`} sub="in→out" />
             {t.cost > 0 && <Stat label="cost" value={`$${t.cost.toFixed(t.cost < 1 ? 3 : 2)}`} />}
-            <Stat label="peak ctx" value={fmtTokens(t.contextPeak)} sub="tokens" />
+            <Stat label="peak ctx" value={formatTokens(t.contextPeak)} sub="tokens" />
             <Stat label="calls" value={`${t.modelCalls}·${t.toolCalls}`} sub="model·tool" />
           </div>
         )}
