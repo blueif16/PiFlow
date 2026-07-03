@@ -1,0 +1,7 @@
+{
+  "_comment": "OKF substrate config — SETUP copies this to <repo>/.agents/okf/okf.config.json and edits it. Paths resolve relative to THIS file's dir (i.e. .agents/okf/). repoRoot: the repo root ('../..' from .agents/okf/). memoryDir: this repo's memory dir, or '' to skip the lessons substrate. codegraph: the binary name (optional; '' or absent → line-check only, degrades gracefully). noise: path fragments to ignore.",
+  "repoRoot": "../..",
+  "memoryDir": "",
+  "codegraph": "codegraph",
+  "noise": ["node_modules", "/out/", "/dist/", "package-lock", "pnpm-lock", "/.venv/", "/coverage/", "/.codegraph/", "/.git/", "/vendor/", "/reference/"]
+}
