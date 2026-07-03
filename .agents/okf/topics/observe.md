@@ -155,6 +155,10 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
 - `5ce7466` 2026-07-02 — fix(observe): the SSE snapshot carries the recorded node config — the loadout is never lost live
 - `e070ef1` 2026-07-02 — Merge worktree-gui-frontend-fixes: GUI frontend fixes onto main so `piflowctl gui` shows them
+- `e02a716` 2026-07-03 — feat(server): run-first gate bake — POST node-edit target:"run"
+- `7a48983` 2026-07-03 — fix(observe): telemetryStream selects the accumulator by driver (Claude ≠ pi)
+- `5946c6e` 2026-07-03 — feat(control): compose gets its own control channel — an isolated pi
+- `3aea9ce` 2026-07-03 — Merge worktree-gui-frontend-fixes: run-first compose (pi session) + driver-selected telemetry
 
 ### Lessons — memory cluster
 
@@ -215,5 +219,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:114) — 7 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-03 · arc=66 commits · files=13 · lessons=47</sub>
+<sub>derived 2026-07-03 · arc=70 commits · files=13 · lessons=47</sub>
 <!-- okf:auto-end -->

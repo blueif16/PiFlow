@@ -32,7 +32,7 @@ SOURCE
 - `gui/src/data/runIndex.ts:60` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
 SHAPE
 - `gui/src/data/runView.ts:172` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
-- `gui/src/data/runView.ts:602` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
+- `gui/src/data/runView.ts:633` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
 RENDER
 - `gui/src/components/WorkflowCanvas.tsx:139` — index→view→graph wiring (loadRunView+loadAgentCatalog→toFlowGraph)
 - `gui/src/components/WorkflowNode.tsx:274` — paints `NodeModeStrip` under the card when a view-mode is active
@@ -135,8 +135,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `ebc5356` 2026-07-02 — feat(gui): compose gate rail + natural-language drop card
 - `8c119ae` 2026-07-02 — feat(gui): gate drop card → full-height left authoring overlay with a live transcript
 - `e070ef1` 2026-07-02 — Merge worktree-gui-frontend-fixes: GUI frontend fixes onto main so `piflowctl gui` shows them
+- `2073700` 2026-07-03 — feat(gui): run-first Create + "apply to entire template?" promotion in the compose overlay
+- `bf834f7` 2026-07-03 — feat(gui): compose card drives a pi session to author the gate (Slice 2)
 - `8357625` 2026-07-03 — feat(gui): tool-icon vocabulary + promote/type the telemetry we already collect
 - `fadfaf6` 2026-07-03 — feat(gui): consolidated control-plane chip at bottom + liveness dot
+- `3aea9ce` 2026-07-03 — Merge worktree-gui-frontend-fixes: run-first compose (pi session) + driver-selected telemetry
 
 ### Lessons — memory cluster
 
@@ -183,9 +186,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:602) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:633) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `loadRunView` (gui/src/data/runView.ts:172) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
 
-<sub>derived 2026-07-03 · arc=76 commits · files=8 · lessons=38</sub>
+<sub>derived 2026-07-03 · arc=79 commits · files=8 · lessons=38</sub>
 <!-- okf:auto-end -->

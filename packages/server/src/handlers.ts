@@ -8,7 +8,8 @@
 
 import { readFile, writeFile, readdir, stat, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, isAbsolute, sep } from "node:path";
+import { homedir } from "node:os";
+import { join, isAbsolute, sep, basename, dirname } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, sendJson, type Middleware, type Next } from "./resolve.js";
 import { parseChannel, sessionKeyFor } from "./control-channel.js";
@@ -363,6 +364,105 @@ export const piflowTree: Middleware = async (req, res, next) => {
   }
 };
 
+// A SKILL.md bundle is read+parsed for the GUI's skill panel. Unlike piflowFile (jailed to the run/workspace),
+// skill bundles live OUTSIDE that jail — a bare id `X` is resolved as `<root>/X/SKILL.md` across the run's own
+// staged skills, the workspace, and the three home discovery dirs pi/Claude look in. Reads are CONFINED to that
+// known set of roots by realpath (never an arbitrary path), and size-capped like piflowFile.
+const MAX_SKILL_BYTES = 256 * 1024;
+
+/** `GET /__piflow/skill/<run>?skill=<id-or-path>` — read + parse a SKILL.md bundle (name/desc/requires/mcp/body). */
+export const piflowSkill: Middleware = async (req, res, next) => {
+  const m = req.url?.match(/^\/__piflow\/skill\/([^/?]+)/);
+  if (!m) return next();
+  const run = decodeURIComponent(m[1]);
+  const ref = new URL(req.url!, "http://localhost").searchParams.get("skill");
+  if (!ref) return sendJson(res, 400, { error: "missing ?skill=<id-or-path>" });
+
+  // A run resolves to its own staged-skills dir + workspace root; BOTH are optional — a bare-id skill can live
+  // purely in a home discovery dir, so an unresolved run must NOT 404 (only a genuinely not-found skill does).
+  const resolved = await resolveRunDir(run);
+  const runDir = resolved?.runDir ?? null;
+  const workspaceRoot = resolved?.workspaceRoot ?? null;
+  const home = homedir();
+  const homeRoots = [
+    join(home, ".piflow", "skills"),
+    join(home, ".claude", "skills"),
+    join(home, ".pi", "agent", "skills"),
+  ];
+  // The read allowlist (the jail): a resolved SKILL.md's realpath MUST live under one of these roots or it is
+  // treated as a miss — never read an arbitrary path. Missing roots are simply skipped.
+  const realRoots: string[] = [];
+  for (const r of [runDir, workspaceRoot, ...homeRoots]) {
+    if (!r) continue;
+    try { realRoots.push(await realpath(r)); } catch { /* skip missing */ }
+  }
+
+  // Resolve a candidate (a dir OR a SKILL.md file) → the CONFINED SKILL.md realpath, or null. Appends
+  // /SKILL.md when the candidate is a directory; a hit outside every allowed root is rejected (treated as miss).
+  const resolveCandidate = async (candidate: string): Promise<string | null> => {
+    let target = candidate;
+    try { if ((await stat(candidate)).isDirectory()) target = join(candidate, "SKILL.md"); } catch { /* may be a file path */ }
+    let real: string;
+    try { real = await realpath(target); } catch { return null; }
+    return realRoots.some((rb) => real === rb || real.startsWith(rb + sep)) ? real : null;
+  };
+
+  // A ref carrying a `{{WORKSPACE}}`/`{{RUN}}` token or a path separator is resolved as a PATH; a bare id is
+  // searched across the roots (first hit wins), the same order the runner stages a skill from.
+  const isPathRef = ref.includes("{{WORKSPACE}}") || ref.includes("{{RUN}}") || ref.includes("/") || ref.includes("\\") || isAbsolute(ref);
+  const candidates: string[] = [];
+  if (isPathRef) {
+    let r = ref;
+    if (workspaceRoot) r = r.split("{{WORKSPACE}}").join(workspaceRoot);
+    if (runDir) r = r.split("{{RUN}}").join(runDir);
+    if (isAbsolute(r)) candidates.push(r);
+    else { if (workspaceRoot) candidates.push(join(workspaceRoot, r)); if (runDir) candidates.push(join(runDir, r)); }
+  } else {
+    if (runDir) candidates.push(join(runDir, ".pi", "skills", ref));
+    if (workspaceRoot) { candidates.push(join(workspaceRoot, ref)); candidates.push(join(workspaceRoot, ".agents", "skills", ref)); }
+    for (const hr of homeRoots) candidates.push(join(hr, ref));
+  }
+
+  let skillPath: string | null = null;
+  for (const c of candidates) { skillPath = await resolveCandidate(c); if (skillPath) break; }
+  if (!skillPath) return sendJson(res, 404, { error: `skill '${ref}' not found in known skill dirs` });
+
+  try {
+    const st = await stat(skillPath);
+    if (st.size > MAX_SKILL_BYTES) return sendJson(res, 413, { error: `SKILL.md too large (${st.size} bytes)` });
+    const raw = await readFile(skillPath, "utf8");
+
+    const core = findCore("workflow/ops/skill.js");
+    if (!core) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
+    const { parseSkillManifest } = await import(pathToFileURL(core).href);
+
+    // fallback id = the bundle dir's basename (parseSkillManifest prefers the frontmatter `name` when present).
+    const fallbackId = basename(dirname(skillPath));
+    const { id, requires, allowed, display } = parseSkillManifest(raw, fallbackId) as {
+      id: string; requires: string[]; allowed: string[]; display?: { label?: string; icon?: string; color?: string };
+    };
+
+    // parseSkillManifest returns NEITHER description nor body — pull both from the `---` frontmatter block via the
+    // SAME regex core parses with: group 1 = the frontmatter YAML, group 2 = the markdown that follows it.
+    const fm = /^﻿?---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?([\s\S]*)$/.exec(raw);
+    const body = fm ? fm[2] : raw;
+    let description = "";
+    const dm = fm && /^description:[ \t]*(.+)$/m.exec(fm[1]);
+    if (dm) {
+      description = dm[1].trim();
+      if (description.length >= 2 && ((description[0] === '"' && description.endsWith('"')) || (description[0] === "'" && description.endsWith("'"))))
+        description = description.slice(1, -1);
+    }
+
+    // An id shaped like `mcp.<server>` or a namespaced `server:tool` implies an MCP binding must be provisioned.
+    const needsMcp = [...requires, ...allowed].some((t) => t.startsWith("mcp.") || t.includes(":"));
+
+    sendJson(res, 200, { id, name: display?.label || id, description, requires, allowed, needsMcp, display, body, resolvedFrom: skillPath });
+  } catch (e) {
+    sendJson(res, 500, { error: `skill read failed for "${ref}" (${String(e)})` });
+  }
+};
+
 /** `POST /__piflow/checkpoint/<run>` — dumb courier: write a human's reply to the run's checkpoint file. */
 export const piflowCheckpointReply: Middleware = async (req, res, next) => {
   const m = req.url?.match(/^\/__piflow\/checkpoint\/([^/?]+)/);
@@ -696,6 +796,7 @@ export const apiHandlers: Middleware[] = [
   piflowSaveRun,
   piflowFile,
   piflowTree,
+  piflowSkill,
   piflowCheckpointReply,
   piflowAgents,
   piflowNodeWriteback,
