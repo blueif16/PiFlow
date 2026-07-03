@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { join, isAbsolute, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, sendJson, type Middleware, type Next } from "./resolve.js";
+import { parseChannel, sessionKeyFor } from "./control-channel.js";
 import { piflowStartRun, makePiflowStartRun } from "./start-run.js";
 import { piflowMigrate, makePiflowMigrate } from "./migrate.js";
 import { piflowTemplatesInstall, makePiflowTemplatesInstall } from "./templates.js";
@@ -440,20 +441,23 @@ export const piflowAgents: Middleware = async (req, res, next) => {
   }
 };
 
-// Load the pure node-writeback host lib ONCE, injecting core's real nodeSchema + validator (memoized).
-let _writebackLib: { mod: Record<string, unknown>; validate: ((s: object, d: unknown) => { ok: boolean; errors: string[] }) | null } | null = null;
+// Load the pure node-writeback host lib ONCE, injecting core's real nodeSchema + validator + the canonical
+// `summarizeGates` fold the run-first bake reuses (memoized).
+let _writebackLib: { mod: Record<string, unknown>; validate: ((s: object, d: unknown) => { ok: boolean; errors: string[] }) | null; summarize: ((n: unknown) => unknown) | null } | null = null;
 const loadWritebackLib = async () => {
   if (_writebackLib) return _writebackLib;
   const libPath = findLib("node-writeback.mjs");
   const schemaPath = findCore("workflow/template/schema/node.schema.js");
   const valPath = findCore("runner/schema.js");
+  const corePath = findCore("index.js");
   if (!libPath) throw new Error("node-writeback lib not found — is this the piflow gui?");
-  if (!schemaPath || !valPath) throw new Error("@piflow/core dist not found — run: npm run build (at repo root)");
+  if (!schemaPath || !valPath || !corePath) throw new Error("@piflow/core dist not found — run: npm run build (at repo root)");
   const mod = await import(pathToFileURL(libPath).href);
   const { nodeSchema } = await import(pathToFileURL(schemaPath).href);
   const { defaultSchemaValidator } = await import(pathToFileURL(valPath).href);
+  const { summarizeGates } = await import(pathToFileURL(corePath).href);
   (mod.setNodeSchema as (s: unknown) => void)(nodeSchema);
-  _writebackLib = { mod, validate: await defaultSchemaValidator() };
+  _writebackLib = { mod, validate: await defaultSchemaValidator(), summarize: summarizeGates as (n: unknown) => unknown };
   return _writebackLib;
 };
 
@@ -502,7 +506,26 @@ export const piflowNodeWriteback: Middleware = async (req, res, next) => {
   const target = body.target === "run" ? "run" : "template";
 
   if (target === "run") {
-    return sendJson(res, 501, { error: "run-instance (ephemeral) edits are not implemented yet — only template edits are durable; live mid-run mutation is deferred", stub: true });
+    // RUN-FIRST bake (Slice 1.5): apply the gate to THIS run's `.pi/run.json` config.gates, NOT the template.
+    // The gate applies on top of the current template config, folded via core's canonical summarizeGates.
+    const resolved = await resolveRunDir(run);
+    if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
+    const templateDir = join(resolved.runDir, "..", "..", "template");
+    if (!existsSync(templateDir)) return sendJson(res, 404, { error: `no template for "${run}" at ${templateDir} (run-first bake needs the canonical <wf>/template layout)` });
+    try {
+      const { mod, validate, summarize } = await loadWritebackLib();
+      const out = await (mod.bakeNodeEditToRun as (rd: string, td: string, id: string, e: unknown, v: unknown, s: unknown) => Promise<{ status: number; body: unknown }>)(
+        resolved.runDir,
+        templateDir,
+        nodeId,
+        { chip: body.chip },
+        validate,
+        summarize,
+      );
+      return sendJson(res, out.status, out.body);
+    } catch (e) {
+      return sendJson(res, 500, { error: `run edit failed (${String(e)})` });
+    }
   }
 
   const tpl = await templateDirFor(run);
@@ -538,13 +561,22 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
   const host = await loadHost();
   if (!host) return sendJson(res, 500, { error: "control-session lib not found — is this the piflow gui?" });
 
+  // (Slice 2) An optional `?channel=compose` gives the compose-gate authoring pi its OWN registry key +
+  // session store, so it never rebases the Companion chat. Default (no channel) = the Companion, keyed by the
+  // bare run id (byte-identical to before). `sessionKey` is what the host registry is keyed by; `channelOpts`
+  // carries the channel's dedicated session-dir to the spawn calls (start / new).
+  const channel = parseChannel(new URL(req.url!, "http://localhost").searchParams.get("channel"));
+  const sessionKey = sessionKeyFor(run, channel);
+  const channelOpts = (runDir: string): { sessionDir: string } | undefined =>
+    channel ? { sessionDir: host.composeSessionDir(runDir) } : undefined;
+
   // ---- POST /start: spawn (or reuse) the control pi at cwd=runDir, inheriting pi config ----
   if (action === "start") {
     if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to start a control session" });
     const resolved = await resolveRunDir(run);
     if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
     try {
-      const handle = host.startSession(run, resolved.runDir);
+      const handle = host.startSession(sessionKey, resolved.runDir, channelOpts(resolved.runDir));
       return sendJson(res, 202, handle);
     } catch (e) {
       return sendJson(res, 500, { error: `failed to start control session (${String(e)})` });
@@ -555,7 +587,7 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
   if (action === "stream") {
     const resolved = await resolveRunDir(run);
     if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
-    try { host.startSession(run, resolved.runDir); } catch (e) { return sendJson(res, 500, { error: `failed to start control session (${String(e)})` }); }
+    try { host.startSession(sessionKey, resolved.runDir, channelOpts(resolved.runDir)); } catch (e) { return sendJson(res, 500, { error: `failed to start control session (${String(e)})` }); }
 
     res.statusCode = 200;
     res.setHeader("Content-Type", "text/event-stream");
@@ -568,7 +600,7 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
     const write = (frame: unknown) => { try { res.write(`data: ${JSON.stringify(frame)}\n\n`); } catch { /* socket gone */ } };
 
     let unsub: (() => void) | null = null;
-    try { unsub = host.subscribe(run, write); } catch (e) { write({ v: 1, type: "stream-error", error: String(e) }); }
+    try { unsub = host.subscribe(sessionKey, write); } catch (e) { write({ v: 1, type: "stream-error", error: String(e) }); }
 
     let closed = false;
     const cleanup = () => { if (closed) return; closed = true; clearInterval(ping); unsub?.(); };
@@ -599,7 +631,7 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
     } else {
       return sendJson(res, 400, { error: "send { text } for a chat message, or { type } for a control verb" });
     }
-    const out = host.sendCommand(run, cmd);
+    const out = host.sendCommand(sessionKey, cmd);
     return sendJson(res, out.status, out.body);
   }
 
@@ -608,7 +640,7 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
     const resolved = await resolveRunDir(run);
     if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
     try {
-      const list = await host.listSessions(run, resolved.runDir);
+      const list = await host.listSessions(sessionKey, resolved.runDir);
       return sendJson(res, 200, { sessions: list });
     } catch (e) {
       return sendJson(res, 500, { error: `failed to list sessions (${String(e)})` });
@@ -624,7 +656,7 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
     try { body = JSON.parse(await readBody(req)); } catch { return sendJson(res, 400, { error: "body must be JSON { sessionId }" }); }
     if (typeof body.sessionId !== "string") return sendJson(res, 400, { error: "sessionId (string) required" });
     try {
-      const out = await host.selectSession(run, resolved.runDir, body.sessionId);
+      const out = await host.selectSession(sessionKey, resolved.runDir, body.sessionId);
       return sendJson(res, out.status, out.body);
     } catch (e) {
       return sendJson(res, 500, { error: `select failed (${String(e)})` });
@@ -637,7 +669,7 @@ export const piflowControlSession: Middleware = async (req, res, next) => {
     const resolved = await resolveRunDir(run);
     if (!resolved) return sendJson(res, 404, { error: `no run "${run}" found — is its repo registered?` });
     try {
-      const out = await host.newChat(run, resolved.runDir);
+      const out = await host.newChat(sessionKey, resolved.runDir, channelOpts(resolved.runDir));
       return sendJson(res, out.status, out.body);
     } catch (e) {
       return sendJson(res, 500, { error: `new chat failed (${String(e)})` });

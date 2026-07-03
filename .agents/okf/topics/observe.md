@@ -151,8 +151,10 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
 - `5bd9143` 2026-07-02 — feat(server): POST /__piflow/templates — install a pushed template (no rebuild)
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `9ad30e3` 2026-07-02 — fix(observe): honest telemetry for unstamped-legacy and reused nodes (E+F)
 - `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
 - `5ce7466` 2026-07-02 — fix(observe): the SSE snapshot carries the recorded node config — the loadout is never lost live
+- `e070ef1` 2026-07-02 — Merge worktree-gui-frontend-fixes: GUI frontend fixes onto main so `piflowctl gui` shows them
 
 ### Lessons — memory cluster
 
@@ -211,7 +213,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `assembleNode` (packages/core/src/observe/runView.ts:343) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/watch.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `NodeTokenSpine` (packages/core/src/observe/runView.ts:263) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
-- `RunView` (packages/core/src/observe/runView.ts:114) — 2 callers in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
+- `RunView` (packages/core/src/observe/runView.ts:114) — 7 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-03 · arc=64 commits · files=13 · lessons=47</sub>
+<sub>derived 2026-07-03 · arc=66 commits · files=13 · lessons=47</sub>
 <!-- okf:auto-end -->

@@ -146,6 +146,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
@@ -194,5 +195,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-03 · arc=73 commits · files=8 · lessons=39</sub>
+<sub>derived 2026-07-03 · arc=73 commits · files=8 · lessons=40</sub>
 <!-- okf:auto-end -->

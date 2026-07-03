@@ -158,10 +158,15 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `80aafdb` 2026-07-02 — test(P6): failing tests + stubs for cost-spike + loopScore (RED)
 - `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `9ad30e3` 2026-07-02 — fix(observe): honest telemetry for unstamped-legacy and reused nodes (E+F)
+- `3dcf5df` 2026-07-02 — feat(gui): render tokens/cost in the HUD; honor core's time-tone verdict; one token formatter
 - `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
 - `e25231f` 2026-07-02 — feat(gui): unified agent identity surface — face avatars inherit through agentType + inherent hover card on every agent node
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 - `c384361` 2026-07-02 — feat(gui): hover card = the agent's loadout at a glance — skill chip (click → node detail), tool/scope TAGS; recorded config rides the live path + reconcile
+- `0c4c5ee` 2026-07-02 — feat(gui): render node gates as hexagon icons + a HUD "Hooks" section
+- `e070ef1` 2026-07-02 — Merge worktree-gui-frontend-fixes: GUI frontend fixes onto main so `piflowctl gui` shows them
+- `8357625` 2026-07-03 — feat(gui): tool-icon vocabulary + promote/type the telemetry we already collect
 
 ### Lessons — memory cluster
 
@@ -188,5 +193,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `packages/core/src/workflow/template/render.ts`, `packages/cli/src/scaffold.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
 - `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
 
-<sub>derived 2026-07-03 · arc=102 commits · files=8 · lessons=13</sub>
+<sub>derived 2026-07-03 · arc=107 commits · files=8 · lessons=13</sub>
 <!-- okf:auto-end -->

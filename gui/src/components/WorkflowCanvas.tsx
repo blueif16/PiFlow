@@ -96,6 +96,12 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // (Compose mode) the open drop card — a rail gate dropped on a node opens the natural-language card at it;
   // "Create gate" writes the template. Null = no card open.
   const [dropCard, setDropCard] = useState<DropCardTarget | null>(null);
+  // (Compose · Slice 2) the node whose compose AGENT session is mid-wire — the target renders a pending hex
+  // while composing; it solidifies from the run-view re-read once the gate lands. Null when idle.
+  const [composingNodeId, setComposingNodeId] = useState<string | null>(null);
+  // (Slice 1.5) bumped after a RUN-first gate bake so the run-view re-loads even for a DONE run (whose poll
+  // has stopped) — the newly-applied gate then appears on the graph without a manual reload.
+  const [runViewNonce, setRunViewNonce] = useState(0);
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
   const [digestOpen, setDigestOpen] = useState(false); // left-edge run digest; launched by the "D" key
   const [startOpen, setStartOpen] = useState(false); // the "Start a run" launcher modal (from the MenuBar)
@@ -225,7 +231,8 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     };
     load();
     return () => { alive = false; if (timer) clearTimeout(timer); };
-  }, [activeRun, fusionOverrides, sseLive, setNodes, setEdges, endpointBase]);
+    // `runViewNonce` forces a one-off re-load after a run-first gate bake (a DONE run's poll has stopped).
+  }, [activeRun, fusionOverrides, sseLive, setNodes, setEdges, endpointBase, runViewNonce]);
 
   // ── (P3) Enriched-live render path — active only when `sseLive` (flag 'sse' + a live streaming run) ────────
   // The graph is built from the SSE-enriched `live.model` (adapter → toFlowGraph); the GUI computes nothing.
@@ -409,32 +416,40 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     return () => { alive = false; };
   }, [mode, activeRun, flowNodes]);
 
-  // (Compose mode · SA-E) drop a gate chip onto a node → mutate its TEMPLATE node.json (append to op[] /
-  // set checkpoint), then REFRESH that node's config so the badge re-renders WITH the new gate (round-trip:
-  // GUI edit → node.json → re-read renders the change). config is the single source of truth.
-  const dropChip = useCallback(async (nodeId: string, chip: GateChip): Promise<{ ok: boolean; error?: string; stub?: boolean }> => {
+  // (Compose · SA-E + Slice 1.5) apply a gate chip to a node. `target` defaults to "run" — RUN-FIRST: the gate
+  // lands on THIS run's `.pi/run.json` (visible on the run once the run-view re-polls), the template untouched.
+  // "template" PROMOTES it durably (the original write-back path); on a template write we refresh that node's
+  // AUTHORED config so the compose badge re-renders with the promoted gate. config is the single source of truth.
+  const dropChip = useCallback(async (nodeId: string, chip: GateChip, target: "run" | "template" = "run"): Promise<{ ok: boolean; error?: string; stub?: boolean }> => {
     if (!activeRun) return { ok: false, error: "no active run" };
-    const r = await dropChipOnNode(activeRun, nodeId, chip, "template");
-    if (r.ok) {
-      // Prefer the mutated config the endpoint echoed; fall back to a fresh read.
+    const r = await dropChipOnNode(activeRun, nodeId, chip, target);
+    if (r.ok && target === "template") {
+      // Prefer the mutated config the endpoint echoed; fall back to a fresh read (the run bake doesn't touch it).
       const fresh = r.node ?? (await loadNodeConfig(activeRun, nodeId));
       if (fresh) setNodeConfigs((prev) => ({ ...prev, [nodeId]: fresh }));
     }
+    // A run-first bake changed the run's `.pi/` — re-load the run-view so the gate appears on the graph even
+    // for a DONE run (whose 3 s poll has stopped).
+    if (r.ok && target === "run") setRunViewNonce((n) => n + 1);
     return { ok: r.ok, error: r.error, stub: r.stub };
   }, [activeRun]);
 
   // (Compose mode) a rail gate dropped on a node opens the left-side authoring overlay bound to that node.
+  // The node's upstream/downstream neighbors (from the live edge set) ride along so the compose agent gets the
+  // node's structural context in its bundle (Slice 2, inv 2) — read from `edges` at drop time.
   const openCard = useCallback((nodeId: string, kind: RailKind) => {
-    setDropCard({ nodeId, kind });
-  }, []);
+    const prev = edges.filter((e) => e.target === nodeId).map((e) => e.source);
+    const next = edges.filter((e) => e.source === nodeId).map((e) => e.target);
+    setDropCard({ nodeId, kind, prev, next });
+  }, [edges]);
 
   const composeApi = useMemo(
-    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip, openCard, targetId: dropCard?.nodeId ?? null }),
-    [mode, activeRun, nodeConfigs, dropChip, openCard, dropCard],
+    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip, openCard, targetId: dropCard?.nodeId ?? null, composingNodeId }),
+    [mode, activeRun, nodeConfigs, dropChip, openCard, dropCard, composingNodeId],
   );
 
   // Leaving Compose mode drops the loaded configs (re-fetched fresh on re-entry) + closes any open card.
-  useEffect(() => { if (mode !== "compose") { setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); setDropCard(null); } }, [mode]);
+  useEffect(() => { if (mode !== "compose") { setNodeConfigs((c) => (Object.keys(c).length ? {} : c)); setDropCard(null); setComposingNodeId(null); } }, [mode]);
 
   // A backdrop zone is non-selectable, so the expanded node is always a real card — narrow before reading data.
   const expandedNode = nodes.find((n) => n.id === expandedId);
@@ -525,8 +540,16 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
               overlay is open — both are left-anchored, and the overlay is the focus. */}
           <GateRail active={mode === "compose" && !dropCard} />
-          {/* The left-side gate-authoring overlay (mirror of the right-side Companion), bound to the node. */}
-          <GateDropCard card={mode === "compose" ? dropCard : null} onClose={() => setDropCard(null)} dropChip={dropChip} />
+          {/* The left-side gate-authoring overlay (mirror of the right-side Companion), bound to the node. For
+              agent-composed kinds it drives a dedicated compose `pi` session (channel=compose) + reports which
+              node is mid-compose so the canvas paints a pending hex on it. */}
+          <GateDropCard
+            card={mode === "compose" ? dropCard : null}
+            run={activeRun}
+            onClose={() => { setDropCard(null); setComposingNodeId(null); }}
+            dropChip={dropChip}
+            onComposingChange={setComposingNodeId}
+          />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.
               Clicking an anomaly/onset node focuses that node on the canvas. */}

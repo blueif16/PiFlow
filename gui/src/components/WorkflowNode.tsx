@@ -331,9 +331,10 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       {mode === "fusion" ? (
         <NodeFusionToggle nodeId={id} agentType={data.rv?.agentType} />
       ) : mode === "compose" ? (
-        // (SA-E) Compose mode: the node becomes a gate drop-target + surfaces its gate pipeline + tier
-        // (the badge widen) — read from the authored TEMPLATE config via ComposeContext, not the run-view.
-        <NodeGateChips nodeId={id} />
+        // (SA-E) Compose mode: the node becomes a gate drop-target + surfaces its authored TEMPLATE pipeline
+        // via ComposeContext. `runGateCount` (the run-view's effective gate count) lets it flag un-promoted
+        // run-first edits as "run-scoped" (Slice 1.5).
+        <NodeGateChips nodeId={id} runGateCount={data.rv?.config?.gates?.entries.length ?? 0} />
       ) : (
         mode && <NodeModeStrip mode={mode} data={data} />
       )}

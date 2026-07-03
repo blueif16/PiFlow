@@ -123,10 +123,20 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `36ba65e` 2026-07-01 — feat(gui): P5 — RunDigestPanel refetches off SSE deltas, not a 3s idle poll
 - `a06e930` 2026-07-01 — feat(gui): DR6 reconcile net — heal SSE drift on tab return (MODEL REPLACE)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `4ac20a5` 2026-07-02 — fix(gui): panel layering + modal discipline — rails get an ambient tier, modals exclusive + Escape
+- `a941c34` 2026-07-02 — fix(gui): floating chrome never covers content — palette row, HUD caption, dir-panel clearance
+- `3dcf5df` 2026-07-02 — feat(gui): render tokens/cost in the HUD; honor core's time-tone verdict; one token formatter
 - `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
 - `e25231f` 2026-07-02 — feat(gui): unified agent identity surface — face avatars inherit through agentType + inherent hover card on every agent node
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
+- `5b854b9` 2026-07-02 — feat(gui): global local/cloud endpoint switcher — top-center icon, one-click confirm
 - `c384361` 2026-07-02 — feat(gui): hover card = the agent's loadout at a glance — skill chip (click → node detail), tool/scope TAGS; recorded config rides the live path + reconcile
+- `0c4c5ee` 2026-07-02 — feat(gui): render node gates as hexagon icons + a HUD "Hooks" section
+- `ebc5356` 2026-07-02 — feat(gui): compose gate rail + natural-language drop card
+- `8c119ae` 2026-07-02 — feat(gui): gate drop card → full-height left authoring overlay with a live transcript
+- `e070ef1` 2026-07-02 — Merge worktree-gui-frontend-fixes: GUI frontend fixes onto main so `piflowctl gui` shows them
+- `8357625` 2026-07-03 — feat(gui): tool-icon vocabulary + promote/type the telemetry we already collect
+- `fadfaf6` 2026-07-03 — feat(gui): consolidated control-plane chip at bottom + liveness dot
 
 ### Lessons — memory cluster
 
@@ -172,11 +182,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `NodeHud` (gui/src/components/NodeHud.tsx:97) — 1 caller in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 4 callers in `gui/src/components/StartRunPanel.tsx`, `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:589) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:159) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:602) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `loadRunView` (gui/src/data/runView.ts:172) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
 
-<sub>derived 2026-07-03 · arc=66 commits · files=8 · lessons=38</sub>
+<sub>derived 2026-07-03 · arc=76 commits · files=8 · lessons=38</sub>
 <!-- okf:auto-end -->

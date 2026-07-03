@@ -137,6 +137,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[competitive-gaps-pdw]]
+- [[compose-gate-drag-audit]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
 - [[expert-representations]]
@@ -169,5 +170,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-03 · arc=43 commits · files=3 · lessons=27</sub>
+<sub>derived 2026-07-03 · arc=43 commits · files=3 · lessons=28</sub>
 <!-- okf:auto-end -->

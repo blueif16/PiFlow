@@ -19,15 +19,18 @@ import {
   chipToOps,
   applyEdit,
   writeNodeEdit,
+  bakeNodeEditToRun,
   setNodeSchema,
   readNodeConfig,
   WritebackError,
 } from "./node-writeback.mjs";
 
-// The REAL core schema + the REAL ajv validator — the same gate loadTemplate runs (loader.ts:191).
-// Resolve from the built dist by walking up to the repo root (this test runs with cwd=repo root).
+// The REAL core schema + the REAL ajv validator — the same gate loadTemplate runs (loader.ts:191) — plus the
+// REAL `summarizeGates` fold (the canonical op[]/checkpoint → GateSummary distiller the run bake reuses, so
+// the run's config.gates matches what a real run would have written). Resolved from the built dist.
 let nodeSchema;
 let validate;
+let summarizeGates;
 beforeAll(async () => {
   const findUp = async (rel) => {
     let dir = process.cwd();
@@ -46,7 +49,21 @@ beforeAll(async () => {
   const valMod = await import(pathToFileURL(await findUp("packages/core/dist/runner/schema.js")).href);
   validate = await valMod.defaultSchemaValidator();
   if (!validate) throw new Error("ajv did not resolve — the schema gate is mandatory for this test");
+  const nlMod = await import(pathToFileURL(await findUp("packages/core/dist/runner/node-lifecycle.js")).href);
+  summarizeGates = nlMod.summarizeGates;
+  if (typeof summarizeGates !== "function") throw new Error("summarizeGates not exported from core dist");
 });
+
+/** A minimal run dir with a `.pi/run.json` carrying one node record (the run-bake target). */
+async function makeRun(root, nodeId) {
+  const runDir = join(root, "runs", "r1");
+  const piDir = join(runDir, ".pi");
+  await mkdir(piDir, { recursive: true });
+  const runJson = { run: "r1", name: "r1", done: true, nodes: { [nodeId]: { id: nodeId, label: nodeId, status: "ok", artifacts: [], issues: [] } } };
+  await writeFile(join(piDir, "run.json"), JSON.stringify(runJson, null, 2) + "\n");
+  return { runDir };
+}
+const runJsonPath = (runDir) => join(runDir, ".pi", "run.json");
 
 // A minimal VALID producer node.json (no gates yet) — the realistic starting point a chip drops onto.
 const baseNode = () => ({
@@ -266,6 +283,69 @@ describe("writeNodeEdit — the end-to-end TEMPLATE node.json mutation", () => {
       await writeNodeEdit(templateDir, "build", { chip: { kind: "execution", cmd: "pytest" } }, validate);
       const reread = await readNodeConfig(templateDir, "build");
       expect(reread.op[0].run).toEqual({ cmd: "pytest" });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+// (Slice 1.5) The RUN-FIRST bake: a gate edit lands on THIS RUN's `.pi/run.json` first (config.gates), NOT
+// the template. Promotion to the template is the existing durable `writeNodeEdit` path. These prove the run
+// bake writes the run and leaves the template untouched, rejects a bad chip, and 404s an unknown node.
+describe("bakeNodeEditToRun — run-first gate edit (writes .pi/run.json, NOT the template)", () => {
+  it("bakes an execution gate into run.json config.gates, leaving the template UNCHANGED (run-first)", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    const { runDir } = await makeRun(root, "build");
+    try {
+      const tmplBefore = await readFile(nodeJsonPathFor(templateDir, "build"), "utf8");
+      const res = await bakeNodeEditToRun(runDir, templateDir, "build", { chip: { kind: "execution", cmd: "npm test" } }, validate, summarizeGates);
+      expect(res.status).toBe(200);
+      // (1) the RUN carries the gate now — read run.json from disk (config.gates is what buildRunView surfaces).
+      const run = JSON.parse(await readFile(runJsonPath(runDir), "utf8"));
+      const entries = run.nodes.build.config.gates.entries;
+      expect(entries.some((e) => e.kind === "exec" && e.label.includes("npm test"))).toBe(true);
+      // (2) the TEMPLATE is byte-untouched — the whole point of run-first.
+      expect(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8")).toBe(tmplBefore);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("REJECTS a malformed chip (400) and writes NOTHING to run.json", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    const { runDir } = await makeRun(root, "build");
+    try {
+      const runBefore = await readFile(runJsonPath(runDir), "utf8");
+      const res = await bakeNodeEditToRun(runDir, templateDir, "build", { chip: { kind: "execution" } }, validate, summarizeGates); // no cmd
+      expect(res.status).toBe(400);
+      expect(await readFile(runJsonPath(runDir), "utf8")).toBe(runBefore); // nothing written
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("404 when the node is not in this run", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    const { runDir } = await makeRun(root, "build");
+    try {
+      const res = await bakeNodeEditToRun(runDir, templateDir, "ghost", { chip: { kind: "execution", cmd: "x" } }, validate, summarizeGates);
+      expect(res.status).toBe(404);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("run-first then PROMOTE: the run carries the gate; promoting (template write) lands it durably", async () => {
+    const { root, templateDir } = await makeTemplate(baseNode());
+    const { runDir } = await makeRun(root, "build");
+    try {
+      await bakeNodeEditToRun(runDir, templateDir, "build", { chip: { kind: "execution", cmd: "pytest" } }, validate, summarizeGates);
+      // template still has no op[] (run-only so far)
+      expect(JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8")).op).toBeUndefined();
+      // PROMOTE = the existing durable template write path (unchanged).
+      const p = await writeNodeEdit(templateDir, "build", { chip: { kind: "execution", cmd: "pytest" } }, validate);
+      expect(p.status).toBe(200);
+      expect(JSON.parse(await readFile(nodeJsonPathFor(templateDir, "build"), "utf8")).op[0].run).toEqual({ cmd: "pytest" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

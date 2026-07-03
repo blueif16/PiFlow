@@ -155,6 +155,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agent-identity-surface]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -200,5 +201,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=89 commits · files=8 · lessons=36</sub>
+<sub>derived 2026-07-03 · arc=89 commits · files=8 · lessons=37</sub>
 <!-- okf:auto-end -->
