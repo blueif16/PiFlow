@@ -107,6 +107,55 @@ export function validateReply(marker: CheckpointMarker, reply: CheckpointReply):
   }
 }
 
+// ── string → typed value coercion (the INPUT-side twin of validateReply, for string couriers: CLI/TUI) ──
+// A CLI/TUI hands a raw STRING; the marker's `kind` decides the typed `value` the runner then validates.
+// `confirm` maps yes/no words → a boolean (the runner requires a boolean); `input` is the string verbatim;
+// `select` is the string verbatim (validateReply checks it ∈ choices). Kept HERE next to validateReply so
+// the two stay one home — a courier coerces, the runner re-validates. PURE.
+
+/** Coerce a raw string answer to the typed `value` a reply of this marker's `kind` needs. PURE. */
+export function coerceReplyValue(
+  marker: CheckpointMarker,
+  raw: string,
+): { ok: true; value: unknown } | { ok: false; reason: string } {
+  switch (marker.kind) {
+    case 'confirm': {
+      const t = raw.trim().toLowerCase();
+      if (['true', 'yes', 'y', '1', 'approve', 'confirm', 'ok'].includes(t)) return { ok: true, value: true };
+      if (['false', 'no', 'n', '0', 'reject', 'deny', 'abort'].includes(t)) return { ok: true, value: false };
+      return { ok: false, reason: `confirm expects yes/no (approve/reject) — got "${raw}"` };
+    }
+    case 'input':
+      if (raw.length === 0) return { ok: false, reason: 'input expects a non-empty string' };
+      return { ok: true, value: raw };
+    case 'select': {
+      const choices = marker.choices ?? [];
+      if (!choices.includes(raw)) return { ok: false, reason: `select expects one of: ${choices.join(', ')}` };
+      return { ok: true, value: raw };
+    }
+    default:
+      return { ok: false, reason: `unknown checkpoint kind: ${String(marker.kind)}` };
+  }
+}
+
+/**
+ * Assemble the full courier reply for a marker from a raw string answer: coerce the value per `kind`, then
+ * echo the marker `hash` + `nodeId` so the runner's `validateReply` ACCEPTS it. Returns the reason on a bad
+ * value (before any file is written) so a caller can fail loud instead of writing a reply the runner ignores.
+ * PURE — the caller writes the returned reply to `checkpointReplyFile`. `by` is optional provenance.
+ */
+export function buildReply(
+  marker: CheckpointMarker,
+  raw: string,
+  by?: string,
+): { ok: true; reply: CheckpointReply } | { ok: false; reason: string } {
+  const c = coerceReplyValue(marker, raw);
+  if (!c.ok) return c;
+  const reply: CheckpointReply = { nodeId: marker.nodeId, hash: marker.hash, value: c.value };
+  if (by) reply.by = by;
+  return { ok: true, reply };
+}
+
 // ── I/O: write the marker · read a reply (fs-only, never throws on a missing/torn file) ─────────────
 
 /** Write the pending marker atomically into the run dir (mkdir -p the checkpoints namespace first). */
