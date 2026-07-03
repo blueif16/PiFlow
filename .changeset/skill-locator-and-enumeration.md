@@ -17,7 +17,8 @@ Unified skill locator + capability enumeration (skill-marketplace P0).
   (the single source of truth for ring ordering), `listSkills({workspace, piflowHome})` (both
   rings, with `ring`/`shadowed` tags and manifest fields), `listAgentPresets(dir?)` (the
   `~/.piflow/agents` readdir loop the server previously inlined), `locateSkillStage`,
-  `isBareSkillId`.
+  `isBareSkillId`, and `parseSkillManifest`/`SkillManifest` (so installers can refuse a
+  `requires ⊄ allowed` bundle at install time).
 - **`@piflow/server`** rides the seam: `GET /__piflow/agents.json` enumerates via
   `listAgentPresets`; `GET /__piflow/skill` resolves bare ids from the same ordered roots the
   runtime stages from (display ≡ staging; the installed ring is now `PIFLOW_HOME`-aware instead

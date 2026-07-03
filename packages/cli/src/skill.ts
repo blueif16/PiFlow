@@ -15,7 +15,7 @@ import { cpSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { listSkills, type SkillListEntry } from '@piflow/core';
+import { listSkills, parseSkillManifest, type SkillListEntry } from '@piflow/core';
 
 /** Injectable sinks + ring roots so the verb is testable against temp dirs (no real ~/.piflow, no cwd). */
 export interface SkillDeps {
@@ -233,6 +233,15 @@ async function runAdd(rest: string[], deps: SkillDeps, out: (s: string) => void,
         `piflowctl skill add: frontmatter name '${name}' does not match the dir name '${chosen.id}' ` +
           `(the agentskills.io rule) — rename one so they agree.\n`,
       );
+      return 1;
+    }
+
+    // Full manifest validation via core's parser — it throws when `requires ⊄ allowed`, and a bundle
+    // that can't satisfy its own floor must be refused HERE, not discovered broken at run time.
+    try {
+      parseSkillManifest(raw, chosen.id);
+    } catch (e) {
+      err(`piflowctl skill add: ${chosen.id}/SKILL.md manifest is invalid — ${e instanceof Error ? e.message : e}\n`);
       return 1;
     }
 

@@ -111,6 +111,10 @@ export type { MergeResult, MergeSpec } from './workflow/ops/merge.js';
 // runner stages by and the server display path must share; `listSkills` enumerates both rings.
 export { locateSkillStage, skillSearchRoots, isBareSkillId, listSkills } from './workflow/ops/skill-locate.js';
 export type { SkillLocateResult, SkillListEntry } from './workflow/ops/skill-locate.js';
+// The manifest parser (name/requires/allowed/display; throws on requires ⊄ allowed) — exported so
+// installers (`piflowctl skill add`) can refuse a broken bundle at install time, not at run time.
+export { parseSkillManifest } from './workflow/ops/skill-manifest.js';
+export type { SkillManifest } from './workflow/ops/skill-manifest.js';
 
 // U7 — the `promote` POST-op (lift a node output into a RunState channel via the reducer) + the
 // stage-barrier merge (serial+deterministic parallel-promote merge; a `set` channel with two concurrent

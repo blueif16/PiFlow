@@ -194,6 +194,19 @@ describe('piflowctl skill add — local dir', () => {
     expect(r.code).toBe(1);
     expect(r.err).toContain('nope-not-here');
   });
+
+  it('REJECTS a bundle whose manifest violates requires ⊆ allowed (exit 1, nothing installed)', async () => {
+    const dir = path.join(SRC, 'broken');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'SKILL.md'),
+      `---\nname: broken\ndescription: violates the floor/ceiling invariant\nrequires: [bash]\nallowed: [read]\n---\nBody.\n`,
+    );
+    const r = await add([dir]);
+    expect(r.code).toBe(1);
+    expect(r.err).toMatch(/requires/);
+    await expect(fs.stat(path.join(HOME, 'skills', 'broken'))).rejects.toThrow();
+  });
 });
 
 describe('piflowctl skill add — git source (LOCAL fixture repo, never the network)', () => {
