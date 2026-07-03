@@ -20,7 +20,14 @@ import { cpSync, existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { listSkills, parseSkillManifest, type SkillListEntry } from '@piflow/core';
+import {
+  buildSkillIndex,
+  listSkills,
+  parseSkillManifest,
+  type BuildSkillIndexOpts,
+  type SkillIndexArtifact,
+  type SkillListEntry,
+} from '@piflow/core';
 import { searchRemote, type RemoteSkillRow, type SearchRemoteOpts } from './skill-remote.js';
 
 /** Injectable sinks + ring roots so the verb is testable against temp dirs (no real ~/.piflow, no cwd). */
@@ -35,12 +42,15 @@ export interface SkillDeps {
   now?: () => string;
   /** The `search --remote` network seam (default the real `searchRemote`) — inject a fake for zero-net tests. */
   searchRemote?: (q: string, opts?: SearchRemoteOpts) => Promise<RemoteSkillRow[]>;
+  /** The `index build` harvest seam (default core's real `buildSkillIndex`) — inject a fake for zero-net tests. */
+  buildIndex?: (opts?: BuildSkillIndexOpts) => Promise<SkillIndexArtifact>;
 }
 
 const USAGE =
   `usage: piflowctl skill list [--json]\n` +
   `       piflowctl skill search <q> [--remote] [--source <a,b>] [--limit <n>] [--json]\n` +
-  `       piflowctl skill add <source> [--skill <name>] [--force]\n`;
+  `       piflowctl skill add <source> [--skill <name>] [--force]\n` +
+  `       piflowctl skill index build [--out <file>]\n`;
 
 /** The global piflow home — the SAME resolution core's `skillSearchRoots`/`defaultAgentsDir` use. */
 function piflowHomeDir(override?: string): string {
@@ -377,6 +387,32 @@ export async function runSkillCli(argv: string[], deps: SkillDeps = {}): Promise
 
     case 'add':
       return runAdd(rest, deps, out, err);
+
+    // `index build [--out <file>]` — build the BUNDLED marketplace artifact (the compact ranked snapshot
+    // the Vercel site publishes at /skills-index.json). Harvest lives in core; this verb writes the file
+    // and prints the per-source counts (honest coverage — a degraded lane shows as 0).
+    case 'index': {
+      if (rest[0] !== 'build') {
+        err(`piflowctl skill index build [--out <file>] — 'build' is the only index subcommand.\n${USAGE}`);
+        return 1;
+      }
+      const outFile = path.resolve(flag(rest, 'out') ?? 'skills-index.json');
+      const build = deps.buildIndex ?? buildSkillIndex;
+      let artifact: SkillIndexArtifact;
+      try {
+        artifact = await build();
+      } catch (e) {
+        err(`piflowctl skill index build: ${e instanceof Error ? e.message : String(e)}\n`);
+        return 1;
+      }
+      await fs.mkdir(path.dirname(outFile), { recursive: true });
+      await fs.writeFile(outFile, `${JSON.stringify(artifact)}\n`, 'utf8');
+      const counts = Object.entries(artifact.sources)
+        .map(([id, n]) => `${id} ${n}`)
+        .join(' · ');
+      out(`built skills-index: ${artifact.docs.length} doc(s) (${counts}) → ${outFile}\n`);
+      return 0;
+    }
 
     default:
       err(`piflowctl skill: unknown subcommand '${sub ?? ''}'.\n${USAGE}`);

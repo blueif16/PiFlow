@@ -171,6 +171,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
 - `5eff54c` 2026-07-03 — feat(gui): base-agent rail on Basis mode — drag a preset onto a node to reassign agentType
 - `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
+- `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
 
 ### Lessons — memory cluster
 
@@ -198,5 +199,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/cli/src/agents.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; ⚠ no covering tests found
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 2 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=111 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-03 · arc=112 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

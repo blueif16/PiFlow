@@ -326,6 +326,7 @@ describe('topagentskills source', () => {
         source: 'https://github.com/stripe/ai',
         author: 'Stripe',
         index: 'topagentskills',
+        quality: 88, // the frontmatter `score:` — the curated composite the ranker boosts on
       },
     ]);
   });
@@ -341,6 +342,7 @@ describe('topagentskills source', () => {
         source: 'https://top-agent-skills.com/skill/orphan-quality-skill',
         author: 'Community',
         index: 'topagentskills',
+        quality: 71,
       },
     ]);
   });
@@ -401,8 +403,34 @@ describe('skillregistry source', () => {
 
 // ── searchRemote orchestration: default order, laziness, dedup ───────────────────────────────────────
 describe('searchRemote defaults + dedup', () => {
-  it('defaults are quality-first: topagentskills fills the limit and the giants are NEVER fetched', async () => {
+  it('the bundled INDEX answers alone when it fills the limit — no live API is ever touched', async () => {
+    const artifact = {
+      v: 1,
+      builtAt: '2026-07-03T07:00:00.000Z',
+      sources: { topagentskills: 1 },
+      docs: [
+        {
+          slug: 'stripe-best-practices',
+          name: 'stripe-best-practices',
+          description: 'Integrate Stripe payments the supported way.',
+          source: 'https://github.com/stripe/ai',
+          author: 'Stripe',
+          index: 'topagentskills',
+          quality: 88,
+        },
+      ],
+    };
+    const { impl, requested } = fakeFetch([['piflow.sh/skills-index.json', artifact]]);
+    const rows = await searchRemote('stripe', { fetchImpl: impl, limit: 1 });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].index).toBe('topagentskills'); // provenance = the upstream index, not 'index'
+    expect(rows[0].quality).toBe(88);
+    expect(requested).toEqual(['https://piflow.sh/skills-index.json']); // the live fan-out never fired
+  });
+
+  it('an unavailable index falls through to the live fan-out: all live defaults fire CONCURRENTLY, priority order kept', async () => {
     const { impl, requested } = fakeFetch([
+      ['piflow.sh/skills-index.json', { error: 'not deployed yet' }, { status: 404 }],
       ['top-agent-skills.com/llms-full.txt', LLMS_FULL_TXT, { text: true }],
       ['agentskill.sh/api/agent/search', { results: [AGENTSKILL_SEARCH_ROW] }],
       ['agentskill.sh/api/skills/', AGENTSKILL_DETAIL],
@@ -411,8 +439,35 @@ describe('searchRemote defaults + dedup', () => {
     ]);
     const rows = await searchRemote('stripe', { fetchImpl: impl, limit: 1 });
     expect(rows).toHaveLength(1);
-    expect(rows[0].index).toBe('topagentskills');
-    expect(requested).toEqual(['https://top-agent-skills.com/llms-full.txt']);
+    expect(rows[0].index).toBe('topagentskills'); // priority order survives the parallel fan-out
+    const hosts = new Set(requested.map((u) => new URL(u).host));
+    expect(hosts).toContain('top-agent-skills.com');
+    expect(hosts).toContain('agentskill.sh');
+    expect(hosts).toContain('claude-plugins.dev');
+    expect(hosts).toContain('claudskills.com');
+  });
+
+  it('one source failing does NOT kill the search when others return rows (degrade, do not die)', async () => {
+    const { impl } = fakeFetch([
+      ['piflow.sh/skills-index.json', { error: 'down' }, { status: 500 }],
+      ['top-agent-skills.com/llms-full.txt', LLMS_FULL_TXT, { text: true }],
+      ['agentskill.sh/api/agent/search', { results: [] }],
+      ['claude-plugins.dev', { error: 'boom' }, { status: 503 }],
+      ['claudskills.com', { data: [], next: null, total: 0, limit: 200, offset: 0 }],
+    ]);
+    const rows = await searchRemote('stripe', { fetchImpl: impl, limit: 5 });
+    expect(rows.map((r) => r.index)).toContain('topagentskills');
+  });
+
+  it('EVERY source failing throws the first failure (an all-dead search must not look like no-match)', async () => {
+    const { impl } = fakeFetch([
+      ['piflow.sh/skills-index.json', { error: 'down' }, { status: 500 }],
+      ['top-agent-skills.com/llms-full.txt', 'down', { status: 500, text: true }],
+      ['agentskill.sh/api/agent/search', { error: 'down' }, { status: 500 }],
+      ['claude-plugins.dev', { error: 'down' }, { status: 500 }],
+      ['claudskills.com', { error: 'down' }, { status: 500 }],
+    ]);
+    await expect(searchRemote('stripe', { fetchImpl: impl, limit: 5 })).rejects.toThrow(/HTTP 500/);
   });
 
   it('cross-source dedup: the same name+repo from a later source is dropped (earlier source wins)', async () => {
@@ -420,6 +475,7 @@ describe('searchRemote defaults + dedup', () => {
     const agentskillPdf = { ...AGENTSKILL_SEARCH_ROW, slug: 'anthropics/pdf', name: 'pdf' };
     const pdfDetail = { data: { ...AGENTSKILL_DETAIL.data, slug: 'anthropics/pdf' } };
     const { impl } = fakeFetch([
+      ['piflow.sh/skills-index.json', { error: 'absent' }, { status: 404 }],
       ['top-agent-skills.com/llms-full.txt', '# empty\n', { text: true }],
       ['agentskill.sh/api/agent/search', { results: [agentskillPdf] }],
       ['agentskill.sh/api/skills/', pdfDetail],
@@ -452,7 +508,7 @@ describe('searchRemote defaults + dedup', () => {
 
   it('remoteSourceIds names every registered index (the GUI/CLI source pickers read this)', () => {
     expect(remoteSourceIds().sort()).toEqual(
-      ['agentskill', 'claude-plugins', 'claudskills', 'skillregistry', 'skills-re', 'skillsmp', 'topagentskills'].sort(),
+      ['agentskill', 'claude-plugins', 'claudskills', 'index', 'skillregistry', 'skills-re', 'skillsmp', 'topagentskills'].sort(),
     );
   });
 });

@@ -143,11 +143,13 @@ const CS_MULTI_PAGE2 = {
 };
 
 describe('searchRemote — claudskills (sources: [claudskills])', () => {
-  it('filters a single page client-side and maps the matching row', async () => {
+  it('filters a page client-side and maps the matching row (the fired window stays bounded)', async () => {
     const calls: string[] = [];
     const fetchImpl = async (url: string) => {
       calls.push(url);
-      return jsonResponse(200, CS_SINGLE_PAGE);
+      const offset = new URL(url).searchParams.get('offset');
+      if (offset === '0') return jsonResponse(200, CS_SINGLE_PAGE);
+      return jsonResponse(200, { data: [], next: null, total: 2, limit: 200, offset: Number(offset) });
     };
     const rows = await searchRemote('telemetry', { fetchImpl, sources: ['claudskills'] });
     expect(rows).toHaveLength(1);
@@ -159,23 +161,44 @@ describe('searchRemote — claudskills (sources: [claudskills])', () => {
       author: 'alice',
       index: 'claudskills',
     });
-    expect(calls).toHaveLength(1); // `next: null` — a second page must NOT be fetched
+    // the concurrent scan is BOUNDED: never more than the documented window of pages.
+    expect(calls.length).toBeLessThanOrEqual(10);
   });
 
-  it('walks to page 2 when the match is not on page 1 (client-side pagination)', async () => {
-    let call = 0;
-    const fetchImpl = async () => jsonResponse(200, call++ === 0 ? CS_MULTI_PAGE1 : CS_MULTI_PAGE2);
+  it('finds a match on page 2 (the bounded page WINDOW is scanned concurrently, results in page order)', async () => {
+    // Pages are routed by offset — the scan fires the whole bounded window at once (wall-clock speed);
+    // a page past the catalog end returns an empty body, exactly like the live API.
+    const fetchImpl = async (url: string) => {
+      const offset = new URL(url).searchParams.get('offset');
+      if (offset === '0') return jsonResponse(200, CS_MULTI_PAGE1);
+      if (offset === '200') return jsonResponse(200, CS_MULTI_PAGE2);
+      return jsonResponse(200, { data: [], next: null, total: 2, limit: 200, offset: Number(offset) });
+    };
     const rows = await searchRemote('research brief', { fetchImpl, sources: ['claudskills'] });
     expect(rows).toHaveLength(1);
     expect(rows[0].slug).toBe('beta-research-brief');
-    expect(call).toBe(2);
   });
 
   it('a query matching nothing across every page returns an empty array', async () => {
-    let call = 0;
-    const fetchImpl = async () => jsonResponse(200, call++ === 0 ? CS_MULTI_PAGE1 : CS_MULTI_PAGE2);
+    const fetchImpl = async (url: string) => {
+      const offset = new URL(url).searchParams.get('offset');
+      if (offset === '0') return jsonResponse(200, CS_MULTI_PAGE1);
+      if (offset === '200') return jsonResponse(200, CS_MULTI_PAGE2);
+      return jsonResponse(200, { data: [], next: null, total: 2, limit: 200, offset: Number(offset) });
+    };
     const rows = await searchRemote('nonexistent-xyz', { fetchImpl, sources: ['claudskills'] });
     expect(rows).toEqual([]);
+  });
+
+  it('a single dead page degrades (page-order kept); results from healthy pages still return', async () => {
+    const fetchImpl = async (url: string) => {
+      const offset = new URL(url).searchParams.get('offset');
+      if (offset === '0') return jsonResponse(500, { error: 'edge hiccup' });
+      if (offset === '200') return jsonResponse(200, CS_MULTI_PAGE2);
+      return jsonResponse(200, { data: [], next: null, total: 2, limit: 200, offset: Number(offset) });
+    };
+    const rows = await searchRemote('research brief', { fetchImpl, sources: ['claudskills'] });
+    expect(rows.map((r) => r.slug)).toEqual(['beta-research-brief']);
   });
 
   it('respects limit — stops collecting once the cap is reached, within one page', async () => {
@@ -192,15 +215,15 @@ describe('searchRemote — claudskills (sources: [claudskills])', () => {
     expect(rows[0].slug).toBe('match-one');
   });
 
-  it('stops fetching further pages once limit is reached (does not over-fetch)', async () => {
+  it('respects limit across the window and never fires past the bounded page cap', async () => {
     let call = 0;
     const fetchImpl = async () => {
       call++;
-      return jsonResponse(200, CS_MULTI_PAGE1); // matches on 'unrelated', and ALWAYS has a `next`
+      return jsonResponse(200, CS_MULTI_PAGE1); // matches on 'unrelated' on every page
     };
     const rows = await searchRemote('unrelated', { fetchImpl, limit: 1, sources: ['claudskills'] });
     expect(rows).toHaveLength(1);
-    expect(call).toBe(1); // the cap was hit on page 1 — must not chase `next` further
+    expect(call).toBeLessThanOrEqual(10); // the window is bounded even when every page matches
   });
 
   it('an HTTP error surfaces as a thrown Error identifying the source and status', async () => {

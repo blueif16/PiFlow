@@ -170,6 +170,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[guidance-node-sonnet5-routing]]
 - [[harden-node-completes-run-to-completion]]
 - [[harden-write-forcing-experiment]]
+- [[hooks-give-info-never-autofix]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
@@ -212,5 +213,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-03 · arc=77 commits · files=8 · lessons=60</sub>
+<sub>derived 2026-07-03 · arc=77 commits · files=8 · lessons=61</sub>
 <!-- okf:auto-end -->

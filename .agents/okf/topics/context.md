@@ -144,6 +144,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[g6-agenttype-presets]]
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
+- [[hooks-give-info-never-autofix]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
@@ -170,5 +171,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-03 · arc=43 commits · files=3 · lessons=28</sub>
+<sub>derived 2026-07-03 · arc=43 commits · files=3 · lessons=29</sub>
 <!-- okf:auto-end -->

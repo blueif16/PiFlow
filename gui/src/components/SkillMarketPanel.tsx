@@ -19,6 +19,7 @@ import { ToolTag } from "./toolMeta";
 import { useSkill } from "./SkillContext";
 import { SKILL_CHIP_DND_MIME, buildSkillChip, marketFilter } from "../data/skillChips";
 import { loadSkills, searchRemoteSkills, type MarketSkill, type RemoteSkill } from "../data/runView";
+import { loadSkillIndex, searchSkillIndex, type SkillIndexArtifact } from "../data/skillIndex";
 import "../styles/skillmarket.css";
 
 /** The panel's lanes: the two LOCAL rings (bind-ready, draggable) + the ONLINE lane (the live remote
@@ -37,6 +38,10 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
   const [remoteStatus, setRemoteStatus] = useState<"idle" | "searching" | "done" | "error">("idle");
   const [remoteError, setRemoteError] = useState("");
   const remoteSeq = useRef(0);
+  // The BUNDLED index (the site's static artifact): loaded once when the online lane opens; when present,
+  // search is INSTANT and client-side, and the live fan-out becomes an explicit "deep search" action.
+  const [indexArt, setIndexArt] = useState<SkillIndexArtifact | null | undefined>(undefined);
+  const [deepQuery, setDeepQuery] = useState<string | null>(null); // the query a deep search was requested for
 
   // Fetch on open (and when the run changes); the marketplace is ~static so there is no poll. Reset filters
   // each open so the panel starts unfiltered.
@@ -53,10 +58,29 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
     return () => { alive = false; };
   }, [open, activeRun]);
 
-  // ONLINE lane: debounce the query into a live remote search. A stale response (an earlier query resolving
-  // after a later one) is dropped via the sequence guard. An empty query just shows the type-to-search hint.
+  // ONLINE lane, load-once: the bundled index (same-origin on the deployed site, canonical URL locally).
   useEffect(() => {
-    if (ring !== "online" || !open) { setRemote(null); setRemoteStatus("idle"); setRemoteError(""); return; }
+    if (ring !== "online" || !open || indexArt !== undefined) return;
+    let alive = true;
+    void loadSkillIndex().then((a) => { if (alive) setIndexArt(a); });
+    return () => { alive = false; };
+  }, [ring, open, indexArt]);
+
+  // A new query invalidates a prior deep-search view (back to the instant index results).
+  useEffect(() => { setDeepQuery(null); }, [query]);
+
+  // The INSTANT path: rank the bundled index client-side on every keystroke (pure, single-digit ms).
+  const indexHits = useMemo(() => {
+    if (ring !== "online" || !indexArt || !query.trim()) return null;
+    return searchSkillIndex(indexArt.docs, query.trim(), 30);
+  }, [ring, indexArt, query]);
+
+  // The LIVE path (deep search): debounced remote fan-out. It runs when the bundled index is UNAVAILABLE
+  // (degrade), or when the user explicitly asked for the long tail (deepQuery). A stale response (an
+  // earlier query resolving after a later one) is dropped via the sequence guard.
+  const liveActive = ring === "online" && open && (indexArt === null || deepQuery === query.trim());
+  useEffect(() => {
+    if (!liveActive) { setRemote(null); setRemoteStatus("idle"); setRemoteError(""); return; }
     const q = query.trim();
     if (!q) { setRemote(null); setRemoteStatus("idle"); setRemoteError(""); return; }
     const seq = ++remoteSeq.current;
@@ -68,7 +92,7 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
       else { setRemote(r.rows); setRemoteError(""); setRemoteStatus("done"); }
     }, 350);
     return () => clearTimeout(t);
-  }, [ring, query, open]);
+  }, [liveActive, query]);
 
   // Escape closes (the shell-wide convention); the panel is layered (no scrim), so no click-away trap.
   useEffect(() => {
@@ -123,22 +147,57 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
 
         {ring === "online" ? (
           <>
-            {remoteStatus === "idle" && (
-              <div className="ds-market__muted">Type to search the live remote indexes — 600k+ skills across topagentskills · agentskill · claude-plugins · claudskills. Install a result with <code>piflowctl skill add &lt;source&gt;</code> (click a card to copy).</div>
+            {/* idle hint — honest about which path answers */}
+            {!query.trim() && (
+              <div className="ds-market__muted">
+                {indexArt
+                  ? <>Instant index: <b>{indexArt.docs.length.toLocaleString()}</b> curated skills, built {new Date(indexArt.builtAt).toLocaleDateString()} — type to search. The full 600k+ live universe is one “deep search” away.</>
+                  : indexArt === null
+                    ? <>Type to search the live remote indexes — 600k+ skills across topagentskills · agentskill · claude-plugins · claudskills. (The bundled instant index isn’t reachable from here.)</>
+                    : <>loading the bundled index…</>}
+                {" "}Install a result with <code>piflowctl skill add &lt;source&gt;</code> (click a card to copy).
+              </div>
             )}
-            {remoteStatus === "searching" && <div className="ds-market__muted">searching the remote indexes…</div>}
-            {remoteStatus === "error" && <div className="ds-market__muted" role="alert">remote search failed: {remoteError}</div>}
-            {remoteStatus === "done" && (remote?.length ?? 0) === 0 && (
-              <div className="ds-market__muted">No remote skills match “{query}”.</div>
+
+            {/* the INSTANT path — bundled-index hits, ranked client-side as you type */}
+            {indexArt && query.trim() && deepQuery !== query.trim() && (
+              <>
+                {(indexHits?.length ?? 0) === 0 && (
+                  <div className="ds-market__muted">No indexed skills match “{query}”.</div>
+                )}
+                {(indexHits?.length ?? 0) > 0 && (
+                  <ul className="ds-market__list">
+                    {indexHits!.map((s) => (
+                      <li key={`idx:${s.index}:${s.slug}`}>
+                        <RemoteSkillCard skill={s} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button type="button" className="ds-market__deep" onClick={() => setDeepQuery(query.trim())}>
+                  need more? deep-search the live indexes (600k+, a few seconds) →
+                </button>
+              </>
             )}
-            {remoteStatus === "done" && (remote?.length ?? 0) > 0 && (
-              <ul className="ds-market__list">
-                {remote!.map((s) => (
-                  <li key={`${s.index}:${s.slug}`}>
-                    <RemoteSkillCard skill={s} />
-                  </li>
-                ))}
-              </ul>
+
+            {/* the LIVE path — index unavailable (degrade) or an explicit deep search */}
+            {(indexArt === null || deepQuery === query.trim()) && query.trim() && (
+              <>
+                {remoteStatus === "searching" && <div className="ds-market__muted">searching the live indexes…</div>}
+                {remoteStatus === "error" && <div className="ds-market__muted" role="alert">live search failed: {remoteError}</div>}
+                {remoteStatus === "done" && (remote?.length ?? 0) === 0 && (
+                  <div className="ds-market__muted">No remote skills match “{query}”.</div>
+                )}
+                {remoteStatus === "done" && (remote?.length ?? 0) > 0 && (
+                  <ul className="ds-market__list">
+                    {remote!.map((s) => (
+                      <li key={`${s.index}:${s.slug}`}>
+                        <RemoteSkillCard skill={s} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </>
         ) : (
@@ -209,8 +268,13 @@ function RemoteSkillCard({ skill }: { skill: RemoteSkill }) {
 
       {skill.description && <p className="ds-skillcard__desc">{skill.description}</p>}
 
+      {/* the VISIBLE install affordance: the exact command, one click to copy — never only a tooltip */}
+      <div className={`ds-skillcard__cmd${copied ? " is-copied" : ""}`} aria-live="polite">
+        <code className="ds-skillcard__cmdtext">{cmd}</code>
+        <span className="ds-skillcard__cmdcopy">{copied ? "copied ✓" : "copy"}</span>
+      </div>
+
       <div className="ds-skillcard__badges">
-        {copied && <span className="ds-skillcard__badge" data-tone="muted">install command copied</span>}
         {skill.author && <span className="ds-skillcard__badge" data-tone="muted">{skill.author}</span>}
         <a
           className="ds-skillcard__srclink"

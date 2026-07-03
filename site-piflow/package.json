@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "prebuild": "node scripts/build-docs-index.mjs",
+    "prebuild": "node scripts/build-docs-index.mjs && node scripts/build-skills-index.mjs",
     "build": "next build",
     "start": "next start",
-    "docs:index": "node scripts/build-docs-index.mjs"
+    "docs:index": "node scripts/build-docs-index.mjs",
+    "skills:index": "node scripts/build-skills-index.mjs"
   },
   "dependencies": {
     "@radix-ui/react-icons": "^1.3.2",

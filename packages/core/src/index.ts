@@ -120,6 +120,13 @@ export type { SkillManifest } from './workflow/ops/skill-manifest.js';
 // marketplace panel searches online through it). Local rings are the offload cache, not the catalog.
 export { searchRemote, remoteSourceIds } from './workflow/ops/skill-remote.js';
 export type { RemoteSkillRow, SearchRemoteOpts } from './workflow/ops/skill-remote.js';
+// The BUNDLED marketplace index: `buildSkillIndex` harvests the bulk sources into the compact artifact the
+// Vercel site publishes (site-piflow/public/skills-index.json); `searchSkillIndex` is the PURE client-side
+// ranker the GUI bundle imports directly — one ranking for every surface.
+export { buildSkillIndex } from './workflow/ops/skill-index-build.js';
+export type { BuildSkillIndexOpts } from './workflow/ops/skill-index-build.js';
+export { searchSkillIndex } from './workflow/ops/skill-index-search.js';
+export type { SkillIndexDoc, SkillIndexArtifact } from './workflow/ops/skill-index-search.js';
 
 // U7 — the `promote` POST-op (lift a node output into a RunState channel via the reducer) + the
 // stage-barrier merge (serial+deterministic parallel-promote merge; a `set` channel with two concurrent

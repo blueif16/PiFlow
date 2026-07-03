@@ -162,6 +162,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `b04be67` 2026-07-03 — feat(server): /__piflow/skill — read + parse a SKILL.md bundle (name/desc/requires/mcp/body)
 - `b9c8fac` 2026-07-03 — refactor(server): agents.json + skill display roots ride core's enumeration seam
 - `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
+- `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
 
 ### Lessons — memory cluster
 
@@ -226,5 +227,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:114) — 8 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-03 · arc=73 commits · files=13 · lessons=51</sub>
+<sub>derived 2026-07-03 · arc=74 commits · files=13 · lessons=51</sub>
 <!-- okf:auto-end -->

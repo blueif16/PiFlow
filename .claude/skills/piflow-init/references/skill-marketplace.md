@@ -32,23 +32,27 @@ Each row is a `SkillListEntry`. **Read these fields:**
 A hit whose `description` matches the node's craft → go to step 4 (bind it). No local hit → step 2.
 
 ### 2. Search the REMOTE lane
-`--remote` bolts an ONLINE lane onto the SAME `skill search` verb (`packages/cli/src/skill-remote.ts`):
-instead of the local rings it queries the public skill indexes (ClaudSkills by default; SkillsMP opt-in).
-The pinned shape — do NOT improvise another:
+`--remote` bolts an ONLINE lane onto the SAME `skill search` verb (core's `searchRemote` —
+`packages/core/src/workflow/ops/skill-remote.ts`). It is RANKED and STAGED: the bundled quality index
+(`https://piflow.sh/skills-index.json` — ~6k curated/scored skills, BM25 + popularity/quality ranking,
+sub-second) answers FIRST; only when it can't fill the limit does the live fan-out fire (topagentskills →
+agentskill → claude-plugins → claudskills, concurrent, a few seconds). The pinned shape — do NOT improvise
+another:
 ```bash
-piflowctl skill search <query> --remote [--limit <n>] [--json]
+piflowctl skill search <query> --remote [--source <a,b>] [--limit <n>] [--json]
 ```
 - `--limit <n>` caps the row count (default 20).
+- `--source <a,b>` pins specific indexes (ids: `index`, `topagentskills`, `agentskill`, `claude-plugins`,
+  `claudskills`, `skillsmp`, `skills-re`, `skillregistry`). Default order is already quality-first — only
+  override when hunting the long tail.
 - `--json` emits `RemoteSkillRow[]`; **read these fields:** `slug` (the remote id), `name`, `description`
   (judge relevance here), `source` (the string you hand to `skill add` in step 3 — a repo URL or `owner/repo`),
-  `author?`, and `index` (which registry the row came from). The human table is `SLUG · NAME · DESCRIPTION ·
-  SOURCE`.
-> **This lane is newly landed and still stabilizing — confirm it's live before you rely on it:** run
-> `piflowctl skill search --help` (the usage line must show `[--remote]`). If `--remote` is not offered, treat
-> "no local hit" as "no match" and go to the failure path — never fabricate a remote result. Caveat baked into
-> the source: a ClaudSkills row's `source` is a catalog DETAIL PAGE, not a verified git remote, so `skill add`
-> against it may fail cleanly (a clone error) — open the page for the real repo. SkillsMP rows carry a real
-> `github.com/<owner>/<repo>` root and install directly.
+  `author?`, `index` (which registry the row came from), and when present `quality` (0-100 curated/audit
+  score) and `pop` (stars+installs). **Picking the best fit:** rows arrive ranked — prefer the top row whose
+  `description` matches the node's craft; break ties by `quality`, then `pop`.
+> Caveat baked into the source: a ClaudSkills row's `source` is a catalog DETAIL PAGE, not a verified git
+> remote, so `skill add` against it may fail cleanly (a clone error) — open the page for the real repo. All
+> other indexes' rows carry a real `github.com/<owner>/<repo>` root and install directly.
 
 A remote hit gives you a `source` (an `owner/repo`, a git URL, or a local dir). → step 3 (install it).
 
