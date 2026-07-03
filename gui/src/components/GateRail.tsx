@@ -12,13 +12,8 @@
 import { createPortal } from "react-dom";
 import { CHIP_DND_MIME } from "./ComposeContext";
 import { GateHex } from "./GateGlyph";
-import { RAIL_KINDS, type RailKind, type GateHexDesc, type GateTone } from "../data/gates";
+import { RAIL_KINDS, railHex } from "../data/gates";
 import "../styles/gaterail.css";
-
-// The rail hexes carry an IDENTITY tone (not a failure policy — that's a hidden system default): agentic
-// check reads as an agent loop (blue), human as a person gate (violet), execution as neutral/mechanical.
-const RAIL_TONE: Record<RailKind, GateTone> = { judge: "retry", execution: "ok", human: "human" };
-const RAIL_GLYPH: Record<RailKind, GateHexDesc["glyph"]> = { judge: "judge", execution: "execution", human: "human" };
 
 export function GateRail({ active }: { active: boolean }) {
   if (!active) return null;
@@ -26,7 +21,7 @@ export function GateRail({ active }: { active: boolean }) {
     <div className="ds-gaterail-layer" aria-hidden={false}>
       <div className="ds-gaterail" role="toolbar" aria-label="Gates — drag one onto a node">
         {RAIL_KINDS.map((spec) => {
-          const desc: GateHexDesc = { glyph: RAIL_GLYPH[spec.kind], tone: RAIL_TONE[spec.kind], label: spec.name };
+          const desc = railHex(spec.kind, spec.name);
           return (
             <button
               key={spec.kind}

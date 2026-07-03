@@ -17,6 +17,7 @@ import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import * as motion from "motion/react-client";
 import { useExpand } from "./ExpandContext";
 import { useViewMode } from "./ViewModeContext";
+import { useCompose } from "./ComposeContext";
 import { NodeModeStrip } from "./NodeModeStrip";
 import { NodeFusionToggle } from "./NodeFusionToggle";
 import { NodeGateChips } from "./NodeGateChips";
@@ -217,6 +218,9 @@ function UnlockGlyph() {
 export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
   const { expand } = useExpand();
   const { mode } = useViewMode();
+  // (Compose mode) the node the open gate-authoring overlay is bound to — kept highlighted while authoring.
+  const { targetId } = useCompose();
+  const isComposeTarget = mode === "compose" && targetId === id;
   const status: NodeStatus = data.status ?? (selected ? "selected" : "idle");
   // (G6) a preset node leads with its branded icon, tinted by the preset's color; otherwise the default
   // agent/file accent. The icon is purely cosmetic — it never changes status, layout, or behavior.
@@ -240,6 +244,7 @@ export function WorkflowNode({ id, data, selected }: NodeProps<FlowNode>) {
       data-status={status}
       data-kind={data.kind}
       {...(hasRuntimeGlyph ? { "data-runtime": data.runtime } : {})}
+      {...(isComposeTarget ? { "data-compose-target": "true" } : {})}
       role="button"
       tabIndex={0}
       aria-label={`${data.kind} ${data.title}.${isCloud ? " Runs in cloud." : ""}${isUnlocked ? " Sandbox unlocked — full filesystem access." : ""} Press Enter to expand.`}

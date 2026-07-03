@@ -1,7 +1,8 @@
-// Compose redesign — Slice 1 browser behavior checks + screenshots (the gate rail, the natural-language drop
-// card, the on-node hexagon icons, and the HUD "Hooks" section). Reuses the journey harness: a REAL local
-// replay run is seeded into the fixture product `serve --roots` scopes to, then the built GUI is driven in a
-// real browser. The template edits land in the DISPOSABLE fixture (wiped in afterAll), never a real product.
+// Compose redesign — Slice 1 browser behavior checks + screenshots (the gate rail, the left-side natural-
+// language authoring overlay, the on-node hexagon icons, and the HUD "Hooks" section). Reuses the journey
+// harness: a REAL local replay run is seeded into the fixture product `serve --roots` scopes to, then the
+// built GUI is driven in a real browser. The template edits land in the DISPOSABLE fixture (wiped in
+// afterAll), never a real product.
 //
 // The headline is the acceptance test: dragging AGENTIC CHECK onto the node and creating with a pasted
 // paragraph WRITES the template node.json with that paragraph as the rubric VERBATIM — the path that 400'd on
@@ -20,7 +21,7 @@ const NODE = "greet";
 const RUN_ID = process.env.PIFLOW_COMPOSE_RUN ?? "compose-fixture";
 const ARTIFACT = "out/greet/greeting.txt";
 const EXPECTED = "CONTROL-VM-OK";
-// A realistic multi-sentence rubric a user pastes into the drop card — asserted byte-for-byte on the template.
+// A realistic multi-sentence rubric a user pastes into the overlay — asserted byte-for-byte on the template.
 const RUBRIC =
   "A good greeting is a single friendly line that addresses the reader by name. It contains no placeholder text (no TODO, no TBD) and never leaves the name blank.";
 
@@ -80,7 +81,6 @@ test.beforeAll(async () => {
   const { view } = buildRunView(RUN_DIR);
   const a = assessRunView(view, { expectNodes: [NODE] });
   expect(a.pass, `seed must pass the rubric: ${a.failures.join("; ")}`).toBe(true);
-  // sanity: the advisory floor summarized into config.gates so the Hooks/hex screenshots have content.
   expect(view.nodes[0]?.config?.gates?.entries.length ?? 0).toBeGreaterThan(0);
 });
 
@@ -108,39 +108,32 @@ async function dragRailOnto(page: import("@playwright/test").Page, rail: Locator
   await target.dispatchEvent("dragenter", { dataTransfer: dt });
   await target.dispatchEvent("dragover", { dataTransfer: dt });
   await expect(target).toHaveClass(/is-over/);
-  return {
-    drop: async () => {
-      await target.dispatchEvent("drop", { dataTransfer: dt });
-      await rail.dispatchEvent("dragend", { dataTransfer: dt });
-    },
-  };
+  // NOTE: no dragend — the rail unmounts the moment the drop opens the overlay (both are left-anchored).
+  return { drop: async () => { await target.dispatchEvent("drop", { dataTransfer: dt }); } };
 }
 
 test("rail renders ONLY in compose mode, and each hex expands on hover", async ({ page }) => {
   await page.goto(GUI_URL);
   await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
 
-  // NOT present outside compose.
-  await expect(page.locator(".ds-gaterail")).toHaveCount(0);
+  await expect(page.locator(".ds-gaterail")).toHaveCount(0); // not present outside compose
 
   await enterCompose(page);
   const items = page.locator(".ds-gaterail .ds-rail-item");
   await expect(items).toHaveCount(3); // agentic check / execution / human
   await page.screenshot({ path: path.join(SHOTS, "01-rail-resting.png") });
 
-  // Hover the flagship (agentic check) → it expands in place to reveal its name + one-line description.
   const agentic = items.first();
   await agentic.hover();
   await expect(agentic.locator(".ds-rail-item__desc")).toBeVisible();
   await expect(agentic).toContainText("an agent verifies this node's output");
   await page.screenshot({ path: path.join(SHOTS, "02-rail-hover-expanded.png") });
 
-  // Leaving compose removes the rail.
   await page.getByRole("button", { name: "Compose", exact: true }).click();
   await expect(page.locator(".ds-gaterail")).toHaveCount(0);
 });
 
-test("ACCEPTANCE — drag AGENTIC CHECK → card → Create writes the pasted paragraph as the rubric VERBATIM", async ({ page }) => {
+test("ACCEPTANCE — drag AGENTIC CHECK → overlay → Create writes the pasted paragraph as the rubric VERBATIM", async ({ page }) => {
   await page.goto(GUI_URL);
   await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
   await enterCompose(page);
@@ -153,30 +146,46 @@ test("ACCEPTANCE — drag AGENTIC CHECK → card → Create writes the pasted pa
   await page.screenshot({ path: path.join(SHOTS, "03-drag-over.png") });
   await gesture.drop();
 
-  // The drop opens the natural-language card (ONE textarea + ONE button). No jargon in the copy.
-  const card = page.locator(".ds-dropcard");
+  // The drop opens the LEFT overlay bound to the node; the rail yields (hides) while it's open.
+  const card = page.locator(".ds-composecard");
   await expect(card).toBeVisible();
-  await expect(card).toContainText("Agentic check");
-  await expect(card.locator(".ds-dropcard__ta")).toBeFocused();
-  await card.locator(".ds-dropcard__ta").fill(RUBRIC);
-  await page.screenshot({ path: path.join(SHOTS, "04-dropcard-agentic.png") });
+  await expect(page.locator(".ds-gaterail")).toHaveCount(0);
+  await expect(card.locator(".ds-composecard__kind")).toHaveText("Agentic check");
+  await expect(card.locator(".ds-composecard__node")).toContainText(NODE);
+  // the target node stays highlighted on the canvas while authoring
+  await expect(page.locator(`.react-flow__node[data-id="${NODE}"] .ds-node[data-compose-target="true"]`)).toHaveCount(1);
+  await expect(card.locator(".ds-composecard__ta")).toBeFocused();
+
+  await card.locator(".ds-composecard__ta").fill(RUBRIC);
+  await page.screenshot({ path: path.join(SHOTS, "04-composecard-open.png") });
 
   await card.getByRole("button", { name: "Create gate" }).click();
 
-  // Success closes the card, and the landed gate is visibly present on the node immediately (a new hex).
-  await expect(card).toHaveCount(0);
+  // The card STAYS open; the transcript renders the submitted text as a turn tagged with a context chip,
+  // then a success system-turn beneath it.
+  const youTurn = card.locator(".ds-composecard__turn--you");
+  await expect(youTurn).toHaveCount(1);
+  await expect(youTurn.locator(".ds-composecard__chip")).toContainText(`Agentic check → ${NODE}`);
+  await expect(youTurn).toContainText("addresses the reader by name");
+  await expect(card.locator('.ds-composecard__sys[data-tone="ok"]')).toContainText(`Gate created on ${NODE}`);
+  await page.screenshot({ path: path.join(SHOTS, "09-composecard-transcript.png") });
+
+  // The landed gate is present on the node immediately (a new hex; the agentic-check hex is retry-toned).
   await expect(target.locator(".ds-hex")).toHaveCount(hexesBefore + 1);
-  await expect(target.locator('.ds-hex[data-tone="retry"]')).toHaveCount(1); // the agentic-check hex
-  await page.screenshot({ path: path.join(SHOTS, "06-node-hexes-after.png") });
+  await expect(target.locator('.ds-hex[data-tone="retry"]')).toHaveCount(1);
 
   // THE ACCEPTANCE: re-read the TEMPLATE node.json from disk (a different path than the write) and assert the
   // pasted paragraph is the rubric, byte-for-byte. This path 400'd on every drop before the redesign.
   const after = JSON.parse(await readFile(NODE_JSON, "utf8"));
   expect(after.judgeGate?.rubric).toBe(RUBRIC);
+
+  // Escape closes the overlay → the landed hex is unobstructed on the node.
+  await page.keyboard.press("Escape");
+  await expect(card).toHaveCount(0);
+  await page.screenshot({ path: path.join(SHOTS, "06-node-hexes-after.png") });
 });
 
-test("error path — the card surfaces the FULL server error (never truncated) and stays open", async ({ page }) => {
-  // A realistic, LONG (>28-char) server error — the old flash truncated this to 28 chars.
+test("error path — a failed create surfaces the FULL server error (never truncated) as a system turn", async ({ page }) => {
   const LONG_ERROR =
     "edit would make node.json invalid: nodes/greet/node.json — op[1] must match exactly one schema in oneOf (an op carries exactly one body: run | gate | action). Fix the gate and try again.";
   await page.route("**/__piflow/node-edit/**", (route: Route) =>
@@ -187,21 +196,19 @@ test("error path — the card surfaces the FULL server error (never truncated) a
   await expect(page.locator(`.react-flow__node[data-id="${NODE}"]`)).toBeVisible();
   await enterCompose(page);
 
-  const target = dropTarget(page);
-  const gesture = await dragRailOnto(page, page.locator(".ds-gaterail .ds-rail-item").first(), target);
+  const gesture = await dragRailOnto(page, page.locator(".ds-gaterail .ds-rail-item").first(), dropTarget(page));
   await gesture.drop();
 
-  const card = page.locator(".ds-dropcard");
+  const card = page.locator(".ds-composecard");
   await expect(card).toBeVisible();
-  await card.locator(".ds-dropcard__ta").fill("anything");
+  await card.locator(".ds-composecard__ta").fill("anything");
   await card.getByRole("button", { name: "Create gate" }).click();
 
-  // The card stays open and shows the WHOLE message (not a 28-char slice).
-  await expect(card).toBeVisible();
-  const err = card.locator(".ds-dropcard__err");
+  // The overlay stays open and shows the WHOLE message (not a 28-char slice) as an error system turn.
+  const err = card.locator('.ds-composecard__sys[data-tone="err"]');
   await expect(err).toContainText(LONG_ERROR);
   await expect(err).toContainText("carries exactly one body"); // the tail survives (proves no truncation)
-  await page.screenshot({ path: path.join(SHOTS, "05-dropcard-error.png") });
+  await page.screenshot({ path: path.join(SHOTS, "05-composecard-error.png") });
 });
 
 for (const vp of [{ w: 1440, h: 900 }, { w: 1100, h: 800 }]) {
@@ -215,8 +222,6 @@ for (const vp of [{ w: 1440, h: 900 }, { w: 1100, h: 800 }]) {
     const railBox = await rail.boundingBox();
     expect(railBox).not.toBeNull();
 
-    // The rail must not overlap RUN FILES (top-left), the zoom controls (bottom-left), the ModeBar
-    // (bottom), or the top-center endpoint switcher.
     const chrome = [".ds-dir", ".react-flow__controls", ".ds-modebar", ".ds-epswitch__btn"];
     for (const sel of chrome) {
       const el = page.locator(sel).first();
@@ -240,7 +245,6 @@ test("HUD Hooks — the node detail renders plain-language pre / post / human la
   await expect(hooks).toBeVisible();
   await page.waitForTimeout(500); // let the node→identity morph settle before the screenshot
   await expect(hooks.locator(".ds-hooks__title")).toHaveText("Hooks");
-  // pre lane exists and reads "(none)"; post lane carries the seeded gate as a hexagon + plain language.
   await expect(hooks.getByText("pre", { exact: true })).toBeVisible();
   await expect(hooks.getByText("post", { exact: true })).toBeVisible();
   await expect(hooks.locator(".ds-hook .ds-hex")).toHaveCount(1);

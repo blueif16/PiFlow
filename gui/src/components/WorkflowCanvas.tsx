@@ -417,14 +417,14 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     return { ok: r.ok, error: r.error, stub: r.stub };
   }, [activeRun]);
 
-  // (Compose mode) a rail gate dropped on a node opens the drop card anchored at the drop target.
-  const openCard = useCallback((nodeId: string, kind: RailKind, anchor: { top: number; left: number; bottom: number; right: number }) => {
-    setDropCard({ nodeId, kind, anchor });
+  // (Compose mode) a rail gate dropped on a node opens the left-side authoring overlay bound to that node.
+  const openCard = useCallback((nodeId: string, kind: RailKind) => {
+    setDropCard({ nodeId, kind });
   }, []);
 
   const composeApi = useMemo(
-    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip, openCard }),
-    [mode, activeRun, nodeConfigs, dropChip, openCard],
+    () => ({ active: mode === "compose", run: activeRun, configs: nodeConfigs, dropChip, openCard, targetId: dropCard?.nodeId ?? null }),
+    [mode, activeRun, nodeConfigs, dropChip, openCard, dropCard],
   );
 
   // Leaving Compose mode drops the loaded configs (re-fetched fresh on re-entry) + closes any open card.
@@ -515,8 +515,10 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           <EndpointSwitcher />
           <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} muted={startOpen || migrateOpen} />
           <FusionSaveBar active={mode === "fusion"} />
-          {/* (Compose mode) the left-edge hexagon gate rail (drag source) + the natural-language drop card. */}
-          <GateRail active={mode === "compose"} />
+          {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
+              overlay is open — both are left-anchored, and the overlay is the focus. */}
+          <GateRail active={mode === "compose" && !dropCard} />
+          {/* The left-side gate-authoring overlay (mirror of the right-side Companion), bound to the node. */}
           <GateDropCard card={mode === "compose" ? dropCard : null} onClose={() => setDropCard(null)} dropChip={dropChip} />
           <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.

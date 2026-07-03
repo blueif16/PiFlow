@@ -47,8 +47,7 @@ export function NodeGateChips({ nodeId }: { nodeId: string }) {
         let kind: unknown;
         try { kind = (JSON.parse(raw) as { kind?: unknown }).kind; } catch { return; }
         if (!isRailKind(kind)) return;
-        const r = e.currentTarget.getBoundingClientRect();
-        openCard(nodeId, kind, { top: r.top, left: r.left, bottom: r.bottom, right: r.right });
+        openCard(nodeId, kind);
       }}
       aria-label={`Drop a gate onto "${nodeId}". Gate pipeline: ${pipelineLabel}.`}
     >

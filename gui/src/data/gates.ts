@@ -155,3 +155,15 @@ export function authoredGateHexes(cfg: AuthoredNodeConfig | null | undefined): G
   if (cfg.checkpoint) hexes.push({ glyph: "human", tone: "human", label: "human" });
   return hexes;
 }
+
+// ── The rail's three authorable kinds → their resting hexagon (glyph + IDENTITY tone) ────────────────────
+// The rail hexes carry an identity tone (not a failure policy — that is a hidden default): agentic check reads
+// as an agent loop (retry/blue), human as a person gate (violet), execution as neutral/mechanical. Shared by
+// the rail (drag source) and the drop card header so the two read as one mark.
+export const RAIL_TONE: Record<RailKind, GateTone> = { judge: "retry", execution: "ok", human: "human" };
+export const RAIL_GLYPH: Record<RailKind, GateGlyphKind> = { judge: "judge", execution: "execution", human: "human" };
+
+/** The resting hexagon descriptor for a rail kind (its glyph + identity tone + label). */
+export function railHex(kind: RailKind, label?: string): GateHexDesc {
+  return { glyph: RAIL_GLYPH[kind], tone: RAIL_TONE[kind], label: label ?? kind };
+}

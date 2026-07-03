@@ -24,9 +24,11 @@ export interface ComposeApi {
    *  Resolves ok/error/stub for UI feedback; on success the node's config is refreshed upstream. Called by
    *  the drop card's "Create gate", NOT on the raw drop (the drop opens the card via `openCard`). */
   dropChip: (nodeId: string, chip: GateChip) => Promise<{ ok: boolean; error?: string; stub?: boolean }>;
-  /** Open the natural-language drop card at a node, anchored to the drop target's screen rect. The rail's
-   *  drop only records the intent (node + kind + anchor); the write happens on the card's "Create gate". */
-  openCard: (nodeId: string, kind: RailKind, anchor: { top: number; left: number; bottom: number; right: number }) => void;
+  /** Open the natural-language drop card for a node. The rail's drop only records the intent (node + kind);
+   *  the write happens on the card's "Create gate". The card is a full-height left overlay, not anchored. */
+  openCard: (nodeId: string, kind: RailKind) => void;
+  /** The node the open card is bound to (kept highlighted on the canvas while authoring); null when closed. */
+  targetId: string | null;
 }
 
 export const ComposeContext = createContext<ComposeApi>({
@@ -35,6 +37,7 @@ export const ComposeContext = createContext<ComposeApi>({
   configs: {},
   dropChip: async () => ({ ok: false, error: "compose not active" }),
   openCard: () => {},
+  targetId: null,
 });
 
 export const useCompose = () => useContext(ComposeContext);

@@ -57,6 +57,9 @@
   pointer-events: none; /* informational; clicks fall through to the card (expand) */
 }
 
+/* the node the open gate-authoring overlay is bound to — kept highlighted on the canvas while authoring */
+.ds-node[data-compose-target="true"] { outline: 2px solid var(--ds-accent); outline-offset: 3px; }
+
 /* ── on-node COMPOSE drop target (authored pipeline + drop target). No box at rest; a glow on drag-over. ── */
 .ds-gatedrop {
   position: absolute;
