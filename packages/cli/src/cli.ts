@@ -24,6 +24,7 @@ import { runExtractCli } from './extract.js';
 import { runSchemaCli, renderAddNodeHelp } from './schema.js';
 import { runRunCli } from './run.js';
 import { runNodeCli } from './node.js';
+import { runReplyCli } from './reply.js';
 import { runInspectCli } from './inspect.js';
 import { runTelemetryCli } from './telemetry.js';
 import { runOptimizeCli } from './optimize.js';
@@ -58,6 +59,8 @@ USAGE
                                             freshness · compact (retire graduated/code-shifted/over-cap lessons)
   piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
   piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--stop too)
+  piflowctl reply   <run> <checkpointId> <value> [--by <who>]  answer a PARKED human-checkpoint (HITL) node —
+                                            writes the reply file the runner is polling for so the run resumes
   piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
   piflowctl extract <templateDir>           free DAG preview (node count + parallel lanes; no model)
   piflowctl schema  [<topic>]               the add-node authoring reference (bare = topic index; --json = JSON Schema)
@@ -305,6 +308,9 @@ async function main(): Promise<void> {
       break;
     case 'node':
       process.exitCode = await runNodeCli(rest);
+      break;
+    case 'reply':
+      process.exitCode = await runReplyCli(rest);
       break;
     case 'inspect':
       await runInspectCli(rest);

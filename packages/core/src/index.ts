@@ -348,6 +348,14 @@ export {
   checkpointMarkerFile,
   checkpointReplyFile,
 } from './runner/layout.js';
+// G5 — human-checkpoint (HITL) marker/reply read/write + build/validate. `readMarker`/`writeMarker` are
+// the marker I/O a `piflowctl reply` (and its tests) need; `buildMarker` constructs an authentic marker
+// (with a real hash) for tests/couriers that stand up a pending checkpoint by hand; `readReply` reads a
+// courier-written reply back off disk (a test's own oracle check); `coerceReplyValue`/`buildReply` turn
+// a raw CLI string into the runner's typed reply; `validateReply` is the runner's own authority, reused
+// here as the courier's belt-and-suspenders check before writing a reply the runner would otherwise ignore.
+export { readMarker, writeMarker, buildMarker, readReply, validateReply, coerceReplyValue, buildReply } from './runner/checkpoint.js';
+export type { CheckpointMarker, CheckpointReply } from './runner/checkpoint.js';
 // G4 journal reader — the per-node content-hash journal (`.pi/journal.json`). A `node <run> <id>
 // --resume` reads `nodes.<id>.sessionId`/`.sessionDir` from here to confirm a resumable session.
 export { loadJournal, journalFile } from './runner/journal.js';
