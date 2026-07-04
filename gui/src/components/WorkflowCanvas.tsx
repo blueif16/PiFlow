@@ -66,6 +66,9 @@ import { SkillContext } from "./SkillContext";
 import { SkillPanel } from "./SkillPanel";
 import { SkillMarketPanel } from "./SkillMarketPanel";
 import { SkillDropCard, type SkillCardTarget } from "./SkillDropCard";
+import { RemoteSkillContext } from "./RemoteSkillContext";
+import { RemoteSkillPanel } from "./RemoteSkillPanel";
+import type { RemoteSkill } from "../data/runView";
 import { GateRail } from "./GateRail";
 import { GateDropCard, type DropCardTarget } from "./GateDropCard";
 import { AgentRail } from "./AgentRail";
@@ -117,6 +120,8 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // has stopped) — the newly-applied gate then appears on the graph without a manual reload.
   const [runViewNonce, setRunViewNonce] = useState(0);
   const [openSkill, setOpenSkill] = useState<string | null>(null); // the skill id shown in the left SkillPanel (null = closed)
+  const [openRemote, setOpenRemote] = useState<RemoteSkill | null>(null); // the ONLINE row shown in the RemoteSkillPanel
+  const [installedNonce, setInstalledNonce] = useState(0); // bumped on a successful install → marketplace re-fetches
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
   const [digestOpen, setDigestOpen] = useState(false); // left-edge run digest; launched by the "D" key
   const [marketOpen, setMarketOpen] = useState(false); // left-edge skill marketplace; launched by the "S" key
@@ -417,10 +422,23 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     [expandedId],
   );
 
-  // (Skill panel) which skill the left inspector shows — a skill chip anywhere calls openSkill(id).
+  // (Skill panel) which skill the left inspector shows — a skill chip anywhere calls openSkill(id). Opening the
+  // LOCAL inspector closes the online detail (both are left-anchored — only one shows at a time).
   const skillApi = useMemo(
-    () => ({ open: openSkill, openSkill: setOpenSkill, close: () => setOpenSkill(null) }),
+    () => ({ open: openSkill, openSkill: (s: string) => { setOpenRemote(null); setOpenSkill(s); }, close: () => setOpenSkill(null) }),
     [openSkill],
+  );
+  // (Remote skill panel) the ONLINE detail inspector — a remote marketplace card calls openRemote(row). Opening
+  // it closes the local inspector; installedNonce bumps on a successful install so SkillMarketPanel re-fetches.
+  const remoteSkillApi = useMemo(
+    () => ({
+      open: openRemote,
+      openRemote: (row: RemoteSkill) => { setOpenSkill(null); setOpenRemote(row); },
+      close: () => setOpenRemote(null),
+      installedNonce,
+      bumpInstalled: () => setInstalledNonce((n) => n + 1),
+    }),
+    [openRemote, installedNonce],
   );
 
   const viewModeApi = useMemo(
@@ -555,6 +573,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       <BasisContext.Provider value={basisApi}>
       <MarketContext.Provider value={marketApi}>
       <SkillContext.Provider value={skillApi}>
+      <RemoteSkillContext.Provider value={remoteSkillApi}>
       <RunStreamContext.Provider value={live}>
       <LayoutGroup>
         <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--ds-bg-canvas)" }}>
@@ -663,6 +682,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           {/* Left-edge skill inspector — opened by clicking a loaded skill chip (node card / NodeHud) OR a
               marketplace card. */}
           <SkillPanel activeRun={activeRun} />
+          {/* Left-edge ONLINE detail inspector — opened by clicking a remote (online-ring) marketplace card;
+              shows the fuller description + the fetched SKILL.md + a one-click Install. */}
+          <RemoteSkillPanel />
           {/* Left-edge skill MARKETPLACE (S key): search + ring filter + draggable skill cards. A card CLICK
               opens the SkillPanel detail; DRAGGING one onto a node's skill slot opens the loadout confirm card. */}
           <SkillMarketPanel activeRun={activeRun} open={marketOpen} onClose={() => setMarketOpen(false)} />
@@ -679,6 +701,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
         </div>
       </LayoutGroup>
       </RunStreamContext.Provider>
+      </RemoteSkillContext.Provider>
       </SkillContext.Provider>
       </MarketContext.Provider>
       </BasisContext.Provider>
