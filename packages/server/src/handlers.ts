@@ -572,6 +572,45 @@ export const piflowSkillSearch: Middleware = async (req, res, next) => {
   }
 };
 
+/** `POST /__piflow/skill-install` — the marketplace's one-click Install: a thin adapter over core's
+ *  `installSkill` (git clone / local dir → copy into `<piflowHome>/skills/<id>`), so a REMOTE search hit
+ *  becomes an installed-ring skill the GUI can then drag onto a node + inspect. Body: `{ source, skill?,
+ *  force? }` — `source` is a local dir | git URL | `owner/repo`, `skill` disambiguates a multi-SKILL.md repo.
+ *  On success it returns core's InstalledSkill record `{ id, dest, sha256, source, installedAt }`. A core
+ *  failure (unresolvable/non-git source, clone failure, invalid manifest, already-installed) is a clean 502
+ *  one-line message — the same contract as `skill-search`, never a 500/stack. This is the ONLY skill route
+ *  that MUTATES the home ring; installs land in `~/.piflow/skills` (never the repo — the CLAUDE.md boundary). */
+export const piflowSkillInstall: Middleware = async (req, res, next) => {
+  if (!req.url?.startsWith("/__piflow/skill-install")) return next();
+  if (req.method !== "POST") return sendJson(res, 405, { error: "use POST to install a skill" });
+
+  let body: { source?: unknown; skill?: unknown; force?: unknown };
+  try {
+    body = JSON.parse(await readBody(req));
+  } catch {
+    return sendJson(res, 400, { error: "body must be JSON { source, skill?, force? }" });
+  }
+  const source = typeof body.source === "string" ? body.source.trim() : "";
+  if (!source) return sendJson(res, 400, { error: "missing 'source' (a local dir, a git URL, or owner/repo)" });
+
+  const mod = findCore("workflow/ops/skill-install.js");
+  if (!mod) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
+  try {
+    const { installSkill } = (await import(pathToFileURL(mod).href)) as {
+      installSkill: (
+        source: string,
+        opts: { pick?: string; force?: boolean },
+      ) => Promise<{ id: string; dest: string; sha256: string; source: string; installedAt: string }>;
+    };
+    const pick = typeof body.skill === "string" && body.skill.trim() ? body.skill.trim() : undefined;
+    const r = await installSkill(source, { pick, force: body.force === true });
+    sendJson(res, 200, r);
+  } catch (e) {
+    // clone/parse/validation failure (incl. a non-git catalog-page source) — a clean line, never a stack.
+    sendJson(res, 502, { error: e instanceof Error ? e.message : String(e) });
+  }
+};
+
 /** `POST /__piflow/checkpoint/<run>` — dumb courier: write a human's reply to the run's checkpoint file. */
 export const piflowCheckpointReply: Middleware = async (req, res, next) => {
   const m = req.url?.match(/^\/__piflow\/checkpoint\/([^/?]+)/);
@@ -908,6 +947,7 @@ export const apiHandlers: Middleware[] = [
   piflowSkill,
   piflowSkillsMarketplace,
   piflowSkillSearch,
+  piflowSkillInstall,
   piflowCheckpointReply,
   piflowAgents,
   piflowNodeWriteback,
