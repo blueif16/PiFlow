@@ -429,6 +429,28 @@ export async function searchRemoteSkills(q: string, limit = 30): Promise<{ rows:
   }
 }
 
+/** INSTALL a remote skill into the home ring via `POST /__piflow/skill-install` (core's `installSkill`): git
+ *  clone / copy into `~/.piflow/skills/<id>`, after which it appears in the marketplace's installed ring as a
+ *  bindable, draggable local card. `pick` disambiguates a multi-SKILL.md repo. On failure returns the server's
+ *  one-line message (a 502 carries the clone/parse reason) — the Install button surfaces it honestly. */
+export async function installRemoteSkill(
+  source: string,
+  pick?: string,
+): Promise<{ ok: true; id: string; dest: string } | { ok: false; error: string }> {
+  try {
+    const res = await apiFetch(`/__piflow/skill-install`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, skill: pick }),
+    });
+    const body = (await res.json().catch(() => ({}))) as { id?: string; dest?: string; error?: string };
+    if (res.ok && body.id) return { ok: true, id: body.id, dest: body.dest ?? "" };
+    return { ok: false, error: body.error ?? `install failed (HTTP ${res.status})` };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Fetch the agent-preset catalog (id → {icon,label,color}) from the dev middleware. The display lives in
  *  `~/.piflow/agents/`, never on the node (decision #3). Absent/unreachable ⇒ {} (nodes render default chips). */
 export async function loadAgentCatalog(): Promise<AgentCatalog> {

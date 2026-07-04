@@ -36,7 +36,7 @@ CONSUMED
 PASSED THROUGH
 - `packages/core/src/observe/runView.ts:291` — agentType passthrough into `RunViewNode`
 RENDERED
-- `gui/src/data/runView.ts:706` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
+- `gui/src/data/runView.ts:728` — `toFlowGraph()` resolves agentType → icon/color/label off `AgentCatalog`
 - `gui/src/components/NodeModeStrip.tsx:85` — renders the base-agent chip
 
 # Freshness (anti-drift)
@@ -199,5 +199,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/cli/src/agents.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; ⚠ no covering tests found
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 2 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=112 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-04 · arc=112 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

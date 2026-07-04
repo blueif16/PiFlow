@@ -13,7 +13,7 @@
 // so no file I/O or MCP bridge is needed. Each test has a clear failing scenario in its comment.
 
 import { describe, it, expect } from 'vitest';
-import { parseSkillManifest, resolveSkillLoadout, preflightSkills } from '../src/workflow/ops/skill.js';
+import { parseSkillManifest, parseSkillDoc, resolveSkillLoadout, preflightSkills } from '../src/workflow/ops/skill.js';
 import { DefaultToolRegistry } from '../src/tools/registry.js';
 import type { ToolEntry } from '../src/types.js';
 
@@ -103,6 +103,39 @@ describe('parseSkillManifest — extract requires/allowed from SKILL.md frontmat
     const m = parseSkillManifest(raw);
     expect(m.requires).toEqual(['fs:read', 'fs:write']);
     expect(m.allowed).toEqual(['fs:read', 'fs:write']);
+  });
+});
+
+// ── 1b. parseSkillDoc (manifest + description + body — the detail-view surface) ──
+
+describe('parseSkillDoc — manifest widened with the frontmatter description + markdown body', () => {
+  it('extracts the frontmatter description AND the markdown body after the closing ---', () => {
+    // FAILS WITHOUT THE CHANGE: if body = whole raw, the frontmatter leaks into it; if description
+    // extraction is missing, it stays ''. Both are what a remote detail page needs to render.
+    const raw = `---\nname: pdf\ndescription: Fill and read PDF forms\nrequires: [read]\nallowed: [read]\n---\n# PDF\n\nDo the thing.\n`;
+    const d = parseSkillDoc(raw, 'pdf');
+    expect(d.id).toBe('pdf');
+    expect(d.description).toBe('Fill and read PDF forms');
+    expect(d.body.trim()).toBe('# PDF\n\nDo the thing.');
+    expect(d.body).not.toContain('name: pdf'); // frontmatter must NOT bleed into the body
+    expect(d.requires).toEqual(['read']);
+    expect(d.allowed).toEqual(['read']);
+  });
+
+  it('a doc with NO frontmatter → empty description, the whole content as body (never throws)', () => {
+    // FAILS if a missing frontmatter block throws or mis-slices the body.
+    const raw = 'Just a plain body, no frontmatter.\n';
+    const d = parseSkillDoc(raw, 'bare');
+    expect(d.description).toBe('');
+    expect(d.body).toBe(raw);
+    expect(d.id).toBe('bare');
+    expect(d.requires).toEqual([]);
+  });
+
+  it('a quoted description scalar is unquoted (one wrapping layer stripped)', () => {
+    // FAILS if the extractor keeps the surrounding quotes.
+    const raw = `---\nname: q\ndescription: "A quoted, comma-bearing summary"\n---\nBody.\n`;
+    expect(parseSkillDoc(raw, 'q').description).toBe('A quoted, comma-bearing summary');
   });
 });
 

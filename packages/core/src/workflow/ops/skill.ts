@@ -19,8 +19,8 @@ import path from 'node:path';
 import { resolveTokens, type ResolveCtx } from '../resolver.js';
 
 // Re-export the SA-A manifest surface so consumers import from one place.
-export type { SkillManifest, SkillLoadout } from './skill-manifest.js';
-export { parseSkillManifest, resolveSkillLoadout, preflightSkills } from './skill-manifest.js';
+export type { SkillManifest, SkillLoadout, SkillDoc } from './skill-manifest.js';
+export { parseSkillManifest, parseSkillDoc, resolveSkillLoadout, preflightSkills } from './skill-manifest.js';
 
 /** The resolved skill stage: where to copy FROM (host) and the dir NAME to stage it under (in `.pi/skills/`). */
 export interface SkillStage {

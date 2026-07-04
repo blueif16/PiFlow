@@ -17,17 +17,20 @@ import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { ToolTag } from "./toolMeta";
 import { useSkill } from "./SkillContext";
+import { useRemoteSkill } from "./RemoteSkillContext";
 import { SKILL_CHIP_DND_MIME, buildSkillChip, marketFilter } from "../data/skillChips";
-import { loadSkills, searchRemoteSkills, type MarketSkill, type RemoteSkill } from "../data/runView";
+import { installRemoteSkill, loadSkills, searchRemoteSkills, type MarketSkill, type RemoteSkill } from "../data/runView";
 import { loadSkillIndex, searchSkillIndex, type SkillIndexArtifact } from "../data/skillIndex";
 import "../styles/skillmarket.css";
 
 /** The panel's lanes: the two LOCAL rings (bind-ready, draggable) + the ONLINE lane (the live remote
- *  indexes via `/__piflow/skill-search` — hundreds of thousands of rows; cards install via `skill add`). */
+ *  indexes via `/__piflow/skill-search` — hundreds of thousands of rows; a card opens a detail page and
+ *  one-click Installs into the local rings). */
 type Ring = MarketSkill["ring"] | "online";
 
 export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: string; open: boolean; onClose: () => void }) {
   const { openSkill } = useSkill();
+  const { openRemote, installedNonce, bumpInstalled } = useRemoteSkill();
   const [skills, setSkills] = useState<MarketSkill[] | null>(null);
   const [mcpCatalog, setMcpCatalog] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "loaded" | "empty">("idle");
@@ -43,12 +46,13 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
   const [indexArt, setIndexArt] = useState<SkillIndexArtifact | null | undefined>(undefined);
   const [deepQuery, setDeepQuery] = useState<string | null>(null); // the query a deep search was requested for
 
-  // Fetch on open (and when the run changes); the marketplace is ~static so there is no poll. Reset filters
-  // each open so the panel starts unfiltered.
+  // Fetch on open (and when the run changes); the marketplace is ~static so there is no poll. A successful
+  // install bumps `installedNonce` → the rings re-fetch so the new skill shows in the installed lane (but the
+  // filter reset is a SEPARATE effect below, so an install refresh never yanks the user out of their search).
   useEffect(() => {
     if (!open || !activeRun) { setSkills(null); setStatus("idle"); return; }
     let alive = true;
-    setStatus("loading"); setQuery(""); setRing(null);
+    setStatus("loading");
     loadSkills(activeRun).then((m) => {
       if (!alive) return;
       setSkills(m?.skills ?? []);
@@ -56,6 +60,11 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
       setStatus(m && m.skills.length ? "loaded" : "empty");
     });
     return () => { alive = false; };
+  }, [open, activeRun, installedNonce]);
+
+  // Reset the search + ring filter each (re)open so the panel starts unfiltered — but NOT on an install refresh.
+  useEffect(() => {
+    if (open) { setQuery(""); setRing(null); }
   }, [open, activeRun]);
 
   // ONLINE lane, load-once: the bundled index (same-origin on the deployed site, canonical URL locally).
@@ -155,7 +164,7 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
                   : indexArt === null
                     ? <>Type to search the live remote indexes — 600k+ skills across topagentskills · agentskill · claude-plugins · claudskills. (The bundled instant index isn’t reachable from here.)</>
                     : <>loading the bundled index…</>}
-                {" "}Install a result with <code>piflowctl skill add &lt;source&gt;</code> (click a card to copy).
+                {" "}Click a card to open its detail; <b>Install</b> adds it to your installed ring — then drag it onto a node.
               </div>
             )}
 
@@ -169,7 +178,7 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
                   <ul className="ds-market__list">
                     {indexHits!.map((s) => (
                       <li key={`idx:${s.index}:${s.slug}`}>
-                        <RemoteSkillCard skill={s} />
+                        <RemoteSkillCard skill={s} onOpen={() => openRemote(s)} onInstalled={bumpInstalled} />
                       </li>
                     ))}
                   </ul>
@@ -192,7 +201,7 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
                   <ul className="ds-market__list">
                     {remote!.map((s) => (
                       <li key={`${s.index}:${s.slug}`}>
-                        <RemoteSkillCard skill={s} />
+                        <RemoteSkillCard skill={s} onOpen={() => openRemote(s)} onInstalled={bumpInstalled} />
                       </li>
                     ))}
                   </ul>
@@ -229,21 +238,19 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
   );
 }
 
-/** One ONLINE result card — NOT draggable (the skill isn't in a local ring yet, so a node can't bind it);
- *  clicking copies the exact install command, and the source link opens the repo. After `skill add` the
- *  skill appears in the installed ring and becomes a bindable, draggable local card. */
-function RemoteSkillCard({ skill }: { skill: RemoteSkill }) {
-  const [copied, setCopied] = useState(false);
-  const cmd = `piflowctl skill add ${skill.source}`;
+/** One ONLINE result card — clicking OPENS the RemoteSkillPanel detail (the fuller description + the fetched
+ *  SKILL.md); an explicit Install button adds it to the installed ring (after which it becomes a bindable,
+ *  draggable local card); the source link opens the repo. Not draggable: a remote hit has no local id a node
+ *  can bind yet — Install is the bridge. */
+function RemoteSkillCard({ skill, onOpen, onInstalled }: { skill: RemoteSkill; onOpen: () => void; onInstalled: () => void }) {
+  const [install, setInstall] = useState<{ state: "idle" | "busy" | "done" | "error"; msg?: string }>({ state: "idle" });
 
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(cmd);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      /* clipboard unavailable (permissions/http) — the title still shows the command */
-    }
+  const doInstall = async () => {
+    if (install.state === "busy" || install.state === "done") return;
+    setInstall({ state: "busy" });
+    const r = await installRemoteSkill(skill.source);
+    if (r.ok) { setInstall({ state: "done" }); onInstalled(); }
+    else setInstall({ state: "error", msg: r.error });
   };
 
   return (
@@ -251,10 +258,10 @@ function RemoteSkillCard({ skill }: { skill: RemoteSkill }) {
       className="ds-skillcard"
       role="button"
       tabIndex={0}
-      onClick={copy}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void copy(); } }}
-      title={`${skill.name} — click to copy: ${cmd}`}
-      aria-label={`Remote skill ${skill.name} from ${skill.index}. Click to copy its install command.`}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      title={`${skill.name} — click to open its detail`}
+      aria-label={`Online skill ${skill.name} from ${skill.index}. Click to open its detail.`}
     >
       <div className="ds-skillcard__head">
         <span className="ds-skillcard__mark">
@@ -268,13 +275,19 @@ function RemoteSkillCard({ skill }: { skill: RemoteSkill }) {
 
       {skill.description && <p className="ds-skillcard__desc">{skill.description}</p>}
 
-      {/* the VISIBLE install affordance: the exact command, one click to copy — never only a tooltip */}
-      <div className={`ds-skillcard__cmd${copied ? " is-copied" : ""}`} aria-live="polite">
-        <code className="ds-skillcard__cmdtext">{cmd}</code>
-        <span className="ds-skillcard__cmdcopy">{copied ? "copied ✓" : "copy"}</span>
-      </div>
-
       <div className="ds-skillcard__badges">
+        {/* the one-click INSTALL (also on the detail page) — stopPropagation so it doesn't open the detail */}
+        <button
+          type="button"
+          className="ds-skillcard__install"
+          disabled={install.state === "busy" || install.state === "done"}
+          onClick={(e) => { e.stopPropagation(); void doInstall(); }}
+        >
+          {install.state === "busy" ? "Installing…" : install.state === "done" ? "Installed ✓" : "Install"}
+        </button>
+        {install.state === "error" && (
+          <span className="ds-skillcard__badge" data-tone="err" role="alert" title={install.msg}>install failed</span>
+        )}
         {skill.author && <span className="ds-skillcard__badge" data-tone="muted">{skill.author}</span>}
         <a
           className="ds-skillcard__srclink"

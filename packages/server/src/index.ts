@@ -3,7 +3,7 @@
 // or a cloud control VM. See create-server.ts (assembly), handlers.ts (the ported control API), serve-cli.ts.
 
 export { createServer, type CreateServerOptions } from "./create-server.js";
-export { createApiMiddleware, apiHandlers, chain, piflowGlobalIndex, piflowRunStream, piflowRunView, piflowPreview, piflowSaveRun, piflowFile, piflowTree, piflowCheckpointReply, piflowAgents, piflowNodeWriteback, piflowControlSession } from "./handlers.js";
+export { createApiMiddleware, apiHandlers, chain, piflowGlobalIndex, piflowRunStream, piflowRunView, piflowPreview, piflowSaveRun, piflowFile, piflowTree, piflowSkillInstall, piflowCheckpointReply, piflowAgents, piflowNodeWriteback, piflowControlSession } from "./handlers.js";
 export { piflowStartRun, makePiflowStartRun, isTemplateAllowed } from "./start-run.js";
 export { piflowMigrate, makePiflowMigrate } from "./migrate.js";
 export { serveStatic } from "./static.js";
