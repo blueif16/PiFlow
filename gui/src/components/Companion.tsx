@@ -10,8 +10,7 @@
  * no containers except the input field.
  */
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { createPortal } from "react-dom";
-import { GlassSurface } from "./GlassSurface";
+import { SideCard } from "./SideCard";
 import { MarkdownReader } from "./MarkdownReader";
 import { useControlSession, type ControlMessage, type ControlToolExecution, type SessionSummary } from "../data/controlSession";
 import "../styles/companion.css";
@@ -103,23 +102,10 @@ export function Companion({ activeRun, open, onOpenChange }: { activeRun: string
   const showEmpty = turns.length === 0 && !busy;
   const showMeta = !!status || !!meta || ctrl.streaming;
 
-  return createPortal(
-    <div className="ds-companion-layer">
-      {open ? (
-        <GlassSurface as="aside" variant="soft" className="ds-companion" legibleText aria-label="pi chat">
-          {/* functional controls only — bare ghost icons, top-left (clears the floating top-right MenuBar) */}
+  return (
+    <SideCard open={open} onClose={() => onOpenChange(false)} accent="chat" padded={false} width="min(46vw, 560px)" ariaLabel="pi chat" closeTitle="Close chat">
+          {/* functional controls only — the history toggle (the close lives in the card's top-right chrome) */}
           <div className="ds-companion__controls">
-            <button
-              type="button"
-              className="ds-companion__ctl"
-              aria-label="Close chat"
-              title="Close"
-              onClick={() => onOpenChange(false)}
-            >
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M6 4l4 4-4 4M2 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
             <button
               type="button"
               className="ds-companion__ctl"
@@ -222,9 +208,6 @@ export function Companion({ activeRun, open, onOpenChange }: { activeRun: string
               </button>
             </div>
           </form>
-        </GlassSurface>
-      ) : null}
-    </div>,
-    document.body,
+    </SideCard>
   );
 }

@@ -60,6 +60,7 @@ import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { FusionContext, type FusionMode } from "./FusionContext";
 import { FusionSaveBar } from "./FusionSaveBar";
 import { ComposeContext } from "./ComposeContext";
+import { CardMenuContext } from "./CardMenuContext";
 import { BasisContext } from "./BasisContext";
 import { MarketContext } from "./MarketContext";
 import { SkillContext } from "./SkillContext";
@@ -149,9 +150,12 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   const toggleChat = useCallback(() => setChatOpen(!companionOpen), [setChatOpen, companionOpen]);
   const toggleDigest = useCallback(() => { if (!digestOpen) closeRightSlot("digest"); setDigestOpen(!digestOpen); }, [digestOpen, closeRightSlot]);
   const toggleMarket = useCallback(() => { if (!marketOpen) closeRightSlot("market"); setMarketOpen(!marketOpen); }, [marketOpen, closeRightSlot]);
-  // any FLOATING card open ⇒ the top-right MenuBar collapses to an icon so it never clashes with the card
-  // (chat is a full-height rail whose own controls already clear the bar, so it doesn't trigger the collapse).
-  const cardOpen = digestOpen || !!openSkill || !!openRemote || marketOpen;
+  // any right-dock card open (chat now floats too) ⇒ the top-right MenuBar HIDES so it never clashes with the
+  // card; the open card hosts a menu handle (CardMenuContext) that PEEKS the bar back over the card on click.
+  const cardOpen = digestOpen || !!openSkill || !!openRemote || marketOpen || companionOpen;
+  const [menuPeek, setMenuPeek] = useState(false);
+  useEffect(() => { if (!cardOpen) setMenuPeek(false); }, [cardOpen]); // reset the peek once no card is open
+  const cardMenu = useMemo(() => ({ onOpenMenu: () => setMenuPeek(true) }), []);
 
   const [ix, setIx] = useState<GlobalIndex | null>(null);
   // control-plane liveness for the ControlPlaneChip dot — driven by the index poll below (ok on a successful
@@ -594,6 +598,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       <SkillContext.Provider value={skillApi}>
       <RemoteSkillContext.Provider value={remoteSkillApi}>
       <RunStreamContext.Provider value={live}>
+      <CardMenuContext.Provider value={cardMenu}>
       <LayoutGroup>
         <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--ds-bg-canvas)" }}>
           <OrbField />
@@ -664,7 +669,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           />
           {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
               scrim (by design), so opening one must close the other or they stack. */}
-          <MenuBar activeRun={activeRun} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} collapsed={cardOpen} />
+          <MenuBar activeRun={activeRun} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} hidden={cardOpen && !menuPeek} peeking={cardOpen && menuPeek} onDismissMenu={() => setMenuPeek(false)} />
           {/* Full-screen "switch workspace" launcher (opened by the MenuBar ⊞ pill). Entering a folder re-scopes
               the console via enterWorkspace; a live run routes through its detach-the-session confirm. */}
           <WorkspaceLauncher open={workspaceOpen} ix={ix} activeWorkspace={activeWorkspace} liveRun={liveRun} onEnter={enterWorkspace} onClose={() => setWorkspaceOpen(false)} />
@@ -719,6 +724,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           <MigrateRunPanel open={migrateOpen} onClose={() => setMigrateOpen(false)} activeRun={activeRun} onMigrated={onMigrated} />
         </div>
       </LayoutGroup>
+      </CardMenuContext.Provider>
       </RunStreamContext.Provider>
       </RemoteSkillContext.Provider>
       </SkillContext.Provider>

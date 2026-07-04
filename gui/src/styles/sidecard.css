@@ -65,12 +65,19 @@
   to   { opacity: 1; transform: translateX(0) scale(1); }
 }
 
-/* close — floats in the card's top-right corner, above the scrolling body */
-.ds-sidecard__close {
+/* top-right CHROME — the card's own controls, floating above the body: the MENU handle (the workspace/run
+   bar, now PART of the card so the floating MenuBar can hide) + the close. */
+.ds-sidecard__chrome {
   position: absolute;
   top: clamp(12px, 1.6vh, 18px);
   right: clamp(12px, 1.4vw, 16px);
   z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.ds-sidecard__menu,
+.ds-sidecard__close {
   width: 28px;
   height: 28px;
   display: inline-flex;
@@ -83,7 +90,9 @@
   cursor: pointer;
   transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast);
 }
+.ds-sidecard__menu:hover,
 .ds-sidecard__close:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-sidecard__menu:focus-visible,
 .ds-sidecard__close:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
 
 /* the scroll body — owns the card's internal padding (text never touches an edge). The tall BOTTOM pad is
@@ -97,8 +106,16 @@
   gap: var(--ds-space-5);
   padding: clamp(18px, 2.4vh, 26px) var(--ds-space-6) clamp(28px, 5vh, 44px);
 }
-/* keep the first flow child (a panel header) clear of the floating close control */
-.ds-sidecard__body > :first-child { padding-right: 30px; }
+/* keep the first flow child (a panel header) clear of the top-right chrome (menu + close) */
+.ds-sidecard__body > :first-child { padding-right: 58px; }
+
+/* fill mode — the child fills the card and owns its own scroll/padding (chat: scrolling log + pinned composer) */
+.ds-sidecard__fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .ds-sidecard { animation: none; }

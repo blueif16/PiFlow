@@ -107,36 +107,3 @@
 
 /* the switcher popover hosts the DirectoryPanel (its own glass-soft surface) */
 .ds-menubar__pop { pointer-events: auto; }
-
-/* COLLAPSED handle — the whole bar squeezed to one glass icon while a right-dock card is open, so it never
-   clashes with the card's top-right corner. Click → the full bar expands (floating above the card). */
-.ds-menubar__handle {
-  pointer-events: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 11px;
-  border: 1px solid var(--ds-glass-highlight);
-  border-radius: var(--ds-radius-lg);
-  background: var(--ds-glass-bg-strong);
-  box-shadow: var(--ds-shadow-md);
-  color: var(--ds-text-secondary);
-  cursor: pointer;
-  transition: transform var(--ds-dur-fast) var(--ds-ease-standard),
-              box-shadow var(--ds-dur-fast) var(--ds-ease-standard),
-              color var(--ds-dur-fast) var(--ds-ease-standard);
-}
-.ds-menubar__handle:hover { transform: translateY(-1px); box-shadow: var(--ds-shadow-lg); color: var(--ds-text-primary); }
-.ds-menubar__handle:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
-.ds-menubar__handle svg { flex: 0 0 auto; color: var(--ds-text-tertiary); }
-.ds-menubar__handle:hover svg { color: var(--ds-accent); }
-.ds-menubar__handle-status { font-family: var(--ds-font-mono); font-size: var(--ds-text-xs); font-variant-numeric: tabular-nums; color: var(--ds-text-tertiary); }
-.ds-menubar__handle-status[data-state="running"] { color: var(--ds-text-accent); }
-.ds-menubar__handle-status[data-state="failed"] { color: var(--ds-error-fg); }
-.ds-menubar__handle-status[data-state="done"] { color: var(--ds-success-fg); }
-
-@media (prefers-reduced-motion: reduce) {
-  .ds-menubar__handle { transition: box-shadow var(--ds-dur-fast), color var(--ds-dur-fast); }
-  .ds-menubar__handle:hover { transform: none; }
-}
