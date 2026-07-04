@@ -56,7 +56,7 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
       if (!alive) return;
       setSkills(m?.skills ?? []);
       setMcpCatalog(m?.mcpCatalog ?? false);
-      setStatus(m && m.skills.length ? "loaded" : "empty");
+      setStatus((m?.skills?.length ?? 0) > 0 ? "loaded" : "empty");
     });
     return () => { alive = false; };
   }, [open, activeRun, installedNonce]);
