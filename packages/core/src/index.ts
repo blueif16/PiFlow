@@ -113,8 +113,8 @@ export { locateSkillStage, skillSearchRoots, isBareSkillId, listSkills } from '.
 export type { SkillLocateResult, SkillListEntry } from './workflow/ops/skill-locate.js';
 // The manifest parser (name/requires/allowed/display; throws on requires ⊄ allowed) — exported so
 // installers (`piflowctl skill add`) can refuse a broken bundle at install time, not at run time.
-export { parseSkillManifest } from './workflow/ops/skill-manifest.js';
-export type { SkillManifest } from './workflow/ops/skill-manifest.js';
+export { parseSkillManifest, parseSkillDoc } from './workflow/ops/skill-manifest.js';
+export type { SkillManifest, SkillDoc } from './workflow/ops/skill-manifest.js';
 // The ONLINE discovery lane (remote skill indexes; probed shapes pinned in the module header) — ONE
 // implementation shared by the CLI verb (`skill search --remote`) and the control-plane server (the GUI's
 // marketplace panel searches online through it). Local rings are the offload cache, not the catalog.

@@ -198,6 +198,35 @@ export function parseSkillManifest(raw: string, fallbackId?: string): SkillManif
   return manifest;
 }
 
+/** A parsed SKILL.md widened with the two display-only fields the manifest omits: the frontmatter
+ *  `description` scalar and the markdown `body` after the frontmatter block. Used by the detail views
+ *  (the local skill panel + the ONLINE remote-skill panel, which fetches a repo's SKILL.md and parses
+ *  it client-side) — one parser for both, so a remote card's detail can never disagree with a local one. */
+export interface SkillDoc extends SkillManifest {
+  /** The frontmatter `description:` scalar (unquoted), or '' when absent. */
+  description: string;
+  /** The markdown body after the closing `---` (the whole raw string when there is no frontmatter). */
+  body: string;
+}
+
+/**
+ * Parse a SKILL.md into a {@link SkillDoc} — the manifest ({@link parseSkillManifest}, same `requires ⊆
+ * allowed` enforcement) PLUS the `description` + `body`. PURE (string in, no I/O), so it runs in the
+ * browser bundle exactly like {@link parseSkillManifest}. A doc with no frontmatter block ⇒ `description:
+ * ''` and `body` = the whole raw string (never throws on absence).
+ */
+export function parseSkillDoc(raw: string, fallbackId?: string): SkillDoc {
+  const manifest = parseSkillManifest(raw, fallbackId);
+  const m = /^﻿?---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?([\s\S]*)$/.exec(raw);
+  const body = m ? m[2] : raw;
+  let description = '';
+  if (m) {
+    const d = parseFrontmatter(m[1]).description;
+    if (typeof d === 'string') description = d;
+  }
+  return { ...manifest, description, body };
+}
+
 /**
  * Stable de-dupe preserving first-seen order (shared utility — same pattern as `agent-preset.ts`).
  */
