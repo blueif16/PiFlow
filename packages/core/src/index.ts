@@ -115,6 +115,10 @@ export type { SkillLocateResult, SkillListEntry } from './workflow/ops/skill-loc
 // installers (`piflowctl skill add`) can refuse a broken bundle at install time, not at run time.
 export { parseSkillManifest, parseSkillDoc } from './workflow/ops/skill-manifest.js';
 export type { SkillManifest, SkillDoc } from './workflow/ops/skill-manifest.js';
+// The INSTALLER (`piflowctl skill add` / the control-plane `POST /__piflow/skill-install`) — ONE impl the
+// CLI verb and the server share (the searchRemote hoist pattern). node-only; never in the browser bundle.
+export { installSkill, classifySkillSource, findCandidates, SkillInstallError } from './workflow/ops/skill-install.js';
+export type { SkillSource, InstallSkillOpts, InstalledSkill } from './workflow/ops/skill-install.js';
 // The ONLINE discovery lane (remote skill indexes; probed shapes pinned in the module header) — ONE
 // implementation shared by the CLI verb (`skill search --remote`) and the control-plane server (the GUI's
 // marketplace panel searches online through it). Local rings are the offload cache, not the catalog.
