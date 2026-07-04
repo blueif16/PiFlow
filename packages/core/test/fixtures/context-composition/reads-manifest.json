@@ -1,0 +1,7 @@
+{
+  "/ws/packages/skills/harden-blueprint/SKILL.md": { "sha256": "sha256:aaa1", "bytes": 12000, "lines": 380, "mtime": 1720000000000 },
+  "/ws/run/.pi/skills/harden-blueprint/SKILL.md": { "sha256": "sha256:bbb2", "bytes": 12000, "lines": 380, "mtime": 1720000001000 },
+  "/ws/run/spec/blueprint.json": { "sha256": "sha256:ccc3", "bytes": 4000, "lines": 120, "mtime": 1720000002000 },
+  "/ws/run/spec/gdd.md": { "sha256": "sha256:ddd4", "bytes": 9000, "lines": 300, "mtime": 1720000003000 },
+  "/ws/run/spec/bigmap.json": { "sha256": "sha256:eee5", "bytes": 200000, "lines": 4000, "mtime": 1720000004000 }
+}

@@ -15,6 +15,7 @@
 import fssync from 'node:fs';
 import path from 'node:path';
 import { createNodeAccumulator, type RichNode } from './distill.js';
+import { buildNodeContext, type ContextOp, type NodeComposition, type ReadsManifest } from './contextComposition.js';
 import { resolveStructure } from './structure.js';
 import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
@@ -76,6 +77,13 @@ export interface RunViewNode {
   /** the per-node DISPLAY projection (zones/rankings/unified outputs), computed ONCE here so the GUI +
    *  TUI render `derived.*` verbatim and never re-derive a threshold. See ./derive.ts. */
   derived?: NodeDerived;
+  /** (context-composition) The ordered "element tree" — force-injected prompt + every agent read, each with
+   *  range · coverage · sha · order. ADDITIVE, computed post-hoc by `buildNodeContext`. Absent when the node
+   *  recorded no events + no prompt. See observe/contextComposition.ts. */
+  context?: ContextOp[];
+  /** (context-composition) The roll-up over `context`: injectedBytes, distinct readFiles, advertised paths,
+   *  the `advertisedUnread` BLIND-SPOT, and `partialReads`. */
+  composition?: NodeComposition;
   summary?: string;
   issues?: string[];
   stageIndex?: number;
@@ -149,7 +157,7 @@ export function makeDisplayPath(runDir: string | null, workspaceRoot: string | n
 
 // Scope bucket from the WORKSPACE-relative display path. 'run' is detected upstream by {{RUN}} membership
 // (run files display run-relative, with no distinguishing prefix), so it is not inferred here.
-function scopeKind(dp: string): ScopeKind {
+export function scopeKind(dp: string): ScopeKind {
   if (dp.startsWith('packages/skills/')) return 'skill';
   if (dp.startsWith('templates/')) return 'template';
   if (dp.startsWith('packages/')) return 'package';
@@ -174,6 +182,16 @@ function replayEvents(runDir: string, id: string) {
     }
   }
   return { acc, lines, parseErrors, exists, bytes };
+}
+
+// Read a UTF-8 file, returning null when it is absent/unreadable (the context builder's prompt source).
+function readTextSafe(file: string): string | null {
+  try { return fssync.readFileSync(file, 'utf8'); } catch { return null; }
+}
+// Read + parse the run-time reads-manifest, returning null when absent/unparseable (context builder falls
+// back to the on-disk file for size/version when this is null).
+function readManifestSafe(file: string): ReadsManifest | null {
+  try { return JSON.parse(fssync.readFileSync(file, 'utf8')) as ReadsManifest; } catch { return null; }
 }
 
 // Cross-run history: expectedMs[id] = mean durationMs across history runs that ran node `id`. Exported so the
@@ -411,7 +429,22 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       } catch { /* keep fallback */ }
     }
 
-    nodes.push(assembleNode(rec, rich, ioLedger, ctx));
+    const node = assembleNode(rec, rich, ioLedger, ctx);
+    // (context-composition) ADDITIVE: reconstruct the ordered element tree (force-injected prompt + every
+    // agent read, each with range/coverage/sha/order) + the blind-spot roll-up. Reads events.jsonl a SECOND
+    // time post-hoc (fine). Best-effort — a build error never perturbs the parity-critical assembleNode set.
+    try {
+      const nc = buildNodeContext(runDir, id, {
+        displayPath,
+        scopeOf: (abs, dp) => (underRun(abs) ? 'run' : scopeKind(dp)),
+        promptText: readTextSafe(path.join(runDir, '.pi', 'nodes', id, 'prompt.md')),
+        promptPath: path.join(runResolved, '.pi', 'nodes', id, 'prompt.md'),
+        manifest: readManifestSafe(path.join(runDir, '.pi', 'nodes', id, 'reads-manifest.json')),
+      });
+      if (nc.context.length) node.context = nc.context;
+      node.composition = nc.composition;
+    } catch { /* context is a projection add-on — never let it break the run-view */ }
+    nodes.push(node);
   }
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));

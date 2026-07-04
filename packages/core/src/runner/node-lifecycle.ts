@@ -4,6 +4,7 @@
 // node-lanes.ts (finishNode) and retry.ts (runNode) stay ONE-WAY into this module (RISK 2) — no cycle.
 
 import { promises as fs, readFileSync, statSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import type {
   NodeSpec,
@@ -39,7 +40,7 @@ import {
   writeStatus,
   artifactState,
 } from './status.js';
-import { piSessionsDir, writeNodePid, clearNodePid } from './layout.js';
+import { piSessionsDir, writeNodePid, clearNodePid, nodeDir, nodeEventsFile } from './layout.js';
 import {
   envelopeHash,
   inputFilesOf,
@@ -951,6 +952,52 @@ export function buildNodeConfig(node: NodeSpec): NodeConfig {
  * Stamp a node's terminal fields, write status, and return the record. Exported as the lifecycle seam:
  * ./node-lanes.ts reuses it for the no-pi lanes. Lives WITH `runNode` so those edges stay one-way (RISK 2).
  */
+/**
+ * (context-composition — the ONE new collection) Write `.pi/nodes/<id>/reads-manifest.json`:
+ * `{ "<abs path>": { sha256, bytes, lines, mtime } }` for every path the node's read/grep events touched.
+ * Sourced from the already-flushed `events.jsonl` (the recorder closed before COLLECT). The RUN-time size/
+ * version snapshot makes variant/version correlation reliable across edits between runs (the observe-side
+ * `buildNodeContext` prefers it over the current on-disk file). Skips paths that no longer exist. Best-effort:
+ * ANY error is swallowed — this must NEVER fail the node.
+ */
+export async function emitReadsManifest(runDir: string, nodeId: string): Promise<void> {
+  try {
+    let raw: string;
+    try { raw = await fs.readFile(nodeEventsFile(runDir, nodeId), 'utf8'); } catch { return; }
+    const paths = new Set<string>();
+    for (const line of raw.split('\n')) {
+      const s = line.trim();
+      if (!s) continue;
+      let ev: { type?: string; toolName?: string; args?: { path?: unknown } };
+      try { ev = JSON.parse(s); } catch { continue; }
+      if (ev.type === 'tool_execution_start' && (ev.toolName === 'read' || ev.toolName === 'grep')) {
+        const p = ev.args?.path;
+        if (typeof p === 'string') paths.add(p);
+      }
+    }
+    if (!paths.size) return;
+    const manifest: Record<string, { sha256: string; bytes: number; lines: number; mtime: number }> = {};
+    for (const p of paths) {
+      try {
+        const st = await fs.stat(p);
+        if (!st.isFile()) continue;
+        const data = await fs.readFile(p);
+        let lines = 0;
+        for (let i = 0; i < data.length; i++) if (data[i] === 0x0a) lines++;
+        if (data.length && data[data.length - 1] !== 0x0a) lines++;
+        manifest[p] = {
+          sha256: 'sha256:' + createHash('sha256').update(data).digest('hex'),
+          bytes: st.size,
+          lines,
+          mtime: st.mtimeMs,
+        };
+      } catch { /* skip a path that vanished / is unreadable */ }
+    }
+    if (!Object.keys(manifest).length) return;
+    await fs.writeFile(path.join(nodeDir(runDir, nodeId), 'reads-manifest.json'), JSON.stringify(manifest, null, 2));
+  } catch { /* best-effort archive — never break the node on a manifest error */ }
+}
+
 export async function finishNode(
   ctx: RunContext,
   node: NodeSpec,
@@ -971,6 +1018,10 @@ export async function finishNode(
   // SAME site that stamps the verdict — `agentType`/`model` already ride the record). Only set when non-empty.
   const cfg = buildNodeConfig(node);
   if (Object.keys(cfg).length) rec.config = cfg;
+  // (context-composition — the ONE new collection) Snapshot the RUN-time sha/bytes/lines of every file this
+  // node read, while the files still reflect the run (the recorder flushed events.jsonl at COLLECT). Awaited
+  // but fully best-effort (swallows all errors) — a hash failure must never change the node's verdict.
+  await emitReadsManifest(ctx.outDir, node.id);
   // (per-node stop) The node has EXITED ⇒ any persisted live-pi pid is now STALE and must never be signalled.
   // Remove `.pi/nodes/<id>/pid.json` on EVERY terminal verdict (the single choke point for every lane,
   // incl. the no-pi lanes that reuse finishNode). Best-effort + absent-file-safe (a node that never persisted

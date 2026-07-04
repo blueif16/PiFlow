@@ -26,6 +26,7 @@ import { runRunCli } from './run.js';
 import { runNodeCli } from './node.js';
 import { runInspectCli } from './inspect.js';
 import { runTelemetryCli } from './telemetry.js';
+import { runTraceCli } from './trace.js';
 import { runOptimizeCli } from './optimize.js';
 import { runOptimizeFixCli } from './optimize-fix.js';
 import { runOptimizeAdoptCli } from './optimize-adopt.js';
@@ -63,6 +64,10 @@ USAGE
   piflowctl telemetry <rundir> [nodeId] [--watch] [--verbose] [--json]  agent-facing digest:
                                             verdicts · cost spine · loop signals · anomaly worklist ·
                                             failure-onset root cause. --watch = live stream then record.
+  piflowctl trace   <rundir> [nodeId] [--json]  the "element tree": EXACTLY what reached the model —
+                                            the force-injected prompt + every read/grep, ordered, each
+                                            with range · coverage · sha · via — plus the advertised vs.
+                                            advertisedUnread BLIND-SPOT roll-up per node.
   piflowctl optimize <rundir> [--json] [--archetype <n>]  out-of-band Score + Triage of a FINISHED run:
                                             folds Tier-0 (telemetry) × Tier-1 (verify outcome) → the
                                             four-way (LAPSE/SKILL/FUNCTIONALITY/ARCH) worklist. Read-only.
@@ -317,6 +322,9 @@ async function main(): Promise<void> {
       break;
     case 'telemetry':
       await runTelemetryCli(rest);
+      break;
+    case 'trace':
+      await runTraceCli(rest);
       break;
     case 'optimize':
       // `--rounds N` routes to the MULTI-ROUND overlord (autonomous-propose: run→score→fix→memorize per round;

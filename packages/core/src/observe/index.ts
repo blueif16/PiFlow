@@ -12,8 +12,13 @@ export type { RunModel, RunUpdate, NodeView, StageView, EdgeView } from './types
 // GUI middleware, the TUI, and the CLI all build the SAME enriched view from these (no view-local copy).
 export { createNodeAccumulator } from './distill.js';
 export type { RichNode, RichTokens, NodeAccumulator } from './distill.js';
-export { buildRunView, previewView } from './runView.js';
-export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens, ScopeBucket, ReadRef, WriteRef, ArtifactRef, NodeAudit, PreviewViewOpts } from './runView.js';
+export { buildRunView, previewView, makeDisplayPath, scopeKind } from './runView.js';
+export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens, ScopeBucket, ReadRef, WriteRef, ArtifactRef, NodeAudit, PreviewViewOpts, ScopeKind } from './runView.js';
+// Context-composition — the ordered "element tree" (force-injected prompt + every agent read, each with
+// range/coverage/sha/order) + the advertised-vs-read blind-spot. A PROJECTION over events.jsonl + prompt.md
+// + the run-time reads-manifest, computed once here (never in a view). See observe/contextComposition.ts.
+export { buildNodeContext } from './contextComposition.js';
+export type { ContextOp, NodeComposition, NodeContext, ContextBuildCtx, ReadsManifest, ReadsManifestEntry } from './contextComposition.js';
 // The pure per-node DISPLAY derivation (zones/rankings/unified outputs) `buildRunView` stamps on each node
 // as `derived` — the ONE compute site so the GUI + TUI render identical numbers and re-derive nothing.
 export { deriveNode, cacheTone, toolErrorTone, contextTone, timeTone, retriesTone } from './derive.js';
