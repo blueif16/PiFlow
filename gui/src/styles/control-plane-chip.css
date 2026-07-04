@@ -1,20 +1,19 @@
 /* ============================================================================
-   ControlPlaneChip — the consolidated control-plane control, pinned bottom-RIGHT
-   just to the left of the pi chat launcher (a separate component from chat). One
-   angular glass chip = a connection DOT + the local/cloud glyph; its confirm/connect
-   popover opens UPWARD (bottom-anchored). Chrome tier, portaled above the overlay
-   scrim like the MenuBar. The layer wraps its content so canvas clicks fall through
-   around the small chip.
+   ControlPlaneChip — the consolidated control-plane control, pinned TOP-CENTER on
+   the top edge. One angular glass chip = a connection DOT + the local/cloud glyph;
+   its confirm/connect popover opens DOWNWARD (top-anchored). Chrome tier, portaled
+   above the overlay scrim like the MenuBar. The layer wraps its content so canvas
+   clicks fall through around the small chip.
    ========================================================================== */
 .ds-cpchip-layer {
   position: fixed;
-  /* clear the 44px chat launcher (bottom-right, inset clamp(10,1.6vw,18)) + a gap */
-  right: calc(clamp(10px, 1.6vw, 18px) + 54px);
-  bottom: calc(clamp(10px, 1.6vh, 18px) + 6px);   /* vertically centred against the 44px launcher */
+  top: clamp(10px, 1.6vh, 18px);
+  left: 50%;
+  transform: translateX(-50%);
   z-index: var(--ds-z-popover);                    /* above the overlay + its scrim, peer of the MenuBar */
   display: flex;
-  flex-direction: column-reverse;                  /* popover (2nd child) renders ABOVE the chip */
-  align-items: flex-end;                            /* right-align the wider popover to the chip */
+  flex-direction: column;                          /* popover (2nd child) renders BELOW the chip */
+  align-items: center;                             /* centre the wider popover under the chip */
   gap: var(--ds-space-2);
   pointer-events: none;                             /* only the chip + popover are interactive */
 }

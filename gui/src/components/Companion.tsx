@@ -171,11 +171,14 @@ export function Companion({ activeRun, open, onOpenChange }: { activeRun: string
             <div className="ds-companion__log" ref={logRef}>
               {showEmpty ? (
                 <div className="ds-companion__empty">
-                  {ctrl.status === "connecting"
-                    ? "starting pi…"
-                    : ctrl.status === "closed" || ctrl.status === "error"
-                      ? <>session ended<button type="button" className="ds-companion__restart" onClick={() => void ctrl.start()}>restart</button></>
-                      : "ask anything about this run"}
+                  <span className="ds-companion__empty-mark" aria-hidden="true"><PiMark size={28} /></span>
+                  <span className="ds-companion__empty-text">
+                    {ctrl.status === "connecting"
+                      ? "starting pi…"
+                      : ctrl.status === "closed" || ctrl.status === "error"
+                        ? <>session ended <button type="button" className="ds-companion__restart" onClick={() => void ctrl.start()}>restart</button></>
+                        : "ask anything about this run"}
+                  </span>
                 </div>
               ) : (
                 <>
@@ -220,11 +223,7 @@ export function Companion({ activeRun, open, onOpenChange }: { activeRun: string
             </div>
           </form>
         </GlassSurface>
-      ) : (
-        <button type="button" className="ds-companion-launch" aria-label="Open pi" onClick={() => onOpenChange(true)}>
-          <PiMark size={20} />
-        </button>
-      )}
+      ) : null}
     </div>,
     document.body,
   );

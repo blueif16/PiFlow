@@ -134,6 +134,25 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // index poll + run-view loader below re-run against the new origin (they list it in their deps).
   const endpointBase = useEndpoint().baseUrl;
 
+  // ── RIGHT-edge SINGLE SLOT ─────────────────────────────────────────────────────────────────────────────
+  // Chat + the viewer cards (digest / skill / remote-skill / market) are mutually exclusive: only one
+  // right-dock panel shows at a time, so opening one CLOSES the rest — a new card REPLACES the prior, never a
+  // stack. `keep` is the slot being opened; every other occupant is cleared.
+  const closeRightSlot = useCallback((keep?: "chat" | "digest" | "skill" | "remote" | "market") => {
+    if (keep !== "chat") setCompanionOpen(false);
+    if (keep !== "digest") setDigestOpen(false);
+    if (keep !== "skill") setOpenSkill(null);
+    if (keep !== "remote") setOpenRemote(null);
+    if (keep !== "market") setMarketOpen(false);
+  }, []);
+  const setChatOpen = useCallback((o: boolean) => { if (o) closeRightSlot("chat"); setCompanionOpen(o); }, [closeRightSlot]);
+  const toggleChat = useCallback(() => setChatOpen(!companionOpen), [setChatOpen, companionOpen]);
+  const toggleDigest = useCallback(() => { if (!digestOpen) closeRightSlot("digest"); setDigestOpen(!digestOpen); }, [digestOpen, closeRightSlot]);
+  const toggleMarket = useCallback(() => { if (!marketOpen) closeRightSlot("market"); setMarketOpen(!marketOpen); }, [marketOpen, closeRightSlot]);
+  // any FLOATING card open ⇒ the top-right MenuBar collapses to an icon so it never clashes with the card
+  // (chat is a full-height rail whose own controls already clear the bar, so it doesn't trigger the collapse).
+  const cardOpen = digestOpen || !!openSkill || !!openRemote || marketOpen;
+
   const [ix, setIx] = useState<GlobalIndex | null>(null);
   // control-plane liveness for the ControlPlaneChip dot — driven by the index poll below (ok on a successful
   // fetch, error on a failed one, connecting until the first result). A pure health signal, not a data input.
@@ -425,20 +444,20 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // (Skill panel) which skill the left inspector shows — a skill chip anywhere calls openSkill(id). Opening the
   // LOCAL inspector closes the online detail (both are left-anchored — only one shows at a time).
   const skillApi = useMemo(
-    () => ({ open: openSkill, openSkill: (s: string) => { setOpenRemote(null); setOpenSkill(s); }, close: () => setOpenSkill(null) }),
-    [openSkill],
+    () => ({ open: openSkill, openSkill: (s: string) => { closeRightSlot("skill"); setOpenSkill(s); }, close: () => setOpenSkill(null) }),
+    [openSkill, closeRightSlot],
   );
   // (Remote skill panel) the ONLINE detail inspector — a remote marketplace card calls openRemote(row). Opening
   // it closes the local inspector; installedNonce bumps on a successful install so SkillMarketPanel re-fetches.
   const remoteSkillApi = useMemo(
     () => ({
       open: openRemote,
-      openRemote: (row: RemoteSkill) => { setOpenSkill(null); setOpenRemote(row); },
+      openRemote: (row: RemoteSkill) => { closeRightSlot("remote"); setOpenRemote(row); },
       close: () => setOpenRemote(null),
       installedNonce,
       bumpInstalled: () => setInstalledNonce((n) => n + 1),
     }),
-    [openRemote, installedNonce],
+    [openRemote, installedNonce, closeRightSlot],
   );
 
   const viewModeApi = useMemo(
@@ -645,14 +664,14 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           />
           {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
               scrim (by design), so opening one must close the other or they stack. */}
-          <MenuBar activeRun={activeRun} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} />
+          <MenuBar activeRun={activeRun} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} collapsed={cardOpen} />
           {/* Full-screen "switch workspace" launcher (opened by the MenuBar ⊞ pill). Entering a folder re-scopes
               the console via enterWorkspace; a live run routes through its detach-the-session confirm. */}
           <WorkspaceLauncher open={workspaceOpen} ix={ix} activeWorkspace={activeWorkspace} liveRun={liveRun} onEnter={enterWorkspace} onClose={() => setWorkspaceOpen(false)} />
           {/* Consolidated control-plane control (bottom-right, beside the chat launcher): the local ⇄ cloud
               switch + connect-a-remote, with a liveness dot (green reachable / red unreachable). */}
           <ControlPlaneChip health={controlHealth} />
-          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} marketOpen={marketOpen} onToggleMarket={() => setMarketOpen((o) => !o)} muted={startOpen || migrateOpen || workspaceOpen} />
+          <ModeBar chatOpen={companionOpen} onToggleChat={toggleChat} digestOpen={digestOpen} onToggleDigest={toggleDigest} marketOpen={marketOpen} onToggleMarket={toggleMarket} muted={startOpen || migrateOpen || workspaceOpen} />
           <FusionSaveBar active={mode === "fusion"} />
           {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
               overlay is open — both are left-anchored, and the overlay is the focus. */}
@@ -678,7 +697,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             dropChip={dropChip}
             onComposingChange={setComposingNodeId}
           />
-          <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
+          <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setChatOpen} />
           {/* Left-edge skill inspector — opened by clicking a loaded skill chip (node card / NodeHud) OR a
               marketplace card. */}
           <SkillPanel activeRun={activeRun} />

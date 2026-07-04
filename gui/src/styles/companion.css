@@ -109,11 +109,24 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--ds-space-2);
+  gap: var(--ds-space-3);
   text-align: center;
   font-size: var(--ds-text-sm);
   color: var(--ds-text-tertiary);
 }
+/* the pi mark now lives HERE (the launcher is gone) — a soft accent tile above the prompt copy */
+.ds-companion__empty-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: var(--ds-radius-xl);
+  color: var(--ds-accent);
+  background: var(--ds-accent-subtle);
+  border: 1px solid var(--ds-border-accent);
+}
+.ds-companion__empty-text { max-width: 26ch; }
 .ds-companion__restart {
   border: 1px solid var(--ds-border-hairline);
   border-radius: var(--ds-radius-sm);

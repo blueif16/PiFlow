@@ -1,7 +1,6 @@
 /**
- * ControlPlaneChip — the CONSOLIDATED control-plane control, pinned bottom-right beside the pi chat
- * launcher (extracted from the old top-center EndpointSwitcher). ONE angular glass chip that merges the
- * two remote actions into a single anchored popover:
+ * ControlPlaneChip — the CONSOLIDATED control-plane control, pinned TOP-CENTER on the top edge. ONE
+ * angular glass chip that merges the two remote actions into a single anchored popover:
  *   - SWITCH the whole console local ⇄ cloud (one-click, when a remote is known this session), and
  *   - CONNECT a fresh remote control plane (the degrade path: a URL + optional bearer).
  *
@@ -9,7 +8,7 @@
  * plane — PLUS a small connection DOT before the glyph that colours the plane's liveness (green = reachable,
  * red = unreachable, amber = connecting). The URL rides the tooltip, never as a visible label.
  *
- * Click opens the popover ABOVE the chip (no scrim): current → target with a single Confirm that re-points
+ * Click opens the popover BELOW the chip (no scrim): current → target with a single Confirm that re-points
  * the WHOLE console via `setEndpoint` (the SAME runtime repoint the migrate switch uses). Escape / click-away
  * cancels. Local → cloud with no remote known this session degrades to a URL (+ token) field.
  */
