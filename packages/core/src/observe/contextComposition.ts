@@ -56,7 +56,7 @@ export interface ContextOp {
   path: string;                // absolute (inject → the staged prompt.md path)
   displayPath: string;         // via makeDisplayPath
   scope: ScopeKind;            // run|skill|template|package|repo (reuse scopeKind); inject → 'run'
-  range: { offset: number; limit: number } | null;  // line-based; null = whole-file / no args
+  range: { offset: number; limit: number | null } | null;  // line-based; null = whole-file/no-args; limit:null = offset-only continuation
   fileLines: number | null;    // total lines on disk at build time (or from manifest)
   fileBytes: number | null;    // total bytes
   returnedBytes: number | null; // best-effort actual bytes delivered (non-truncated result; else null)
@@ -126,7 +126,7 @@ interface PendingOp {
   toolName: string;
   path: string;
   tMs: number | null;
-  range: { offset: number; limit: number } | null;
+  range: { offset: number; limit: number | null } | null;
   ok: boolean;
   logPreviewCapped: boolean;
   returnedBytes: number | null;
@@ -194,29 +194,41 @@ function fileMeta(abs: string, manifest: ReadsManifest | null): { lines: number 
   }
 }
 
-/** Union the covered line-set for ONE file across all its read ops → coverage 0..1 (null when size unknown). */
+/** pi `truncateHead` cutoff — the 0-indexed EXCLUSIVE end line a NO-LIMIT read starting at 0-indexed `start`
+ *  delivers: pi keeps complete lines up to min(READ_PAGE_LINES lines, READ_PAGE_BYTES bytes) from `start`
+ *  (core/tools/truncate.js). Without per-line bytes we estimate the byte cap proportionally — accurate enough
+ *  for the full/partial verdict AND, crucially, for recognizing a paged continuation (adjacent unions still
+ *  meet at EOF regardless of the exact head-cutoff line). */
+function truncateCutoff(start: number, fileLines: number, fileBytes: number | null): number {
+  const lineCap = Math.min(start + READ_PAGE_LINES, fileLines);
+  if (fileBytes == null || fileBytes <= 0) return lineCap;
+  const remainingBytes = (fileBytes * (fileLines - start)) / fileLines;
+  if (remainingBytes <= READ_PAGE_BYTES) return lineCap; // the whole remainder from `start` fits in one page
+  const avgBytesPerLine = fileBytes / fileLines;
+  return Math.min(lineCap, start + Math.max(1, Math.floor(READ_PAGE_BYTES / avgBytesPerLine)));
+}
+
+/**
+ * Union the delivered line-set for ONE file across all its read ops → coverage 0..1 (null when size unknown).
+ * Each read delivers [start, end): `start` from its (1-indexed) `offset` (null = from the top); `end` from an
+ * explicit `limit` (the model asked for exactly that many lines) OR — for a NO-LIMIT read — pi's truncateHead
+ * cutoff. This is what makes an offset-only CONTINUATION read (`offset=N`, no limit) correctly extend coverage
+ * to EOF instead of being mis-read as a second whole-file read (the pagination bug this fixes).
+ */
 function coverageForPath(
-  ranges: ({ offset: number; limit: number } | null)[],
+  ranges: ({ offset: number; limit: number | null } | null)[],
   fileLines: number | null,
   fileBytes: number | null,
 ): { coverage: number | null; covered: ContextOp['covered'] } {
   if (fileLines == null || fileLines <= 0) return { coverage: null, covered: 'unknown' };
-  const hasNoOffset = ranges.some((r) => r == null);
-  const rangedOnly = ranges.filter((r): r is { offset: number; limit: number } => r != null);
-  // Whole-file small read: a no-offset read of a ≤2000-line AND ≤50 KB file delivered the WHOLE file.
-  if (hasNoOffset && fileLines <= READ_PAGE_LINES && (fileBytes == null || fileBytes <= READ_PAGE_BYTES)) {
-    return { coverage: 1, covered: 'full' };
-  }
-  // Otherwise union the intervals. A no-offset read of a big file only pages the first READ_PAGE_LINES.
   const intervals: [number, number][] = [];
   for (const r of ranges) {
-    if (r == null) {
-      intervals.push([0, Math.min(fileLines, READ_PAGE_LINES)]);
-    } else {
-      const a = Math.max(0, Math.min(r.offset, fileLines));
-      const b = Math.max(a, Math.min(r.offset + r.limit, fileLines));
-      intervals.push([a, b]);
-    }
+    // pi read `offset` is 1-indexed; a null offset reads from the top (line 1).
+    const start = r && r.offset != null ? Math.max(0, Math.min(r.offset - 1, fileLines)) : 0;
+    const end = r && r.limit != null
+      ? Math.min(start + r.limit, fileLines)              // explicit limit → exactly that many lines
+      : truncateCutoff(start, fileLines, fileBytes);       // no limit → truncateHead-capped from `start`
+    intervals.push([start, Math.max(start, end)]);
   }
   intervals.sort((x, y) => x[0] - y[0]);
   let coveredLines = 0;
@@ -226,13 +238,7 @@ function coverageForPath(
     if (b > s) coveredLines += b - s;
     if (b > curEnd) curEnd = b;
   }
-  let coverage = Math.min(1, coveredLines / fileLines);
-  // 50 KB byte-truncation guard: a whole-file read of a >50 KB file did NOT deliver every byte even if the
-  // line math rounds to full (rare: ≤2000 lines but >50 KB). Only downgrade when the no-offset read was the
-  // SOLE source (no paged reads filled the rest).
-  if (hasNoOffset && rangedOnly.length === 0 && fileBytes != null && fileBytes > READ_PAGE_BYTES && coverage >= FULL_THRESHOLD) {
-    coverage = READ_PAGE_BYTES / fileBytes;
-  }
+  const coverage = Math.min(1, coveredLines / fileLines);
   return { coverage, covered: coverage >= FULL_THRESHOLD ? 'full' : 'partial' };
 }
 
@@ -264,7 +270,11 @@ export function buildNodeContext(runDir: string, nodeId: string, ctx: ContextBui
       const p = typeof argPath === 'string' ? argPath : '';
       const offset = typeof ev.args?.offset === 'number' ? ev.args.offset : null;
       const limit = typeof ev.args?.limit === 'number' ? ev.args.limit : null;
-      const range = offset != null && limit != null ? { offset, limit } : null;
+      // Record the range whenever EITHER offset or limit is present. CRITICAL: an offset-only read
+      // (`offset=N`, no limit) is pi's CANONICAL pagination continuation ("Use offset=N to continue") — it
+      // must NOT be dropped to null (that mis-counts it as a second whole read and erases the paging).
+      // offset defaults to 1 (pi read.js: `startLine = offset ?? 1`).
+      const range = (offset != null || limit != null) ? { offset: offset ?? 1, limit } : null;
       const rec: PendingOp = {
         seq: toolSeq++,
         op,
@@ -306,7 +316,7 @@ export function buildNodeContext(runDir: string, nodeId: string, ctx: ContextBui
   }
 
   // Per-distinct-path coverage: union every read op's range for that path (only read/grep count as coverage).
-  const rangesByPath = new Map<string, ({ offset: number; limit: number } | null)[]>();
+  const rangesByPath = new Map<string, ({ offset: number; limit: number | null } | null)[]>();
   const metaByPath = new Map<string, { lines: number | null; bytes: number | null; sha256: string | null }>();
   for (const rec of pending) {
     if (!READ_OPS.has(rec.toolName) || !rec.path) continue;

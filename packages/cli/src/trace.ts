@@ -35,9 +35,13 @@ export function parseTraceArgs(argv: string[]): ParsedTraceArgs {
 const pad = (s: unknown, n: number): string => String(s ?? '').padEnd(n).slice(0, n);
 const shortSha = (sha: string | null): string => (sha ? sha.replace(/^sha256:/, '').slice(0, 8) : '');
 const isRead = (op: ContextOp): boolean => op.op === 'read' || op.op === 'grep';
-/** range column: a read's line window (or `whole` when unpaged); `whole` for the inject; `—` for edit/write/etc. */
-const rangeStr = (op: ContextOp): string =>
-  isRead(op) ? (op.range ? `${op.range.offset}-${op.range.offset + op.range.limit}` : 'whole') : op.op === 'inject' ? 'whole' : '—';
+/** range column: a read's line window — `off-off+limit` for a bounded read, `off-end` for an offset-only
+ *  continuation (no limit), `whole` when unpaged; `whole` for the inject; `—` for edit/write/etc. */
+const rangeStr = (op: ContextOp): string => {
+  if (!isRead(op)) return op.op === 'inject' ? 'whole' : '—';
+  if (!op.range) return 'whole';
+  return op.range.limit != null ? `${op.range.offset}-${op.range.offset + op.range.limit}` : `${op.range.offset}-end`;
+};
 /** coverage column: a FAILED op shows `✗ <error>` (delivered nothing); coverage only applies to reads + inject. */
 const covStr = (op: ContextOp): string => {
   if (op.ok === false) return `✗ ${op.errorType ?? 'failed'}`;

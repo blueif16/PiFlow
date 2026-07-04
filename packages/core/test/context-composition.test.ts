@@ -157,6 +157,59 @@ describe('buildNodeContext — coverage math on a genuinely large file', () => {
   });
 });
 
+describe('buildNodeContext — offset-only pagination coverage (the pctx01 regression)', () => {
+  // Stage a tmp run with custom events + manifest (no on-disk file → the proportional cutoff path).
+  async function buildFrom(events: string, manifest: Record<string, unknown>) {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'ctxpage-'));
+    const nodeDir = path.join(tmp, '.pi', 'nodes', 'g');
+    await fs.mkdir(nodeDir, { recursive: true });
+    await fs.writeFile(path.join(nodeDir, 'events.jsonl'), events);
+    const RUN2 = '/ws/run';
+    return buildNodeContext(tmp, 'g', {
+      displayPath: makeDisplayPath(RUN2, '/ws'),
+      scopeOf: (abs, dp) => (abs === RUN2 || abs.startsWith(RUN2 + '/') ? 'run' : scopeKind(dp)),
+      promptText: '', promptPath: null, manifest: manifest as never,
+    });
+  }
+  const ev = (o: unknown) => JSON.stringify(o);
+
+  it('a no-offset read of a >50KB file FOLLOWED by an offset-only continuation → covered:"full" (100%)', async () => {
+    // The REAL pctx01 SKILL.md pattern: read the head (no offset, truncated), then the rest (offset=N, NO limit)
+    // — the canonical "Use offset=N to continue". Before the fix, the offset-only read was dropped to null and
+    // counted as a SECOND whole read → a bogus ~54% partial. It must now union to full.
+    const P = '/ws/run/spec/big.md';
+    const events = [
+      ev({ type: 'tool_execution_start', toolName: 'read', toolCallId: 'a', args: { path: P }, _t: 1 }),
+      ev({ type: 'tool_execution_end', toolCallId: 'a', result: { truncated: true, preview: 'head…' }, isError: false, _t: 2 }),
+      ev({ type: 'tool_execution_start', toolName: 'read', toolCallId: 'b', args: { path: P, offset: 535 }, _t: 3 }),
+      ev({ type: 'tool_execution_end', toolCallId: 'b', result: { content: [{ type: 'text', text: 'tail…' }] }, isError: false, _t: 4 }),
+    ].join('\n') + '\n';
+    const { context, composition } = await buildFrom(events, { [P]: { sha256: 'sha256:big', bytes: 94000, lines: 981 } });
+    const cont = context.find((o) => o.toolCallId === 'b')!;
+    expect(cont.range).toEqual({ offset: 535, limit: null }); // the offset-only continuation is RECORDED (was null → the bug)
+    const head = context.find((o) => o.toolCallId === 'a')!;
+    expect(head.covered).toBe('full');           // file-level union of [head] ∪ [continuation] = whole file
+    expect(head.coverage).toBeGreaterThan(0.999);
+    expect(composition.partialReads).not.toContain('spec/big.md');
+    expect(composition.readFiles).toBe(1);        // one distinct path, two reads
+  });
+
+  it('a no-offset read of a >50KB file with NO continuation → covered:"partial" (~54%)', async () => {
+    // The genuine truncation-without-paging case must STILL read partial — the fix must not over-report.
+    const P = '/ws/run/spec/lone.md';
+    const events = [
+      ev({ type: 'tool_execution_start', toolName: 'read', toolCallId: 'c', args: { path: P }, _t: 1 }),
+      ev({ type: 'tool_execution_end', toolCallId: 'c', result: { truncated: true, preview: 'head…' }, isError: false, _t: 2 }),
+    ].join('\n') + '\n';
+    const { context, composition } = await buildFrom(events, { [P]: { sha256: 'sha256:lone', bytes: 94000, lines: 981 } });
+    const op = context.find((o) => o.toolCallId === 'c')!;
+    expect(op.covered).toBe('partial');
+    expect(op.coverage).toBeGreaterThan(0.4);
+    expect(op.coverage).toBeLessThan(0.65);
+    expect(composition.partialReads).toContain('spec/lone.md');
+  });
+});
+
 describe('emitReadsManifest — the ONE new collection (run-time sha)', () => {
   it('writes a manifest with the correct sha/bytes/lines for every read path', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'readsmanifest-'));
