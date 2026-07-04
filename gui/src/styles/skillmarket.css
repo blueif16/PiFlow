@@ -263,34 +263,6 @@
 }
 .ds-skillcard__srclink:hover { color: var(--ds-accent); text-decoration: underline; }
 
-/* the visible install-command pill on an online card (click anywhere on the card copies it) */
-.ds-skillcard__cmd {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 6px 0 2px;
-  padding: 4px 8px;
-  border: 1px solid var(--ds-border, rgba(0, 0, 0, 0.1));
-  border-radius: 6px;
-  background: var(--ds-bg-subtle, rgba(0, 0, 0, 0.03));
-  overflow: hidden;
-}
-.ds-skillcard__cmdtext {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
-  color: var(--ds-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-}
-.ds-skillcard__cmdcopy {
-  font-size: 10px;
-  color: var(--ds-accent);
-  flex-shrink: 0;
-}
-.ds-skillcard__cmd.is-copied { border-color: var(--ds-accent); }
-
 /* the one-click INSTALL CTA on an online card + its detail panel (replaces the old copy-command pill) —
    matches the composecard primary button (accent fill, white text). */
 .ds-skillcard__install {
