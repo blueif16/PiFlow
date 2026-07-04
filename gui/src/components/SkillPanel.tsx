@@ -10,9 +10,8 @@
  * requires/allowed — shown as "native tools · none declared", never an error. Floats at z-modal so it's visible
  * whether opened from the canvas or from inside an open NodeHud.
  */
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { GlassSurface } from "./GlassSurface";
+import { useEffect, useState } from "react";
+import { SideCard } from "./SideCard";
 import { MarkdownReader } from "./MarkdownReader";
 import { ToolTag } from "./toolMeta";
 import { useSkill } from "./SkillContext";
@@ -30,7 +29,6 @@ export function SkillPanel({ activeRun }: { activeRun: string }) {
   const [bundle, setBundle] = useState<SkillBundle | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "loaded" | "missing">("idle");
   const [showFull, setShowFull] = useState(false);
-  const panelRef = useRef<HTMLDivElement>(null);
 
   // Fetch the bundle whenever the open skill (or the run) changes; reset the body expand each time.
   useEffect(() => {
@@ -46,14 +44,6 @@ export function SkillPanel({ activeRun }: { activeRun: string }) {
     return () => { alive = false; };
   }, [open, activeRun]);
 
-  // Escape closes (the shell-wide convention); the panel is layered (no scrim), so no click-away trap.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, close]);
-
   if (!open) return null;
 
   const label = bundle?.name ?? shortName(open);
@@ -62,19 +52,13 @@ export function SkillPanel({ activeRun }: { activeRun: string }) {
   const extraAllowed = (bundle?.allowed ?? []).filter((t) => !requires.includes(t));
   const noManifest = status === "loaded" && requires.length === 0 && extraAllowed.length === 0;
 
-  return createPortal(
-    <div className="ds-skillpanel-layer" ref={panelRef}>
-      <GlassSurface as="aside" variant="soft" className="ds-skillpanel" legibleText role="dialog" aria-label={`skill ${label}`}>
+  return (
+    <SideCard open={!!open} onClose={close} accent="skill" ariaLabel={`skill ${label}`}>
         <div className="ds-skillpanel__head">
           <div className="ds-skillpanel__title">
             <span className="ds-skillpanel__eyebrow">skill bundle</span>
             <h2 className="ds-skillpanel__name">{label}</h2>
           </div>
-          <button type="button" className="ds-skillpanel__close" aria-label="Close skill panel" title="Close (Esc)" onClick={close}>
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
         </div>
 
         {status === "loading" && <div className="ds-skillpanel__muted">loading skill…</div>}
@@ -135,8 +119,6 @@ export function SkillPanel({ activeRun }: { activeRun: string }) {
             )}
           </div>
         )}
-      </GlassSurface>
-    </div>,
-    document.body,
+    </SideCard>
   );
 }

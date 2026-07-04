@@ -1,0 +1,106 @@
+/* ============================================================================
+   SideCard — the shared RIGHT-dock card shell. ONE floating glass card the whole
+   right-dock family (Digest · Skill · Remote skill · Market) renders into: docked
+   to the right edge, INSET from the top/right/bottom (never flush to a screen edge),
+   sliding OUT from the right edge on open, with a generously padded scroll body so
+   text never touches the card edge, and its own close control.
+
+   The right edge is a SINGLE SLOT — the canvas keeps these mutually exclusive — so a
+   card always REPLACES the one before it, never stacks. Sits at z-modal: above an
+   open NodeHud (a detail surface), below the floating MenuBar/ModeBar (z-popover),
+   which collapse/relocate to clear its corners.
+   ========================================================================== */
+.ds-sidecard-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--ds-z-modal);
+  pointer-events: none;              /* only the card is interactive; canvas clicks fall through */
+}
+.ds-sidecard-layer > * { pointer-events: auto; }
+
+/* the floating card — docked RIGHT, inset from top/right/bottom. Its LEFT side is the leading edge that
+   faces the canvas (a thin accent seam rides it). All corners softly rounded: a floating card, so the
+   flush-rail sci-fi bevel is dropped here on purpose. */
+.ds-sidecard {
+  position: fixed;
+  top: clamp(14px, 2vh, 22px);
+  right: clamp(14px, 2vw, 22px);
+  bottom: clamp(14px, 2vh, 22px);
+  width: var(--ds-sidecard-w, min(42vw, 480px));
+  max-width: calc(100vw - 2 * clamp(14px, 2vw, 22px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--ds-radius-2xl);
+  overflow: hidden;                  /* clip the scroll body to the rounded corners */
+  box-shadow: var(--ds-shadow-glass);
+  animation: ds-sidecard-in var(--ds-dur-slow) var(--ds-ease-standard);
+  transform-origin: right center;
+}
+/* drop the glass primitive's two-corner bevel — this floats, so it reads as a soft card, not a rail */
+@supports (corner-shape: bevel) {
+  .ds-sidecard {
+    border-start-end-radius: var(--ds-radius-2xl);
+    border-end-start-radius: var(--ds-radius-2xl);
+    corner-shape: round;
+  }
+}
+
+/* the one rationed flourish: a thin accent seam on the LEADING (left) edge, tinted per card kind. */
+.ds-sidecard::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--ds-sidecard-accent, var(--ds-accent));
+  opacity: 0.85;
+  pointer-events: none;
+}
+.ds-sidecard[data-accent="remote"] { --ds-sidecard-accent: var(--ds-blue-600, var(--ds-accent)); }
+
+/* slide-out: from beyond the right edge → home, with a whisper of scale for a soft "pop". */
+@keyframes ds-sidecard-in {
+  from { opacity: 0; transform: translateX(calc(100% + clamp(14px, 2vw, 22px))) scale(0.99); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+/* close — floats in the card's top-right corner, above the scrolling body */
+.ds-sidecard__close {
+  position: absolute;
+  top: clamp(12px, 1.6vh, 18px);
+  right: clamp(12px, 1.4vw, 16px);
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--ds-text-tertiary);
+  border-radius: var(--ds-radius-md);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast);
+}
+.ds-sidecard__close:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-sidecard__close:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 2px; }
+
+/* the scroll body — owns the card's internal padding (text never touches an edge). The tall BOTTOM pad is
+   scroll headroom so the last rows clear the floating ModeBar band. */
+.ds-sidecard__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-5);
+  padding: clamp(18px, 2.4vh, 26px) var(--ds-space-6) clamp(28px, 5vh, 44px);
+}
+/* keep the first flow child (a panel header) clear of the floating close control */
+.ds-sidecard__body > :first-child { padding-right: 30px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-sidecard { animation: none; }
+  .ds-sidecard__close { transition: none; }
+}
