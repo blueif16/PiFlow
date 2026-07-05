@@ -22,6 +22,7 @@ import {
   type AnomalyKind,
   type TelemetryEvent,
   type Verbosity,
+  type TurnRecord,
 } from '@piflow/core';
 
 // ── parse ───────────────────────────────────────────────────────────────────────────────────────────
@@ -52,12 +53,19 @@ const k = (n: number): string => (n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 
 const usd = (c: number): string => (c >= 0.01 ? `$${c.toFixed(2)}` : c > 0 ? `$${c.toFixed(4)}` : '$0');
 const pct = (p: number | null): string => (p == null ? '' : `${Math.round(p * 100)}%`);
 const pad = (s: unknown, n: number): string => String(s ?? '').padEnd(n).slice(0, n);
+const secs = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
 
-const ANOM_ICON: Record<AnomalyKind, string> = { failed: '✗', truncated: '✂', 'tool-loop': '↻', 'loop-score': '⟳', 'context-pressure': '▓', slow: '⏱', 'cost-spike': '$', retries: '↺' };
+const ANOM_ICON: Record<AnomalyKind, string> = { failed: '✗', truncated: '✂', 'tool-loop': '↻', 'loop-score': '⟳', 'context-pressure': '▓', 'mega-think': 'Θ', slow: '⏱', 'cost-spike': '$', retries: '↺' };
 const OUTCOME_ICON: Record<string, string> = { ok: '✓', reused: '✓', running: '▶', pending: '·', gap: '~', blocked: '✗', error: '✗', 'awaiting-input': '⏸', dry: '∅' };
 
 function anomalyLine(a: Anomaly): string {
   return `    ${ANOM_ICON[a.kind] ?? '!'} ${pad(a.kind, 17)} ${pad(a.nodeId, 16)} ${a.detail}`;
+}
+
+/** One per-turn timeline row: turn · t+s (start, relative to the first event) · dur · thinkChars · tools. */
+function turnRow(t: TurnRecord): string {
+  const tools = t.toolCalls.length ? t.toolCalls.map((c) => c.name).join(',') : '-';
+  return `    ${pad(t.turnIndex, 4)} ${pad(secs(t.startMs), 8)} ${pad(secs(t.durMs), 8)} ${pad(k(t.thinkChars), 7)} ${tools}`;
 }
 
 /** One per-node row: outcome · model-calls · tool-calls · tokens · cost · ctx% · loop/trunc flags. */
@@ -87,6 +95,17 @@ export function renderDigest(d: RunDigest, nodeId?: string): string {
     if (n.missing.length) lines.push(`  missing:  ${n.missing.join(', ')}`);
     if (n.issues.length) lines.push(`  issues:   ${n.issues.join('; ')}`);
     if (n.anomalies.length) lines.push(`  anomalies: ${n.anomalies.join(', ')}`);
+    // (turn-dissection) the reasoning-effort summary + the per-turn timeline — "why was this node slow"
+    // in one read, no manual events.jsonl archaeology.
+    if (n.totalThinkChars) {
+      const lt = n.largestTurn;
+      lines.push(`  think:    ${k(n.totalThinkChars)} chars total${lt ? ` · largest turn #${lt.turnIndex} (${k(lt.thinkChars)} chars/${secs(lt.durMs)})` : ''}`);
+    }
+    if (n.turns?.length) {
+      lines.push(`  turns (${n.turns.length}):`);
+      lines.push(`    turn t+s      dur      think   tools`);
+      lines.push(...n.turns.map(turnRow));
+    }
     return lines.join('\n');
   }
   const t = d.totals;

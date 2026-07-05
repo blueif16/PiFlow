@@ -19,6 +19,11 @@ export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens, ScopeB
 // + the run-time reads-manifest, computed once here (never in a view). See observe/contextComposition.ts.
 export { buildNodeContext } from './contextComposition.js';
 export type { ContextOp, NodeComposition, NodeContext, ContextBuildCtx, ReadsManifest, ReadsManifestEntry } from './contextComposition.js';
+// Turn-dissection — per-MODEL-TURN "reasoning-effort" timeline (thinking/text volume + the tool calls each
+// turn made) + the derived node-level rollup (totalThinkChars, largestTurn, megaThinkTurns, derivation-
+// marker count). A PROJECTION over events.jsonl, computed once here (never in a view). See turnDissection.ts.
+export { buildNodeTurns, MEGA_THINK_CHARS, DERIVATION_MARKERS } from './turnDissection.js';
+export type { TurnRecord, TurnToolCall, TurnSummary, MegaThinkTurn, TurnDissection } from './turnDissection.js';
 // The pure per-node DISPLAY derivation (zones/rankings/unified outputs) `buildRunView` stamps on each node
 // as `derived` — the ONE compute site so the GUI + TUI render identical numbers and re-derive nothing.
 export { deriveNode, cacheTone, toolErrorTone, contextTone, timeTone, retriesTone } from './derive.js';

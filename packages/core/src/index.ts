@@ -406,6 +406,12 @@ export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens } from 
 // sha) + the advertised-vs-read blind-spot. A projection over events.jsonl + prompt.md + the reads-manifest.
 export { buildNodeContext } from './observe/index.js';
 export type { ContextOp, NodeComposition, NodeContext, ContextBuildCtx, ReadsManifest, ReadsManifestEntry } from './observe/index.js';
+// Turn-dissection — per-MODEL-TURN "reasoning-effort" timeline (thinking/text volume + the tool calls each
+// turn made) + the derived rollup (totalThinkChars, largestTurn, megaThinkTurns, derivationMarkerCount).
+// A projection over events.jsonl; feeds the `mega-think` telemetry anomaly + `piflowctl telemetry`'s
+// per-turn timeline table.
+export { buildNodeTurns, MEGA_THINK_CHARS, DERIVATION_MARKERS } from './observe/index.js';
+export type { TurnRecord, TurnToolCall, TurnSummary, MegaThinkTurn, TurnDissection } from './observe/index.js';
 // The falsifiable full-run rubric — the reusable "did this run actually succeed?" assessor (see §5 of
 // docs/design/full-run-simulation.md) that smoke drivers + E2E tiers call instead of substring checks.
 export { assessRunView } from './observe/index.js';

@@ -16,6 +16,7 @@ import fssync from 'node:fs';
 import path from 'node:path';
 import { createNodeAccumulator, type RichNode } from './distill.js';
 import { buildNodeContext, type ContextOp, type NodeComposition, type ReadsManifest } from './contextComposition.js';
+import { buildNodeTurns, type TurnRecord, type TurnSummary } from './turnDissection.js';
 import { resolveStructure } from './structure.js';
 import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
@@ -96,6 +97,13 @@ export interface RunViewNode {
   /** (context-composition) The roll-up over `context`: injectedBytes, distinct readFiles, advertised paths,
    *  the `advertisedUnread` BLIND-SPOT, and `partialReads`. */
   composition?: NodeComposition;
+  /** (turn-dissection) The per-MODEL-TURN timeline — thinking/text volume + the tool calls each turn made.
+   *  ADDITIVE, computed post-hoc by `buildNodeTurns`. Absent when the node recorded no turns. */
+  turns?: TurnRecord[];
+  /** (turn-dissection) The roll-up over `turns`: totalThinkChars, the largest turn, `megaThinkTurns` (a
+   *  turn that burned ≥ MEGA_THINK_CHARS of thinking with ZERO tool calls — pure deliberation, no action),
+   *  and `derivationMarkerCount`. See observe/turnDissection.ts. */
+  turnSummary?: TurnSummary;
   summary?: string;
   issues?: string[];
   stageIndex?: number;
@@ -499,6 +507,14 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       if (nc.context.length) node.context = nc.context;
       node.composition = nc.composition;
     } catch { /* context is a projection add-on — never let it break the run-view */ }
+    // (turn-dissection) ADDITIVE: per-turn reasoning-effort timeline (thinking/text volume + tool calls) +
+    // the mega-think/derivation-marker rollup. Reads events.jsonl a THIRD time post-hoc (fine — same
+    // best-effort contract as context-composition above; never let it break the run-view).
+    try {
+      const td = buildNodeTurns(runDir, id);
+      if (td.turns.length) node.turns = td.turns;
+      node.turnSummary = td.summary;
+    } catch { /* turn dissection is a projection add-on — never let it break the run-view */ }
     nodes.push(node);
   }
 
