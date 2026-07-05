@@ -59,7 +59,7 @@ LIVE (the single enriched SSE source)
 - `packages/server/src/handlers.ts:35` — `piflowRunStream` — `GET /__piflow/stream/<run>` pipes the exact `watchRun` stream as SSE (feeds it the SAME historyDirs/workspaceRoot as /run-view)
 - `packages/server/src/handlers.ts:103` — `piflowRunView` — `GET /__piflow/run-view/<run>` = one-shot `buildRunView` (loads + the DR6 reconcile net)
 PROJECT + CONSUMED
-- `packages/core/src/observe/telemetry.ts:326` — `projectRunDigest()` — the agent-facing RunDigest lens over the view (NOT a second collector)
+- `packages/core/src/observe/telemetry.ts:329` — `projectRunDigest()` — the agent-facing RunDigest lens over the view (NOT a second collector)
 - `packages/cli/src/status.ts:35` — `renderStatus()` — CLI renders a `readRunModel` snapshot (thin renderer; `:87` reads it)
 - `gui/vite.config.ts:21` — the Vite dev middleware wires `@piflow/server` `createApiMiddleware` (the SSE + run-view handlers)
 
@@ -163,12 +163,18 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `b9c8fac` 2026-07-03 — refactor(server): agents.json + skill display roots ride core's enumeration seam
 - `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 - `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
+- `1419142` 2026-07-03 — feat(server): POST /__piflow/skill-install — one-click remote install
+- `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `71076e6` 2026-07-05 — feat(observe): per-turn reasoning-effort dissection — the raw signal
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[agent-identity-surface]]
+- [[agentic-design-library]]
 - [[always-no-ff-merge-to-main]]
+- [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -178,6 +184,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
+- [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
@@ -193,6 +200,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
+- [[minimax-m3-framing]]
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
@@ -227,5 +235,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:114) — 8 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-03 · arc=74 commits · files=13 · lessons=51</sub>
+<sub>derived 2026-07-05 · arc=78 commits · files=13 · lessons=55</sub>
 <!-- okf:auto-end -->

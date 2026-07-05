@@ -76,6 +76,45 @@ describe('projectRunDigest — anomaly detection', () => {
     const slow = projectRunDigest(rview([vnode({ id: 'a', durationMs: 9000, expectedMs: 3000, priorSamples: 4 })]));
     expect(slow.nodes[0].anomalies).toEqual(['slow']); // 3× the 3-sample mean
   });
+
+  it('mega-think fires when the node carries a megaThinkTurn, and the digest surfaces the summary numbers', () => {
+    const d = projectRunDigest(
+      rview([
+        vnode({
+          id: 'thinker',
+          turnSummary: {
+            totalThinkChars: 60_170,
+            largestTurn: { turnIndex: 23, thinkChars: 50_170, durMs: 188_876 },
+            megaThinkTurns: [{ turnIndex: 23, thinkChars: 50_170, durMs: 188_876, quote: 'Let me derive the discriminant…' }],
+            derivationMarkerCount: 2,
+          },
+        }),
+      ]),
+    );
+    const n = d.nodes[0];
+    expect(n.anomalies).toEqual(['mega-think']);
+    expect(n.totalThinkChars).toBe(60_170);
+    expect(n.largestTurn).toEqual({ turnIndex: 23, thinkChars: 50_170, durMs: 188_876 });
+    expect(n.megaThinkTurns).toHaveLength(1);
+    expect(n.derivationMarkerCount).toBe(2);
+    const anomaly = d.anomalies.find((a) => a.kind === 'mega-think')!;
+    expect(anomaly.detail).toMatch(/turn 23/);
+    expect(anomaly.detail).toMatch(/50170 thinking chars/);
+  });
+
+  it('a node with a big turn that ALSO used a tool is NOT mega-think (no megaThinkTurns entry ⇒ no anomaly)', () => {
+    // Guards the wiring, not the reducer's own math (that's turn-dissection.test.ts's job): even a node
+    // with real turn data and a big totalThinkChars stays clean if turnDissection didn't flag any turn.
+    const d = projectRunDigest(
+      rview([
+        vnode({
+          id: 'productive',
+          turnSummary: { totalThinkChars: 50_170, largestTurn: { turnIndex: 5, thinkChars: 50_170, durMs: 100_000 }, megaThinkTurns: [], derivationMarkerCount: 0 },
+        }),
+      ]),
+    );
+    expect(d.nodes[0].anomalies).toEqual([]);
+  });
 });
 
 describe('projectRunDigest — rollup + context %', () => {
