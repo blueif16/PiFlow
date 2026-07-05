@@ -97,8 +97,8 @@ describe('resolveNodeRunDir — run-dir resolution reuses run.ts conventions', (
 
     const resolved = resolveNodeRunDir({ run: runId, cwd: TMP });
     expect(resolved).toBe(runDir);
-    // The session dir the resume addresses is piSessionsDir of the RESOLVED run dir.
-    expect(piSessionsDir(resolved)).toBe(path.join(runDir, '.pi-sessions'));
+    // The session dir the resume addresses is piSessionsDir of the RESOLVED run dir (now under `.pi/`).
+    expect(piSessionsDir(resolved)).toBe(path.join(runDir, '.pi', 'sessions'));
   });
 
   it('a direct path to a run dir resolves to itself', async () => {

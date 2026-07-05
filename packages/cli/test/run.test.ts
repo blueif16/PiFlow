@@ -17,6 +17,7 @@ import {
   instantiateRun,
   piDir,
   nodeDir,
+  nodePromptFile,
   LocalSandboxProvider,
   type RunFromTemplateOpts,
 } from '@piflow/core';
@@ -448,17 +449,22 @@ describe('piflowctl run — --detach (unattended) threads checkpointReply', () =
 // These FAIL if the precedence regresses to `parsed.outDir ?? canonicalHome` (the old --out-wins order).
 // ─────────────────────────────────────────────────────────────────────────────
 describe('piflowctl run — a canonical run home is never relocated by --out', () => {
-  let wfRoot: string;   // the `.piflow/<wf>/` dir; its `template/` child gives runsHome = <wfRoot>/runs
+  let canonRoot: string; // the product root (the `.piflow` PARENT) — templateLayout derives it from the template
+  let wfRoot: string;    // <canonRoot>/.piflow/<wf>; its `template/` child gives runsHome = <wfRoot>/runs
   let canonTemplate: string;
   let elsewhere: string;
   beforeAll(async () => {
-    wfRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-canon-wf-'));
+    // A REAL canonical layout: <root>/.piflow/<wf>/template. `templateLayout` (strict — requires the `.piflow`
+    // ancestor) is what derives the canonical runs home now, so the fixture must be a genuine D9 tree.
+    canonRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-canon-root-'));
+    wfRoot = path.join(canonRoot, '.piflow', 'demo');
     canonTemplate = path.join(wfRoot, 'template');
+    await fs.mkdir(wfRoot, { recursive: true });
     await fs.cp(FIXTURE, canonTemplate, { recursive: true });
     elsewhere = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-canon-elsewhere-'));
   });
   afterAll(async () => {
-    await fs.rm(wfRoot, { recursive: true, force: true });
+    await fs.rm(canonRoot, { recursive: true, force: true });
     await fs.rm(elsewhere, { recursive: true, force: true });
   });
 
@@ -669,5 +675,71 @@ describe('piflowctl run --dry-run --profile — the plan reflects the elided DAG
         { print: () => {} },
       ),
     ).rejects.toThrow(/unknown profile "ghost".*full.*lean/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (A2 · ANTI-FOOTGUN) A run launched WITHOUT --workspace anchors {{WORKSPACE}} (and the sandbox read-jail,
+// threaded as repoRoot) at the PRODUCT ROOT derived from the template's own `.piflow/<wf>/template/`
+// placement — NEVER process.cwd(). This is the highest-value migration fix: pre-change the workspace
+// defaulted to cwd, so a run kicked off from a FOREIGN dir resolved {{WORKSPACE}} to wherever it was
+// invoked (and the read-jail anchored at cwd on every run because repoRoot was never passed). We build a
+// canonical product tree, run from a cwd that is NOT the product root, and assert (a) the REAL dry-run
+// instantiate materializes <run>/.pi/nodes/<id>/prompt.md with {{WORKSPACE}} = the product root, and
+// (b) the live branch threads repoRoot = that product root into runFromTemplate.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('piflowctl run — {{WORKSPACE}} + the read-jail anchor at the product root, not cwd (anti-footgun)', () => {
+  let product: string; // <root> — the derived productRoot (the `.piflow` parent)
+  let template: string; // <root>/.piflow/greet/template — a canonical D9 template
+  beforeAll(async () => {
+    product = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-anchor-prod-'));
+    template = path.join(product, '.piflow', 'greet', 'template');
+    await fs.mkdir(path.join(template, 'nodes', 'only'), { recursive: true });
+    await fs.writeFile(
+      path.join(template, 'meta.json'),
+      JSON.stringify({ id: 'greet', name: 'greet', description: 'anchor fixture', phases: ['only'] }, null, 2),
+    );
+    await fs.writeFile(
+      path.join(template, 'nodes', 'only', 'node.json'),
+      JSON.stringify(
+        { id: 'only', phase: 'only', deps: [], prompt: { file: 'prompt.md' }, tools: { allow: ['read', 'write', 'submit_result'] }, contract: { artifacts: ['out.md'], owns: ['out.md'], readScope: ['{{RUN}}'], returnMode: 'optional' } },
+        null,
+        2,
+      ),
+    );
+    // the prompt PROSE carries {{WORKSPACE}} literally, so the materialized prompt physically reveals the root.
+    await fs.writeFile(path.join(template, 'nodes', 'only', 'prompt.md'), 'canon={{WORKSPACE}}/skills — build under {{RUN}}');
+  });
+  afterAll(async () => {
+    await fs.rm(product, { recursive: true, force: true });
+  });
+
+  it('with NO --workspace and a FOREIGN cwd, the REAL dry-run instantiate resolves {{WORKSPACE}} to the product root', async () => {
+    // the run's cwd is the test process cwd (the piflow repo) — deliberately NOT the tmp product root.
+    expect(process.cwd()).not.toBe(product);
+    // NO --workspace, NO --out: workspace + the canonical run home must both derive from the template layout.
+    await runTemplate(
+      { templateDir: template, dryRun: true, run: 'anchor1', args: {}, sandbox: 'inmemory' },
+      { print: () => {} },
+    );
+    // the run landed in its CANONICAL home (.piflow/greet/runs/anchor1), and instantiateRun materialized the
+    // node prompt there with {{WORKSPACE}} resolved.
+    const runDir = path.join(product, '.piflow', 'greet', 'runs', 'anchor1');
+    const prompt = await fs.readFile(nodePromptFile(runDir, 'only'), 'utf8');
+    // {{WORKSPACE}} resolved to the PRODUCT ROOT (the template's `.piflow` parent) — not the foreign cwd.
+    expect(prompt).toContain(`canon=${product}/skills`);
+    expect(prompt).not.toContain('{{WORKSPACE}}');
+    expect(prompt).not.toContain(`canon=${process.cwd()}/skills`);
+  });
+
+  it('the LIVE branch threads repoRoot = the derived product root into runFromTemplate (the read-jail anchor)', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    await runTemplate(
+      { templateDir: template, dryRun: false, run: 'anchor2', args: {}, sandbox: 'inmemory' },
+      { runFromTemplate: async (_d, o) => { optsSeen = o; return { status: { ok: true } as never, outDir: o.runDir }; }, print: () => {} },
+    );
+    // both the workspace token root AND the sandbox read-jail anchor derive from the template layout, not cwd.
+    expect(optsSeen?.workspace).toBe(product);
+    expect(optsSeen?.repoRoot).toBe(product); // pre-change repoRoot was NEVER passed → the jail anchored at cwd.
   });
 });

@@ -58,6 +58,26 @@ export function findProductRoot(start: string): string | null {
 }
 
 /**
+ * The canonical run layout DERIVED from a template's OWN location — PURE path logic (no fs), so a run
+ * roots itself off the template it runs, NEVER off `process.cwd()`. Two fields with DIFFERENT strictness:
+ *   - `runsHome`: where runs land — the sibling `runs/` of any `<…>/template` dir. LOOSE (it does NOT
+ *     require the `.piflow` ancestor) so even a template outside the `.piflow/<wf>/` layout lands runs
+ *     next to itself, NEVER at `out/<id>` under cwd (self-contained beats cwd-scatter).
+ *   - `productRoot`: the `{{WORKSPACE}}` root — the parent of `.piflow`, requiring the full
+ *     `<product>/.piflow/<wf>/template` shape. `null` for a loose template; the caller then falls back to
+ *     `findProductRoot` and WARNS rather than silently rooting `{{WORKSPACE}}`/the read-jail at cwd.
+ * Both fields are `null` when `templateDir` is not a `template` dir at all.
+ */
+export function templateLayout(templateDir: string): { productRoot: string | null; runsHome: string | null } {
+  const dir = path.resolve(templateDir);
+  if (path.basename(dir) !== 'template') return { productRoot: null, runsHome: null };
+  const wfDir = path.dirname(dir); // `<…>/<wf>`
+  const runsHome = path.join(wfDir, 'runs'); // LOOSE — never out/<id> at cwd
+  const onD9Path = path.basename(path.dirname(wfDir)) === '.piflow';
+  return { productRoot: onD9Path ? path.dirname(path.dirname(wfDir)) : null, runsHome };
+}
+
+/**
  * Every product root AT or UNDER `start` — a recursive, depth-bounded walk that skips deps/build/fixtures and
  * every dot-dir (so `.git`, `.claude/worktrees/*`, and the `.piflow` dir itself are never descended into). The
  * start dir is always tested (even if named like a skip dir). Roots are absolute + sorted (stable order).

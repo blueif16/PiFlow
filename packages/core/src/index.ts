@@ -402,6 +402,10 @@ export type {
 // GUI build the SAME view from here (no view-local copy). Used by consumers that show cost/token panels.
 export { buildRunView } from './observe/index.js';
 export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens } from './observe/index.js';
+// Context-composition — the ordered "element tree" (injected prompt + every agent read w/ range/coverage/
+// sha) + the advertised-vs-read blind-spot. A projection over events.jsonl + prompt.md + the reads-manifest.
+export { buildNodeContext } from './observe/index.js';
+export type { ContextOp, NodeComposition, NodeContext, ContextBuildCtx, ReadsManifest, ReadsManifestEntry } from './observe/index.js';
 // The falsifiable full-run rubric — the reusable "did this run actually succeed?" assessor (see §5 of
 // docs/design/full-run-simulation.md) that smoke drivers + E2E tiers call instead of substring checks.
 export { assessRunView } from './observe/index.js';
@@ -433,6 +437,7 @@ export {
   isProductRoot,
   findProductRoot,
   findProductRootsUnder,
+  templateLayout,
   resolveScope,
   registryFromRoots,
   loadScopedRegistry,

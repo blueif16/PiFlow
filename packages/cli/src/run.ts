@@ -32,6 +32,8 @@ import {
   expandSubworkflow,
   loadFusionConfig,
   nodePromptFile,
+  templateLayout,
+  findProductRoot,
   generateRunName,
   writeStatus,
   nowISO,
@@ -197,6 +199,11 @@ export interface ParsedRunArgs {
    * default advisory `console.warn`. A misfit node then HALTs with a loud error record. Omit ⇒ advisory.
    */
   strict?: boolean;
+  /**
+   * Targeted re-run — force-RUN exactly these node ids, force-REUSE all others (the `node --rerun`
+   * primitive). Spread through `runFromTemplate` to `runWorkflow`; wins over the journal.
+   */
+  rerunNodes?: ReadonlySet<string>;
   /** Active run PROFILE name → resolved against the template's declared `profiles` (elides nodes before compile). */
   profile?: string;
   args: Record<string, string>;
@@ -295,7 +302,7 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
 
 /** Options for `dryRunPlan`. `promptDir` is the in-sandbox dir the realized prompt is referenced from. */
 export interface DryRunPlanOpts {
-  /** Where the staged prompt lives (referenced as `@<file>`). Default a placeholder `_pi` dir. */
+  /** Where the staged prompt lives (referenced as `@<file>`). Default a placeholder `.pi/staged` dir. */
   promptDir?: string;
   /** Effective provider (`pi --provider`) — the resolved system default or an explicit override; undefined ⇒
    *  no `--provider`/`--model` stamped (pi's own default). No hardcoded name. */
@@ -324,7 +331,7 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
   // `seededRegistry()` alone DROPS the first-party `submit_result` (catalog.ts:58), so re-add it — the SAME
   // superset `assembleRunTools` builds — else a node declaring `submit_result` falsely reads UNRESOLVED.
   const registry = seededRegistry([SUBMIT_RESULT_TOOL]);
-  const promptDir = opts.promptDir ?? '_pi';
+  const promptDir = opts.promptDir ?? '.pi/staged';
   // Undefined ⇒ neither `--provider` nor `--model` is stamped and pi uses its own settings.json default (the
   // preview mirrors the live command exactly — no hardcoded provider name).
   const provider = opts.provider;
@@ -502,13 +509,26 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   const { templateDir } = parsed;
   if (!templateDir) throw new Error('piflowctl run: a template directory is required (piflowctl run <templateDir>).');
 
-  const workspace = parsed.workspace ?? process.cwd();
   const tdir = path.resolve(templateDir);
+  // ROOT THE RUN AT THE PRODUCT, NEVER AT cwd. `{{WORKSPACE}}` (and the sandbox read-jail, threaded as
+  // `repoRoot` into runFromTemplate below) must anchor at the product the template belongs to — DERIVED
+  // from the template's OWN `.piflow/<wf>/template/` placement — so a run kicked off from ANY foreign cwd
+  // resolves identically. Precedence: an explicit `--workspace` wins; else the template layout's product
+  // root; else the nearest enclosing product (findProductRoot); else cwd with a LOUD warning (never a
+  // SILENT cwd footgun — the pre-migration default that anchored every token + the read-jail at wherever
+  // the run happened to be invoked).
+  let workspace = parsed.workspace ?? templateLayout(tdir)?.productRoot ?? findProductRoot(tdir) ?? undefined;
+  if (!workspace) {
+    workspace = process.cwd();
+    console.warn(
+      `piflowctl run: could not derive a product root from "${tdir}" — anchoring {{WORKSPACE}} + the read-jail at the current directory (${workspace}). Pass --workspace to set it explicitly.`,
+    );
+  }
   // The run's CANONICAL HOME is `.piflow/<wf>/runs/<id>` (sdk-canonical-build-plan §D9) — the single place
   // discovery + the global index read runs from. Derive the `runs/` parent from the template's own
   // `.piflow/<wf>/template/` layout so a bare `piflowctl run <templateDir>` lands under it; a template outside
   // that layout has no canonical home (falls back to `out/<id>`).
-  const runsHome = path.basename(tdir) === 'template' ? path.join(path.dirname(tdir), 'runs') : null;
+  const runsHome = templateLayout(tdir)?.runsHome ?? null;
   // The directory a sibling run lands in (and so the collision-check namespace): the canonical `runs/`
   // home, else the parent of an explicit `--out`, else the `out/` fallback. Auto-naming checks against
   // the run dirs ALREADY present there, so a fresh name never overwrites a prior run in EITHER layout.
@@ -754,12 +774,18 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     name: runId,
     ...(promptId ? { promptId } : {}),
     workspace,
+    // ANCHOR THE SANDBOX READ-JAIL at the product too. `repoRoot` is what the runner roots each node's
+    // read-scope jail on; passing it = `workspace` (the derived product root) fixes the pre-migration
+    // footgun where it was NEVER passed and defaulted to cwd — jailing reads at wherever the run was
+    // launched on every run, not at the product the template belongs to.
+    repoRoot: workspace,
     args: parsed.args,
     from: parsed.from,
     until: parsed.until,
     ...(parsed.noResume ? { noResume: true } : {}),
     // (P4, §2.4) `--strict` flips the author-time driver-fit preflight from advisory-warn to blocking.
     ...(parsed.strict ? { strict: true } : {}),
+    ...(parsed.rerunNodes && parsed.rerunNodes.size ? { rerunNodes: parsed.rerunNodes } : {}),
     profile: parsed.profile,
     providerName: effProvider,
     thinking: parsed.thinking,

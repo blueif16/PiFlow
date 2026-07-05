@@ -90,7 +90,9 @@ export const defaultPiCommand: CommandBuilder = (node, resolved, ctx, opts = {})
   if (ctx.model) parts.push('--model', ctx.model);
   if (resolved.piTools.length) parts.push('--tools', resolved.piTools.join(','));
   if (resolved.excludeTools?.length) parts.push('--exclude-tools', resolved.excludeTools.join(','));
-  if (opts.thinking) parts.push('--thinking', String(opts.thinking));
+  // PER-NODE thinking (types.ts NodeSpec.thinking) OVERRIDES the run-level opts.thinking; absent ⇒ inherit it.
+  const thinking = node.thinking ?? opts.thinking;
+  if (thinking) parts.push('--thinking', String(thinking));
   // -e ORDER is load-bearing: the extra extensions FIRST, then the staged tool-binding extension.
   for (const ext of opts.extraExtensions ?? []) parts.push('-e', q(ext));
   if (ctx.extensionFile) parts.push('-e', q(ctx.extensionFile));
@@ -130,7 +132,7 @@ const CLAUDE_EFFORTS = new Set(['low', 'medium', 'high']);
  * `@file` ref. Warm resume emits `--resume <id>` ONLY on the resume arm: Claude mints the id on create (it is
  * captured from output), so create/no-session emit no session flag.
  */
-export const claudeCommand: CommandBuilder = (_node, resolved, ctx, opts = {}) => {
+export const claudeCommand: CommandBuilder = (node, resolved, ctx, opts = {}) => {
   const parts: string[] = [
     'claude',
     '-p',
@@ -141,7 +143,9 @@ export const claudeCommand: CommandBuilder = (_node, resolved, ctx, opts = {}) =
     '--verbose',
   ];
   if (ctx.model) parts.push('--model', ctx.model);
-  const effort = typeof opts.thinking === 'string' && CLAUDE_EFFORTS.has(opts.thinking) ? opts.thinking : undefined;
+  // PER-NODE thinking overrides run-level; map to Claude's --effort (only its valid levels; else drop).
+  const think = node.thinking ?? opts.thinking;
+  const effort = typeof think === 'string' && CLAUDE_EFFORTS.has(think) ? think : undefined;
   if (effort) parts.push('--effort', effort);
   const tools = toClaudeTools(resolved.piTools);
   if (tools.length) parts.push('--tools', q(tools.join(' ')));

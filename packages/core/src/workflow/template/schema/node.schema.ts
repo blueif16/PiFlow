@@ -128,6 +128,14 @@ export const nodeSchema = {
       minLength: 1,
       description: 'Per-node tier alias → ~/.piflow/model-tiers.json (free-data names). Omitted ⇒ none.',
     },
+    thinking: {
+      // PER-NODE reasoning cap → `pi --thinking` (and claude `--effort`). OVERRIDES the run-level --thinking.
+      // The operator-free fix for producer over-think: a node that must COMMIT a write (not reason forever)
+      // pins its own cap in node.json instead of relying on an operator flag. The 6 levels pi --thinking takes.
+      type: 'string',
+      enum: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+      description: 'Per-node reasoning cap → pi --thinking / claude --effort. Overrides run-level. Omitted ⇒ inherit run.',
+    },
     inject: {
       // KIND 1 — FORCED reads (§6a): small · always-needed · stable files auto-injected into the prompt.
       type: 'array',

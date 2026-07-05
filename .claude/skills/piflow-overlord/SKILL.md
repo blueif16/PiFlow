@@ -12,7 +12,9 @@ description: >-
   agent (you) — fed by the SAME stream; this is the AGENT-mode contract. It DELEGATES deterministic termination
   (timeouts, retries, the run-count ceiling, token/edit budgets) to the shipped workflow-management plane and
   adds JUDGMENT on top; it intervenes AT SEAMS for live producer runs and may abort mid-run ONLY off the
-  critical path (a candidate / control node). piflow-start is its actuator for running & monitoring;
+  critical path (a candidate / control node). It is an event-WOKEN SENTINEL with NO event loop — a declarative
+  wake-policy over the one stream decides when a fold event is owed human-grade judgment, then it wakes,
+  adjudicates a one-shot digest, acts at a seam, and sleeps. piflow-start is its actuator for running & monitoring;
   piflow-enhance for improving a node; this skill is the decider ABOVE them.
 ---
 
@@ -29,12 +31,30 @@ that *whoever occupies the seat gets the job right*, whether that is you in this
 agent, or an agent in a cloud control-sandbox. Everything below the seat stays the same when the occupant
 changes; that invariance is the whole point.
 
+## Your posture — a SENTINEL, not a streamer (you have NO event loop)
+There is exactly ONE agent posture and it is **event-woken, never streaming.** You do NOT sit in a `for await`
+loop babysitting the stream — that is the deterministic reflex's job (code, below). An LLM agent has no socket
+callback; holding a stream open just burns a process and a context window on events the reflex already handled.
+Your whole lifecycle is one cycle:
+
+> **woken → adjudicate the one-shot digest → act (at an intervention-seam) → re-arm the wake → sleep.**
+
+You are woken ONLY when the reflex's stream produces an event a registered **wake-policy** says is worth
+human-grade judgment (§"The declarative wake-seam"). On wake you are handed a **decision-grade digest** — the
+matched event plus, for a run, the authoritative record (rootCauses, slow) — and you **window** that digest:
+decide from it; never re-scan the raw per-token stream. `telemetry --watch` (run fold) and
+`optimize --fix --watch` (optimize stream) are the wake SOURCES that feed you; `watch --notify` is a terminal
+liveness ping, **not** a decision/observation surface.
+
 ## Scope — the overlord's active theatre is the OPTIMIZE / DEBUG loop
 A normal workflow run is expected to **run robustly on its own**, governed by the deterministic management
 plane (timeouts, bounded retries, the run-count ceiling, budgets) + the runner's timeout/stall reflex. The
 overlord does NOT babysit or drive a healthy production run: on a **live producer** it is essentially
 **passive** (observe; let the deterministic plane enforce) and acts only at a **definitive error-out seam**
-(the stuck-node governor — skip / re-plan / redesign), never mid-run. Its ACTIVE theatre — where it "not only
+(the stuck-node governor — skip / re-plan / redesign), never mid-run. **That passivity assumes a deterministic
+verify gate is standing in for you.** On a profile that elides the gates (e.g. `companion`), passive-by-default
+flips for exactly one predicate: `node-finished` wakes you on every clean node-close too, because with no gate
+nothing else checks the landed artifact (§"The declarative wake-seam"). Its ACTIVE theatre — where it "not only
 flags but INTERVENES" — is the **optimize / fix loop**, because there the data plane is a **disposable
 candidate off the critical path**, so abort / rerun / nudge / land are SAFE and cheap. This is the positive
 reading of the seam law: you cannot safely enforce mid-run on a live producer, so you don't — you enforce
@@ -53,15 +73,30 @@ evidence: <what you VERIFIED it against — VCS diff / verify report / gate verd
 For an autonomous agent overlord, emit the same as a small JSON tail a parent can parse. Never decide without a
 quoted observable signal — a decision with no signal is a vibe, and vibes are how a control plane loses a fleet.
 
-## The invariant you sit on — ONE telemetry stream
+## The invariant you sit on — ONE stream, three planes
 There is a single canonical telemetry feed, identical to every consumer (programmatic, you, the GUI companion).
-You **subscribe**; you never change the data plane to watch it.
-- **Live run** — `piflowctl watch <run>` / `observe.watchRun` (SSE): node lifecycle + status records. The
-  DECISION-GRADE surface is `observe.telemetryStream`, which folds `watchRun` into edge-triggered, typed
-  `AnomalyKind` — `failed · truncated · context-pressure · tool-loop · slow · retries` (`DEFAULT_THRESHOLDS`) —
-  plus `localizeRootCauses` (walks the file-flow DAG back to the failure onset). Key your ABORT/RERUN rows on
-  these. ⚠️ `slow` needs cross-run history (record mode) — it **cannot fire on a live stream**; for a
-  slow-but-not-dead producer key on `stall` (the runner's stall watchdog), not `slow`.
+You **subscribe**; you never change the data plane to watch it. That one stream drives three planes, and the
+**wake-seam** is the membrane between the last two:
+- **DATA** — the canonical fold (`watchRun → telemetryStream`; `OptimizeEventSink → OptimizeEvent`).
+- **REFLEX** — deterministic, always-on code acting on EVERY event without waking you (the two planes below,
+  §"The two planes BELOW you").
+- **SENTINEL** — you, woken only when a registered **wake-policy** says a fold event is owed human-grade
+  judgment (§"The declarative wake-seam").
+
+The stream surfaces, and what to key on:
+- **Live run** — the raw feed is `observe.watchRun` / `piflowctl watch <run>` (SSE: node lifecycle + status
+  records). Your run WAKE SOURCE is the DECISION-GRADE fold on top of it — `observe.telemetryStream`, surfaced
+  by **`telemetry --watch`** — which folds `watchRun` into edge-triggered, typed `AnomalyKind`
+  (`failed · truncated · context-pressure · tool-loop · retries`, `DEFAULT_THRESHOLDS`) plus `localizeRootCauses`
+  (walks the file-flow DAG back to the failure onset). Bind the run wake to the FOLD, never to raw `watch` —
+  anomalies exist only in the fold. ⚠️ `slow` is record-only (needs cross-run history) — it **cannot fire on a
+  live stream**; a slow-but-alive producer is live-blind, caught only at `run-end` via the record. A *stalled*
+  producer is SIGTERM'd by the runner and lands as `error` — key on `status:error` / `stall`, not `slow`.
+  `watch --notify` is a **terminal liveness ping, NOT a decision/observation surface**: it fires once, its
+  desktop-notify is a dead stub, it cannot tell DONE from FAILED, and it carries no digest — never adjudicate off it.
+  The SAME fold also emits `node-close` on EVERY node's terminal transition, healthy or not (`telemetry.ts:342`,
+  fired once per node at `:451-455`) — this is the SDK's native node-lifecycle signal, not a new stream. A
+  `node-finished` wake predicate keys directly on it (profile-conditional — see below).
 - **Optimize / fix** — the `OptimizeEventSink` (`optimize --fix --watch`). The typed `OptimizeEvent` union
   carries a **first-class `fixer-aborted{node, reason}`** — the PORTABLE watchdog/timeout cutoff signal, read
   from the fixer stage's TYPED return (`CandidateEdit.aborted`), NOT the opaque payload — so key your ABORT
@@ -103,6 +138,86 @@ re-implement them in prose.
 **Rule:** if a deterministic check below you can make the call, let it — reserve yourself for what needs
 judgment (is this diagnosis converging? rerun with which steer? is this architectural? land or hold?).
 
+## The declarative wake-seam — how the stream WAKES you
+The wake-seam is a **declarative projection over the fold's CLOSED vocabulary** — `NodeStatus`, `AnomalyKind`,
+`TelemetryEvent['kind']` (specifically `node-close`, the node-lifecycle signal), `OptimizeEvent['type']` —
+registered once per supervised target as a `WakePolicy`: a disjunction (OR) of typed
+predicates over fields that ALREADY exist on the stream. It adds NO detection logic; it only decides which of
+the reflex's events are worth spending you on. It is **not** "arbitrary predicates" — you cannot invent a
+predicate *kind* without code; the one open lever, `metric`, is a threshold re-tune of the existing anomaly set
+(`contextPct` / `retries` / `maxToolRepeat`), useful mostly on the record/optimize side.
+
+**The processor is a pure matcher DOWNSTREAM of the existing fold — never a second accumulator.** `matchWake`
+sits under `telemetryStream` (run) / `OptimizeEventSink` (optimize) so the CLI's `--watch` output and your wake
+share ONE source of truth (no silent divergence). The fold is already edge-triggered (each anomaly fires once
+per kind per node; `node-status` only on a derived-status change), so the policy inherits de-dupe for free — it
+will not thrash you.
+
+**Two rule-sets, same schema — COARSE for what you can't touch mid-flight, FINE for what you can:**
+- **LIVE-RUN policy (COARSE)** — you cannot act on a live producer mid-node, so wake only on what you could act
+  on at the next seam or must record:
+  `status:blocked,error,awaiting-input` · `anomaly:failed,truncated` · `run-end` · `node-finished`
+  (PROFILE-CONDITIONAL — see below).
+  Keep `tool-loop` / `context-pressure` / a single `retry` OUT of the live wake — the reflex (retry ladder, the
+  exec watchdog) owns them and you can't act until the seam anyway; they resurface in the `run-end` record if
+  they mattered. Stall needs no `slow` predicate: a stalled producer lands as `error` → caught by `status:error`.
+
+  **`node-finished` is PROFILE-CONDITIONAL, never a blanket default.** It matches the `node-close` event the
+  SAME fold already fires on every node's terminal transition — healthy or not, edge-triggered, once per node,
+  **zero timers**. Whether it is armed depends on the run's active profile (read off `.pi/workflow.json`'s
+  persisted `profile` field):
+  - **DEFAULT-ON when the profile elides the verify gates** (e.g. `companion`). With no deterministic gate
+    checking each artifact, **you are the only thing that can**: "when a profile elides the verify gates, the
+    orchestrator IS the verifier — judge each node's artifact against the criteria fixture as it lands"
+    (`piflow-start` SKILL.md, "Profiles"). A node boundary is also exactly the safe intervention seam, so on a
+    gate-eliding profile the wake-seam and the intervention-seam already coincide — nothing needs to be queued.
+  - **DEFAULT-OFF for the gate-checked profile** (e.g. `production`). The deterministic verify gate already
+    checks the artifact; waking you on the same node-close would be redundant spend on a call the gate already
+    made — you stay passive, per the posture above.
+  This does not contradict "the overlord is passive on a healthy live run" — it sharpens it: passive means
+  passive **only where a deterministic gate already stands in for you**. Where none does, staying passive on a
+  landed artifact would mean nothing checks it at all, so the same posture that keeps you off a gated run keeps
+  you on a gateless one.
+- **OPTIMIZE-LOOP policy (FINE)** — the fixer edits a **disposable candidate off the critical path**, so every
+  decision-grade boundary is a legal action point:
+  `optimize:fixer-aborted,fix-cycle-ceiling,stopped,loop-stopped` · `gated:reject`.
+  Each maps to a first-class typed `OptimizeEvent` the driver already emits.
+
+The asymmetry is the point: the live policy is COARSE (you can only act at seams) while the optimize policy is
+FINE (every candidate boundary is a legal action point).
+
+**The wake MECHANISM — two producers, TWO mechanisms (there is no single one):**
+- **Run stream → process-exit.** The wake command (`telemetry --watch --wake-on '<policy>'`, or `--wake-policy
+  <file>`) subscribes to the fold, runs `matchWake` per event, and on the FIRST match prints the decision-grade
+  digest as JSON and **exits with a reason-encoding code** (done · node-failed · anomaly · awaiting-input ·
+  node-finished). The harness re-invokes you with that digest — safe because the on-disk run keeps advancing
+  while you re-wake. Raw `status:` / `run-end` predicates inherit local+remote for free, but the
+  **rootCauses/slow digest is local-only** (`buildRunView` reads the local `.pi/`); on a REMOTE run either fetch
+  the server's run-view endpoint or degrade the remote wake to matched-event-only — never claim the digest is
+  "remote for free."
+  `node-finished` rides this SAME mechanism and the SAME fold — it is not a second stream subscription.
+  `telemetryStream` already emits `node-close` off `watchRun`'s raw node-status transition, on EVERY terminal
+  outcome (`telemetry.ts:342,451-455`), the identical de-dupe every other predicate here gets for free. The
+  wake command matches it exactly like a `status`/`anomaly` predicate, with **no timer, sleep, or poll of any
+  kind** — it is purely edge-triggered off that one event. The only thing that varies is REGISTRATION: the wake
+  command reads the run's active profile (`.pi/workflow.json`'s persisted `profile` field, or `RunStatus.profile`)
+  before arming the default LIVE-RUN policy, and includes `node-finished` in it only when that profile elides
+  the verify gates (above).
+- **Optimize loop → in-band, NON-BLOCKING notification.** `runOptimizeLoop` is a multi-round machine
+  (converged / stalled / circuit-breaker) DESIGNED to keep going through rejects. So the optimize wake tees the
+  matched event to you WITHOUT tearing the loop down: **NEVER abort the loop on a routine `gated:reject` /
+  `fixer-aborted`** — reject is the common case, and killing the loop kills the machine that would try the next
+  candidate. "Act immediately" here means YOU adjudicate immediately, not that the process dies. Abort the loop
+  ONLY on a genuinely terminal event (`loop-stopped` / `stopped` / `fix-cycle-ceiling`).
+
+Build status (don't fake a wake you can't register): `matchWake` / `WakePolicy` / `--wake-on` and the
+`awaiting-input` fold-passthrough are **TO-BUILD** (`core/observe/wake.ts` + the two CLI wirings); the
+`telemetryStream` thresholds override already **EXISTS** (only the CLI-side clause→thresholds plumbing is
+missing). The `node-finished` predicate is likewise **TO-BUILD** — the `node-close` event it matches already
+**EXISTS** in the fold (`telemetry.ts:342,451-455`); only the predicate itself and the profile-conditional
+default-policy wiring are missing. Until it ships, arm the closest existing surface (`telemetry --watch` /
+`optimize --fix --watch`) and FILE the gap.
+
 ## The reconcile loop (run this every turn — k8s-style)
 **desired state → observe → diff → ONE action → re-observe.** Continuously, never fire-and-forget:
 1. **Desired** — what is this run/optimize supposed to reach? (a green milestone; a gate ACCEPT; a landed fix.)
@@ -124,12 +239,28 @@ Every row keys on something you can read off the stream/artifacts. No row keys o
 | **ESCALATE** | architectural / ambiguous / failed after the management plane's bound (N retries, run-count) | HALT, hand to the human WITH evidence. Never invent a fix beyond the node's scope |
 | **LAND** | the gate records a strict-improvement ACCEPT, verified against the held-out outcome | stage / adopt per the land policy (adopt is a separate, explicit step) |
 
+**Seam-gating the table (cross-wire with the seam law below).** A wake fires freely; the ACTION is gated by
+which seam you're at. On a **LIVE PRODUCER**, a RERUN / NUDGE / re-plan is **queued until the next
+intervention-seam** (`--from` relaunch) — you are woken freely but you do NOT mutate mid-node. On an **OPTIMIZE
+candidate**, ABORT / RERUN / NUDGE / LAND **act immediately** (the candidate is off the critical path;
+wake-seam and intervention-seam collapse). No row ever fires on a live producer mid-node.
+
 ## The seam law (HARD CONSTRAINT — `docs/ARCHITECTURE.md` §5 "Seams / the control plane")
 **Hot-edits and interventions on a LIVE PRODUCER run happen at a node BOUNDARY (a seam), never mid-run:** stop
 at the boundary → splice the debug/control node → **`--from` relaunch** the affected suffix, reusing unchanged
 upstream. You may abort/kill **mid-run ONLY off the critical path** — a candidate copy or a control node (the
 optimize fixer edits a disposable candidate, so killing it never mutates a live run). Before any mid-run kill,
 confirm the target is off the critical path; if it is a live producer, wait for the seam.
+
+**Two seams that NEST — `wake-seam ⊇ intervention-seam` (wake ≠ act).**
+- **wake-seam** — the event interface that CALLS you: any fold event satisfying the registered `WakePolicy`. It
+  fires freely.
+- **intervention-seam** — the safe node BOUNDARY where you may ACT on a live producer (`--from` relaunch).
+
+Every intervention-seam is a valid wake point, but NOT every wake is at an intervention-seam. For a **live
+producer** you are woken freely but your ACTION waits — queue it until the next node boundary, then `--from`
+relaunch. For an **optimize candidate** the two seams COLLAPSE (it is off the critical path) — which is exactly
+why the optimize policy is fine-grained and the live policy is coarse.
 
 ## Verify, don't trust
 Judge from the **stream + artifacts**, never the node's self-report. *"The agent finished" = the VCS diff shows
@@ -142,6 +273,9 @@ You act ONLY through the SDK CLI + skills, never ad-hoc bash. Run & monitor → 
 --from/--until`, `watch`, `status`, `logs`). Optimize/fix → `piflowctl optimize --fix --binding … --node …
 --watch` with `--edit-budget`/`--token-budget` and the watchdog env knobs (`GAME_OMNI_FIXER_*`). Improve a node
 or the chain → **piflow-enhance**. You DECIDE which to invoke and when; those skills hold the canonical command.
+Your WAKE sources are `telemetry --watch` (run fold) and `optimize --fix --watch` (optimize stream), armed with
+a `--wake-on` policy (§"The declarative wake-seam"); `watch --notify` is a terminal liveness ping only — never
+your decision surface.
 
 ## Self-check (the bar for a good overlord turn — audit before you report)
 - [ ] The decision cites a **quoted observable signal** (stream event / artifact / verdict), not a vibe.
@@ -150,6 +284,11 @@ or the chain → **piflow-enhance**. You DECIDE which to invoke and when; those 
 - [ ] Any mid-run kill targeted an **off-critical-path** agent; a live producer was touched only at a seam.
 - [ ] The decision was **verified against artifacts** (diff / report / gate), not a self-report.
 - [ ] A RERUN changed exactly ONE variable; an ESCALATE carried **evidence** and invented nothing beyond scope.
+- [ ] You were **woken by a wake-policy match** and decided from the one-shot digest — not by babysitting the
+  stream, and not off a bare `watch --notify` liveness ping.
+- [ ] On a **live producer** the action was queued to the next **intervention-seam**; only an off-path
+  candidate (or the optimize loop, in-band) was acted on immediately, and the optimize loop was NOT aborted on
+  a routine `gated:reject`.
 
 ## Anti-patterns (what loses a fleet)
 - ❌ A blind long run with no watcher. ✅ Every run is watched by the reflex AND by you.
@@ -157,7 +296,12 @@ or the chain → **piflow-enhance**. You DECIDE which to invoke and when; those 
 - ❌ Killing a live producer mid-run. ✅ Intervene at the seam → `--from` relaunch.
 - ❌ Re-running identically "to see if it works this time". ✅ Change one variable, or escalate.
 - ❌ Re-implementing run-count / budgets / timeouts in prose. ✅ Delegate to the management plane; read its verdict.
-- ❌ Reacting per-token to the stream. ✅ Window it; the cheap reflex handles the per-event triggers.
+- ❌ Sitting in a `for await` babysitting the stream (you have no event loop). ✅ Be event-woken; the reflex
+  streams and handles per-event triggers — you window the one-shot digest.
+- ❌ Adjudicating off a `watch --notify` liveness ping (can't tell DONE from FAILED, no digest). ✅ Wake off the
+  decision-grade fold (`telemetry --watch` / `optimize --fix --watch`).
+- ❌ Aborting the optimize loop on a routine `gated:reject`/`fixer-aborted` (kills the multi-round machine). ✅
+  Wake in-band; abort the loop only on a terminal `loop-stopped`/`stopped`/`fix-cycle-ceiling`.
 - ❌ Inventing a fix the node should make. ✅ Nudge the node, or escalate to the human.
 
 ## Worked example — the fixer overlord (the live M3 case)

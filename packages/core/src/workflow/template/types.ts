@@ -56,6 +56,8 @@ export interface TemplateNode {
   provider?: string;
   /** Per-node tier alias → resolved to a model via `~/.piflow/model-tiers.json` (when active). Omitted ⇒ none. */
   tier?: string;
+  /** Per-node reasoning cap → `pi --thinking` / claude `--effort` (off|minimal|low|medium|high|xhigh). Overrides run-level; omitted ⇒ inherit. */
+  thinking?: string;
   contract: {
     artifacts: string[];
     owns: string[];
