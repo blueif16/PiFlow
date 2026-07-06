@@ -1,0 +1,18 @@
+{
+  "id": "template-script-tool",
+  "meta": {
+    "name": "template-script-tool",
+    "description": "Fixture: a node declares tool:demo_probe with an EXPLICIT defs override (a shared tools dir outside the template, via {{WORKSPACE}}) + a real tiny script — the DECLARE→DEFINE→DISCOVER→INJECT→PREFLIGHT happy path."
+  },
+  "stages": [
+    [
+      "probe"
+    ]
+  ],
+  "nodes": {
+    "probe": {
+      "phase": "run",
+      "deps": []
+    }
+  }
+}

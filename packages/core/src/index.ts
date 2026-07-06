@@ -152,6 +152,20 @@ export { DefaultToolRegistry, BUILTIN_TOOLS, DEFAULT_TOOLS } from './tools/regis
 // (seeded into every DefaultToolRegistry) + its param schema + its inline-execute render for the `-e` ext.
 export { SUBMIT_RESULT_TOOL, SUBMIT_RESULT_PARAMETERS, SUBMIT_RESULT_ADDRESS, renderContractTool } from './tools/contract-tool.js';
 export type { ContractRenderable } from './tools/contract-tool.js';
+// The `script` tool source (docs/design script-tools): a `tool:<name>` DEFINE-path `tool.json` manifest,
+// resolved at node start (DISCOVER/RESOLVE) and preflighted loud BEFORE pi spawns, then rendered into the
+// generated `-e` extension with its own inline `execFile` execute (no bridge, no shell).
+export {
+  discoverScriptTools,
+  preflightScriptTools,
+  isScriptToolAddress,
+  scriptToolName,
+  TOOL_ADDRESS_PREFIX,
+  DEFAULT_SCRIPT_TIMEOUT_MS,
+} from './tools/script-discover.js';
+export type { ScriptToolManifest, ScriptToolExec, ScriptDiscoveryResult } from './tools/script-discover.js';
+export { renderScriptTool } from './tools/script-tool.js';
+export type { ScriptRenderable } from './tools/script-tool.js';
 // Ingestion: MCP tools/list → ToolEntry[] (the effortless catalog fill)
 export { mcpToolsToEntries } from './tools/ingest.js';
 export type { McpToolListing, McpIngestOpts } from './tools/ingest.js';

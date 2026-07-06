@@ -1,0 +1,15 @@
+{
+  "name": "demo_probe",
+  "description": "Echo the given message back (BROKEN fixture — its exec script does not exist).",
+  "parameters": {
+    "type": "object",
+    "properties": { "message": { "type": "string" } },
+    "required": ["message"]
+  },
+  "exec": {
+    "cmd": "node",
+    "argv": ["{{toolDir}}/missing.mjs"],
+    "input": "flags",
+    "timeoutMs": 5000
+  }
+}

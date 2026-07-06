@@ -1,0 +1,6 @@
+{
+  "id": "template-script-tool-broken",
+  "name": "template-script-tool-broken",
+  "description": "Fixture: a node declares tool:demo_probe whose defs override points at a tool dir with NO exec script on disk — the preflight aggregate error must name it.",
+  "phases": ["run"]
+}
