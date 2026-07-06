@@ -507,3 +507,19 @@ export type {
   LongHorizonStages, LongHorizonOpts, LongHorizonResult, GenerationRecord,
   NextWorkflowPlan, RedesignStage, RunGeneration, LongHorizonStopReason,
 } from './optimize/index.js';
+
+// The OPTIMIZE SUBSTRATE (docs/specs/optimize-substrate-plan.md M0–M6) — the per-node measurement →
+// issue-decomposition → per-issue-fix pipeline, a SECOND optimization system beside the routing loop. Lifted to
+// the ROOT so the `piflowctl optimize triage|fix|adopt`, `issues`, and `runs` verbs (M5, packages/cli) can
+// import it from `@piflow/core` (the package's only public entry). Pure re-export of the optimize facade above.
+export {
+  listIssues, parseIssueFile, writeIssueFile, transitionIssue, reopen, stampAttempt, computeIssueId, assertTransition, ALLOWED_TRANSITIONS,
+  runSubstrateMeasure, runSubstrateJudge,
+  fixIssue, adoptSubstrateManifest, readSubstrateManifest, renderSubstrateEvent, UNPROVEN_BY_RUN,
+} from './optimize/index.js';
+export type {
+  Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
+  RunSubstrateMeasureOpts, MeasureReport, SubstrateJudgeOpts, SubstrateJudgeResult,
+  FixIssueOpts, FixIssueResult, SubstrateManifest, SubstrateManifestRecord,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,
+} from './optimize/index.js';

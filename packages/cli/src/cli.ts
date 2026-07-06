@@ -31,6 +31,15 @@ import { runOptimizeCli } from './optimize.js';
 import { runOptimizeFixCli } from './optimize-fix.js';
 import { runOptimizeAdoptCli } from './optimize-adopt.js';
 import { runOptimizeLoopCli } from './optimize-loop.js';
+import {
+  routeOptimize,
+  runSubstrateTriageCli,
+  runSubstrateFixCli,
+  runSubstrateFullLoopCli,
+  runSubstrateAdoptCli,
+} from './optimize-substrate.js';
+import { runIssuesCli } from './issues.js';
+import { runRunsCli } from './runs.js';
 import { runGuiCli } from './gui.js';
 import { runContextCli } from './context.js';
 import { runCloudCli } from './cloud.js';
@@ -81,6 +90,15 @@ USAGE
                                             accepted edits onto the live file(s) — backup-first, the EXPLICIT
                                             out-of-loop adopt (never a side effect of --fix/--rounds; skips
                                             symlinks + degrades a stale record). --dry-run reports without writing.
+  piflowctl optimize triage --node <id> [--run <id> | --topk K]  the PER-NODE substrate: measure (hard) THEN
+                                            judge (soft) a node's finished run(s) → issue files. --run pins one
+                                            exact run; --topk K (default 1) scans the newest un-triaged runs.
+  piflowctl optimize fix    --node <id> [--issue <name> | --status open,regressed] [--watch] [--cap N] [--no-prove]
+                                            fix the node's issues (severity-desc): candidate copy → fixer → prove
+                                            → strict-improvement gate → STAGE a manifest. --watch streams progress.
+  piflowctl optimize        --node <id> [--run <id> | --topk K]  the FULL loop = triage THEN fix (the default).
+  piflowctl optimize adopt  --manifest <path> [--template <d>] [--backup-dir <d>]  LAND a staged substrate
+                                            manifest onto the live product (adopt + commit + resolve the issue).
   piflowctl logs    [dir|run] [options]     stream / replay / diagnose per-node event archives
   piflowctl model   [list | set <tier> <modelId> [--claude] | activate | deactivate]  the model-tier config
   piflowctl claude-code [connect [--token <t>] | status]  OPTIONAL credential for the claude-code executor
@@ -122,6 +140,10 @@ USAGE
   piflowctl understand [subsystem] [--check|--rebuild]  how a subsystem works / where to change it (code slices)
   piflowctl blueprint <list | show <id>>    discover DAG topologies to stamp: list = every 'id — description';
                                             show = the full recipe (topology + wiring) before you compose
+  piflowctl issues  <list | show <name>> [--node <id>] [--status <csv>] [--json]  READ-ONLY query over the
+                                            per-node substrate issue ledger (severity-desc, then firstSeen-asc)
+  piflowctl runs    [--node <id>] [--status ok|error] [--since <days|ISO>] [--json]  cross-run summary; child
+                                            runs render indented under their parent (optimize-substrate lineage)
   piflowctl --version                       print the piflowctl version
 
 RUN
@@ -332,17 +354,26 @@ async function main(): Promise<void> {
     case 'telemetry':
       await runTelemetryCli(rest);
       break;
-    case 'optimize':
-      // `--rounds N` routes to the MULTI-ROUND overlord (autonomous-propose: run→score→fix→memorize per round;
-      // the `run` stage is product-side, so N>1 needs a binding that exports `run`). `--fix` routes to the
-      // single-shot FIX→GATE→LAND driver (writes a staging manifest). `--adopt` routes to the EXPLICIT,
-      // OUT-OF-LOOP physical land (replays a staged manifest onto live files — the ONLY writer of live files;
-      // never a side effect of --fix/--rounds). Bare `optimize` is read-only.
-      if (rest.includes('--rounds')) await runOptimizeLoopCli(rest);
-      else if (rest.includes('--adopt')) await runOptimizeAdoptCli(rest);
-      else if (rest.includes('--fix')) await runOptimizeFixCli(rest);
-      else await runOptimizeCli(rest);
+    case 'optimize': {
+      // TWO optimization systems share the `optimize` verb (docs/specs/optimize-substrate-plan.md §M5.1). The
+      // per-node SUBSTRATE subverbs win FIRST, each GATED on `--node`/`--manifest` so a classic run literally
+      // NAMED `triage`/`fix` never misroutes: `triage`/`fix` = measure→judge / fix→gate→stage a node's issues;
+      // `adopt --manifest` = land a staged substrate manifest. Then the CLASSIC routing loop, byte-UNCHANGED:
+      // `--rounds` = the multi-round overlord; `--adopt` = the explicit out-of-loop land; `--fix` = the single-
+      // shot FIX→GATE→LAND driver. Then the bare-`--node` full loop (triage THEN fix). Else classic read-only
+      // `optimize <rundir>`. `routeOptimize` is the pure, unit-tested decision (optimize-substrate.ts).
+      switch (routeOptimize(rest)) {
+        case 'substrate-triage': await runSubstrateTriageCli(rest.slice(1)); break;
+        case 'substrate-fix': await runSubstrateFixCli(rest.slice(1)); break;
+        case 'substrate-adopt': await runSubstrateAdoptCli(rest.slice(1)); break;
+        case 'substrate-full': await runSubstrateFullLoopCli(rest); break;
+        case 'classic-rounds': await runOptimizeLoopCli(rest); break;
+        case 'classic-adopt': await runOptimizeAdoptCli(rest); break;
+        case 'classic-fix': await runOptimizeFixCli(rest); break;
+        case 'classic': await runOptimizeCli(rest); break;
+      }
       break;
+    }
     case 'logs':
       await runLogsCli(rest);
       break;
@@ -390,6 +421,16 @@ async function main(): Promise<void> {
       // DISCOVER→UNDERSTAND over the materialized ~/.piflow/blueprints/ catalog (parity with the presets).
       // `list`/`show` are built; `stamp`/`insert` route to a placeholder (a later task owns them).
       process.exitCode = await runBlueprintCli(rest);
+      break;
+    case 'issues':
+      // READ-ONLY query over the optimize-substrate issue ledger (M5.3) — list|show, node-TYPE-scoped, on demand
+      // off the template (NOT the run payload). Severity-desc / firstSeen-asc; --json for agents, table for humans.
+      process.exitCode = await runIssuesCli(rest);
+      break;
+    case 'runs':
+      // CROSS-RUN summary (M5.4) — the same runs-home scan `optimize triage --topk` rides; filters --node
+      // (executed fresh) / --status / --since; child runs render indented under their parent. --json for agents.
+      process.exitCode = await runRunsCli(rest);
       break;
     case '--version':
     case '-v':

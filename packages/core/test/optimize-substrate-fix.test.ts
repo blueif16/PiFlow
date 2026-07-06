@@ -397,6 +397,13 @@ describe('fixIssue — prove path rejects a regression (no auto-adopt)', () => {
     expect(res.decision).toBe('discarded');
     const manifest = await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'));
     expect(manifest.records[0].decision).toBe('discarded');
+
+    // TASK 0: a proven-REJECT must NOT strand the issue at `verifying` — it walks back to `open` so a
+    // later triage/fix can re-attempt it. Nothing landed: reason stays null, no attempt row is stamped.
+    const after = await parseIssueFile(issuePath);
+    expect(after.status).toBe('open');
+    expect(after.reason).toBeNull();
+    expect(after.attempts).toEqual([]);
   });
 });
 
