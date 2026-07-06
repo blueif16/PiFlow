@@ -32,6 +32,9 @@
 // STATUS MACHINE (guards throw on any edge outside this graph — piflow-memory-v1.5 grilling, contract lane):
 //   open → active → fix-landed → verifying → resolved         (the full fix cycle)
 //                     fix-landed ────────────→ resolved        (skip-proof path, proving configured off)
+//                                  verifying ──→ open           (proven-REJECT: the prove-rerun's candidate did
+//                                                                NOT improve — walk back to `open`, reason null,
+//                                                                NO attempt stamped: nothing landed. Re-attemptable.)
 //                                               resolved → regressed  (reopen: hash re-match of a resolved issue)
 //                                               regressed → active   (regressed behaves like `open` for selection/dispatch)
 // `reason` (fixed|wontfix|false-positive|superseded) is set ONLY alongside a transition INTO `resolved`, and is
@@ -305,7 +308,8 @@ export const ALLOWED_TRANSITIONS: Readonly<Record<Status, readonly Status[]>> = 
   open: ['active'],
   active: ['fix-landed'],
   'fix-landed': ['verifying', 'resolved'], // the skip-proof path when proving is configured off
-  verifying: ['resolved'],
+  verifying: ['resolved', 'open'], // resolved on adopt; back to `open` when the prove-rerun REJECTED the candidate
+
   resolved: ['regressed'],
   regressed: ['active'], // regressed behaves like `open` for selection/dispatch
 };

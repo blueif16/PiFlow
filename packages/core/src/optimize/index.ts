@@ -113,3 +113,10 @@ export type {
 } from './substrate/fix.js';
 export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
 export type { SubstrateEvent, SubstrateEventSink } from './substrate/events.js';
+
+// The SUBSTRATE SOFT-JUDGE stage (docs/specs/optimize-substrate-plan.md §M4) — spawns ONE judge agent turn
+// over a run's measure report + criteria/gold/memory + the existing ledger, then mechanically post-processes
+// the agent's issue DRAFTS into identity-stamped Issue files and stamps the triaged marker. The `optimize
+// triage` CLI (M5) runs runSubstrateMeasure FIRST, then this — hard-feeds-soft is that verb's contract.
+export { runSubstrateJudge } from './substrate/judge.js';
+export type { SubstrateJudgeOpts, SubstrateJudgeResult } from './substrate/judge.js';

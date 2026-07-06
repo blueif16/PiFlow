@@ -276,6 +276,7 @@ describe('status machine — assertTransition throws on any edge outside the doc
     ['fix-landed', 'verifying'],
     ['fix-landed', 'resolved'], // the skip-proof path
     ['verifying', 'resolved'],
+    ['verifying', 'open'], // TASK 0: a proven-REJECT walks the candidate back to open (nothing landed)
     ['resolved', 'regressed'],
     ['regressed', 'active'], // regressed behaves like open for selection/dispatch
   ];

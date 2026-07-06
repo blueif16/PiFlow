@@ -36,6 +36,15 @@
 // `workspace = the LIVE product root` — so pristine, un-copied scorer scripts grade a candidate-produced
 // artifact. The candidate never contains a scorer (the exclusion above); the live root is never edited (only
 // adopt touches it). Oracle immutability is mechanical, not a promise.
+//
+// ── RESTING STATE AFTER THE GATE (the issue's status is never stranded) ──────────────────────────────────
+// The prove path moves the issue to `verifying` before the rerun. After the gate decides, the issue must land
+// on an honest resting state — a proven-REJECT must NOT strand it at `verifying` (M2 originally had no back-edge
+// out of `verifying` for a rejected candidate; TASK 0 added `verifying → open`). So: a `discarded` decision that
+// went through a prove-rerun (childId !== null) walks the issue BACK to `open` — reason stays null, NO attempt is
+// stamped (nothing landed), so a later triage/fix re-attempts it. A `staged` candidate stays at `verifying`
+// awaiting the human adopt (verifying → resolved); the skip-proof/unmeasured/no-edit paths never entered
+// `verifying` (they rest at `fix-landed`/`active`), so they need no walk-back.
 
 import os from 'node:os';
 import path from 'node:path';
@@ -547,6 +556,12 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
         : verdict.landPolicy === 'stage-for-human'
           ? 'staged' // unmeasurable/abstained → route to a human, never auto
           : 'discarded'; // a measured regression / flat result
+
+  // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
+  // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
+  // so a later triage/fix can re-attempt it (TASK 0's `verifying → open` back-edge). A staged candidate stays
+  // at `verifying` awaiting adopt; the no-edit / skip-proof paths never entered `verifying` (nothing to undo).
+  if (childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
 
   // (f) stage the substrate manifest (adopt is the separate human step).
   const record: SubstrateManifestRecord = {
