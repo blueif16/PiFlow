@@ -177,7 +177,14 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
             <span className="ds-hud-stat__v">{rv.toolCalls}</span>
             <span className="ds-hud-stat__k ds-hud-stat__k--wrap">
               {topTools.map((b) => (
-                <ToolTag key={b.name} name={b.name} count={b.count} onClick={() => pin("tools")} title={`${b.name} · ${b.count} calls`} />
+                <ToolTag
+                  key={b.name}
+                  name={b.name}
+                  count={b.count}
+                  errors={b.errors}
+                  onClick={() => pin("tools")}
+                  title={b.errors ? `${b.name} · ${b.count} calls · ${b.errors} rejected` : `${b.name} · ${b.count} calls`}
+                />
               ))}
             </span>
           </div>
@@ -612,10 +619,13 @@ function Detail({ region, rv, expected, elapsedMs, pct, onOpenFile }: { region: 
         <div className="ds-bars">
           {bars.length === 0 && <div className="ds-hud-empty">no tool calls recorded</div>}
           {bars.map((b) => (
-            <div key={b.name} className="ds-bar" data-tone={toolTone(b.name)}>
+            <div key={b.name} className="ds-bar" data-tone={toolTone(b.name)} title={b.errors ? `${b.errors} of ${b.count} calls rejected` : undefined}>
               <span className="ds-bar__label">{b.name}</span>
               <span className="ds-bar__track"><span className="ds-bar__fill" style={{ width: `${(b.count / max) * 100}%` }} /></span>
-              <span className="ds-bar__val">{b.count}<span className="ds-bar__pct">{Math.round(b.pct * 100)}%</span></span>
+              <span className="ds-bar__val">
+                {b.count}<span className="ds-bar__pct">{Math.round(b.pct * 100)}%</span>
+                {!!b.errors && <span className="ds-tooltag__errors"> ✗{b.errors}</span>}
+              </span>
             </div>
           ))}
         </div>

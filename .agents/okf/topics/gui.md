@@ -31,7 +31,7 @@ SOURCE
 - `packages/server/src/handlers.ts:35` — `piflowRunStream` — `/__piflow/stream/<run>` SSE feed of `observe.watchRun`
 - `gui/src/data/runIndex.ts:60` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
 SHAPE
-- `gui/src/data/runView.ts:172` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
+- `gui/src/data/runView.ts:174` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
 - `gui/src/data/runView.ts:728` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
 RENDER
 - `gui/src/components/WorkflowCanvas.tsx:139` — index→view→graph wiring (loadRunView+loadAgentCatalog→toFlowGraph)
@@ -145,11 +145,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `5eff54c` 2026-07-03 — feat(gui): base-agent rail on Basis mode — drag a preset onto a node to reassign agentType
 - `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 - `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
+- `350ffe1` 2026-07-03 — feat(gui): remote-skill detail fetch + installRemoteSkill client
+- `1be2fac` 2026-07-03 — feat(gui): RemoteSkillPanel — clickable detail page for online skills
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[agent-identity-surface]]
+- [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -159,6 +162,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[competitive-gaps-pdw]]
 - [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
+- [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
@@ -172,10 +176,12 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[hooks-give-info-never-autofix]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
+- [[minimax-m3-framing]]
 - [[minimax-thinking-cap-noop]]
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
+- [[overthinking-is-the-defect-not-token-caps]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-init-scaffolder]]
@@ -195,11 +201,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `loadIndex` (gui/src/data/runIndex.ts:61) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:728) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `loadRunView` (gui/src/data/runView.ts:174) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
 
-<sub>derived 2026-07-04 · arc=84 commits · files=8 · lessons=46</sub>
+<sub>derived 2026-07-06 · arc=86 commits · files=8 · lessons=51</sub>
 <!-- okf:auto-end -->
