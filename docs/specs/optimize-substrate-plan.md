@@ -5,30 +5,34 @@
 > one-defect-per-node triage with a measurement → issue-decomposition → per-issue-fix pipeline.
 > Locked design contract: the 2026-07-05/06 grilling session. Research grounding:
 > `docs/research/2026-07-05-per-node-optimization-substrate-sota.md` and
-> `docs/research/2026-07-05-issue-ledger-schema-sota.md`. Seam recon: the 5-lane workflow of 2026-07-06
-> (facts cited inline as `file:line`).
+> `docs/research/2026-07-05-issue-ledger-schema-sota.md`. Seam recon: the 5-lane workflow of 2026-07-06.
+> **Adversarially verified 2026-07-06** (3 skeptic lanes: recon-fidelity · contract-compliance ·
+> demo-feasibility; 10 blocking + 11 minor findings — ALL folded in below, marked ⚡).
 > Demo target: game-omni run `tS2`, node `gameplay`. The shipped optimize code is NOT moved or renamed.
 
 ## 0 · Shape of the whole
 
 ```
-piflowctl optimize triage --node gameplay --topk 3      # phase 1 only
+piflowctl optimize triage --node gameplay [--topk 3 | --run tS2]     # phase 1 only
 piflowctl optimize fix    --node gameplay [--status open | --issue <name>] [--watch]
-piflowctl optimize        --node gameplay --topk 3      # both phases
+piflowctl optimize        --node gameplay [--topk 3 | --run tS2]     # both phases
 piflowctl issues          --node gameplay [--status open] [--json]   # read-only query (top-level verb)
 ```
 
+- ⚡ `--run <id>` pins triage to an exact run (reproducible demos); `--topk` is the recency scan.
+- ⚡ Full-loop (bare `--node`) = triage, then fix EVERY issue of the node whose status is
+  `open|regressed` after the triage pass, ordered severity-desc then firstSeen-asc, under the
+  per-pass cap. Say nothing → full optimization (the locked default).
 - Module: `packages/core/src/optimize/substrate/` — sibling files inside the existing optimize module.
   Imports shipped primitives (`evaluateGate`, `writeStagingManifest`, `adoptFile`, events pattern);
   never touches `memorize.ts` (memory system out of scope — confirmed self-contained, memorize.ts:61).
 - Operator = the agent (triage/fixer agents drive the CLI); the human reads `issues` and runs adopt.
-- Everything config-with-defaults; declarations via token-resolved paths in `node.json`.
 
 ## 1 · Milestones
 
 ### M0 — `optimize` block on node.json (schema + scaffold mirror)
-The anti-drift contract (node.schema.ts is `additionalProperties:false` — any unknown top-level key
-fails the WHOLE template load, checks.ts:29):
+The anti-drift contract (node.schema.ts is `additionalProperties:false` at :20 — any unknown
+top-level key fails the WHOLE template load, template/checks.ts:29):
 1. `packages/core/src/workflow/template/schema/node.schema.ts` — add top-level `optimize`:
    ```json
    "optimize": { "type": "object", "additionalProperties": false, "properties": {
@@ -36,10 +40,10 @@ fails the WHOLE template load, checks.ts:29):
      "judge":   { "type": "string" }
    }}
    ```
-   `measure` reuses the EXISTING `$defs/op` shape byte-for-byte (gate/run bodies are the meaningful
-   ones post-run). `judge` = token-resolved path to the soft-judge skill/prompt file.
-2. `packages/cli/src/scaffold.ts` `buildNode` — mirror emit block (only-when-authored, like `fusion`
-   at scaffold.ts:364).
+   `measure` reuses the EXISTING `$defs/op` shape (node.schema.ts:341) byte-for-byte (gate/run
+   bodies are the meaningful ones post-run). `judge` = token-resolved path to the soft-judge file.
+2. `packages/cli/src/scaffold.ts` `buildNode` — mirror emit block (only-when-authored, like
+   `fusion` at scaffold.ts:369-380 ⚡corrected line).
 3. Loader `toNodeIntent`: **skipped deliberately** — the block is optimizer-facing; consumers read
    `<templateDir>/nodes/<id>/node.json` directly via fs (precedent: memory.md / recurrence.ts:49).
 4. Tests (red-bar first): template with `optimize` block loads clean; unknown key inside it rejected;
@@ -47,24 +51,36 @@ fails the WHOLE template load, checks.ts:29):
 
 ### M1 — Run identity: date-seq names, child runs, lineage fields
 1. `packages/core/src/names/`: `generateDateSeqName(existing, now)` — `YYMMDD-NN`, zero-padded
-   per-day counter, same `(existing, rng?) ⇒ string` collision-retry contract as `generateRunName`
-   (generator.ts:40-55). `now` injected for testability. `childRunName(parentId, nodeId, existing)`
-   → `<parent>.<nodeId>` then `.<n>` (bare = implicit first). Rule enforced at mint: base names are
-   dot-free; dots are lineage-only. Dot-safety: audited safe at every parse site (recon Q3 table).
-2. `run.ts:520` default generator swaps to date-seq (pie names are reassigned to issue naming).
-   **Consumer-facing change → changeset required** (@piflow/cli + @piflow/core).
+   per-day counter, same `(existing, rng?) ⇒ string` collision contract as `generateRunName`
+   (generator.ts:40-55); `now` injected for testability. `childRunName(parentId, nodeId, existing)`
+   → `<parent>.<nodeId>` then `.<n>`. Base names dot-free (enforced at mint); dots = lineage-only.
+   Dot-safety: audited safe at every parse site (recon Q3 table).
+2. `run.ts:520` default generator swaps to date-seq — ⚡ a DELIBERATE global change (user-locked:
+   agent-minted names must scale to hundreds of runs), NOT scoped to substrate runs. Update the
+   now-stale prose contract at status.ts:209-215 (currently documents pie names) in the same
+   commit. Pie names are reassigned to issue naming. **Consumer-facing → changeset.**
 3. `RunStatus` (status.ts:209): add `parent?: string; spawnedBy?: { by: string; issue?: string;
    issueId?: string }` — additive-optional, threaded via `RunOptions` (runner.ts:65-75) into the
    `ctx.status` literal (runner.ts:451-478), same pattern as `promptId`.
 4. `substrate/child-run.ts` — `spawnChildRun(parentRunDir, nodeId, { templateDir, spawnedBy, workspace? })`:
-   - mint child id; `unpackRunDir(await packRunDir(parent, …), childDir)` **excluding
-     `.pi/journal.json`** — no journal entry ⇒ the target node unconditionally RUNs
-     (journal.ts:219-221) while the skipped prefix is force-`reused` (runner.ts:543) and the
-     artifact preflight passes because the whole tree was copied (runner.ts:578-611);
-   - `runFromTemplate(templateDir, { runDir: childDir, run: childId, from: nodeId, until: nodeId,
-     parent, spawnedBy, …provider/model carried from parent run.json })`.
-5. Tests: name generators (collision, padding, day rollover); spawnChildRun on a tiny fixture
-   template — child re-runs ONLY the target node, run.json carries parent/spawnedBy.
+   - mint child id; `unpackRunDir(await packRunDir(parent, { exclude: ['.pi/journal.json'] }),
+     childDir)` — `PackOpts.exclude` exists today (migrate.ts:92,55-67). No journal entry ⇒ the
+     target node unconditionally RUNs (journal.ts:219-221); the skipped prefix is force-`reused`
+     (runner.ts:543); the artifact preflight passes because the tree was copied (runner.ts:578-611).
+   - ⚡ **Delete the target node's own outputs from the child copy before running** — its
+     `contract.artifacts` (token-resolved) + its op `writes`/report outputs. Without this the seed
+     hook no-ops (`stageSeed` skips a filled dest, seed.ts:108-123) and the node has nothing to
+     regenerate — the prove-rerun would measure the stale parent artifact (delta ≡ 0).
+   - ⚡ Window selection must be id-EXACT: `selectWindow`'s from/until is substring-match over
+     phase/id/label (window.ts:6-13) — a general primitive can't ride that. `spawnChildRun`
+     resolves the exact stage index for `nodeId` itself and passes a pinned window (no collision
+     in game-omni today, but the primitive must not depend on luck).
+   - `runFromTemplate(templateDir, { runDir: childDir, run: childId, from/until: <pinned>,
+     parent, spawnedBy, workspace?, …provider/model carried from parent run.json })` —
+     `opts.workspace` override exists today (entry.ts:165).
+5. Tests: name generators (collision, padding, day rollover); spawnChildRun on a fixture template —
+   child re-runs ONLY the target node, target artifacts regenerated (deletion verified), run.json
+   carries parent/spawnedBy.
 
 ### M2 — The issue ledger (`substrate/issues.ts`)
 Physical shape: `template/nodes/<id>/issues/<name>.md` — the directory IS the table.
@@ -84,155 +100,202 @@ attempts: []            # append-only: [{commit, verifiedByRun, regressedIn}]
 <~30–40 line context brief — REWRITTEN by triage on every reopen (facts append, prose is curated)>
 ```
 - **Hash recipe (versioned, prospective-only):** `id = sha256("v1\n" + nodeId + "\n" + sig)`.
-  For hard-check issues `sig` is mechanical (`<node>::<ruleId>::<normalized-location>`); for judge
-  issues the triage agent authors a stable `sig` tag reusing game-omni's existing memory.md
-  convention (`sig: <node>::<tag>` — the format already in production, memory.md recon §4).
-  Excluded from the hash: timestamps, run ids, line numbers, prose (SARIF/Sentry findings).
-- **Dedup/reopen is two-layer:** the triage agent reads the existing ledger first and writes into
-  the matching file (semantic match — primary); the tool's hash equality is the mechanical backstop
-  and the recurrence auto-linker. Reopen = same file: status flips, `lastSeen` stamps,
-  `regressedIn` fills on the last attempt, context rewrites. Never a duplicate file.
+  Hard-check issues: `sig` is mechanical (`<node>::<ruleId>::<normalized-location>`); judge issues:
+  the triage agent authors a stable `sig` tag reusing game-omni's memory.md convention
+  (`sig: <node>::<tag>`). Excluded from the hash: timestamps, run ids, line numbers, prose.
+- **Dedup/reopen is two-layer:** agent semantic-match (reads the ledger first, writes into the
+  matching file — primary) + tool hash equality (mechanical backstop / recurrence auto-linker).
+- ⚡ **Status machine, fully wired** (contract lane found 3 orphan states):
+  `open → active` (fix dispatch) `→ fix-landed` (candidate edit staged) `→ verifying` (prove-rerun
+  in flight) `→ resolved` (adopt+commit; reason: fixed). Skip-proof path: `fix-landed → resolved`
+  directly when proving is configured off. Reopen on hash re-match of a resolved issue sets
+  `status: regressed` (distinct from fresh `open`) + stamps `regressedIn` on the last attempt +
+  `lastSeen`. Fix selectors match `open|regressed` by default.
 - API: parse/write/validate one issue file; `listIssues(templateDir, {node, status})`;
-  `stampAttempt`, `reopen`, transition guards. All mutations mechanical (the agent writes drafts;
-  the tool computes id/name/firstSeen — M4).
-- Tests: frontmatter round-trip; hash stability under title/prose/run changes; reopen-not-duplicate;
-  attempts append-only; status-machine transition guards (invalid transition throws).
+  `stampAttempt`, `reopen`, transition guards (invalid transition throws). All identity mutations
+  mechanical (agent writes drafts; the tool computes id/name/firstSeen — M4).
+- Tests: frontmatter round-trip; hash stability under title/prose/run changes; reopen-not-duplicate
+  → regressed; attempts append-only; transition guards.
 
 ### M3 — Hard measurement stage (`substrate/measure.ts` + `substrate/trace-metrics.ts`)
 Fully external to the runner — reuses the op READER + pure EXECUTORS; `node-lifecycle.ts` untouched:
 1. Read the node's `optimize.measure` op[] directly off node.json; build a standalone `ResolveCtx`
-   `{ run: runDir, workspace, state: JSON.parse(stateFile(runDir)) }` (resolver.ts:25; state from
-   layout.ts:21); resolve with `resolveDeep`. (`{{arg.*}}` is not persisted post-run — documented
-   unsupported in measure ops.)
-2. Fire: `gatesFromOp(ops).post` → `evaluateChecks(checks, readFromRunDir)` (checks.ts:117);
-   `runOpsFromOp(ops).runnable` → `applyMergeOp({run}, runDir)` (merge.ts:58). Collect reports.
+   `{ run: runDir, workspace, state: JSON.parse(stateFile(runDir)) }` (resolver.ts:25; layout.ts:21);
+   resolve with `resolveDeep`. (`{{arg.*}}` is not persisted post-run — documented unsupported.)
+   ⚡ **`{{WORKSPACE}}` in measure ops ALWAYS resolves to the live product root, never a candidate**
+   — scoring runs on the pristine oracle even when the node under test ran against a candidate
+   workspace (see M6.3; this is what keeps the oracle immutable in practice).
+2. Fire: `gatesFromOp(ops).post` → `evaluateChecks(checks, readFromRunDir)` (src/checks.ts:117 —
+   ⚡ the top-level checks.ts, not template/checks.ts); `runOpsFromOp(ops).runnable` →
+   `applyMergeOp({run}, runDir)` (merge.ts:58; the canonical pattern per node-lifecycle.ts:588).
+   ⚡ Convention: measure ops write their outputs under `{{RUN}}/optimize/substrate/` (authored
+   that way in the product) so measuring never clobbers the run's own report artifacts.
 3. Built-in trace detectors (generic pi-event parsing, product-agnostic ⇒ core-legal), over
-   `.pi/nodes/<id>/events.jsonl` (schema per recon §1):
-   - **thinking-stall**: `thinking_end.content` length + `_t` span per block; flag > thresholds.
-   - **tool-loop**: group `tool_execution_*` by `(toolName, JSON.stringify(args))`; flag ≥N repeats
-     with byte-identical results (handle the `truncated:true` result shape).
-   - **token-waste**: `turn_end.usage` — cumulative input growth + `cacheRead:0` cache-miss flag.
-   - plus fold `projectRunDigest(buildRunView(runDir))` anomalies (the public seam score.ts:93-98
-     already uses; `detectAnomalies` itself is module-private — not importable, not duplicated).
-4. Output: `<runDir>/optimize/substrate/measure.<node>.json` — one deterministic report the triage
-   agent consumes verbatim. Thresholds config-with-defaults (mirroring `TelemetryThresholds`).
-5. Tests: each detector against synthetic events.jsonl fixtures that FAIL when the detector is wrong
-   (span too short → no flag; identical-args-different-results → no flag); real-fs op firing with a
-   fixture script; report determinism.
+   `.pi/nodes/<id>/events.jsonl`. ⚡ Event shapes corrected per the live histogram:
+   - `thinking_start/thinking_end` are NOT top-level events — they are
+     `message_update.assistantMessageEvent.type` values; content rides the `thinking_end`
+     sub-event; span = paired `_t` deltas on the enclosing `message_update` lines.
+   - usage lives at `turn_end.message.usage.{input,output,cacheRead,…}` (not `turn_end.usage`).
+   - ⚡ the log truncates records at a hard 8192-byte line boundary (20 such lines in tS2 — and
+     they're exactly the big thinking/turn_end records). Detectors must skip-and-count
+     unparseable lines and approximate spans from surrounding parseable events; the fixture
+     suite includes a truncated-record case.
+   - **thinking-stall**: span duration + content length vs thresholds.
+   - **tool-loop**: group `tool_execution_*` by `(toolName, JSON.stringify(args))`; flag ≥N
+     repeats with byte-identical results (handle the `truncated:true` result shape).
+   - **token-waste**: cumulative input growth per turn; ⚡ the `cacheRead:0` cache-miss flag fires
+     only when the provider/API reports cache fields at all (`api:'openai-completions'` never
+     does — flag the capability, not every nebius run by construction).
+   - fold `projectRunDigest(buildRunView(runDir).view)` anomalies — ⚡ `.view` destructure is
+     load-bearing (buildRunView returns `{view, audit}`, runView.ts:407; score.ts:95-96 precedent).
+4. Output: `<runDir>/optimize/substrate/measure.<node>.json` — one deterministic report,
+   ⚡ carrying GRADED metrics (fillRatio, span ms, token totals, jump-margin numbers), not just
+   pass/fail verdicts — the prove-gate compares on the graded axes (see M6.3 / the tS2 finding).
+5. Tests: each detector against synthetic events.jsonl fixtures that FAIL when the detector is
+   wrong (span too short → no flag; identical-args-different-results → no flag; truncated-line
+   fixture); real-fs op firing with a fixture script; report determinism.
 
-### M4 — Soft judge = the triage agent (`substrate/triage.ts` + `substrate/agent.ts`)
+### M4 — Soft judge = the triage agent (`substrate/judge.ts` + `substrate/agent.ts`)
+⚡ (module renamed from `triage.ts` — `optimize/triage.ts` already exists and is unrelated)
 1. `substrate/agent.ts` — the ONE thin spawn wrapper (never hand-rolled `spawn('claude',…)`):
-   builds a literal one-node `WorkflowSpec` (`executor:'claude-code'`) and calls
-   `runFromConfig` (entry.ts:88) — credentials, model routing, sandbox jail, `parseClaudeResult`,
-   `NodeStatusRecord` telemetry all inherited. Model default: `tiers.claude?.deep ?? 'sonnet'`
-   via the real `loadModelTiers()` (model-routing.ts:196), overridable per call/env — the
-   "sonnet default" is substrate policy, core routing stays policy-free.
-2. Triage flow per (node, run): assemble the prompt from the node's `optimize.judge` skill file +
+   builds a literal one-node `WorkflowSpec` (`executor:'claude-code'`) and calls `runFromConfig`
+   (entry.ts:85) — credentials, model routing, sandbox jail, `parseClaudeResult`,
+   `NodeStatusRecord` telemetry all inherited. ⚡ **Model default: `'sonnet'` unconditionally**
+   (per-call/env overridable). NEVER fall through to `tiers.claude.deep` — deep resolves to
+   opus-4-8, the documented won't-commit-edits failure (memory: optimize-fixer-tier-finding;
+   6 runs, 0 edits). The substrate's default is policy layered above core's policy-free routing.
+2. ⚡ The `optimize triage` CLI path RUNS M3's measure stage first (persisting
+   `measure.<node>.json`), then spawns the judge — hard-feeds-soft is the verb's own contract,
+   not an ambient assumption.
+3. Judge flow per (node, run): assemble the prompt from the node's `optimize.judge` skill file +
    the measure report + criteria anchor + gold path + memory.md + the git-search instruction
-   (`git log --grep '^skillsys(<node>)'` — the convention confirmed live in game-omni);
-   `readScope` = run dir + template node dir + declared product paths; `owns` = the node's
-   `issues/` dir. The agent: reads existing issues first (reopen-over-create), then writes
+   (`git log --grep '^skillsys(<node>)'` — the convention confirmed live in game-omni).
+   ⚡ `readScope` must include the PRODUCT REPO ROOT (which covers `.git`) and `execCwd` = repo
+   root — the seatbelt profile is deny-by-default (read-scope.sb) and an undeclared `.git` makes
+   `git log` fail inside the jail. Writes stay jailed: `owns` = the node's `issues/` dir (+ the
+   run's substrate dir). The agent: reads existing issues first (reopen-over-create), then writes
    issue DRAFTS (no id/name/firstSeen) or edits existing files' context/severity.
-3. Post-process (mechanical, tool-side): validate every touched file; compute `id` from `sig`;
-   mint pie `name`s for new drafts; stamp firstSeen/lastSeen; hash-dedup backstop (merge drafts
-   that collide with existing ids into a reopen). Cap: new-issues-per-pass limit (default 5).
-4. Stamp the analyzed marker `<runDir>/optimize/substrate/triaged.<node>.json` ({when, issues[]}).
-5. Separation law in the judge prompt: identify + contextualize ONLY (severity, suspect scope,
-   evidence pointers, history) — zero fix proposals. Criteria/gold are judging references,
-   NEVER injected into the worker node's own prompt.
-6. Authoring deliverables: the soft-judge prompt TEMPLATE (piflow-side:
-   `docs/design/substrate-judge-template.md`, structured per agentic-prompt-design — bar/coverage/
-   self-check slots) + game-omni's concrete judge file (product-side, M7).
-7. Tests: post-processor (drafts → identity-stamped files; collision → reopen; cap enforced);
+4. Post-process (mechanical, tool-side): validate every touched file; compute `id` from `sig`;
+   mint pie `name`s; stamp firstSeen/lastSeen; hash-dedup backstop (draft colliding with an
+   existing id → merged as a reopen). Cap: new-issues-per-pass limit (default 5).
+5. Stamp the analyzed marker `<runDir>/optimize/substrate/triaged.<node>.json` ({when, issues[]}).
+6. Separation law in the judge prompt: identify + contextualize ONLY — zero fix proposals.
+   Criteria/gold are judging references, NEVER injected into the worker node's own prompt.
+7. Authoring deliverables: the judge prompt TEMPLATE (piflow-side:
+   `docs/design/substrate-judge-template.md`, structured per agentic-prompt-design) + game-omni's
+   concrete judge file (product-side, M7).
+8. Tests: post-processor (drafts → identity-stamped files; collision → reopen; cap enforced);
    prompt assembly (all inputs present, criteria anchor resolves). Agent behavior itself is
    proven by the M7 live demo (eval, not unit — test-discipline).
 
 ### M5 — CLI verbs (`packages/cli/src/issues.ts` + optimize dispatch)
 1. Dispatch (cli.ts:335-345) — subverbs FIRST, then legacy flags, classic fallthrough unchanged:
    ```
-   if (rest[0] === 'triage')      → runSubstrateTriageCli(rest.slice(1))
-   else if (rest[0] === 'fix')    → runSubstrateFixCli(rest.slice(1))
+   if (rest[0] === 'triage' && rest.includes('--node'))  → runSubstrateTriageCli(rest.slice(1))
+   else if (rest[0] === 'fix' && rest.includes('--node')) → runSubstrateFixCli(rest.slice(1))
    else if (rest.includes('--rounds' | '--adopt' | '--fix'))  → classic paths (unchanged)
    else if (no positional && rest.includes('--node'))         → substrate full loop
    else                            → runOptimizeCli (classic <rundir>)
    ```
-   The recon-flagged trap (bareword read as rundir) is dead because subverbs are consumed before
-   any parser sees positionals. Classic `--node`/`--fix` flag semantics untouched.
-2. `--topk K` selection: scan the product's runs home; keep runs where run.json shows this node
-   executed fresh (`nodes[id].status` ok/error, not `reused`); order by startedAt; take the newest
-   K lacking the triaged marker. Default K=1.
-3. Top-level `issues` verb: registration copies the `blueprint` pattern exactly (cli.ts:389-393
-   region + HELP block; internal `list|show` sub-dispatch per blueprint.ts:109-116). `--json` for
-   agents, table for humans. Resolves the template dir the same way optimize does
-   (`templateDirFor`, optimize-fix.ts:172, or explicit `--template`).
-4. Tests: dispatch-routing unit tests (every row above routes correctly — esp. `optimize fix` vs
-   classic `optimize --fix <rundir>`); arg parsers; issues list/show against a fixture ledger.
+   ⚡ The `--node` requirement on subverbs closes the residual trap the contract lane found
+   (a run literally named `triage`/`fix` invoked as `optimize triage` no longer misroutes —
+   classic positional invocations never carry `--node` on the bare path). Classic `--node`
+   (the `--fix`-path substring filter) keeps its existing meaning untouched.
+2. Selection: `--run <id>` pins an exact run; else `--topk K` scans the product's runs home —
+   runs where run.json shows this node executed fresh (`nodes[id].status` ok/error, not
+   `reused`), ordered by startedAt, newest K lacking the triaged marker. Default K=1.
+3. Top-level `issues` verb: registration copies the `blueprint` pattern (cli.ts:389-393 region +
+   HELP; internal `list|show` sub-dispatch per blueprint.ts:109-116). `--json` for agents, table
+   for humans. ⚡ Default sort: severity desc, then firstSeen asc — severity is CONSUMED here and
+   in fix ordering, not write-only. Template dir resolved like optimize does (`templateDirFor`,
+   optimize-fix.ts:172, or `--template`).
+4. Tests: dispatch-routing unit tests (every row above, incl. `optimize fix --node` vs classic
+   `optimize --fix <rundir>` vs a rundir literally named `fix`); arg parsers; issues list/show
+   against a fixture ledger (sort order asserted).
 
 ### M6 — Fix phase (`substrate/fix.ts` + events + adopt-commit)
-Per selected issue (sequential for the demo; the loop is per-issue so parallel is a later flag):
-1. `status → active` stamped on dispatch. Candidate copy via the product's `copyScope`
-   (game-omni scope.mjs — extended in M7 to cover gameplay's editable scope: the harden-blueprint
-   skill dir + archetype module + template node dir).
-2. Fixer agent via `substrate/agent.ts`: prompt = the issue FILE (path is the whole dispatch
-   contract) + fix contract (root-cause the issue, edit the candidate, commit nothing); sandbox
-   `execCwd = candidateRef` + `execReads` (the E10 seam, types.ts:245 — built for exactly this).
-   `editsApplied` from the product's before/after diff (stays product-side, binding-live.mjs:56-79
-   precedent).
-3. Prove (self-rewind): `spawnChildRun(parentRunDir, nodeId, { workspace: candidateRef,
-   spawnedBy: {by:'substrate-fix', issue} })` → re-run M3 measure (+ judge, config) on the child →
-   delta vs the parent's measure report → `evaluateGate`-shaped strict-improvement decision
-   (gate.ts:42 reused; unmeasurable ⇒ stage-for-human, never auto).
+Per selected issue (severity-desc order; sequential for the demo — parallel is a later flag):
+1. `status → active` on dispatch. Candidate copy = ⚡ **the node's full `{{WORKSPACE}}`-read
+   closure** (its `contract.readScope` entries + every workspace path its hooks/ops reference —
+   for gameplay that includes `templates/genres.json` and `.agents/node-catalog.json`, both
+   proven runtime reads the draft scope missed), MINUS the oracle exclusions: any path referenced
+   by `optimize.measure` ops, the `judge` file, criteria, gold. Exclusion is mechanical (derived
+   from the same node.json block), enforced by copyScope; the fixer physically cannot edit the
+   scorer.
+2. Fixer agent via `substrate/agent.ts`: prompt = the issue FILE (the path is the whole dispatch
+   contract) + fix contract; sandbox `execCwd = candidateRef` + `execReads` (the E10 seam,
+   types.ts:245). `editsApplied` from the product's before/after diff (product-side,
+   binding-live.mjs:56-79 precedent). On staged edit: `status → fix-landed`.
+3. Prove (self-rewind; skippable per config — skip ⇒ `fix-landed → resolved` on adopt):
+   `status → verifying`; `spawnChildRun(parentRunDir, nodeId, { workspace: candidateRef,
+   spawnedBy: {by:'substrate-fix', issue} })` — the NODE executes against the candidate workspace,
+   its own artifacts pre-deleted (M1.4) so it genuinely regenerates; then M3 measure runs on the
+   child with `{{WORKSPACE}}` = the LIVE product root (pristine scripts score a candidate-produced
+   artifact) → ⚡ delta compared on the GRADED axes (fillRatio, spans, tokens, margins — tS2's
+   binary verdicts are already saturated at pass, so pass/fail deltas carry no signal) →
+   `evaluateGate`-shaped strict-improvement decision (gate.ts:42 reused; unmeasurable/abstained ⇒
+   stage-for-human, never auto).
 4. Stage: substrate manifest (writeStagingManifest-shaped, per-issue records). **Adopt** (separate
-   human verb, philosophy unchanged): `adoptFile` per real file (land.ts:92, symlink-safe walk) into
-   the live product, then the NET-NEW `commitAdoption(repoRoot, files, issue)` —
-   `execFileSync('git', ['-C', root, 'add'|'commit', …])` following the worktree.ts:64 precedent,
-   message trailer `Issue: <node>/<name> — "<title>" (<hash7>)`. SHA captured from the commit
-   output and stamped mechanically: `attempts += {commit, verifiedByRun: <childId>}`,
-   `status → resolved, reason: fixed`. No human, no agent prose in the loop.
-5. `SubstrateEvent` union + own `safeEmit` copy + `renderSubstrateEvent`; CLI `--watch`/`--watch-json`
-   reuse the optimize-fix.ts rendering split.
-6. Tests: gate arithmetic (reused — already covered) + the wiring around it; `commitAdoption`
-   against a temp git-repo fixture (trailer format, SHA capture, no-op on empty diff); attempts
-   stamping; event order.
+   human verb, philosophy unchanged): `adoptFile` per real file (land.ts:92, symlink-safe walk)
+   into the live product, then the NET-NEW `commitAdoption(repoRoot, files, issue)` —
+   `execFileSync('git', ['-C', root, 'add'|'commit', …])` (worktree.ts:64 precedent; argv-array,
+   so the trailer `Issue: <node>/<name> — "<title>" (<hash7>)` needs no escaping). SHA captured
+   from the commit and stamped mechanically: `attempts += {commit, verifiedByRun: <childId>}`,
+   `status → resolved, reason: fixed`.
+5. `SubstrateEvent` union + own `safeEmit` copy (it's a private closure per module — driver.ts:170,
+   loop.ts:88) + `renderSubstrateEvent`; CLI `--watch`/`--watch-json` reuse the optimize-fix.ts
+   rendering split.
+6. Tests: gate wiring; `commitAdoption` against a temp git-repo fixture (trailer format, SHA
+   capture, no-op on empty diff); attempts stamping; the copyScope oracle-exclusion rule
+   (a measure-script path inside the candidate ⇒ test fails); status transitions; event order.
 
 ### M7 — game-omni binding + the LIVE demo (the acceptance gate for the whole build)
 Product-side contributions (all recorded in game-omni, per its conventions):
 1. `nodes/gameplay/node.json` gains the `optimize` block:
-   - `measure`: run-ops for `check-feasibility.mjs` / `check-distribution.mjs`
-     (`--source {project}/spec/blueprint.json --report-out …` — already standalone-safe,
-     script-location-relative REPO_ROOT) + gate-ops for schema/sentinel re-checks; trace-detector
-     thresholds if non-default.
-   - `judge`: `{{WORKSPACE}}/packages/skills/harden-blueprint/optimize-judge.md` (new file,
-     instantiated from the piflow template; references criteria anchor
+   - `measure`: run-ops for `check-feasibility.mjs` / `check-distribution.mjs` with
+     `--report-out {{RUN}}/optimize/substrate/…` (⚡ never clobbering the run's own reports) +
+     a schema-compile gate; trace-detector thresholds if non-default.
+   - `judge`: `{{WORKSPACE}}/packages/skills/harden-blueprint/optimize-judge.md` (instantiated
+     from the piflow template; references the criteria anchor
      `.agents/skill-system-criteria.md#harden-harden-blueprint` (line 55) + gold
      `eval/gold/platformer/mecha-plumber.blueprint.json` + GOLD-NOTE).
-2. Extend `packages/verify/optimize/scope.mjs` copyScope for the gameplay editable scope.
-3. **The demo (single full loop, the success criterion from the grilling):**
-   `piflowctl optimize triage --node gameplay --topk 1` on tS2 → issue files appear (hard flags:
-   the known 9–13s thinking blocks, cacheRead:0 waste, any measure-op findings; soft: judged vs
-   criteria+gold) → `piflowctl issues --node gameplay` shows them → activate ONE:
+2. ⚡ A NEW gameplay-scope module beside `packages/verify/optimize/scope.mjs` (not an extension —
+   the existing copyScope/oracle are the built-game/milestone path, none of whose assumptions
+   apply to the blueprint node).
+3. ⚡ **Demo expectations, honestly set** (the feasibility lane's tS2 findings):
+   - tS2's hard pass/fail axes are saturated (both reports `pass`, empty reasons) — the demo's
+     issues will come from: the trace detectors (the real 9–13s thinking blocks), the SOFT judge
+     (criteria + gold side-by-side), and one gift-wrapped hard finding the run itself recorded:
+     `schemaSkipped: "schema unreadable/uncompilable"` — the blueprint schema gate silently never
+     ran. That's a legitimate, provable first issue (fix → the child run's schema gate actually
+     fires — a crisp graded→binary win).
+   - The prove-gate compares graded metrics, not the saturated verdicts.
+4. **The demo (single full loop, the success criterion from the grilling):**
+   `piflowctl optimize triage --node gameplay --run tS2` → measure report + issue files appear →
+   `piflowctl issues --node gameplay` lists them (severity-sorted) → activate ONE:
    `piflowctl optimize fix --node gameplay --issue <name> --watch` → fixer edits candidate →
-   child run `tS2.gameplay` re-runs the node → measure delta → staged → human adopt →
-   commit lands with the trailer → attempts row carries {commit, verifiedByRun} →
-   `piflowctl issues` shows `resolved/fixed`.
+   child run `tS2.gameplay` re-runs the node (artifacts regenerated) → graded measure delta →
+   staged → human adopt → commit lands with the trailer → attempts row carries
+   {commit, verifiedByRun} → `piflowctl issues` shows `resolved/fixed`.
 
 ## 2 · Laws honored (cross-cutting)
-- Shipped optimize code: imported, never moved/renamed; classic CLI grammar byte-compatible.
+- Shipped optimize code: imported, never moved/renamed; classic CLI grammar byte-compatible
+  (⚡ one accepted narrow exception, documented: `optimize <rundir> --node …` forms; see M5.1).
 - Memory system untouched (no memorize/distill/compact edits; substrate never writes memory.md).
 - SDK boundary: detectors are generic pi-event logic (core-legal); scripts/judge/gold/criteria/
   ledger live in the product; nothing product-specific enters `@piflow/core`.
-- Oracle immutability: criteria fixture, gold, measure scripts are judging references — the fixer's
-  candidate scope must NOT include them (copyScope excludes; the judge prompt states it).
+- Oracle immutability, mechanically enforced: measure runs on the live workspace (M3.1), copyScope
+  excludes every scorer path (M6.1) — not a prompt-level promise.
 - Candidate-copy discipline: live files touched only by adopt (backup-then-overwrite + commit).
-- Config-with-defaults everywhere: thresholds, caps, model, topk, judge-on-verify — all overridable,
+- Config-with-defaults everywhere: thresholds, caps, model, topk, prove-on/off — all overridable,
   none required in node.json for the block to be useful.
 - Release hygiene: consumer-facing changes (schema block, CLI verbs, run-name default) each get a
   changeset; publish stays MAINTAIN-mode (docs/RELEASING.md).
 
-## 3 · Order & effort
+## 3 · Order & risks
 M0 → M1 → M2 (foundations, parallel-safe) → M3 → M4 → M5 → M6 → M7 (live).
-Test-first per milestone; each lands as one `--no-ff` merge-able unit on this worktree branch.
-Biggest risks (from recon): child-run workspace override for the candidate rerun (M6.3 — verify
-`{{WORKSPACE}}` threading in runFromTemplate opts), agent-written drafts vs mechanical identity
-(M4.3 boundary), and the run-name default swap's blast radius (M1.2 — audit callers of
-`generateRunName` before swapping).
+Test-first per milestone; each lands as one coherent commit on this worktree branch.
+Remaining watch-items after verification: the child-run rerun cost/nondeterminism (Kimi temp≠0 —
+single-replay deltas are noisy; the demo gates on graded axes and stages-for-human on ambiguity;
+a paired-replay budget is the documented follow-up), and the judge agent's draft quality (proven
+by the live demo, tunable via the template).
