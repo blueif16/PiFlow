@@ -47,31 +47,41 @@ The piflow-specific precedence rules (the part hermes doesn't know):
 - `<repo>/.agents/skill-system-map.md` (composition) + `<repo>/.agents/skill-system-io-map.md` (the
   producer→consumer ledger) — keep these CURRENT; a stale map is the real failure mode.
 
-## The method library (Leg C) — consult before edit, write back after land
-Cross-product METHOD knowledge lives OUTSIDE this repo in the design library
-(`~/Desktop/best-designs-for-agentic-system`, local): problem-indexed cards (Trigger → Practice →
-Evidence → Applications track record), navigated via its `MEMORY.md` hints or ranked FIND. This skill
-owns the SYNC between that library and BOTH improvement loops. Two laws:
-- **CONSULT before any edit (both loops).** At the route step — after the bucket/owner is named,
-  before authoring the fix — find the matching card:
-  `cd ~/Desktop/best-designs-for-agentic-system/cards && node _generate.mjs --find "<symptom>"`.
-  Author the edit per the card's Practice; an edit that contradicts a `proven` card needs the reason
-  stated in the commit body. A lookup MISS is a signal, not a dead end: note it, and after the fix
-  lands, research + distill the missing card (the library grows at its failure points).
-- **WRITE BACK after any land (the library's food).** When a fix that applied a card lands (manifest
-  ACCEPT + adopt, or a hermes commit), append ONE dated line to that card's Applications —
-  improvement OR under-delivery — and commit it `card(<key>): applied — <outcome>`. An unrecorded
-  outcome is a lesson lost; an under-delivery flips the card's `status` and queues the CARD as the
-  next fix target.
-Cards are OPTIMIZER-PLANE reference (fixer / judge / overlord / designer read them). **NEVER inject a
-card into a worker node's runtime prompt** — same law as the criteria fixture and memory.md.
-Seam status: the by-hand consult + write-back above is THIS skill's contract, effective now. The
-autonomous seam is TO-BUILD at the CLI seam only (core stays library-blind): resolve the matched
-card into the fixer's `DefectScope` beside the Leg-A recurrence and Leg-B code-map (the same
-pointer + resolve-at-read law as `enrichCodeMap`, `packages/cli/src/optimize-fix.ts`), a
-`[[card:<key>]]` backref in MEMORIZE lesson blocks, and the Applications write-back at the
-`optimize --adopt` step. Until that ships, the overlord/session agent performs consult + write-back
-by hand around `piflowctl optimize --fix`.
+## The method library (Leg C) — CONSULT before edit · WRITE BACK after land
+Portable, cross-product METHOD knowledge lives OUTSIDE this repo in the design library
+(`~/Desktop/best-designs-for-agentic-system`): problem-indexed cards (Trigger → Practice → Evidence →
+Applications). The library is ONE of four practice homes; a consult ROUTES the question to the home that
+owns it and reads it fresh. Cards are OPTIMIZER-PLANE reference — **NEVER inject a card into a worker
+node's runtime prompt** (same law as the criteria fixture and memory.md).
+
+**1 · CONSULT — BLOCKING, at the route step (both loops), before authoring any fix or fixture.** FIND first:
+`cd ~/Desktop/best-designs-for-agentic-system/cards && node _generate.mjs --find "<symptom>"` (`--json` =
+ranked list). Then route by question kind to the home that OWNS the answer:
+| Question kind | Home to consult |
+|---|---|
+| Which portable METHOD solves this problem class | the library cards (the FIND above) |
+| Template/marker format · how to FILL a field · Output-Contract grammar | piflow-init "The laws" + `reference/artifact-contract.md` |
+| How this CODE works · where to change it | `.agents/okf/` slices via `piflowctl understand <subsystem>` (okf-slices) |
+| Has THIS node failed this way before · what we learned HERE | per-node/template `memory.md` via memory-slices (Leg A) |
+Author the fix per the matched card's Practice. A fix that CONTRADICTS a `proven`/`adopted` card must state
+the reason in the commit body OR fix the card first — never ship the contradiction silently.
+
+**2 · GAP — a FIND miss (or no home owns the class) → dispatch a research agent BEFORE fixing**, never invent
+the method inline. Brief shape: **problem statement** (the symptom class) · **what the trace shows** (evidence +
+node/run refs) · **sources to sweep** (arXiv/practitioner + the sibling cards it borders) · **deliverable = ONE
+card per `cards/_TEMPLATE.md`** (Trigger · Practice · cited Evidence · Applications). The card lands first,
+then the fix applies it.
+
+**3 · WRITE-BACK — after a VERIFIED land, the lesson goes to its ONE home**, per `layered-instruction-homes`,
+smallest durable edit: a portable method → new/extended card (append ONE dated Applications line — win OR
+under-delivery — `card(<key>): applied — <outcome>`; an under-delivery flips `status` and queues the card as
+the next fix target); a field-emission rule → the FILL hint / init law; a product-local lesson → the node's
+`memory.md`.
+
+Seam status: consult + write-back is THIS skill's by-hand contract now. Autonomous seam TO-BUILD at the CLI
+only (core stays library-blind): matched card → fixer `DefectScope` beside the Leg-A recurrence + Leg-B
+code-map (pointer + resolve-at-read, as `enrichCodeMap`, `packages/cli/src/optimize-fix.ts`), a
+`[[card:<key>]]` backref in MEMORIZE blocks, and the Applications write-back at `optimize --adopt`.
 
 ## Companion Mode is the dev-time face of enhance
 When you're babysitting a run, the orchestrator + human ARE the verifier: judge every stage's artifact vs the
