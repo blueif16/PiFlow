@@ -63,6 +63,11 @@ export interface RunViewNode {
   contextWindow?: number | null;
   toolCalls: number;
   toolBreakdown: Record<string, number>;
+  /** ADDITIVE per-tool error tally (name → rejected-call count), folded verbatim from the reducer's
+   *  toolErrorCounts — feeds derived.topTools[].errors so a rejected-only tool doesn't read as a real one.
+   *  Optional (unlike toolBreakdown) so an existing hand-built RunViewNode fixture that omits it still
+   *  type-checks unchanged; deriveNode treats an absent map as "no errors known", same as before this field. */
+  toolErrorCounts?: Record<string, number>;
   timeline: TimelineSpan[];
   reads: ReadRef[];
   scopes: ScopeBucket[];
@@ -413,7 +418,7 @@ export function assembleNode(
     expectedCost: ctx.expectedCost?.[id] ?? null,
     model: spine.model, provider: rich.provider, api: rich.api,
     contextWindow: spine.contextWindow,
-    toolCalls: rich.toolCalls, toolBreakdown: rich.toolBreakdown, timeline: rich.timeline,
+    toolCalls: rich.toolCalls, toolBreakdown: rich.toolBreakdown, toolErrorCounts: rich.toolErrorCounts, timeline: rich.timeline,
     reads, scopes, writes, artifacts, bash: rich.bash, tokens: spine.tokens,
     retries: rich.retries, stopReason: spine.stopReason, truncated: spine.truncated, thinkingChars: rich.thinkingChars,
     modelCalls: spine.modelCalls, maxToolRepeat: rich.maxToolRepeat, repeatedTool: rich.repeatedTool,
@@ -614,6 +619,7 @@ export function previewView(wf: Workflow, opts: PreviewViewOpts = {}): RunView {
       provider: n.provider ?? null,
       toolCalls: 0,
       toolBreakdown: {},
+      toolErrorCounts: {},
       timeline: [],
       reads: [],
       scopes: [],

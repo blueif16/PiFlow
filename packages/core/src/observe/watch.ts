@@ -172,6 +172,7 @@ function mergeEnriched(base: NodeView, full: RunViewNode): NodeView {
     contextWindow: full.contextWindow,
     toolCalls: full.toolCalls,
     toolBreakdown: full.toolBreakdown,
+    toolErrorCounts: full.toolErrorCounts,
     timeline: full.timeline,
     reads: full.reads,
     writes: full.writes,

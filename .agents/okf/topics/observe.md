@@ -47,7 +47,7 @@ RUNVIEW (the contract + builder + the SHARED assembly)
 - `packages/core/src/observe/runView.ts:407` — `buildRunView()` — superset run-view (replays events, prefers workflow.json DAG, stamps deriveNode)
 - `packages/core/src/observe/runView.ts:282` — `nodeTokenSpine()` — the `rec.usage`-first-vs-event-replay token precedence (the AgentDriver seam — Thrust 3)
 - `packages/core/src/observe/runView.ts:343` — `assembleNode()` — the whole per-node build (reads/writes/tokens/spine), then `node.derived = deriveNode(node)` — SHARED by buildRunView + watchRun
-- `packages/core/src/observe/types.ts:139` — `RunModel` — the shared snapshot contract (stages+edges+nodes)
+- `packages/core/src/observe/types.ts:142` — `RunModel` — the shared snapshot contract (stages+edges+nodes)
 - `packages/core/src/observe/types.ts:177` — the `node-enriched` `RunUpdate` kind (the FULL node delta — must also be in cli/remote.ts RUN_UPDATE_KINDS)
 DERIVE (the display projection) + STRUCTURE (parity)
 - `packages/core/src/observe/derive.ts:78` — `deriveNode()` — cache/tool-error/dominance/context/time/retries zones + topTools + unified outputs (the ONE threshold oracle)
@@ -167,6 +167,9 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
 - `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
 - `71076e6` 2026-07-05 — feat(observe): per-turn reasoning-effort dissection — the raw signal
+- `cfbf4eb` 2026-07-05 — feat(observe,cli): mega-think anomaly + the per-turn timeline table
+- `dfb781c` 2026-07-05 — fix(core/observe): add per-tool error tally to the stream reducer
+- `dc3b878` 2026-07-05 — fix(core/observe): thread toolErrorCounts into RankedTool.errors
 
 ### Lessons — memory cluster
 
@@ -207,6 +210,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
+- [[overthinking-is-the-defect-not-token-caps]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
@@ -226,6 +230,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -235,5 +240,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:114) — 8 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-05 · arc=78 commits · files=13 · lessons=55</sub>
+<sub>derived 2026-07-06 · arc=81 commits · files=13 · lessons=57</sub>
 <!-- okf:auto-end -->

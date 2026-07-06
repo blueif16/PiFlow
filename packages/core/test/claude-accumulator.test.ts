@@ -111,6 +111,18 @@ describe('claudeCodeDriver.eventAccumulator() — decodes claude stream-json too
     expect(rich.timeline[1].ok).toBe(true);
   });
 
+  // ADDITIVE per-tool error tally (mirrors distill.ts's toolErrorCounts) — same fixture, same is_error read:
+  // Read's one call was rejected, Bash's was not, so toolBreakdown stays {Read:1,Bash:1} (attempts, unchanged)
+  // while toolErrorCounts distinguishes them ({Read:1}, Bash absent ⇒ 0 errors).
+  it('tallies toolErrorCounts per tool from the same is_error read the timeline ok flag uses', () => {
+    const acc = claudeCodeDriver.eventAccumulator();
+    expect(acc).toBeDefined();
+    const rich = foldAll(acc!, fixtureLines(CLAUDE_TOOL_ERROR));
+
+    expect(rich.toolBreakdown).toEqual({ Read: 1, Bash: 1 }); // attempts: unchanged
+    expect(rich.toolErrorCounts).toEqual({ Read: 1 }); // only Read's attempt was rejected
+  });
+
   it('is selected from the driver table by executor id — get("claude-code").eventAccumulator() decodes, get("pi") does NOT', () => {
     const drivers = builtinDrivers();
     // the claude driver yields a real, tool-decoding accumulator…
