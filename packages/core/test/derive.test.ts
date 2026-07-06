@@ -163,13 +163,41 @@ describe('deriveNode — ranked topTools (ToolStackBar oracle: sort desc, pct = 
   it('ranks tools by call count descending with each tool\'s share', () => {
     const d = deriveNode(di({ toolCalls: 10, toolBreakdown: { bash: 3, read: 5, edit: 2 } }));
     expect(d.topTools).toEqual([
-      { name: 'read', count: 5, pct: 0.5 },
-      { name: 'bash', count: 3, pct: 0.3 },
-      { name: 'edit', count: 2, pct: 0.2 },
+      { name: 'read', count: 5, pct: 0.5, errors: 0 },
+      { name: 'bash', count: 3, pct: 0.3, errors: 0 },
+      { name: 'edit', count: 2, pct: 0.2, errors: 0 },
     ]);
   });
   it('is empty when no tools ran', () => {
     expect(deriveNode(di()).topTools).toEqual([]);
+  });
+});
+
+// The bug this pins: toolBreakdown alone can't tell a rejected-only tool ("Tool bash not found", every
+// call isError:true) from a real execution — both show the same count. toolErrorCounts is the ADDITIVE
+// per-tool tally (from distill.ts) that lets a ranked entry carry its own error count alongside attempts.
+describe('deriveNode — ranked topTools carry a per-tool error count (toolErrorCounts)', () => {
+  it('a tool with some errored attempts reports errors alongside its unchanged attempt count', () => {
+    const d = deriveNode(di({
+      toolCalls: 3,
+      toolBreakdown: { bash: 2, read: 1 },
+      toolErrorCounts: { bash: 1 }, // one of bash's two attempts was rejected; read had none
+    }));
+    expect(d.topTools).toEqual([
+      { name: 'bash', count: 2, pct: 2 / 3, errors: 1 },
+      { name: 'read', count: 1, pct: 1 / 3, errors: 0 },
+    ]);
+  });
+  it('a rejected-only tool (errors === count) is distinguishable from a real execution', () => {
+    // the wgt1 case: bash ran twice, BOTH rejected — count alone (2) looks identical to two real calls.
+    const d = deriveNode(di({ toolCalls: 2, toolBreakdown: { bash: 2 }, toolErrorCounts: { bash: 2 } }));
+    const bash = d.topTools.find((t) => t.name === 'bash')!;
+    expect(bash.count).toBe(2);
+    expect(bash.errors).toBe(2); // errors === count ⇒ never once succeeded
+  });
+  it('defaults to errors:0 when toolErrorCounts is absent (an existing caller that ignores it)', () => {
+    const d = deriveNode(di({ toolCalls: 1, toolBreakdown: { read: 1 } })); // no toolErrorCounts at all
+    expect(d.topTools).toEqual([{ name: 'read', count: 1, pct: 1, errors: 0 }]);
   });
 });
 
