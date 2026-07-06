@@ -1,0 +1,18 @@
+{
+  "id": "template-script-tool-optional",
+  "meta": {
+    "name": "template-script-tool-optional",
+    "description": "Fixture: a node declares tool:ghost_probe with an OPTIONAL defs entry whose dir does not exist — the node must run with the tool simply not offered (a note, never a block)."
+  },
+  "stages": [
+    [
+      "probe"
+    ]
+  ],
+  "nodes": {
+    "probe": {
+      "phase": "run",
+      "deps": []
+    }
+  }
+}

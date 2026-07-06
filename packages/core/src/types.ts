@@ -288,9 +288,18 @@ export interface ToolSelection {
    * (`<templateDir>/tools/<name>/`) — the ONLY two locations `discoverScriptTools` ever searches, no
    * convention scanning. A hand-built (non-template) `WorkflowSpec` has no template dir to default
    * against, so it must declare `defs` explicitly for every `tool:<name>` it selects.
+   *
+   * A value is EITHER a plain string path (REQUIRED — the tool must resolve, else the node blocks) OR the
+   * object form `{ path, optional: true }` (PRESENCE-BASED offering): if the resolved dir exists, the tool
+   * behaves exactly like a required one (full validation — presence activates the whole contract); if it
+   * does not exist for THIS run's variant, the tool is skipped with a note and simply not offered (not on
+   * `--tools`, not in the generated extension). Optional forgives ABSENCE only.
    */
-  defs?: Record<string, string>;
+  defs?: Record<string, ScriptToolDef>;
 }
+
+/** One `tools.defs` value: a plain REQUIRED dir path, or `{ path, optional }` (presence-based offering). */
+export type ScriptToolDef = string | { path: string; optional?: boolean };
 
 // 4 ── CONTRACT / DATA-FLOW (edges are inferred from this) ─────────────────────
 

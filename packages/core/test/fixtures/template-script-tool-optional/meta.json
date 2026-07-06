@@ -1,0 +1,6 @@
+{
+  "id": "template-script-tool-optional",
+  "name": "template-script-tool-optional",
+  "description": "Fixture: a node declares tool:ghost_probe with an OPTIONAL defs entry whose dir does not exist — the node must run with the tool simply not offered (a note, never a block).",
+  "phases": ["run"]
+}

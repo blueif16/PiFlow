@@ -45,10 +45,12 @@ export interface TemplateNode {
   executor?: string;
   /**
    * (script-tools) `defs` — DEFINE-path overrides for `tool:<name>` allow entries: "tool:<name>" → the
-   * token-resolvable tool DIR containing `tool.json`. Omitted for a `tool:<name>` ⇒ `loadTemplate` fills
-   * the template's own tools root (`<templateDir>/tools/<name>/`) — see `fillScriptToolDefaults` (loader.ts).
+   * token-resolvable tool DIR containing `tool.json` (a plain string = REQUIRED), or the object form
+   * `{ path, optional: true }` (presence-based offering — skipped with a note when the dir is absent for
+   * this run). Omitted for a `tool:<name>` ⇒ `loadTemplate` fills the template's own tools root
+   * (`<templateDir>/tools/<name>/`) — see `fillScriptToolDefaults` (loader.ts).
    */
-  tools?: { allow?: string[]; deny?: string[]; defs?: Record<string, string> };
+  tools?: { allow?: string[]; deny?: string[]; defs?: Record<string, string | { path: string; optional?: boolean }> };
   mcp?: { servers?: Record<string, unknown>; ref?: string };
   inject?: string[];
   /** Per-node hard wall-clock cap (ms) → runtime `sandbox.timeoutMs`. Omitted ⇒ the run-level default. */

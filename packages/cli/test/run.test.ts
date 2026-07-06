@@ -324,6 +324,29 @@ describe('piflowctl run --dry-run — script tools (tool:<name>) discovered, nev
     // …and the old collapse-everything path never fired.
     expect(line).not.toContain('tools unresolved at preview');
   });
+
+  // (optional defs) presence-based offering in the preview: an OPTIONAL tool whose dir is absent renders
+  // the SAME "optional, not present" note the live preflight surfaces — never a WARN, never a collapse.
+  it('an OPTIONAL tool whose dir is ABSENT renders the "optional, not present" NOTE; builtins survive', async () => {
+    const tplOptional = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-cli-script-opt-'));
+    await fs.cp(path.join(CORE_FIXTURES, 'template-script-tool-optional'), tplOptional, { recursive: true });
+    try {
+      const wf = compile(await loadTemplate(tplOptional));
+      const plan = dryRunPlan(wf, { promptDir: '/run/_pi', workspace: CORE_FIXTURES });
+      const line = plan.split('\n').find((l) => l.includes('[probe]'));
+      expect(line).toBeDefined();
+      // the builtin survives; the absent optional tool is simply not offered.
+      expect(line).toMatch(/--tools \S*\bread\b/);
+      expect(line).not.toMatch(/--tools \S*\bghost_probe\b/);
+      expect(line).not.toContain('-e '); // no extension staged for a builtins-only resolution
+      // the pinned note is rendered — as a NOTE (informational), never a WARN (it is not a violation).
+      expect(line).toContain('tool:ghost_probe — optional, not present for this run');
+      expect(line).not.toMatch(/WARN/);
+      expect(line).not.toContain('tools unresolved at preview');
+    } finally {
+      await fs.rm(tplOptional, { recursive: true, force: true });
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

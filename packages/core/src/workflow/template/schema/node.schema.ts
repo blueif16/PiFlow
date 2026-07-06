@@ -84,10 +84,26 @@ export const nodeSchema = {
           // (script-tools) DEFINE-path overrides for `tool:<name>` allow entries: "tool:<name>" → the
           // token-resolvable tool DIR containing tool.json. A `tool:<name>` allow entry with NO entry here
           // resolves to the template's own tools root (<templateDir>/tools/<name>/, filled by loadTemplate).
+          // A value is a plain string (REQUIRED) or the object form `{ path, optional: true }` (PRESENCE-
+          // BASED: the tool is offered only when the resolved dir exists for this run; a PRESENT tool gets
+          // full validation — optional forgives ABSENCE only).
           type: 'object',
-          additionalProperties: { type: 'string', minLength: 1 },
+          additionalProperties: {
+            oneOf: [
+              { type: 'string', minLength: 1 },
+              {
+                type: 'object',
+                additionalProperties: false,
+                required: ['path'],
+                properties: {
+                  path: { type: 'string', minLength: 1, description: 'Token-resolvable tool DIR (containing tool.json).' },
+                  optional: { type: 'boolean', description: 'true ⇒ presence-based: skip (with a note) when the dir is absent for this run.' },
+                },
+              },
+            ],
+          },
           description:
-            'DEFINE-path overrides: "tool:<name>" → the token-resolvable tool DIR (containing tool.json). Omitted for a tool:<name> ⇒ <templateDir>/tools/<name>/.',
+            'DEFINE-path overrides: "tool:<name>" → the token-resolvable tool DIR (containing tool.json), or { path, optional } for presence-based offering. Omitted for a tool:<name> ⇒ <templateDir>/tools/<name>/.',
         },
       },
     },

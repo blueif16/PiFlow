@@ -7,7 +7,7 @@
 // No "archetype"/product vocabulary — fixtures use neutral names (variantA-style) per the SDK's
 // product-agnostic boundary.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -290,5 +290,100 @@ describe('preflightScriptTools — aggregate-all-violations-then-throw (the pref
     expect(thrown).toBeDefined();
     expect(thrown!.message).toMatch(/tool:demo_a/);
     expect(thrown!.message).toMatch(/tool:demo_b/);
+  });
+});
+
+// ── OPTIONAL defs entries — presence-based tool offering ─────────────────────────────────────────
+// A defs value may be `{ path, optional: true }`: if the resolved dir exists the tool behaves EXACTLY
+// like a required one (full validation — presence activates the whole contract); if it does not exist,
+// the tool is skipped with a NOTE (not an error, not an entry). Optional forgives ABSENCE only.
+
+describe('discoverScriptTools — optional defs entries (presence-based offering)', () => {
+  it('optional + ABSENT dir ⇒ no entry, no issue, ONE note ("optional, not present for this run")', () => {
+    const sel: ToolSelection = {
+      allow: ['tool:demo_probe'],
+      defs: { 'tool:demo_probe': { path: path.join(dir, 'not-installed'), optional: true } },
+    };
+    const { entries, issues, notes } = discoverScriptTools(sel, ctx);
+    expect(entries).toEqual([]);
+    expect(issues).toEqual([]);
+    expect(notes).toEqual(['tool:demo_probe — optional, not present for this run']);
+  });
+
+  it('optional + PRESENT dir ⇒ identical to a required entry (full resolve, no note)', () => {
+    const toolDir = path.join(dir, 'demo_probe');
+    writeGoodTool(toolDir);
+    const sel: ToolSelection = {
+      allow: ['tool:demo_probe'],
+      defs: { 'tool:demo_probe': { path: toolDir, optional: true } },
+    };
+    const { entries, issues, notes } = discoverScriptTools(sel, ctx);
+    expect(issues).toEqual([]);
+    expect(notes).toEqual([]);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].piName).toBe('demo_probe');
+    expect(entries[0].exec).toEqual({ cmd: 'node', argv: [path.join(toolDir, 'probe.mjs')], timeoutMs: 5000 });
+  });
+
+  it('optional + PRESENT-but-BROKEN ⇒ a loud aggregate issue (presence activates the full contract)', () => {
+    const toolDir = path.join(dir, 'demo_probe');
+    mkdirSync(toolDir, { recursive: true });
+    writeFileSync(
+      path.join(toolDir, 'tool.json'),
+      JSON.stringify({
+        name: 'demo_probe',
+        description: 'x',
+        parameters: {},
+        exec: { cmd: 'node', argv: ['{{toolDir}}/missing.mjs'] }, // the exec script is never written
+      }),
+    );
+    const sel: ToolSelection = {
+      allow: ['tool:demo_probe'],
+      defs: { 'tool:demo_probe': { path: toolDir, optional: true } },
+    };
+    const { entries, issues, notes } = discoverScriptTools(sel, ctx);
+    expect(entries).toEqual([]);
+    expect(notes).toEqual([]); // optional forgives ABSENCE, never a present-but-broken manifest
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatch(/exec script not found/);
+  });
+
+  it('object-form WITHOUT optional (required) + ABSENT dir ⇒ still an issue (unchanged semantics)', () => {
+    const missingDir = path.join(dir, 'nope');
+    const sel: ToolSelection = { allow: ['tool:demo_probe'], defs: { 'tool:demo_probe': { path: missingDir } } };
+    const { entries, issues, notes } = discoverScriptTools(sel, ctx);
+    expect(entries).toEqual([]);
+    expect(notes).toEqual([]);
+    expect(issues[0]).toMatch(/tool dir not found/);
+  });
+
+  it('a malformed object defs entry (no `path`) ⇒ an issue naming the address', () => {
+    const sel: ToolSelection = {
+      allow: ['tool:demo_probe'],
+      defs: { 'tool:demo_probe': { optional: true } as unknown as { path: string } },
+    };
+    const { entries, issues } = discoverScriptTools(sel, ctx);
+    expect(entries).toEqual([]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatch(/tool:demo_probe/);
+    expect(issues[0]).toMatch(/path/);
+  });
+
+  it('preflight: optional + ABSENT ⇒ NO throw, no entry, and the note is surfaced via console.warn', () => {
+    const warns: string[] = [];
+    const spy = vi.spyOn(console, 'warn').mockImplementation((...a: unknown[]) => {
+      warns.push(a.map(String).join(' '));
+    });
+    try {
+      const sel: ToolSelection = {
+        allow: ['read', 'tool:demo_probe'],
+        defs: { 'tool:demo_probe': { path: path.join(dir, 'not-installed'), optional: true } },
+      };
+      const entries = preflightScriptTools(sel, ctx);
+      expect(entries).toEqual([]);
+      expect(warns.join(' ')).toContain('tool:demo_probe — optional, not present for this run');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -372,17 +372,20 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
       // (script-tools) DISCOVER + register this node's `tool:<name>` manifests — the SAME
       // discoverScriptTools the live node-lifecycle preflight runs — so the preview binds them instead
       // of collapsing the node's WHOLE tool list on "unknown tool address". Preview-grade: a tool with a
-      // resolution violation renders a per-tool WARN and is dropped from the resolved selection (the
-      // node's other tools — builtins included — still render); the live run would BLOCK the node, so
-      // the preview must not claim the broken tool binds either.
+      // resolution violation renders a per-tool WARN, an OPTIONAL tool absent for this run renders the
+      // "optional, not present" NOTE (the live preflight's console.warn, verbatim); either way the
+      // unbound address is dropped from the resolved selection (the node's other tools — builtins
+      // included — still render). The live run would BLOCK on a violation / skip an absent optional, so
+      // the preview must not claim either binds.
       let sel = node.tools ?? {};
       if ((sel.allow ?? []).some(isScriptToolAddress)) {
         const found = discoverScriptTools(sel, resolveCtx);
         for (const entry of found.entries) registry.register(entry);
-        if (found.issues.length) {
+        if (found.issues.length || found.notes.length) {
           const bound = new Set(found.entries.map((e) => e.address));
           sel = { ...sel, allow: (sel.allow ?? []).filter((a) => !isScriptToolAddress(a) || bound.has(a)) };
           note += found.issues.map((i) => `  # WARN: script tool — ${i}`).join('');
+          note += found.notes.map((n) => `  # NOTE: script tool — ${n}`).join('');
         }
       }
       try {
