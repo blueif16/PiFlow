@@ -303,6 +303,33 @@ Product-side contributions (all recorded in game-omni, per its conventions):
    staged → human adopt → commit lands with the trailer → attempts row carries
    {commit, verifiedByRun} → `piflowctl issues` shows `resolved/fixed`.
 
+### M8 — Observe/GUI exposure (logic exists ONCE; every view is a projection)
+Recon-verified 2026-07-06 (observe/server/gui lanes; anchors below). No new logic anywhere —
+observe imports the substrate's own modules and projects:
+1. Lineage rides the EXISTING index: widen `ThreadRow`/`summarizeRun` (discover.ts:89-113, :200)
+   to carry `parent?`/`spawnedBy?` verbatim off the already-parsed RunStatus (readRunJson reads
+   them today and drops them) — zero new I/O. A pure `groupByParent(threads)` helper builds the
+   parent→children tree; the GUI run switcher (runIndex.ts:196 `indexToTree`) nests child runs
+   under their parent with `spawnedBy.issue` attribution. Child runs need NOTHING else — they are
+   first-class run dirs, so every existing viewer (run-view, telemetry, HUD, stream) works on
+   them unchanged.
+2. Issues endpoint, on-demand (NOT inside RunModel/RunView — the ledger is node-TYPE-scoped and
+   must not ride a 3s-polled run payload): `GET /__piflow/issues/<run>?node=<id>` mirroring
+   `piflowRunDigest` (handlers.ts:146 resolve→project→sendJson), reusing `templateDirFor`
+   (handlers.ts:712) → `nodeIssuesProjection(templateDir, nodeId)` = a thin observe wrapper over
+   `listIssues` (issues.ts). Registered in the `apiHandlers` array (handlers.ts:932).
+3. GUI: node-click = selecting the node TYPE — a new `issues` SideCard (SideCard.tsx accent enum
+   + `data/nodeIssues.ts` loader mirroring `data/runDigest.ts` fetch-on-open keyed run+node)
+   shows the FULL accumulated ledger (open/closed/regressed, severity-sorted), BADGING rows
+   whose firstSeen/lastSeen/attempts reference the currently-viewed run — one ledger, no second
+   "current-run issues" model. No SSE: issues and children mutate only at triage/fix time, so
+   REST-on-click + the existing liveSig refetch convention suffice (the recon's explicit verdict).
+4. TUI parity is free: tui/adapt.mjs consumes buildRunView/observe exports — any projection
+   exported from observe/index.ts reaches both frontends (the shared-reader law, verified).
+5. Tests: ThreadRow widening (fields survive summarizeRun); groupByParent (orphans, depth-1
+   nesting, name-order); the issues route against a fixture ledger (node filter, 404 on no
+   template); projection = byte-parity with listIssues output.
+
 ## 2 · Laws honored (cross-cutting)
 - Shipped optimize code: imported, never moved/renamed; classic CLI grammar byte-compatible
   (⚡ one accepted narrow exception, documented: `optimize <rundir> --node …` forms; see M5.1).
