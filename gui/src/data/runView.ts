@@ -66,8 +66,10 @@ export interface RunTokens { input: number; output: number; cacheRead: number; c
 
 /** An attention level, worst-first: ok < warn < high — mirrors core `Tone` (observe/derive.ts). */
 export type Tone = "ok" | "warn" | "high";
-/** One tool in the ranked breakdown; `pct` is the tool's share of all calls (0–1). Mirrors core. */
-export interface RankedTool { name: string; count: number; pct: number; }
+/** One tool in the ranked breakdown; `pct` is the tool's share of all calls (0–1). Mirrors core.
+ *  `errors` is the ADDITIVE per-tool rejected-call tally — optional so an existing hand-built fixture that
+ *  predates the field still type-checks unchanged; render code treats an absent value as 0. */
+export interface RankedTool { name: string; count: number; pct: number; errors?: number; }
 /** One produced file in the unified output list; `path` is the display path, `ok` = on-disk verified. Mirrors core. */
 export interface DerivedOutput { path: string; bytes?: number; ok: boolean; }
 /** The per-node DISPLAY projection core's `deriveNode` stamps on each run-view node (observe/derive.ts) — the

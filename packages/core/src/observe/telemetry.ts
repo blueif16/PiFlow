@@ -77,6 +77,9 @@ export interface NodeDigest {
   modelCalls: number;
   toolCalls: number;
   topTools: Record<string, number>;
+  /** ADDITIVE per-tool error tally (name → rejected-call count) alongside topTools' attempts — a tool
+   *  rejected on every call (topTools[name] === topToolErrors[name]) never succeeded once. {} when unknown. */
+  topToolErrors: Record<string, number>;
   maxToolRepeat: number;
   repeatedTool: string | null;
   retries: number;
@@ -165,6 +168,8 @@ interface NodeMetrics {
   modelCalls: number;
   toolCalls: number;
   toolBreakdown: Record<string, number>;
+  /** ADDITIVE per-tool error tally, from RunViewNode.toolErrorCounts (see NodeDigest.topToolErrors). */
+  toolErrorCounts: Record<string, number>;
   maxToolRepeat: number;
   repeatedTool: string | null;
   /** (P6) longest consecutive back-to-back identical-fingerprint tool run — the loop-score signal. */
@@ -263,6 +268,7 @@ function projectNode(m: NodeMetrics, th: TelemetryThresholds): { digest: NodeDig
     modelCalls: m.modelCalls,
     toolCalls: m.toolCalls,
     topTools: m.toolBreakdown,
+    topToolErrors: m.toolErrorCounts,
     maxToolRepeat: m.maxToolRepeat,
     repeatedTool: m.repeatedTool,
     retries: m.retries,
@@ -304,6 +310,7 @@ function metricsFromView(n: RunViewNode): NodeMetrics {
     modelCalls: n.modelCalls ?? 0,
     toolCalls: n.toolCalls ?? 0,
     toolBreakdown: n.toolBreakdown ?? {},
+    toolErrorCounts: n.toolErrorCounts ?? {},
     maxToolRepeat: n.maxToolRepeat ?? 0,
     repeatedTool: n.repeatedTool ?? null,
     loopScore: n.loopScore ?? 0,
@@ -528,6 +535,7 @@ export async function* telemetryStream(updates: AsyncIterable<RunUpdate>, opts: 
       modelCalls: lm.modelCalls,
       toolCalls: lm.toolCalls,
       toolBreakdown: {}, // not needed for live anomaly checks; the record digest carries the breakdown
+      toolErrorCounts: {}, // ditto — the record digest (topToolErrors) carries the per-tool error tally
       maxToolRepeat: lm.maxToolRepeat,
       repeatedTool: lm.repeatedTool,
       loopScore: lm.loopScore,

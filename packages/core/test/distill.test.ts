@@ -96,6 +96,37 @@ describe('createNodeAccumulator — tool calls & timeline', () => {
   });
 });
 
+// The bug this section pins: toolBreakdown counts every tool_execution_start regardless of outcome, so a
+// tool REJECTED every time (isError:true on tool_execution_end, e.g. "Tool bash not found") renders
+// identically to a real execution — the real wgt1 forensics case ("bash: 2" from two rejected attempts,
+// read as a sandbox leak until disproved). toolErrorCounts is the ADDITIVE per-tool error tally, using the
+// same isError read tool_execution_end already does for the timeline's `ok` flag (line ~293).
+describe('createNodeAccumulator — per-tool error counts (toolErrorCounts)', () => {
+  it('distinguishes a rejected call from a successful one — toolBreakdown unchanged, toolErrorCounts new', () => {
+    const rich = reduce([
+      { type: 'tool_execution_start', toolName: 'bash', toolCallId: 'a', args: { command: 'ls' }, _t: 0 },
+      { type: 'tool_execution_end', toolCallId: 'a', _t: 1, isError: true }, // rejected: "Tool bash not found"
+      { type: 'tool_execution_start', toolName: 'read', toolCallId: 'b', args: { path: '/p/a' }, _t: 2 },
+      { type: 'tool_execution_end', toolCallId: 'b', _t: 3 }, // real, successful read
+    ]);
+    // attempts are counted exactly as before — no existing consumer's numbers change.
+    expect(rich.toolBreakdown).toEqual({ bash: 1, read: 1 });
+    // the new surface distinguishes them: bash's one attempt was rejected, read's was not.
+    expect(rich.toolErrorCounts).toEqual({ bash: 1 });
+  });
+
+  it('the wgt1 case: 2 rejected bash attempts, 0 successes — errors match attempts, not silently 0', () => {
+    const rich = reduce([
+      { type: 'tool_execution_start', toolName: 'bash', toolCallId: 'a', args: { command: 'x' }, _t: 0 },
+      { type: 'tool_execution_end', toolCallId: 'a', _t: 1, isError: true },
+      { type: 'tool_execution_start', toolName: 'bash', toolCallId: 'b', args: { command: 'y' }, _t: 2 },
+      { type: 'tool_execution_end', toolCallId: 'b', _t: 3, isError: true },
+    ]);
+    expect(rich.toolBreakdown).toEqual({ bash: 2 }); // attempts: unchanged
+    expect(rich.toolErrorCounts).toEqual({ bash: 2 }); // every attempt rejected — a real run would show 0
+  });
+});
+
 describe('createNodeAccumulator — model capture', () => {
   // model/provider/api are recovered from the FIRST assistant message in the stream (first-wins).
   it('captures model from the first assistant message, ignoring later ones', () => {

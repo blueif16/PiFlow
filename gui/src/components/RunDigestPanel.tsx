@@ -78,6 +78,13 @@ function runToolDistribution(nodes: NodeDigest[]): Array<[string, number]> {
   for (const n of nodes) for (const [tool, count] of Object.entries(n.topTools)) acc[tool] = (acc[tool] ?? 0) + count;
   return Object.entries(acc).sort((a, b) => b[1] - a[1]);
 }
+// the ADDITIVE per-tool error tally alongside runToolDistribution — same sum, over topToolErrors — so a
+// tool rejected on every call across the run doesn't read identically to a real run-wide execution count.
+function runToolErrorDistribution(nodes: NodeDigest[]): Record<string, number> {
+  const acc: Record<string, number> = {};
+  for (const n of nodes) for (const [tool, count] of Object.entries(n.topToolErrors ?? {})) acc[tool] = (acc[tool] ?? 0) + count;
+  return acc;
+}
 
 export function RunDigestPanel({
   open,
@@ -140,6 +147,7 @@ export function RunDigestPanel({
   // run-wide derivations (trivial sums/counts over the per-node array; nothing else is re-derived).
   const nodes = digest?.nodes ?? [];
   const toolDist = runToolDistribution(nodes);
+  const toolErrDist = runToolErrorDistribution(nodes);
   const flags: Array<[AnomalyKind, number]> = [
     ["tool-loop", nodes.filter(isLooping).length],
     ["retries", nodes.filter((n) => n.retries > 0).length],
@@ -184,7 +192,7 @@ export function RunDigestPanel({
             {toolDist.length > 0 && (
               <div className="ds-digest__tools">
                 {toolDist.map(([tool, count]) => (
-                  <ToolTag key={tool} name={tool} count={count} />
+                  <ToolTag key={tool} name={tool} count={count} errors={toolErrDist[tool]} />
                 ))}
               </div>
             )}
@@ -295,7 +303,7 @@ export function RunDigestPanel({
                           .sort((a, b) => b[1] - a[1])
                           .slice(0, 3)
                           .map(([tool, count]) => (
-                            <ToolTag key={tool} name={tool} count={count} />
+                            <ToolTag key={tool} name={tool} count={count} errors={n.topToolErrors?.[tool]} />
                           ))}
                         {isLooping(n) && (
                           <span className="ds-nflag" data-tone="warn" title={n.repeatedTool ? `${n.repeatedTool} ×${n.maxToolRepeat}` : undefined}>

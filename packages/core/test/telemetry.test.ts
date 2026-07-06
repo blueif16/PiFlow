@@ -140,6 +140,25 @@ describe('projectRunDigest — rollup + context %', () => {
   });
 });
 
+// The bug this pins: topTools (a straight copy of toolBreakdown's attempt counts) can't tell a tool
+// REJECTED on every call from a real execution — an agent reading the digest sees "bash: 2" either way.
+// topToolErrors is the ADDITIVE parallel surface (from RunViewNode.toolErrorCounts) that lets the agent
+// tell them apart without re-deriving anything itself.
+describe('projectRunDigest — topToolErrors (per-tool error tally alongside topTools)', () => {
+  it('carries toolErrorCounts through as topToolErrors, leaving topTools (attempts) unchanged', () => {
+    const d = projectRunDigest(rview([
+      vnode({ id: 'a', toolBreakdown: { bash: 2, read: 1 }, toolErrorCounts: { bash: 2 } }),
+    ]));
+    expect(d.nodes[0].topTools).toEqual({ bash: 2, read: 1 }); // attempts: unchanged
+    expect(d.nodes[0].topToolErrors).toEqual({ bash: 2 }); // every bash attempt was rejected
+  });
+
+  it('defaults to {} when the view node carries no toolErrorCounts (an older/hand-built RunViewNode)', () => {
+    const d = projectRunDigest(rview([vnode({ id: 'a', toolBreakdown: { read: 1 } })]));
+    expect(d.nodes[0].topToolErrors).toEqual({});
+  });
+});
+
 describe('projectRunDigest — failure-onset localization (the file-flow DAG advantage)', () => {
   // A(blocked) → B(blocked): B's failure originates UPSTREAM at A, reached via the shared file.
   it('walks back to the earliest failed upstream node', () => {

@@ -40,6 +40,9 @@ export interface NodeDigest {
   modelCalls: number;
   toolCalls: number;
   topTools: Record<string, number>;
+  /** ADDITIVE per-tool error tally (name → rejected-call count) alongside topTools' attempts — mirrors
+   *  core's NodeDigest.topToolErrors. Optional so a fixture that predates the field still type-checks. */
+  topToolErrors?: Record<string, number>;
   maxToolRepeat: number;
   repeatedTool: string | null;
   retries: number;
