@@ -31,6 +31,7 @@ import {
 } from './checks.js';
 import { buildWorkflowJson, writeWorkflowJson } from './workflow-json.js';
 import { materializeJudgeNodes, JudgeConfigError } from '../judge/materialize.js';
+import { isScriptToolAddress, scriptToolName } from '../../tools/script-discover.js';
 
 /** Thrown when the template does not compile. Carries EVERY §8 violation (like `WorkflowError`). */
 export class TemplateError extends Error {
@@ -93,8 +94,28 @@ const unique = (xs: string[]): string[] => [...new Set(xs)];
 /** Strip a leading `{{RUN}}/` so an injected forced-read becomes a RUN-relative `io.reads` path (edges). */
 const runRel = (p: string): string => p.replace(/^\{\{RUN\}\}\//, '');
 
+/**
+ * (script-tools) Fill the DEFAULT tool dir (`<templateDir>/tools/<name>/`) for every `tool:<name>` allow
+ * entry that carries NO explicit `defs` override — the loader is the ONE place that knows the template
+ * dir, so it bakes this default in at load time. An author-declared `defs` entry is carried through
+ * VERBATIM (still token-bearing; token-resolved later, at node start). A node with no `tool:*` allow
+ * entry gets no `defs` at all (byte-identical to before this feature).
+ */
+function fillScriptToolDefaults(
+  tools: TemplateNode['tools'],
+  templateDir: string,
+): Record<string, string> | undefined {
+  const scriptAddrs = (tools?.allow ?? []).filter(isScriptToolAddress);
+  if (!scriptAddrs.length) return tools?.defs;
+  const defs: Record<string, string> = { ...(tools?.defs ?? {}) };
+  for (const addr of scriptAddrs) {
+    if (!(addr in defs)) defs[addr] = path.join(templateDir, 'tools', scriptToolName(addr));
+  }
+  return defs;
+}
+
 /** Map an authored TemplateNode → the runtime NodeIntent the existing DAG compiler consumes. */
-function toNodeIntent(n: LoadedNode): NodeIntent {
+function toNodeIntent(n: LoadedNode, templateDir: string): NodeIntent {
   const c = n.def.contract;
   // (M5 · G13) LOWER the deprecated aliases (inject/hooks/checks/policy) into the canonical op[] envelope.
   // AT THE LOADER ONLY — the dense NodeSpec gains exactly this one field; the runtime checks/policy carried
@@ -117,7 +138,11 @@ function toNodeIntent(n: LoadedNode): NodeIntent {
     // A PROGRAMMATIC node spawns no `pi`, so it has no realized prompt and no skill (its `prompt` block is
     // absent on disk). Every other node renders its prompt + carries its skill exactly as before.
     ...(n.def.programmatic ? {} : { prompt: renderRealizedPrompt(n.def, n.prose), skill: n.def.prompt?.skill }),
-    tools: { allow: n.def.tools?.allow, deny: n.def.tools?.deny },
+    tools: {
+      allow: n.def.tools?.allow,
+      deny: n.def.tools?.deny,
+      defs: fillScriptToolDefaults(n.def.tools, templateDir),
+    },
     io: {
       // (M5 · #10/#16) The node's declared reads = the lowered ops' reads (incl. {{RUN}}-relative injected
       // forced-reads) — raw inputs the template checks already proved are produced upstream or canonical.
@@ -262,7 +287,7 @@ export async function loadTemplate(dir: string, opts: LoadTemplateOpts = {}): Pr
 
   // (5) build the in-memory WorkflowSpec (deterministic node order = id-sorted from scan).
   const m = meta as TemplateMeta;
-  const authoredNodes = loaded.map(toNodeIntent);
+  const authoredNodes = loaded.map((n) => toNodeIntent(n, dir));
   // (expert-representations · "Judge expansion") MATERIALIZE every authored `judgeGate` into a real
   // `<producer>__judge` pi node + the producer-side reroute loop + the downstream-consumer rewiring. A
   // PURE intent→intent transform (the `expandReroute`/`expandFusion` precedent) — runs BEFORE the

@@ -1,0 +1,12 @@
+{
+  "id": "probe",
+  "phase": "run",
+  "deps": [],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "tool:demo_probe"] },
+  "contract": {
+    "artifacts": ["out.json"],
+    "owns": ["out.json"],
+    "readScope": ["{{RUN}}"]
+  }
+}
