@@ -95,3 +95,21 @@ export { analyzeEvents, analyzeTraceFile, DEFAULT_SUBSTRATE_THRESHOLDS } from '.
 export type {
   SubstrateThresholds, TraceMetricsReport, ThinkingSpan, ToolLoopFlag, TokenWasteSignal, CacheMissFlag,
 } from './substrate/trace-metrics.js';
+
+// The SUBSTRATE FIX phase (docs/specs/optimize-substrate-plan.md §M6) — per ONE issue: activate → candidate
+// closure (the {{WORKSPACE}}-read closure MINUS the oracle exclusions) → fixer agent → prove-rerun → the
+// graded-delta gate (REUSING evaluateGate) → stage a substrate manifest; ADOPT is the SEPARATE human step
+// (adoptSubstrateManifest → adoptFile + commitAdoption → stampAttempt → status resolved). Its OWN dedicated
+// SubstrateEvent stream + renderSubstrateEvent projection (a sibling of optimize/events.ts, never shared).
+export {
+  fixIssue, adoptSubstrateManifest, commitAdoption, prepareCandidateClosure, foldGradedDelta,
+  hashCandidateTree, countChangedFiles, collectWorkspaceRefs, buildFixerPrompt, readSubstrateManifest,
+  UNPROVEN_BY_RUN,
+} from './substrate/fix.js';
+export type {
+  FixIssueOpts, FixIssueResult, CandidateClosure, FoldGradedOpts, FoldGradedResult,
+  CommitAdoptionResult, CommitIssueRef, SubstrateManifest, SubstrateManifestRecord,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult,
+} from './substrate/fix.js';
+export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
+export type { SubstrateEvent, SubstrateEventSink } from './substrate/events.js';
