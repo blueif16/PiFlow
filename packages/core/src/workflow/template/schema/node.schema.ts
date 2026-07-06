@@ -336,6 +336,25 @@ export const nodeSchema = {
         outputs: { type: 'object', additionalProperties: { type: 'string' }, description: 'RESERVED (not yet wired): child→parent output path-mapping.' },
       },
     },
+    optimize: {
+      // (optimize-substrate-plan.md, M0) The OPTIMIZER-FACING measurement + judge block. Unlike the other
+      // activation blocks above, this one is NEVER read by the loader's `toNodeIntent` — the out-of-band
+      // optimize substrate reads `<templateDir>/nodes/<id>/node.json` straight off disk (precedent:
+      // memory.md / recurrence.ts:49), so nothing here reaches the compiled NodeSpec. It still validates
+      // through the SAME schema gate as every other node.json field: a typo'd key inside it fails the whole
+      // template load, exactly like a typo anywhere else (additionalProperties:false, §top).
+      type: 'object',
+      additionalProperties: false,
+      description: 'Optimizer-facing measurement + judge block, read via fs by the out-of-band optimize substrate — never loaded onto the runtime NodeSpec. Omitted ⇒ no substrate measurement.',
+      properties: {
+        measure: {
+          type: 'array',
+          description: 'Post-run measurement ops — reuses $defs/op byte-for-byte (gate/run bodies are the meaningful ones post-run).',
+          items: { $ref: '#/$defs/op' },
+        },
+        judge: { type: 'string', minLength: 1, description: 'Token-resolved path to the soft-judge file.' },
+      },
+    },
   },
   $defs: {
     op: {
