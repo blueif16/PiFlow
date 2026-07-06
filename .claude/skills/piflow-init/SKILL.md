@@ -380,6 +380,10 @@ them, and where an edit must be reconciled against the rest. For every node:
   engine stays uniform + genre-agnostic. *Why:* it removes the non-Claude-model explore-forever / mis-project
   thrash surface, makes mechanical output un-hallucinatable, and cuts tokens. The hook envelope + the
   DRIVER-marker → `Hook` assembly: `reference/sdk-consumer.md`; the marker spec: `reference/artifact-contract.md`.
+  **Marker-grammar law: skeleton guide prose must be quote-safe for edit anchors** — never a bare single-word
+  bracket token (`<id>`, `<threat>`) in a placeholder, since some model gateways mangle it inside a tool-call
+  argument string as XML; the colon-bearing `<FILL:` sentinel is the proven-safe convention. Canonical home:
+  `reference/artifact-contract.md` (the marker grammar).
 - **A WHOLLY-mechanical step is a PROGRAMMATIC node — never an agent node — and DEFAULTS to a neighbour's
   PRE-hook, not its own node.** The bullet above splits a *mixed* node's mechanical parts into hooks around its
   model; when a step has NO intelligent part at all (a render, a deterministic merge/derive of two parents, a
