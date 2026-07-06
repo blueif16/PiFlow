@@ -80,6 +80,15 @@ export const nodeSchema = {
       properties: {
         allow: { type: 'array', items: { type: 'string', minLength: 1 } },
         deny: { type: 'array', items: { type: 'string', minLength: 1 } },
+        defs: {
+          // (script-tools) DEFINE-path overrides for `tool:<name>` allow entries: "tool:<name>" → the
+          // token-resolvable tool DIR containing tool.json. A `tool:<name>` allow entry with NO entry here
+          // resolves to the template's own tools root (<templateDir>/tools/<name>/, filled by loadTemplate).
+          type: 'object',
+          additionalProperties: { type: 'string', minLength: 1 },
+          description:
+            'DEFINE-path overrides: "tool:<name>" → the token-resolvable tool DIR (containing tool.json). Omitted for a tool:<name> ⇒ <templateDir>/tools/<name>/.',
+        },
       },
     },
     mcp: {

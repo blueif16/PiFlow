@@ -43,7 +43,12 @@ export interface TemplateNode {
    * command/model/credential/verdict seams. See node.schema.ts `executor`.
    */
   executor?: string;
-  tools?: { allow?: string[]; deny?: string[] };
+  /**
+   * (script-tools) `defs` — DEFINE-path overrides for `tool:<name>` allow entries: "tool:<name>" → the
+   * token-resolvable tool DIR containing `tool.json`. Omitted for a `tool:<name>` ⇒ `loadTemplate` fills
+   * the template's own tools root (`<templateDir>/tools/<name>/`) — see `fillScriptToolDefaults` (loader.ts).
+   */
+  tools?: { allow?: string[]; deny?: string[]; defs?: Record<string, string> };
   mcp?: { servers?: Record<string, unknown>; ref?: string };
   inject?: string[];
   /** Per-node hard wall-clock cap (ms) → runtime `sandbox.timeoutMs`. Omitted ⇒ the run-level default. */
