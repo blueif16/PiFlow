@@ -112,7 +112,16 @@ export function discoverScriptTools(tools: ToolSelection, resolveCtx: ResolveCtx
       continue;
     }
 
-    const toolDir = path.resolve(resolveTokens(defRaw, resolveCtx));
+    // Token-resolve the declared dir; a token that CANNOT resolve (MissingArgError/MissingChannelError)
+    // is a per-tool issue like any other resolution violation — this fn NEVER throws (the docstring
+    // contract the dry-run preview also leans on).
+    let toolDir: string;
+    try {
+      toolDir = path.resolve(resolveTokens(defRaw, resolveCtx));
+    } catch (e) {
+      issues.push(`${addr} — defs path "${defRaw}" failed token resolution: ${(e as Error).message}`);
+      continue;
+    }
     let isDir = false;
     try {
       isDir = statSync(toolDir).isDirectory();

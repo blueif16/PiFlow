@@ -143,6 +143,18 @@ describe('discoverScriptTools — violations aggregate (never just the first)', 
     expect(issues[0]).toContain(missingDir);
   });
 
+  it('a defs path whose token CANNOT resolve (e.g. {{arg.missing}}) ⇒ a per-tool issue, NEVER a throw', () => {
+    const sel: ToolSelection = { allow: ['tool:demo_probe'], defs: { 'tool:demo_probe': '{{arg.missing}}/demo_probe' } };
+    let result: ReturnType<typeof discoverScriptTools> | undefined;
+    expect(() => {
+      result = discoverScriptTools(sel, ctx); // ctx carries no `missing` arg ⇒ resolveTokens throws MissingArgError
+    }).not.toThrow();
+    expect(result!.entries).toEqual([]);
+    expect(result!.issues).toHaveLength(1);
+    expect(result!.issues[0]).toMatch(/tool:demo_probe/);
+    expect(result!.issues[0]).toMatch(/missing/);
+  });
+
   it('a missing tool.json ⇒ an issue naming the manifest path', () => {
     const toolDir = path.join(dir, 'demo_probe');
     mkdirSync(toolDir, { recursive: true }); // dir exists, but no tool.json

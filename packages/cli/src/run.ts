@@ -23,6 +23,8 @@ import {
   compile,
   seededRegistry,
   SUBMIT_RESULT_TOOL,
+  discoverScriptTools,
+  isScriptToolAddress,
   dispatchCommand,
   effectiveModel,
   loadModelTiers,
@@ -39,6 +41,8 @@ import {
   nowISO,
   type Workflow,
   type WorkflowSpec,
+  type ResolveCtx,
+  type ResolveResult,
   type RunStatus,
   type LoadConfigInput,
   type ResolvedRunOpts,
@@ -317,6 +321,12 @@ export interface DryRunPlanOpts {
   executor?: 'pi' | 'claude-code';
   /** Per-node executor overrides (keyed by node id) — win over `executor`, mirroring the LIVE run. */
   executorOverride?: Record<string, 'pi' | 'claude-code'>;
+  /** `{{WORKSPACE}}` root for script-tool `tools.defs` token resolution (mirrors the LIVE resolveCtx). Default cwd. */
+  workspace?: string;
+  /** `{{RUN}}` root for script-tool `tools.defs` token resolution — the dry-run's materialized outDir. Default cwd. */
+  runDir?: string;
+  /** `{{arg.*}}` values for script-tool `tools.defs` token resolution (the `--arg k=v` set). Default none. */
+  args?: Record<string, string>;
 }
 
 /**
@@ -338,6 +348,15 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
   // G1 — resolve the SAME per-node effective model/provider the runner will (read-only global config).
   const tiers = loadModelTiers();
   const modelsIndex = loadModelsIndex();
+  // (script-tools) The preview-grade resolver ctx for `tools.defs` token resolution — the same vocabulary
+  // the live node-lifecycle resolveCtx carries ({{RUN}}/{{WORKSPACE}}/{{arg.*}}); RunState is empty at
+  // preview time, so a {{state.*}} defs path degrades to a per-tool WARN (never a crash).
+  const resolveCtx: ResolveCtx = {
+    run: opts.runDir ?? process.cwd(),
+    workspace: opts.workspace ?? process.cwd(),
+    state: {},
+    args: opts.args ?? {},
+  };
   const profileNote = opts.profile ? ` [profile: ${opts.profile}]` : '';
   const lines: string[] = [
     `dry-run plan for "${wf.meta.name}"${profileNote} — ${Object.keys(wf.nodes).length} nodes, ${wf.stages.length} stages (no model invoked)`,
@@ -348,14 +367,30 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
     for (const id of stage.nodeIds) {
       const node = wf.nodes[id];
       const promptFile = `${promptDir}/${id}/prompt.md`;
-      let resolved;
+      let resolved: ResolveResult;
       let note = '';
+      // (script-tools) DISCOVER + register this node's `tool:<name>` manifests — the SAME
+      // discoverScriptTools the live node-lifecycle preflight runs — so the preview binds them instead
+      // of collapsing the node's WHOLE tool list on "unknown tool address". Preview-grade: a tool with a
+      // resolution violation renders a per-tool WARN and is dropped from the resolved selection (the
+      // node's other tools — builtins included — still render); the live run would BLOCK the node, so
+      // the preview must not claim the broken tool binds either.
+      let sel = node.tools ?? {};
+      if ((sel.allow ?? []).some(isScriptToolAddress)) {
+        const found = discoverScriptTools(sel, resolveCtx);
+        for (const entry of found.entries) registry.register(entry);
+        if (found.issues.length) {
+          const bound = new Set(found.entries.map((e) => e.address));
+          sel = { ...sel, allow: (sel.allow ?? []).filter((a) => !isScriptToolAddress(a) || bound.has(a)) };
+          note += found.issues.map((i) => `  # WARN: script tool — ${i}`).join('');
+        }
+      }
       try {
-        resolved = registry.resolve(node.tools ?? {});
+        resolved = registry.resolve(sel);
       } catch (e) {
         // unresolved tools (catalog miss) — render a minimal command + flag, never crash the preview.
         resolved = { piTools: [] as string[] };
-        note = `  # NOTE: tools unresolved at preview (${(e as Error).message})`;
+        note += `  # NOTE: tools unresolved at preview (${(e as Error).message})`;
       }
       // Run-start executor override (mirrors the LIVE resolveExecutor precedence: per-node → run-level →
       // authored) so the free preview shows the SAME agent binary the live run will spawn — never lie.
@@ -370,8 +405,12 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
       } catch (e) {
         note += `  # NOTE: model routing — ${(e as Error).message}`;
       }
+      // The generated `-e` tool extension: mirror the LIVE staging layout (`<stage>/<id>/tools.ts`,
+      // node-lifecycle's nodeStage) so the preview command shows the SAME `-e` the run will emit.
+      // Absent when the node resolved to builtins only (the live run stages nothing either).
+      const extensionFile = resolved.extension ? `${promptDir}/${id}/tools.ts` : undefined;
       // dispatchCommand routes pi vs claude-code off `eNode.executor` (the same seam the runner uses).
-      const cmd = dispatchCommand(eNode, resolved, { promptFile, provider: eff.provider ?? provider, model: eff.model }, { thinking: opts.thinking });
+      const cmd = dispatchCommand(eNode, resolved, { promptFile, provider: eff.provider ?? provider, model: eff.model, extensionFile }, { thinking: opts.thinking });
       lines.push(`    [${id}] ${cmd}${note}`);
     }
   }
@@ -610,7 +649,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     await writeStatus(outDir, dryStatus);
     // reference the actual realized prompt path the run materialized (engine-owned layout helper).
     const samplePromptDir = nodePromptFile(outDir, '<id>').replace(/\/<id>\/prompt\.md$/, '');
-    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: effProvider, model: effModel, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride }));
+    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: effProvider, model: effModel, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride, workspace, runDir: outDir, args: parsed.args }));
     print(`piflowctl run: dry-run materialized a viewable plan at ${outDir} (open it: piflowctl gui / piflowctl status ${outDir}). Nodes are status "dry" — no model ran.`);
     return undefined;
   }
