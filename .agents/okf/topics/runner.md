@@ -28,7 +28,7 @@ TEMPLATE-RUN JOIN
 - `packages/core/src/runner/entry.ts:163` — `runFromTemplate` — load → instantiate → compile → run
 - `packages/core/src/workflow/template/instantiate.ts:98` — `instantiateRun` — materialize `${RUN}/.pi/nodes/<id>/`
 PER-NODE RUNNER EXEC
-- `packages/core/src/runner/runner.ts:373` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
+- `packages/core/src/runner/runner.ts:374` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
 - `packages/core/src/runner/node-lifecycle.ts:99` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)

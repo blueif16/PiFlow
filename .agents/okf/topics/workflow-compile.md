@@ -26,7 +26,7 @@ into extra intents BEFORE this compile (see `per-node-routing-and-fusion`).
 # Anchors
 AUTHORED TEMPLATE → LOAD
 - `packages/core/src/workflow/template/loader.ts:215` — `loadTemplate` — fail-closed scan+check → `WorkflowSpec`
-- `packages/core/src/workflow/template/loader.ts:96` — `toNodeIntent` — authored `TemplateNode` → runtime `NodeIntent`
+- `packages/core/src/workflow/template/loader.ts:97` — `toNodeIntent` — authored `TemplateNode` → runtime `NodeIntent`
 CONTRACT CODEC (DRIVER-* markers)
 - `packages/core/src/contract.ts:199` — `markersFromNode` — derive a node's contract markers from its `NodeSpec`/resolve
 - `packages/core/src/contract.ts:115` — `emitMarkers` — render markers into the prompt; `parseMarkers` (:139) is the inverse
