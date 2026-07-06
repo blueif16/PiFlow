@@ -164,6 +164,34 @@ describe('runWorkflow — end-to-end on InMemorySandboxProvider (no live pi)', (
 
     await fs.rm(outDir, { recursive: true, force: true });
   });
+
+  // (M1 — run identity) A CHILD run (spawnChildRun's replay-from-node-start) carries its lineage into
+  // run.json — `parent` (the originating run's id) + `spawnedBy` (who/why) — threaded the SAME
+  // present-only-when-set pattern as `promptId` (runner.ts). Absent on a normal top-level run (below).
+  it('threads opts.parent/opts.spawnedBy into run.json when set; both absent on a normal run', async () => {
+    const g = compile(wf([n('Solo', [], ['solo.txt'])]));
+
+    const childOut = await tmpOut();
+    const { status: childStatus } = await runWorkflow(g, {
+      run: 'child-1',
+      outDir: childOut,
+      buildCommand: stubBuilder(),
+      parent: '260706-01',
+      spawnedBy: { by: 'substrate-fix', issue: 'soggy-crust', issueId: 'sha256:abc' },
+    });
+    expect(childStatus.parent).toBe('260706-01');
+    expect(childStatus.spawnedBy).toEqual({ by: 'substrate-fix', issue: 'soggy-crust', issueId: 'sha256:abc' });
+    const childOnDisk = JSON.parse(await fs.readFile(runJsonFile(childOut), 'utf8'));
+    expect(childOnDisk.parent).toBe('260706-01');
+    expect(childOnDisk.spawnedBy).toEqual({ by: 'substrate-fix', issue: 'soggy-crust', issueId: 'sha256:abc' });
+    await fs.rm(childOut, { recursive: true, force: true });
+
+    const plainOut = await tmpOut();
+    const { status: plainStatus } = await runWorkflow(g, { run: 'plain-1', outDir: plainOut, buildCommand: stubBuilder() });
+    expect(plainStatus.parent).toBeUndefined();
+    expect(plainStatus.spawnedBy).toBeUndefined();
+    await fs.rm(plainOut, { recursive: true, force: true });
+  });
 });
 
 // ── 1b. concurrent collect into a SHARED dest subtree (the swallowed-EEXIST footgun) ───────────────

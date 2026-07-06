@@ -209,9 +209,12 @@ export interface RunTotals {
 export interface RunStatus {
   run: string;
   /**
-   * The run's MEMORABLE identity — the Docker-style `<bake-adjective>-<pie>` name (e.g. "flaky-pecan")
-   * the CLI mints when `--run/--id` is omitted, or the explicit `--run <id>` when one was passed. This
-   * decouples a run's identity from any prompt id; absent on older records (additive, optional).
+   * The run's IDENTITY — a scannable `YYMMDD-NN` date-sequence name (e.g. "260706-01", the Nth run
+   * minted this UTC day) the CLI mints when `--run/--id` is omitted, or the explicit `--run <id>` when
+   * one was passed (M1). Decouples a run's identity from any prompt id and scales to hundreds of
+   * agent-minted runs a day — the prior Docker-style `<adjective>-<pie>` name space (`generateRunName`,
+   * still exported) is reassigned to ISSUE naming (optimize/substrate, M2). Absent on older records
+   * (additive, optional).
    */
   name?: string;
   /**
@@ -219,6 +222,18 @@ export interface RunStatus {
    * Carried as run METADATA so the run is traceable to its prompt WITHOUT the run id BEING the prompt id.
    */
   promptId?: string;
+  /**
+   * (M1 — child runs) The PARENT run's id, present ONLY when THIS run was minted by `spawnChildRun`
+   * (optimize/substrate's replay-from-node-start, ./optimize/substrate/child-run.ts): the run whose
+   * `.pi/` tree (minus its journal) this run's copy was bundled from. Absent on a normal top-level run.
+   */
+  parent?: string;
+  /**
+   * (M1 — child runs) WHO/WHY spawned this child run: `by` names the mechanism (e.g. `'substrate-fix'`);
+   * `issue`/`issueId` name the optimize-substrate issue (the M2 ledger) that triggered it, when
+   * applicable. Absent on a normal top-level run (only ever set alongside `parent`).
+   */
+  spawnedBy?: { by: string; issue?: string; issueId?: string };
   source?: string;
   /** The active run PROFILE name (the reduced DAG this run reflects); null/absent ⇒ the full DAG. */
   profile?: string | null;

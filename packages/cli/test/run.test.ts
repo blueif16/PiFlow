@@ -574,6 +574,27 @@ describe('piflowctl run — Docker-style auto-naming when --run is omitted', () 
     expect(optsSeen?.name).toBe('p06');
     expect(optsSeen?.promptId).toBeUndefined(); // no --arg prompt ⇒ no prompt metadata
   });
+
+  // (M1) The REAL default (no injected `deps.generateName`) is now `generateDateSeqName` — a scannable
+  // `YYMMDD-NN` — NOT the Docker-style `<adjective>-<pie>` pick. This FAILS if the default generator
+  // regresses back to `generateRunName` (agent-minted names must scale to hundreds of runs).
+  it('the REAL default generator (no injected generateName) mints a "YYMMDD-NN" date-seq name', async () => {
+    let optsSeen: RunFromTemplateOpts | undefined;
+    const deps: RunDeps = {
+      runFromTemplate: async (_dir, opts) => {
+        optsSeen = opts;
+        return { status: { ok: true } as never, outDir: opts.runDir };
+      },
+      // no generateName injected ⇒ exercises run.ts's own default wiring.
+      listExistingRuns: () => [],
+      print: () => {},
+    };
+
+    await runTemplate({ templateDir: TEMPLATE_MIN, dryRun: false, args: {}, outDir: out, sandbox: 'inmemory' }, deps);
+
+    expect(optsSeen?.run).toMatch(/^\d{6}-\d{2}$/);
+    expect(optsSeen?.name).toBe(optsSeen?.run);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
