@@ -46,7 +46,7 @@ FUSION — config + expand
 - `packages/core/src/workflow/fusion/prompts.ts:113` — `fillJudgePrompt` — fill the judge template with task/partials/obligations
 - `packages/core/src/workflow/fusion/presets.ts:43` — `judgePresetId` — pick the judge preset by mode (moa / best-of-n) over `FUSION_PRESETS`
 FUSION — expand-then-compile (terminal)
-- `packages/core/src/runner/entry.ts:116` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromConfig path)
+- `packages/core/src/runner/entry.ts:64` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromConfig path)
 - `packages/core/src/runner/entry.ts:63` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromTemplate path)
 - `packages/core/src/dag.ts:206` — `compile` — folds the expanded siblings+judge into stages/edges (the DAG the author never wrote)
 

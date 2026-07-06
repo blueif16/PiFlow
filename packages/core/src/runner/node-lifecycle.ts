@@ -15,6 +15,7 @@ import type {
 } from '../types.js';
 import { defaultSecretResolver } from '../types.js';
 import { verifyToolBinding } from '../tools/verify.js';
+import { preflightScriptTools } from '../tools/script-discover.js';
 import { markersFromNode, emitMarkers } from '../contract.js';
 import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas } from './schema.js';
@@ -106,6 +107,26 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   ctx.failureSignals.delete(node.id);
   await writeStatus(ctx.outDir, ctx.status);
 
+  // The per-node resolver ctx — ONE ctx threads the prompt resolve, the seed/op resolution, the io/
+  // sandbox/checks PATH resolution (U7), AND (immediately below) the script-tool DEFINE-path resolution.
+  // `{{RUN}}` is the host run dir (the collection namespace); state is the barrier-merged RunState loaded
+  // for this stage. Built HERE (moved up from its historical single use-site further below) because
+  // script-tool discovery needs it BEFORE the bind check; none of its inputs (outDir/workspace/runState/
+  // args) mutate between here and there, so this is a pure reordering, not a behavior change.
+  const resolveCtx: ResolveCtx = { run: ctx.outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
+
+  // SCRIPT TOOLS (DECLARE→DEFINE→DISCOVER/RESOLVE→PREFLIGHT, docs/design script-tools): resolve + validate
+  // every `tool:<name>` in the node's allow and REGISTER its manifest-derived ToolEntry into the run's
+  // registry BEFORE the bind check below (which needs each one already registered to bind cleanly). A
+  // resolution violation (missing dir/manifest/name-mismatch/missing script) aggregates every declared
+  // tool's issues into ONE loud error — the node is `blocked` before a sandbox is ever stood up, exactly
+  // like a failed tool bind check.
+  try {
+    for (const entry of preflightScriptTools(node.tools, resolveCtx)) ctx.registry.register(entry);
+  } catch (e) {
+    return finishNode(ctx, node, rec, t0, 'blocked', (e as Error).message, [], [(e as Error).message]);
+  }
+
   // PRE-NODE BIND CHECK ("Verified, not trusted", spine #8): the node DECLARED its toolset; confirm
   // it actually GETS every declared function — each address binds to a unique bare name — BEFORE we
   // stand up a sandbox or spawn pi. A miss (declared tool not in the catalog) or a collision (two
@@ -174,11 +195,6 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     node.id,
     ctx.secretResolver ?? defaultSecretResolver,
   );
-
-  // The per-node resolver ctx — ONE ctx threads the prompt resolve, the seed/op resolution, AND the io/
-  // sandbox/checks PATH resolution (U7). `{{RUN}}` is the host run dir (the collection namespace); state is
-  // the barrier-merged RunState loaded for this stage.
-  const resolveCtx: ResolveCtx = { run: ctx.outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
 
   // IO/SANDBOX TOKEN RESOLUTION AT LAUNCH (U7): make `{{arg.*}}`/`{{WORKSPACE}}`/`{{RUN}}`/`{{state.*}}`
   // PHYSICAL in the node's CONTRACT paths — io.artifacts[].path, sandbox.read (read-scope), sandbox.write

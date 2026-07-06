@@ -271,6 +271,62 @@ describe('piflowctl run --dry-run — realized commands, no model', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (B2) DRY-RUN × SCRIPT TOOLS — the preview must run the SAME tool:<name> discovery the live
+// node-lifecycle path runs (discoverScriptTools), or it lies twice: a valid script tool would read
+// "tools unresolved" with the node's WHOLE tool list collapsed (builtins included, no -e), while the
+// live run binds it and stages the generated extension. Preview-grade: a broken tool renders a
+// per-tool WARN and the rest of the node's tools survive.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('piflowctl run --dry-run — script tools (tool:<name>) discovered, never a lying preview', () => {
+  // the shared-tools DEFINE dirs live in core's fixtures root; the templates' defs are {{WORKSPACE}}-relative.
+  const CORE_FIXTURES = path.resolve(HERE, '../../core/test/fixtures');
+  let TPL_SCRIPT: string;
+  let TPL_BROKEN: string;
+  beforeAll(async () => {
+    // loadTemplate (re)writes the template's generated workflow.json lock → run over CLONES (the file convention).
+    TPL_SCRIPT = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-cli-script-tpl-'));
+    await fs.cp(path.join(CORE_FIXTURES, 'template-script-tool'), TPL_SCRIPT, { recursive: true });
+    TPL_BROKEN = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-cli-script-broken-'));
+    await fs.cp(path.join(CORE_FIXTURES, 'template-script-tool-broken'), TPL_BROKEN, { recursive: true });
+  });
+  afterAll(async () => {
+    await fs.rm(TPL_SCRIPT, { recursive: true, force: true });
+    await fs.rm(TPL_BROKEN, { recursive: true, force: true });
+  });
+
+  it('a valid tool:demo_probe lists demo_probe + the builtins on --tools AND stages the -e extension', async () => {
+    const wf = compile(await loadTemplate(TPL_SCRIPT));
+    const plan = dryRunPlan(wf, { promptDir: '/run/_pi', workspace: CORE_FIXTURES });
+    const line = plan.split('\n').find((l) => l.includes('[probe]'));
+    expect(line).toBeDefined();
+    // the discovered script tool AND the declared builtin BOTH ride --tools (the live command's list).
+    expect(line).toMatch(/--tools \S*\bdemo_probe\b/);
+    expect(line).toMatch(/--tools \S*\bread\b/);
+    // the generated tool extension is staged + referenced, mirroring the live `.pi/staged/<id>/tools.ts`.
+    expect(line).toContain(`-e '/run/_pi/probe/tools.ts'`);
+    // and the old collapse-everything path never fired.
+    expect(line).not.toContain('tools unresolved at preview');
+  });
+
+  it('a BROKEN tool:demo_probe renders a per-tool WARN while the builtins survive on --tools', async () => {
+    const wf = compile(await loadTemplate(TPL_BROKEN));
+    const plan = dryRunPlan(wf, { promptDir: '/run/_pi', workspace: CORE_FIXTURES });
+    const line = plan.split('\n').find((l) => l.includes('[probe]'));
+    expect(line).toBeDefined();
+    // the node's OTHER tools survive — never the whole-list collapse.
+    expect(line).toMatch(/--tools \S*\bread\b/);
+    // the per-tool warning names the address AND the concrete reason (the missing exec script).
+    expect(line).toMatch(/WARN/);
+    expect(line).toContain('tool:demo_probe');
+    expect(line).toMatch(/exec script not found/);
+    // the broken tool must NOT ride --tools (the live run would block; the preview must not claim it binds)…
+    expect(line).not.toMatch(/--tools \S*\bdemo_probe\b/);
+    // …and the old collapse-everything path never fired.
+    expect(line).not.toContain('tools unresolved at preview');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (C) RUN WIRING — the LIVE branch routes through core `runFromTemplate(dir, opts)` (the template-run
 // join: loadTemplate → instantiateRun → compile → runWorkflow, INSIDE core). The CLI no longer hand-
 // orchestrates those four seams; it just THREADS the resolved options. We assert via an injected

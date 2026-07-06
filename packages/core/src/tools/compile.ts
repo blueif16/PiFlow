@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 import esbuild from 'esbuild';
 import type { ToolEntry, ToolSource } from '../types.js';
 import { renderContractTool } from './contract-tool.js';
+import { renderScriptTool } from './script-tool.js';
 import { renderParamsExpr, paramsNeedStringEnum, STRING_ENUM_PREAMBLE } from './params.js';
 
 /** Module the generated extension imports its execute-bridge (`callTool`) from. */
@@ -69,6 +70,8 @@ export interface PlannedTool {
   rawName?: string;
   /** sdk only: the import specifier for the pinned plugin module (from `origin.ref`, version-stripped). */
   pluginModule?: string;
+  /** script only: the DISCOVER-resolved exec contract (`argv` already `{{toolDir}}`-substituted). */
+  exec?: { cmd: string; argv: string[]; timeoutMs: number };
 }
 
 /** A compiled extension: the source pi loads via `-e`, plus the piNames it registers (for bind-verify). */
@@ -129,6 +132,7 @@ export function planTools(entries: ToolEntry[]): PlannedTool[] {
         t.rawName = rawNameOf(e.address);
         t.pluginModule = pluginModuleFromRef(e.origin?.ref);
       }
+      if (e.source === 'script') t.exec = e.exec;
       return t;
     });
 }
@@ -173,6 +177,12 @@ function renderTool(t: PlannedTool, modIdent?: string): string {
   // A first-party CONTRACT tool (e.g. submit_result) carries its OWN inline execute — render it directly,
   // never the bridge/native-sdk route. (Its piName/description/parameters satisfy ContractRenderable.)
   if (t.source === 'contract') return renderContractTool(t);
+  // A SCRIPT tool (a `tool:<name>` DEFINE-path manifest) ALSO carries its own inline execute — it spawns
+  // the DISCOVER-resolved cmd/argv via execFile, never the bridge/native-sdk route.
+  if (t.source === 'script') {
+    if (!t.exec) throw new Error(`planned script tool "${t.piName}" carries no exec contract (internal error)`);
+    return renderScriptTool({ piName: t.piName, label: t.label, description: t.description, parameters: t.parameters, exec: t.exec });
+  }
   const head = renderHead(t);
   if (isNativeSdk(t) && modIdent) {
     // capture the plugin's tool defs, find THIS tool by its raw registered name, bind its native execute.
@@ -205,10 +215,12 @@ export function renderExtension(tools: PlannedTool[], opts: CompileOpts = {}): s
   const shim = opts.shimModule ?? DEFAULT_SHIM_MODULE;
 
   // any tool that routes through the bridge needs `callTool`; any native sdk tool needs the shim. A
-  // first-party CONTRACT tool brings its own inline execute → it needs NEITHER (no bridge, no plugin).
+  // first-party CONTRACT tool (and a SCRIPT tool) brings its own inline execute → it needs NEITHER (no
+  // bridge, no plugin). A SCRIPT tool instead needs `execFile` (node:child_process).
   const nativeSdk = tools.filter(isNativeSdk);
-  const needsBridge = tools.some((t) => t.source !== 'contract' && !isNativeSdk(t));
+  const needsBridge = tools.some((t) => t.source !== 'contract' && t.source !== 'script' && !isNativeSdk(t));
   const needsShim = nativeSdk.length > 0;
+  const needsChildProcess = tools.some((t) => t.source === 'script');
 
   // dedupe distinct plugin modules → one stable import each (`__ocPlugin_<i>`); map module → ident.
   const modIdent = new Map<string, string>();
@@ -230,6 +242,7 @@ export function renderExtension(tools: PlannedTool[], opts: CompileOpts = {}): s
   // save this: `beforeExit` only fires once the loop DRAINS, and the open socket is exactly what prevents it.
   if (needsBridge) imports.push(`import { callTool, disposeBridge } from ${JSON.stringify(bridge)};`);
   if (needsShim) imports.push(`import { captureOpenClawTools } from ${JSON.stringify(shim)};`);
+  if (needsChildProcess) imports.push('import { execFile } from "node:child_process";');
   imports.push(...pluginImports);
 
   // #21: emit the Gemini-safe `StringEnum` preamble helper iff some tool's params carry an all-string enum
