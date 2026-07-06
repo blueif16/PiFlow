@@ -81,3 +81,17 @@ export {
 export type {
   Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
 } from './substrate/issues.js';
+
+// The SUBSTRATE hard MEASUREMENT stage (docs/specs/optimize-substrate-plan.md §M3) — fires a node's
+// `optimize.measure` op[] (read straight off its node.json) + the built-in trace detectors + the run digest
+// into ONE deterministic `<runDir>/optimize/substrate/measure.<node>.json` report. Fully external to the
+// runner (node-lifecycle.ts is untouched); the M4 judge consumes this report as its hard-evidence input.
+export { runSubstrateMeasure } from './substrate/measure.js';
+export type { RunSubstrateMeasureOpts, MeasureReport, MeasureOpsSection, OpRunResult } from './substrate/measure.js';
+// The generic, product-agnostic pi-event trace DETECTORS (thinking-stall span, tool-loop identical-result
+// grouping, cumulative token-waste growth, provider-aware cache-miss) over `.pi/nodes/<id>/events.jsonl` —
+// core-legal (no product logic), reused directly by `measure.ts` and testable standalone over raw lines.
+export { analyzeEvents, analyzeTraceFile, DEFAULT_SUBSTRATE_THRESHOLDS } from './substrate/trace-metrics.js';
+export type {
+  SubstrateThresholds, TraceMetricsReport, ThinkingSpan, ToolLoopFlag, TokenWasteSignal, CacheMissFlag,
+} from './substrate/trace-metrics.js';

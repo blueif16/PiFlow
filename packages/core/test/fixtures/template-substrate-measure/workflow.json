@@ -1,0 +1,23 @@
+{
+  "id": "template-substrate-measure",
+  "meta": {
+    "name": "template-substrate-measure",
+    "description": "Single-node fixture (M3) exercising runSubstrateMeasure's op[] read + report write + determinism."
+  },
+  "stages": [
+    [
+      "build",
+      "plain"
+    ]
+  ],
+  "nodes": {
+    "build": {
+      "phase": "build",
+      "deps": []
+    },
+    "plain": {
+      "phase": "plain",
+      "deps": []
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "id": "template-substrate-measure",
+  "name": "template-substrate-measure",
+  "description": "Single-node fixture (M3) exercising runSubstrateMeasure's op[] read + report write + determinism.",
+  "phases": ["build", "plain"]
+}
