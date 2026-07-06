@@ -377,10 +377,13 @@ export type { CheckpointMarker, CheckpointReply } from './runner/checkpoint.js';
 export { loadJournal, journalFile } from './runner/journal.js';
 export type { Journal, JournalNode } from './runner/journal.js';
 
-// Docker-style run-name generation (`<bake-adjective>-<pie>`, e.g. "flaky-pecan"): the CLI mints a
-// memorable, collision-checked run name when `--run/--id` is omitted, decoupling a run's identity from
-// any prompt id. `pieSlug`/`pieSlugList` back the regenerable `pies.json` (CSV → generate-pies.mjs).
+// Docker-style run-name generation (`<bake-adjective>-<pie>`, e.g. "flaky-pecan"): exported for a caller
+// that wants it. `pieSlug`/`pieSlugList` back the regenerable `pies.json` (CSV → generate-pies.mjs).
 export { generateRunName, ADJECTIVES, PIES, pieSlug, pieSlugList, type Rng } from './names/index.js';
+// M1 — the CLI's DEFAULT auto-mint: `YYMMDD-NN`, a zero-padded per-day counter (scales to hundreds of
+// runs, unlike a random pie pick) — decouples a run's identity from any prompt id. `childRunName` mints a
+// spawned CHILD run's id (`<parent>.<nodeId>`, optimize/substrate replay-from-node-start).
+export { generateDateSeqName, childRunName } from './names/index.js';
 
 // Observability source (the shared CONTRACT): ONE reader, ONE model, ONE live stream that the CLI, the
 // TUI, and a future GUI all render. `readRunModel(runDir)` is the one-shot snapshot; `watchRun(runDir)`

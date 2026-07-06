@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { pieSlug, pieSlugList } from '../src/names/slugify.js';
 import { generateRunName, ADJECTIVES, PIES, type Rng } from '../src/names/generator.js';
+import { generateDateSeqName } from '../src/names/date-seq.js';
+import { childRunName } from '../src/names/child.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // (A) SLUGIFIER — the single rule that derives pies.json from named_pie_versions.csv. Assert EXACT slugs
@@ -83,5 +85,62 @@ describe('generateRunName — memorable, collision-free run identity', () => {
     const name = generateRunName([taken], () => 0);
     expect(name).not.toBe(taken);
     expect(name.startsWith(taken)).toBe(true); // a `<taken>-N` suffix escape, still memorable
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (C) generateDateSeqName — M1's scalable default: `YYMMDD-NN`, a zero-padded PER-DAY counter scanned
+// from `existing` (collision-safe like generateRunName, but deterministic — no RNG). `now` is injected so
+// the day-rollover and formatting are asserted exactly, never against the wall clock.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('generateDateSeqName — scannable YYMMDD-NN run identity (M1)', () => {
+  const day = new Date('2026-07-06T09:00:00.000Z'); // UTC ⇒ "260706", hermetic regardless of TZ
+
+  it('mints "YYMMDD-01" for a fresh day with no existing runs', () => {
+    expect(generateDateSeqName([], day)).toBe('260706-01');
+  });
+
+  it('increments the zero-padded counter when the day already has runs', () => {
+    expect(generateDateSeqName(['260706-01'], day)).toBe('260706-02');
+    expect(generateDateSeqName(['260706-01', '260706-02'], day)).toBe('260706-03');
+  });
+
+  it('a SPARSE existing set is SCANNED (gap-filled), not maxed — the bug this guards is jumping past a hole', () => {
+    // "-02" is missing (e.g. a deleted run); the function must not blindly continue from the highest seen.
+    expect(generateDateSeqName(['260706-01', '260706-03'], day)).toBe('260706-02');
+  });
+
+  it('a DIFFERENT day never collides — day rollover resets the counter to 01', () => {
+    // Yesterday's names share no day prefix, so they never block/inflate today's counter.
+    expect(generateDateSeqName(['260705-01', '260705-02', '260705-03'], day)).toBe('260706-01');
+  });
+
+  it('zero-pads through double digits (the 10th run of the day is "-10", not "-1" or "-010")', () => {
+    const nineTaken = Array.from({ length: 9 }, (_, i) => `260706-0${i + 1}`);
+    expect(generateDateSeqName(nineTaken, day)).toBe('260706-10');
+  });
+
+  it('the minted base name is DOT-FREE (dots are reserved for child-run lineage, M1.4)', () => {
+    expect(generateDateSeqName([], day)).not.toContain('.');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (D) childRunName — a spawned child's id: `<parent>.<nodeId>`, then `.<n>` from n=2 on a collision
+// (mirrors generateRunName's collision-safe contract, just deterministic — the parent+node pair IS the
+// disambiguator, no RNG needed).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('childRunName — <parent>.<nodeId> child-run lineage naming (M1)', () => {
+  it('mints "<parent>.<nodeId>" when the pair is unused', () => {
+    expect(childRunName('260706-01', 'gameplay', [])).toBe('260706-01.gameplay');
+  });
+
+  it('appends ".2" when the base pair already has a child run', () => {
+    expect(childRunName('260706-01', 'gameplay', ['260706-01.gameplay'])).toBe('260706-01.gameplay.2');
+  });
+
+  it('keeps escalating past further collisions (".2" taken ⇒ ".3")', () => {
+    const existing = ['260706-01.gameplay', '260706-01.gameplay.2'];
+    expect(childRunName('260706-01', 'gameplay', existing)).toBe('260706-01.gameplay.3');
   });
 });

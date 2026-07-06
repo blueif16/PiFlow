@@ -32,7 +32,7 @@ import {
   expandSubworkflow,
   loadFusionConfig,
   nodePromptFile,
-  generateRunName,
+  generateDateSeqName,
   writeStatus,
   nowISO,
   type Workflow,
@@ -132,7 +132,10 @@ export interface RunDeps {
     image?: string;
     stageHome?: Record<string, string>;
   }) => Promise<SandboxProvider>;
-  /** Mint a memorable run name not in `existing` (default: core `generateRunName`; a test injects a stub). */
+  /**
+   * Mint a run name not in `existing` (default: core `generateDateSeqName` against `new Date()` — a
+   * scannable `YYMMDD-NN`, M1's deliberate scale-to-hundreds-of-runs default; a test injects a stub).
+   */
   generateName?: (existing: string[]) => string;
   /** List the run-name basenames already present under a runs home (default: read the dir; '' if absent). */
   listExistingRuns?: (runsHome: string) => string[];
@@ -495,7 +498,11 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
       }
       return mod.createDockerProvider(o);
     });
-  const generateName = deps.generateName ?? ((existing: string[]) => generateRunName(existing));
+  // (M1) DEFAULT auto-namer: `YYMMDD-NN` (scannable, scales to hundreds of agent-minted runs a day) — a
+  // DELIBERATE swap off the prior Docker-style `<adjective>-<pie>` pick (still exported as `generateRunName`
+  // for a caller that wants it; its word-space is reassigned to issue naming, optimize/substrate M2). The
+  // clock is injected here (`new Date()`) so the seam stays `(existing: string[]) => string` for `deps.generateName`.
+  const generateName = deps.generateName ?? ((existing: string[]) => generateDateSeqName(existing, new Date()));
   const listExistingRuns = deps.listExistingRuns ?? listExistingRunNames;
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
 
@@ -514,7 +521,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   // the run dirs ALREADY present there, so a fresh name never overwrites a prior run in EITHER layout.
   const landingHome = runsHome ?? (parsed.outDir ? path.dirname(path.resolve(parsed.outDir)) : path.resolve('out'));
   // RUN NAME: an explicit `--run/--id` ALWAYS wins (identical behavior to before). When omitted, mint a
-  // memorable Docker-style `<adjective>-<pie>` name (decoupling the run's identity from any prompt id),
+  // scannable `YYMMDD-NN` date-sequence name (M1 — decoupling the run's identity from any prompt id, and
+  // scaling to hundreds of agent-minted runs a day, unlike the prior random `<adjective>-<pie>` pick),
   // COLLISION-CHECKED against the existing run dirs. This replaces the old `?? 'run'` constant fallback
   // that overwrote a prior `out/run` on every unnamed run.
   const runId = parsed.run ?? generateName(listExistingRuns(landingHome));
