@@ -147,6 +147,14 @@ export interface RunModel {
    *  Surfaced so a `context migrate` freeze-wait detects it identically local (readRunModel) and remote
    *  (the SSE snapshot). Absent/false on a normal run. */
   frozen?: boolean;
+  /** (M1/M8 — child runs) The PARENT run's id, verbatim off `RunStatus.parent`, present only when this run
+   *  was minted by `spawnChildRun` (optimize/substrate). Carried through so a fleet view (`summarizeRun`/
+   *  `ThreadRow`) can nest child runs under their parent with ZERO extra I/O — the status is already parsed
+   *  here. Absent on a normal top-level run. */
+  parent?: string;
+  /** (M1/M8 — child runs) WHO/WHY spawned this child run, verbatim off `RunStatus.spawnedBy`. Absent on a
+   *  normal top-level run (only ever set alongside `parent`). */
+  spawnedBy?: RunStatus['spawnedBy'];
   /** Run wall-clock start / last-write (ISO). Carried so a LIVE view can show elapsed-so-far
    *  (now − startedAt) while `durationMs` is still null (it is only stamped at completion). */
   startedAt?: string;

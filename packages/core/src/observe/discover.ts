@@ -18,6 +18,7 @@ import { readRunModel } from './read.js';
 import { buildRunView } from './runView.js';
 import { runJsonFile, nodeEventsFile } from '../runner/layout.js';
 import type { Registry } from './registry.js';
+import type { RunStatus } from '../runner/status.js';
 
 /** The terminal-OK statuses a thread row counts as "done" (mirrors the observe status ladder). */
 const TERMINAL_OK = new Set(['ok', 'reused', 'gap', 'dry']);
@@ -110,6 +111,13 @@ export interface ThreadRow {
   updatedAt: string | null;
   staleMs: number | null;
   errorNode: string | null;
+  /** (M8 — child runs) The PARENT run's id, verbatim off `RunModel.parent` (itself verbatim off
+   *  `RunStatus.parent`) — present only when this run was minted by `spawnChildRun` (optimize/substrate).
+   *  Absent on a normal top-level run. Drives `groupByParent`'s nesting. */
+  parent?: string;
+  /** (M8 — child runs) WHO/WHY spawned this child run, verbatim off `RunModel.spawnedBy`. Absent on a normal
+   *  top-level run (only ever set alongside `parent`). A viewer attributes the nesting via `spawnedBy.issue`. */
+  spawnedBy?: RunStatus['spawnedBy'];
 }
 
 /** One namespace in a snapshot — a workflow (or the catch-all `unfiled`) with its run threads. */
@@ -264,7 +272,43 @@ export async function summarizeRun(runDir: string): Promise<ThreadRow | null> {
     updatedAt: m.updatedAt ?? null,
     staleMs,
     errorNode: errored?.id ?? null,
+    // (M8 — child runs) verbatim off the ALREADY-PARSED RunModel above — zero new I/O.
+    parent: m.parent,
+    spawnedBy: m.spawnedBy,
   };
+}
+
+/** One node in the parent→children forest `groupByParent` builds — a `ThreadRow` plus its nested children. */
+export interface ThreadNode {
+  thread: ThreadRow;
+  children: ThreadNode[];
+}
+
+/**
+ * PURE: nest child runs under their parent via `ThreadRow.parent` (an exact `run` id match), building a
+ * forest the GUI run switcher renders in place of a flat list. A child whose declared `parent` is NOT among
+ * `threads` (an ORPHAN — e.g. the parent run was pruned, or the caller passed a filtered subset) is promoted
+ * to TOP-LEVEL rather than dropped — no run silently disappears from a view for want of its parent. Order is
+ * DETERMINISTIC and stable: top-level rows keep the input array's order, and each parent's children keep the
+ * input array's order too (this function never re-sorts by time/severity/etc. — a viewer sorts if it wants
+ * to). Nesting recurses, so a grandchild (a child run itself re-spawned) nests under ITS parent in turn —
+ * today's `spawnChildRun` only ever mints depth-1 children, but the fold does not assume that.
+ */
+export function groupByParent(threads: ThreadRow[]): ThreadNode[] {
+  const byRun = new Set(threads.map((t) => t.run));
+  const childrenOf = new Map<string, ThreadRow[]>();
+  const roots: ThreadRow[] = [];
+  for (const t of threads) {
+    if (t.parent && byRun.has(t.parent)) {
+      const list = childrenOf.get(t.parent);
+      if (list) list.push(t);
+      else childrenOf.set(t.parent, [t]);
+    } else {
+      roots.push(t); // no parent declared, or the parent isn't in this set (orphan) — top-level
+    }
+  }
+  const build = (t: ThreadRow): ThreadNode => ({ thread: t, children: (childrenOf.get(t.run) ?? []).map(build) });
+  return roots.map(build);
 }
 
 /**

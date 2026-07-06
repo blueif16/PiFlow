@@ -1,7 +1,7 @@
 /**
  * SideCard — the shared RIGHT-dock card shell. ONE floating glass card the whole right-dock family
- * (Digest · Skill · Remote skill · Market · Chat) renders its OWN content into: different renderings of the
- * SAME card. It docks to the right edge, inset from the top/right/bottom (never flush), slides OUT from the
+ * (Digest · Skill · Remote skill · Market · Chat · Issues) renders its OWN content into: different renderings
+ * of the SAME card. It docks to the right edge, inset from the top/right/bottom (never flush), slides OUT from the
  * right edge on open, and gives its content a padded scroll body + a single close control.
  *
  * The right edge is a SINGLE SLOT — the canvas keeps these panels mutually exclusive (opening one closes the
@@ -34,7 +34,7 @@ export function SideCard({
   onClose: () => void;
   ariaLabel: string;
   /** tints the leading-edge seam — one of the right-dock kinds. */
-  accent?: "digest" | "skill" | "remote" | "market" | "chat";
+  accent?: "digest" | "skill" | "remote" | "market" | "chat" | "issues";
   /** optional width override (default min(42vw, 480px)). */
   width?: string;
   closeTitle?: string;
