@@ -224,7 +224,11 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       executor: resolveExecutor(srcNode, ctx),
       io: {
         ...srcNode.io,
-        artifacts: srcNode.io.artifacts.map((a) => ({ ...a, path: resolveTokens(a.path, resolveCtx) })),
+        artifacts: srcNode.io.artifacts.map((a) => ({
+          ...a,
+          path: resolveTokens(a.path, resolveCtx),
+          ...(a.schema ? { schema: resolveTokens(a.schema, resolveCtx) } : {}),
+        })),
         checks: srcNode.io.checks?.map((c) => (c.path ? { ...c, path: resolveTokens(c.path, resolveCtx) } : c)),
       },
       sandbox: {
