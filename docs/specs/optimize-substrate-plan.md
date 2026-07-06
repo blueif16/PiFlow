@@ -17,6 +17,7 @@ piflowctl optimize triage --node gameplay [--topk 3 | --run tS2]     # phase 1 o
 piflowctl optimize fix    --node gameplay [--status open | --issue <name>] [--watch]
 piflowctl optimize        --node gameplay [--topk 3 | --run tS2]     # both phases
 piflowctl issues          --node gameplay [--status open] [--json]   # read-only query (top-level verb)
+piflowctl runs            [--node X] [--status ok|error] [--since d] [--json]  # cross-run summary (top-level verb)
 ```
 
 - ⚡ `--run <id>` pins triage to an exact run (reproducible demos); `--topk` is the recency scan.
@@ -222,9 +223,13 @@ Fully external to the runner — reuses the op READER + pure EXECUTORS; `node-li
    for humans. ⚡ Default sort: severity desc, then firstSeen asc — severity is CONSUMED here and
    in fix ordering, not write-only. Template dir resolved like optimize does (`templateDirFor`,
    optimize-fix.ts:172, or `--template`).
-4. Tests: dispatch-routing unit tests (every row above, incl. `optimize fix --node` vs classic
+4. ⚡ Top-level `runs` verb (same registration pattern): the cross-run summary the single-run
+   `status <rundir>` never offered — rides the SAME runs-home scan as `--topk` (read each
+   run.json), filters `--node` (node executed fresh) / `--status` / `--since`, `--json` for
+   agents; child runs render indented under their parent (lineage is in the name + `parent`).
+5. Tests: dispatch-routing unit tests (every row above, incl. `optimize fix --node` vs classic
    `optimize --fix <rundir>` vs a rundir literally named `fix`); arg parsers; issues list/show
-   against a fixture ledger (sort order asserted).
+   against a fixture ledger (sort order asserted); runs listing filters + lineage indent.
 
 ### M6 — Fix phase (`substrate/fix.ts` + events + adopt-commit)
 Per selected issue (severity-desc order; sequential for the demo — parallel is a later flag):
@@ -252,9 +257,13 @@ Per selected issue (severity-desc order; sequential for the demo — parallel is
    human verb, philosophy unchanged): `adoptFile` per real file (land.ts:92, symlink-safe walk)
    into the live product, then the NET-NEW `commitAdoption(repoRoot, files, issue)` —
    `execFileSync('git', ['-C', root, 'add'|'commit', …])` (worktree.ts:64 precedent; argv-array,
-   so the trailer `Issue: <node>/<name> — "<title>" (<hash7>)` needs no escaping). SHA captured
-   from the commit and stamped mechanically: `attempts += {commit, verifiedByRun: <childId>}`,
-   `status → resolved, reason: fixed`.
+   so no escaping needed). ⚡ Commit SUBJECT convention: `optimize(<node>): <issue title>` —
+   greppable per node (`git log --grep '^optimize(gameplay)'`, mirroring game-omni's
+   `skillsys(<node>)` convention) — plus the trailer `Issue: <node>/<name> — "<title>" (<hash7>)`
+   linking commit → issue. SHA captured from the commit and stamped mechanically:
+   `attempts += {commit, verifiedByRun: <childId>}`, `status → resolved, reason: fixed` —
+   issue → commit through attempts, commit → issue through the trailer, no message discipline
+   required in either direction.
 5. `SubstrateEvent` union + own `safeEmit` copy (it's a private closure per module — driver.ts:170,
    loop.ts:88) + `renderSubstrateEvent`; CLI `--watch`/`--watch-json` reuse the optimize-fix.ts
    rendering split.
