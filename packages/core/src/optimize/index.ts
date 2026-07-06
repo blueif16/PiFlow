@@ -69,3 +69,15 @@ export type { CheckableTask, ReplayOracle, MineTask, CopyScope, ReplayDeps, Repl
 // oracle (which imports the product's verify harness + builds the candidate) stays product-side.
 export { mineTaskFromTrace, gameOmniNodeToMilestone } from './mine.js';
 export type { MineOpts } from './mine.js';
+
+// The SUBSTRATE issue LEDGER (docs/specs/optimize-substrate-plan.md §M2) — the second optimization system's
+// durable, reopenable worklist: one markdown file per issue under `<templateDir>/nodes/<node>/issues/`.
+// Parse/write/validate one issue file; list/filter/sort the ledger; the append-only attempt history; the
+// status-machine transition guards. A SIBLING system to the §7 Score+Triage worklist above, not a replacement.
+export {
+  computeIssueId, validateIssue, parseIssueFile, writeIssueFile, stampAttempt, reopen,
+  assertTransition, transitionIssue, listIssues, ALLOWED_TRANSITIONS,
+} from './substrate/issues.js';
+export type {
+  Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
+} from './substrate/issues.js';
