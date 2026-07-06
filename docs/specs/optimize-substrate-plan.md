@@ -67,10 +67,17 @@ top-level key fails the WHOLE template load, template/checks.ts:29):
      childDir)` — `PackOpts.exclude` exists today (migrate.ts:92,55-67). No journal entry ⇒ the
      target node unconditionally RUNs (journal.ts:219-221); the skipped prefix is force-`reused`
      (runner.ts:543); the artifact preflight passes because the tree was copied (runner.ts:578-611).
-   - ⚡ **Delete the target node's own outputs from the child copy before running** — its
-     `contract.artifacts` (token-resolved) + its op `writes`/report outputs. Without this the seed
-     hook no-ops (`stageSeed` skips a filled dest, seed.ts:108-123) and the node has nothing to
-     regenerate — the prove-rerun would measure the stale parent artifact (delta ≡ 0).
+   - ⚡ **Replay-from-node-start is CONSTRUCTED, not restored** (verified: no snapshot mechanism
+     exists — checkpoint.ts is HITL-only; retry is fix-forward by design, retry.ts:107; seed has
+     no force flag, seed.ts:108-123). The construction: reset exactly the node's resolved WRITE
+     SCOPE (`sandbox.write = contract.owns` — the jail-enforced surface of everything the node
+     touched, node-lifecycle.ts:281, write-disjointness per template/checks.ts:129-143) in the
+     child copy, via a new small exported helper `resolveNodeWriteScope(node, ctx)` (the resolve
+     is currently inlined in runNode, node-lifecycle.ts:203-204); ALSO clear the node's warm
+     session `.pi-sessions/<nodeId>.jsonl` so the child starts a COLD conversation. Seed then
+     re-stages naturally (`destFilled === false`, seed.ts:123), reconstructing the exact pre-node
+     starting artifact. Provably sufficient AND provably safe — the reset surface is the node's
+     own contract, not a guess.
    - ⚡ Window selection must be id-EXACT: `selectWindow`'s from/until is substring-match over
      phase/id/label (window.ts:6-13) — a general primitive can't ride that. `spawnChildRun`
      resolves the exact stage index for `nodeId` itself and passes a pinned window (no collision
@@ -79,8 +86,8 @@ top-level key fails the WHOLE template load, template/checks.ts:29):
      parent, spawnedBy, workspace?, …provider/model carried from parent run.json })` —
      `opts.workspace` override exists today (entry.ts:165).
 5. Tests: name generators (collision, padding, day rollover); spawnChildRun on a fixture template —
-   child re-runs ONLY the target node, target artifacts regenerated (deletion verified), run.json
-   carries parent/spawnedBy.
+   child re-runs ONLY the target node, write-scope reset verified (owned paths regenerated, upstream
+   artifacts untouched, session cold), run.json carries parent/spawnedBy.
 
 ### M2 — The issue ledger (`substrate/issues.ts`)
 Physical shape: `template/nodes/<id>/issues/<name>.md` — the directory IS the table.
@@ -160,10 +167,14 @@ Fully external to the runner — reuses the op READER + pure EXECUTORS; `node-li
 1. `substrate/agent.ts` — the ONE thin spawn wrapper (never hand-rolled `spawn('claude',…)`):
    builds a literal one-node `WorkflowSpec` (`executor:'claude-code'`) and calls `runFromConfig`
    (entry.ts:85) — credentials, model routing, sandbox jail, `parseClaudeResult`,
-   `NodeStatusRecord` telemetry all inherited. ⚡ **Model default: `'sonnet'` unconditionally**
-   (per-call/env overridable). NEVER fall through to `tiers.claude.deep` — deep resolves to
-   opus-4-8, the documented won't-commit-edits failure (memory: optimize-fixer-tier-finding;
-   6 runs, 0 edits). The substrate's default is policy layered above core's policy-free routing.
+   `NodeStatusRecord` telemetry all inherited. ⚡ **Model selection speaks the SDK's own tier
+   language, never a hardcoded model name**: substrate agent nodes carry `tier: 'balanced'` as
+   the default (judge AND fixer), resolved through the normal `resolveClaudeModel` precedence
+   (`node.model > tiers.claude[tier] > tiers.tiers[tier]`, model-routing.ts:136) off the user's
+   `~/.piflow/model-tiers.json`. Default tier is `balanced`, NOT `deep` — deep maps to the
+   documented won't-commit-edits fixer failure (memory: optimize-fixer-tier-finding; 6 runs,
+   0 edits). Overridable per node/call/env like every other tier — changing the default is
+   changing one word of config.
 2. ⚡ The `optimize triage` CLI path RUNS M3's measure stage first (persisting
    `measure.<node>.json`), then spawns the judge — hard-feeds-soft is the verb's own contract,
    not an ambient assumption.
@@ -172,9 +183,11 @@ Fully external to the runner — reuses the op READER + pure EXECUTORS; `node-li
    (`git log --grep '^skillsys(<node>)'` — the convention confirmed live in game-omni).
    ⚡ `readScope` must include the PRODUCT REPO ROOT (which covers `.git`) and `execCwd` = repo
    root — the seatbelt profile is deny-by-default (read-scope.sb) and an undeclared `.git` makes
-   `git log` fail inside the jail. Writes stay jailed: `owns` = the node's `issues/` dir (+ the
-   run's substrate dir). The agent: reads existing issues first (reopen-over-create), then writes
-   issue DRAFTS (no id/name/firstSeen) or edits existing files' context/severity.
+   `git log` fail inside the jail. ⚡ The judge's history tooling is `git` ONLY (log/show/blame
+   over the in-scope repo — no `gh`, no network archaeology); declared like any node tool,
+   nothing bespoke. Writes stay jailed: `owns` = the node's `issues/` dir (+ the run's substrate
+   dir). The agent: reads existing issues first (reopen-over-create), then writes issue DRAFTS
+   (no id/name/firstSeen) or edits existing files' context/severity.
 4. Post-process (mechanical, tool-side): validate every touched file; compute `id` from `sig`;
    mint pie `name`s; stamp firstSeen/lastSeen; hash-dedup backstop (draft colliding with an
    existing id → merged as a reopen). Cap: new-issues-per-pass limit (default 5).
@@ -268,7 +281,10 @@ Product-side contributions (all recorded in game-omni, per its conventions):
      (criteria + gold side-by-side), and one gift-wrapped hard finding the run itself recorded:
      `schemaSkipped: "schema unreadable/uncompilable"` — the blueprint schema gate silently never
      ran. That's a legitimate, provable first issue (fix → the child run's schema gate actually
-     fires — a crisp graded→binary win).
+     fires — a crisp graded→binary win). ⚡ A dedicated sub-agent task owns making that gate WORK
+     (game-omni side, the schema-compile defect) — as the demo's first fixed issue if the loop
+     drives it, or as pre-demo prep if it blocks authoring the measure ops; either way the gate
+     and the hard/soft measure stages speak the exact same op[] syntax, one reader, no forks.
    - The prove-gate compares graded metrics, not the saturated verdicts.
 4. **The demo (single full loop, the success criterion from the grilling):**
    `piflowctl optimize triage --node gameplay --run tS2` → measure report + issue files appear →
