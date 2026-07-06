@@ -1,0 +1,39 @@
+{
+  "id": "build",
+  "phase": "build",
+  "deps": [],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"] },
+  "contract": {
+    "artifacts": ["out.txt"],
+    "owns": ["out.txt"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  },
+  "optimize": {
+    "measure": [
+      {
+        "id": "write-report",
+        "when": "post",
+        "writes": ["{{RUN}}/optimize/substrate/check-report.json"],
+        "run": {
+          "cmd": "node",
+          "args": [
+            "-e",
+            "const fs=require('fs'); const dir='{{RUN}}/optimize/substrate'; fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(dir+'/check-report.json', JSON.stringify({fillRatio:0.75,spanMs:1200}))"
+          ]
+        }
+      },
+      {
+        "id": "out-non-empty",
+        "when": "post",
+        "gate": { "kind": "non-empty", "path": "{{RUN}}/out.txt" }
+      },
+      {
+        "id": "report-parses",
+        "when": "post",
+        "gate": { "kind": "json-parses", "path": "{{RUN}}/optimize/substrate/check-report.json" }
+      }
+    ]
+  }
+}

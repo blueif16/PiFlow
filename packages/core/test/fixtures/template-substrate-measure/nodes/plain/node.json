@@ -1,0 +1,13 @@
+{
+  "id": "plain",
+  "phase": "plain",
+  "deps": [],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"] },
+  "contract": {
+    "artifacts": ["note.txt"],
+    "owns": ["note.txt"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  }
+}
