@@ -7,7 +7,7 @@
 // A companion DIRECT test (no runNode) proves the two literal integration claims: the compiled extension
 // source contains the registered tool, and the registry's resolved `--tools` (piTools) list contains it.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -100,5 +100,39 @@ describe('script tool — runFromTemplate end-to-end (offline stub, no real pi)'
     expect(issues).toMatch(/tool:demo_probe/);
     expect(issues).toMatch(/exec script not found|missing\.mjs/);
     await fs.rm(runDir, { recursive: true, force: true });
+  });
+
+  // (optional defs) presence-based offering: the node's variant-shared node.json declares tool:ghost_probe
+  // with { path, optional: true } — the dir does NOT exist for this run, so the node must run ok with the
+  // tool simply not offered (absent from --tools + no staged extension), the skip surfaced as a NOTE
+  // (console.warn), never a block.
+  it('an OPTIONAL tool whose dir is ABSENT: the node runs ok, the tool is not offered, the note is surfaced', async () => {
+    const warns: string[] = [];
+    const spy = vi.spyOn(console, 'warn').mockImplementation((...a: unknown[]) => {
+      warns.push(a.map(String).join(' '));
+    });
+    const runDir = await tmpRunDir();
+    try {
+      const result = await runFromTemplate(path.join(FIXTURES, 'template-script-tool-optional'), {
+        run: 'script-tool-optional',
+        runDir,
+        workspace: FIXTURES, // {{WORKSPACE}}/shared-tools/ghost_probe does NOT exist
+        buildCommand: stubBuilder(),
+      });
+
+      // the node RUNS — an absent optional tool never blocks.
+      expect(result.status.nodes.probe.status).toBe('ok');
+      // the tool was NOT offered: builtins-only selection ⇒ no generated `-e` extension was staged.
+      const staged = await fs.stat(path.join(runDir, '.pi', 'staged', 'probe', 'tools.ts')).catch(() => null);
+      expect(staged).toBeNull();
+      // ...and the realized command carries no ghost_probe on --tools (the stubless command marker check:
+      // the recorded command is the stub's, so assert via the run's status record command absence instead).
+      expect(result.status.nodes.probe.issues ?? []).toEqual([]);
+      // the skip is VISIBLE: the preflight note names the tool with the pinned wording.
+      expect(warns.join(' ')).toContain('tool:ghost_probe — optional, not present for this run');
+    } finally {
+      spy.mockRestore();
+      await fs.rm(runDir, { recursive: true, force: true });
+    }
   });
 });

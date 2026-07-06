@@ -12,7 +12,7 @@
 
 import { promises as fs, type Dirent } from 'node:fs';
 import path from 'node:path';
-import type { WorkflowSpec, NodeIntent, ReturnMode } from '../../types.js';
+import type { WorkflowSpec, NodeIntent, ReturnMode, ScriptToolDef } from '../../types.js';
 import { defaultSchemaValidator, type SchemaValidator } from '../../runner/schema.js';
 import { nodeSchema, metaSchema } from './schema/index.js';
 import type { LoadedNode, TemplateNode, TemplateMeta } from './types.js';
@@ -104,10 +104,12 @@ const runRel = (p: string): string => p.replace(/^\{\{RUN\}\}\//, '');
 function fillScriptToolDefaults(
   tools: TemplateNode['tools'],
   templateDir: string,
-): Record<string, string> | undefined {
+): Record<string, ScriptToolDef> | undefined {
   const scriptAddrs = (tools?.allow ?? []).filter(isScriptToolAddress);
   if (!scriptAddrs.length) return tools?.defs;
-  const defs: Record<string, string> = { ...(tools?.defs ?? {}) };
+  // An authored entry (string OR the `{ path, optional }` object form) is carried through VERBATIM;
+  // only a `tool:<name>` with NO entry gets the template-root default (a plain string = REQUIRED).
+  const defs: Record<string, ScriptToolDef> = { ...(tools?.defs ?? {}) };
   for (const addr of scriptAddrs) {
     if (!(addr in defs)) defs[addr] = path.join(templateDir, 'tools', scriptToolName(addr));
   }

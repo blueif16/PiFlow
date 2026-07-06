@@ -15,7 +15,7 @@ import type {
 } from '../types.js';
 import { defaultSecretResolver } from '../types.js';
 import { verifyToolBinding } from '../tools/verify.js';
-import { preflightScriptTools } from '../tools/script-discover.js';
+import { preflightScriptTools, isScriptToolAddress } from '../tools/script-discover.js';
 import { markersFromNode, emitMarkers } from '../contract.js';
 import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas } from './schema.js';
@@ -121,8 +121,18 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // resolution violation (missing dir/manifest/name-mismatch/missing script) aggregates every declared
   // tool's issues into ONE loud error — the node is `blocked` before a sandbox is ever stood up, exactly
   // like a failed tool bind check.
+  // (optional defs) With preflight GREEN, any `tool:*` allow entry it did NOT bind is an OPTIONAL tool
+  // whose dir is absent for this run (a required-absent one already threw): DROP it from the selection
+  // the bind check + resolve consume, so the node runs with the tool simply not offered (not on
+  // `--tools`, not in the generated extension, not in the prompt markers). The skip itself was surfaced
+  // by the preflight's console.warn note. No `tool:*` entry ⇒ `toolSel` stays the node's own selection.
+  let toolSel = node.tools;
   try {
-    for (const entry of preflightScriptTools(node.tools, resolveCtx)) ctx.registry.register(entry);
+    const scriptEntries = preflightScriptTools(node.tools, resolveCtx);
+    for (const entry of scriptEntries) ctx.registry.register(entry);
+    const boundScript = new Set(scriptEntries.map((e) => e.address));
+    const allow = node.tools.allow?.filter((a) => !isScriptToolAddress(a) || boundScript.has(a));
+    if (allow && allow.length !== (node.tools.allow?.length ?? 0)) toolSel = { ...node.tools, allow };
   } catch (e) {
     return finishNode(ctx, node, rec, t0, 'blocked', (e as Error).message, [], [(e as Error).message]);
   }
@@ -131,14 +141,14 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // it actually GETS every declared function — each address binds to a unique bare name — BEFORE we
   // stand up a sandbox or spawn pi. A miss (declared tool not in the catalog) or a collision (two
   // tools sharing one bare name, which pi silently skips) is a contract breach → `blocked`.
-  const bind = verifyToolBinding(node.tools, ctx.registry.list());
+  const bind = verifyToolBinding(toolSel, ctx.registry.list());
   if (!bind.ok) {
     return finishNode(ctx, node, rec, t0, 'blocked', `tool bind check failed: ${bind.issues.join('; ')}`, [], bind.issues);
   }
 
   let resolved: ResolveResult;
   try {
-    resolved = ctx.registry.resolve(node.tools);
+    resolved = ctx.registry.resolve(toolSel);
   } catch (e) {
     return finishNode(ctx, node, rec, t0, 'error', `tool resolution failed: ${(e as Error).message}`, []);
   }

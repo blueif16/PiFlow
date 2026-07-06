@@ -56,6 +56,12 @@ export interface ScriptDiscoveryResult {
   entries: ToolEntry[];
   /** One line per violation, across EVERY declared tool (never just the first). Empty ⇒ all clean. */
   issues: string[];
+  /**
+   * One line per OPTIONAL tool skipped because its resolved dir is absent for this run
+   * (`tool:<name> — optional, not present for this run`) — informational, never a violation. The tool is
+   * NOT in `entries` (not offered: not on `--tools`, not in the extension).
+   */
+  notes: string[];
 }
 
 /** Structural validation of a `tool.json`'s already-`JSON.parse`d body. Returns issue strings (empty ⇒ valid). */
@@ -88,23 +94,27 @@ function validateManifestShape(raw: unknown): string[] {
 }
 
 /**
- * DISCOVER/RESOLVE every `tool:<name>` in `tools.allow`: resolve its dir (`tools.defs["tool:<name>"]`,
- * token-resolved via `resolveCtx` — `loadTemplate` fills the template-default when the author omitted it),
- * read + structurally validate `tool.json`, confirm `manifest.name` equals the allow tail, confirm the
- * `{{toolDir}}`-resolved exec script exists on disk. NEVER throws — every violation across every declared
- * tool is collected into `issues` (the `verifyToolBinding` aggregation shape); a tool with no violation
- * contributes a `ToolEntry` (source:'script', `exec.argv` already `{{toolDir}}`-substituted to absolute
- * paths) ready to `registry.register()`. Non-`tool:*` allow entries are ignored entirely.
+ * DISCOVER/RESOLVE every `tool:<name>` in `tools.allow`: resolve its dir (`tools.defs["tool:<name>"]` —
+ * a plain string, or `{ path, optional }` — token-resolved via `resolveCtx`; `loadTemplate` fills the
+ * template-default when the author omitted it), read + structurally validate `tool.json`, confirm
+ * `manifest.name` equals the allow tail, confirm the `{{toolDir}}`-resolved exec script exists on disk.
+ * NEVER throws — every violation across every declared tool is collected into `issues` (the
+ * `verifyToolBinding` aggregation shape); a tool with no violation contributes a `ToolEntry`
+ * (source:'script', `exec.argv` already `{{toolDir}}`-substituted to absolute paths) ready to
+ * `registry.register()`. An OPTIONAL entry whose resolved dir is ABSENT is skipped with a `notes` line
+ * instead of an issue — presence-based offering (a PRESENT optional tool gets the full contract; optional
+ * forgives absence only). Non-`tool:*` allow entries are ignored entirely.
  */
 export function discoverScriptTools(tools: ToolSelection, resolveCtx: ResolveCtx): ScriptDiscoveryResult {
   const entries: ToolEntry[] = [];
   const issues: string[] = [];
+  const notes: string[] = [];
   const addrs = (tools.allow ?? []).filter(isScriptToolAddress);
 
   for (const addr of addrs) {
     const name = scriptToolName(addr);
-    const defRaw = tools.defs?.[addr];
-    if (!defRaw) {
+    const def = tools.defs?.[addr];
+    if (!def) {
       issues.push(
         `${addr} — no tools.defs["${addr}"] entry and no template default was resolved ` +
           `(a hand-built WorkflowSpec must declare tools.defs explicitly for a script tool)`,
@@ -112,9 +122,23 @@ export function discoverScriptTools(tools: ToolSelection, resolveCtx: ResolveCtx
       continue;
     }
 
+    // Normalize the two defs forms: a plain string = REQUIRED; `{ path, optional }` = presence-based.
+    let defRaw: string;
+    let optional = false;
+    if (typeof def === 'string') {
+      defRaw = def;
+    } else if (def && typeof def === 'object' && typeof def.path === 'string' && def.path.length > 0) {
+      defRaw = def.path;
+      optional = def.optional === true;
+    } else {
+      issues.push(`${addr} — malformed tools.defs entry: expected a string path or { path, optional }`);
+      continue;
+    }
+
     // Token-resolve the declared dir; a token that CANNOT resolve (MissingArgError/MissingChannelError)
     // is a per-tool issue like any other resolution violation — this fn NEVER throws (the docstring
-    // contract the dry-run preview also leans on).
+    // contract the dry-run preview also leans on). NOT forgiven for an optional entry: optional forgives
+    // the dir's ABSENCE, never a defs path that cannot even be resolved (a real wiring error).
     let toolDir: string;
     try {
       toolDir = path.resolve(resolveTokens(defRaw, resolveCtx));
@@ -129,6 +153,12 @@ export function discoverScriptTools(tools: ToolSelection, resolveCtx: ResolveCtx
       isDir = false;
     }
     if (!isDir) {
+      // OPTIONAL + absent ⇒ presence-based skip: a note, no entry, no issue. The tool is simply not
+      // offered for this run's variant. Everything below (a PRESENT tool) is the full required contract.
+      if (optional) {
+        notes.push(`${addr} — optional, not present for this run`);
+        continue;
+      }
       issues.push(`${addr} — tool dir not found: ${toolDir}`);
       continue;
     }
@@ -172,19 +202,23 @@ export function discoverScriptTools(tools: ToolSelection, resolveCtx: ResolveCtx
     });
   }
 
-  return { entries, issues };
+  return { entries, issues, notes };
 }
 
 /**
  * **Preflight check** — fail LOUD before pi is ever spawned (the `preflightSkills` pattern). Runs
  * {@link discoverScriptTools} and, if ANY declared tool has a violation, throws ONE aggregate error
  * listing every violation across every declared tool (never just the first). On success, returns the
- * discovered `ToolEntry[]` ready for the caller to `registry.register()` before the bind check.
+ * discovered `ToolEntry[]` ready for the caller to `registry.register()` before the bind check. An
+ * OPTIONAL tool absent for this run contributes NO entry and NO violation — its skip is surfaced
+ * visibly via `console.warn` (`[script-tool] tool:<name> — optional, not present for this run`; the
+ * skill-missing/driver-fit advisory precedent), never an error.
  *
  * Never throws when the node declares no `tool:*` address (an empty `entries` returns silently).
  */
 export function preflightScriptTools(tools: ToolSelection, resolveCtx: ResolveCtx): ToolEntry[] {
-  const { entries, issues } = discoverScriptTools(tools, resolveCtx);
+  const { entries, issues, notes } = discoverScriptTools(tools, resolveCtx);
+  for (const n of notes) console.warn(`[script-tool] ${n}`);
   if (issues.length > 0) {
     throw new Error(
       `Script-tool preflight FAILED — the following declared script tool(s) cannot be bound:\n` +
