@@ -1,6 +1,6 @@
 /* ============================================================================
    SideCard — the shared RIGHT-dock card shell. ONE floating glass card the whole
-   right-dock family (Digest · Skill · Remote skill · Market) renders into: docked
+   right-dock family (Digest · Skill · Remote skill · Market · Issues) renders into: docked
    to the right edge, INSET from the top/right/bottom (never flush to a screen edge),
    sliding OUT from the right edge on open, with a generously padded scroll body so
    text never touches the card edge, and its own close control.
@@ -58,6 +58,7 @@
   pointer-events: none;
 }
 .ds-sidecard[data-accent="remote"] { --ds-sidecard-accent: var(--ds-blue-600, var(--ds-accent)); }
+.ds-sidecard[data-accent="issues"] { --ds-sidecard-accent: var(--ds-error, var(--ds-accent)); }
 
 /* slide-out: from beyond the right edge → home, with a whisper of scale for a soft "pop". */
 @keyframes ds-sidecard-in {

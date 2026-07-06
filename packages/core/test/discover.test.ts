@@ -10,7 +10,10 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runJsonFile, nodeIoFile, nodeEventsFile } from '../src/runner/layout.js';
-import { buildSnapshot, discoverRunDirs, summarizeRun, STALE_MS_THRESHOLD, type Registry } from '../src/observe/discover.js';
+import {
+  buildSnapshot, discoverRunDirs, summarizeRun, groupByParent, STALE_MS_THRESHOLD,
+  type Registry, type ThreadRow,
+} from '../src/observe/discover.js';
 
 /** A minimal valid `RunStatus` (one terminal-OK node) `readRunModel` can fold into a RunModel. */
 function runStatus(run: string, source: string) {
@@ -168,5 +171,79 @@ describe('summarizeRun live fields', () => {
     expect(t!.runningStalled).toBe(false);
     expect(t!.phase).toBeNull();
     expect(t!.runningTool).toBeNull();
+  });
+});
+
+// ── M8.1 — lineage rides the index: ThreadRow widening ─────────────────────────────────────────────────
+// `RunStatus.parent`/`spawnedBy` (M1) are read by `readRunModel` today and dropped before reaching a
+// `ThreadRow` — these tests target exactly that: they FAIL while `summarizeRun` stubs the fields (or never
+// reads them), and pass once the RunModel/ThreadRow chain carries them verbatim off the parsed status.
+describe('summarizeRun — M1 lineage passthrough', () => {
+  it('carries parent + spawnedBy verbatim off RunStatus onto the ThreadRow', async () => {
+    const repo = fixtureRepo('lesson-build');
+    const status = {
+      ...runStatus('260706-01.gameplay', 'lesson-build'),
+      parent: '260706-01',
+      spawnedBy: { by: 'substrate-fix', issue: 'soggy-crust', issueId: 'sha256:deadbeef' },
+    };
+    const runDir = writeRun(repo, 'lesson-build', '260706-01.gameplay', status);
+
+    const t = await summarizeRun(runDir);
+    expect(t!.parent).toBe('260706-01');
+    expect(t!.spawnedBy).toEqual({ by: 'substrate-fix', issue: 'soggy-crust', issueId: 'sha256:deadbeef' });
+  });
+
+  it('leaves parent/spawnedBy undefined for a normal top-level run', async () => {
+    const repo = fixtureRepo('lesson-build');
+    const runDir = writeRun(repo, 'lesson-build', 'ctt-1', runStatus('ctt-1', 'lesson-build'));
+
+    const t = await summarizeRun(runDir);
+    expect(t!.parent).toBeUndefined();
+    expect(t!.spawnedBy).toBeUndefined();
+  });
+});
+
+// ── M8.1 — groupByParent: the pure forest-builder the GUI run switcher nests on ────────────────────────
+describe('groupByParent', () => {
+  const row = (run: string, overrides: Partial<ThreadRow> = {}): ThreadRow => ({
+    run, runDir: `/runs/${run}`, statusPath: `/runs/${run}`, state: 'done', done: true, ok: true,
+    stageIndex: null, stageTotal: null, phase: null, runningNode: null, runningTool: null,
+    runningStalled: false, nodesDone: 1, nodesTotal: 1, frac: 1, elapsedMs: null, tokensBillable: 0,
+    cost: 0, provider: null, model: null, updatedAt: null, staleMs: null, errorNode: null,
+    ...overrides,
+  });
+
+  it('nests a child under its parent (depth-1) and leaves a parentless run at top level', () => {
+    const parent = row('260706-01');
+    const child = row('260706-01.gameplay', { parent: '260706-01', spawnedBy: { by: 'substrate-fix', issue: 'soggy-crust' } });
+    const unrelated = row('ctt-1');
+
+    const forest = groupByParent([parent, child, unrelated]);
+
+    expect(forest.map((n) => n.thread.run)).toEqual(['260706-01', 'ctt-1']); // top-level order preserved
+    const parentNode = forest.find((n) => n.thread.run === '260706-01')!;
+    expect(parentNode.children).toHaveLength(1);
+    expect(parentNode.children[0].thread.run).toBe('260706-01.gameplay');
+    expect(parentNode.children[0].thread.spawnedBy?.issue).toBe('soggy-crust');
+    expect(parentNode.children[0].children).toEqual([]); // depth-1: the child has no children of its own
+    const unrelatedNode = forest.find((n) => n.thread.run === 'ctt-1')!;
+    expect(unrelatedNode.children).toEqual([]);
+  });
+
+  it('promotes an ORPHAN child (parent not in the input set) to top-level instead of dropping it', () => {
+    const orphan = row('260706-01.gameplay', { parent: '260706-01' }); // '260706-01' is NOT in this set
+    const forest = groupByParent([orphan]);
+    expect(forest.map((n) => n.thread.run)).toEqual(['260706-01.gameplay']);
+    expect(forest[0].children).toEqual([]);
+  });
+
+  it('is deterministic: preserves input order at every level, independent of run-id lexical order', () => {
+    const parent = row('260706-02'); // lexically AFTER its children — order must still come from the input
+    const childB = row('260706-02.b', { parent: '260706-02' });
+    const childA = row('260706-02.a', { parent: '260706-02' });
+    const forest = groupByParent([parent, childB, childA]); // b before a in the input
+
+    expect(forest).toHaveLength(1);
+    expect(forest[0].children.map((n) => n.thread.run)).toEqual(['260706-02.b', '260706-02.a']);
   });
 });

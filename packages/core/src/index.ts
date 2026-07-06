@@ -432,6 +432,8 @@ export {
   discoverNamespaces,
   discoverRunDirs,
   summarizeRun,
+  // (M8) the pure parent→children forest-builder over ThreadRow — the GUI run switcher's lineage nesting.
+  groupByParent,
   buildSnapshot,
   isProductRoot,
   findProductRoot,
@@ -446,10 +448,16 @@ export type {
   NamespaceDesc,
   NamespaceMeta,
   ThreadRow,
+  ThreadNode,
   SnapshotNamespace,
   SnapshotProduct,
   Snapshot,
 } from './observe/index.js';
+
+// (M8) the issues ENDPOINT projection — a thin observe wrapper over the optimize-substrate ledger
+// (`listIssues`), re-exported at the root so the server/GUI/TUI all reach it via the ONE package entry
+// (the `./observe` subpath is deliberately NOT in the package's exports map — see tui/model.mjs's note).
+export { nodeIssuesProjection } from './observe/index.js';
 
 // The MEMORY layer (piflow-memory-v1 §2) — the per-node + per-template self-correction surface the Hermes
 // optimizer/reconcile node READS + UPDATES from run traces. Two SEPARATE legs:
