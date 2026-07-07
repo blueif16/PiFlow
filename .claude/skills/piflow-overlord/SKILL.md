@@ -50,6 +50,11 @@ Two entry points, by what you're taking the seat over:
   <id>` for both phases in one call (the default full loop). Once a manifest gates ACCEPT, land it yourself
   with `piflowctl optimize adopt --manifest <path>` — a separate, explicit step, never a side effect of `fix`.
   `--node` also takes a dotted `<run>.<id>` ref to pin one run.
+- **Optimizing MORE THAN ONE node?** Order matters — default UPSTREAM-FIRST: a node's quality is bounded by its
+  INPUT, so optimize the source node first and propagate each adopted fix DOWN (`run --from <k> --until <k+1>`
+  re-materializes the next node's input from the improved upstream), parallel only under a time crunch. The full
+  policy — the staleness law, the input-cause routing gate, and archetype layering (universal process transfers,
+  per-archetype context files are redone) — is **`references/optimization-ordering.md`**.
 Either way you are now on the ONE stream (§"The invariant you sit on") — proceed to the reconcile loop below.
 
 ## Your posture — a SENTINEL, not a streamer (you have NO event loop)
