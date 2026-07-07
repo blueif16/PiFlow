@@ -6,11 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { installSkills, runSkillsCli } from '../src/skills.js';
 import type { PromptIO } from '../src/init/types.js';
 
-// `piflowctl skills install` ships the DEFAULT skill set (piflow-init/start/enhance + piflow-fixer) into ANY
-// target repo's `.claude/skills/` so a fresh Claude Code agent there is equipped to compose workflows against
-// the SDK and to run the fixer playbook. The canonical skill SOURCE stays repo-root `.claude/skills/`; the packaged copy is a generated build
-// artifact (prepack). The load-bearing invariant these tests pin is ANTI-DRIFT: install is a byte-faithful
-// COPY, never a transform — an installed SKILL.md must equal its canonical source byte-for-byte.
+// `piflowctl skills install` ships the DEFAULT skill set (the authoring trio piflow-init/start/enhance +
+// piflow-fixer + the piflow-inspect instrument router) into ANY target repo's `.claude/skills/` so a fresh
+// Claude Code agent there is equipped to compose, run, and debug workflows against the SDK and to run the
+// fixer playbook. The canonical skill SOURCE stays repo-root `.claude/skills/`; the packaged copy is a
+// generated build artifact (prepack). The load-bearing invariant these tests pin is ANTI-DRIFT: install is a
+// byte-faithful COPY, never a transform — an installed SKILL.md must equal its canonical source byte-for-byte.
 
 // The repo-root canonical skills dir, resolved from this test file (packages/cli/test → repo root).
 const REPO_SKILLS = path.join(
@@ -91,7 +92,7 @@ describe('installSkills — pure copy of each skill subdir into <target>/.claude
     // transform/duplicate. Compare raw bytes (Buffer.equals), the strongest no-drift guard.
     installSkills(REPO_SKILLS, TARGET, { force: false });
 
-    for (const name of ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer']) {
+    for (const name of ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect']) {
       const canonical = await fs.readFile(path.join(REPO_SKILLS, name, 'SKILL.md'));
       const installed = await fs.readFile(
         path.join(TARGET, '.claude', 'skills', name, 'SKILL.md'),
@@ -108,7 +109,7 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
     const skillsRoot = path.join(TARGET, '.claude', 'skills');
     // The default set landed (proving srcDir resolved to the repo-root via the dev fallback — the packaged
     // skills/ dir is absent in a source checkout).
-    for (const name of ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer']) {
+    for (const name of ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect']) {
       await expect(fs.access(path.join(skillsRoot, name, 'SKILL.md'))).resolves.toBeUndefined();
     }
     // The dev fallback must install ONLY the default set — not piflow-release (SDK publishing) or
@@ -120,7 +121,7 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
     }
     // And nothing OUTSIDE the default set at all (e.g. unrelated repo skills like premium-saas-stack).
     const landed = await fs.readdir(skillsRoot);
-    expect(landed.sort()).toEqual(['piflow-enhance', 'piflow-fixer', 'piflow-init', 'piflow-start']);
+    expect(landed.sort()).toEqual(['piflow-enhance', 'piflow-fixer', 'piflow-init', 'piflow-inspect', 'piflow-start']);
   });
 });
 
@@ -132,7 +133,7 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
 describe('runSkillsCli — understand add-on (--with / --all / --wizard / manifest)', () => {
   const skillsRootOf = (t: string) => path.join(t, '.claude', 'skills');
   const manifestOf = (t: string) => path.join(t, '.piflow', 'skills.json');
-  const DEFAULT_SKILL_NAMES = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer'];
+  const DEFAULT_SKILL_NAMES = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect'];
 
   const assertDefaultsPresent = async (): Promise<void> => {
     for (const name of DEFAULT_SKILL_NAMES) {

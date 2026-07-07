@@ -104,7 +104,10 @@ const rPed = await agent([
   `submit_result` over while a required artifact still contains it — AND, **post-node, the driver
   auto-synthesizes a `regex-absent` completeness CHECK from it**: a required artifact that STILL holds the
   sentinel is a BREACH (`blocked`), even when the model skipped the handshake. So "contract satisfied" means
-  the artifact is USABLE, not merely present.
+  the artifact is USABLE, not merely present. **Marker-grammar law: skeleton guide prose must be quote-safe
+  for edit anchors** — never a bare single-word bracket token (`<id>`, `<threat>`) in a placeholder, since some
+  model gateways mangle it inside a tool-call argument string as XML; the colon-bearing `<FILL:` sentinel is
+  the proven-safe convention.
 - `checks` — **declarative integrity predicates** over the artifacts: an array of `{ kind, path, param?,
   severity? }`. Renders `DRIVER-CHECKS` (base64 — carries arbitrary regex/params on one marker line). The
   driver runs each PURE predicate post-node; a failed `severity:'fail'` check is a BREACH (`blocked`),

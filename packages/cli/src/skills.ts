@@ -1,7 +1,7 @@
-// `piflowctl skills install [targetDir] [--force]` — ship piflow's WORKFLOW-AUTHORING skills (the trio
-// piflow-init / piflow-start / piflow-enhance) into ANY target repo's `.claude/skills/`, so a fresh Claude
-// Code agent there is equipped to compose workflows against the SDK. The skills ARE the SDK's authoring
-// brain; this is how they travel out of this repo.
+// `piflowctl skills install [targetDir] [--force]` — ship piflow's OPERATING skills (the authoring trio
+// piflow-init / piflow-start / piflow-enhance + the piflow-fixer playbook + the piflow-inspect router) into ANY target repo's
+// `.claude/skills/`, so a fresh Claude Code agent there is equipped to compose, run, and debug workflows
+// against the SDK. The skills ARE the SDK's operating brain; this is how they travel out of this repo.
 //
 // NO-DRIFT BUNDLING DESIGN (the load-bearing constraint — same discipline as the generated workflow.json):
 //   • The CANONICAL skill source is repo-root `.claude/skills/` — the ONE editable copy.
@@ -19,10 +19,11 @@ import { createPromptIO } from './init/prompt.js';
 
 // The DEFAULT skill set — the skills that ship to a consumer repo BY DEFAULT: the workflow-authoring trio
 // (`piflow-init`/`start`/`enhance`) PLUS `piflow-fixer` (the fixer's playbook — also a human-facing fix
-// protocol). EXCLUDES `piflow-release` (publishing the SDK itself) and `piflow-web-design` (marketing-site
-// only). The prepack script copies exactly these into the packaged dir; the dev fallback applies the same
-// allowlist so dev ≡ packaged. A bare install with no manifest installs EXACTLY this set — nothing more.
-export const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer'] as const;
+// protocol) and `piflow-inspect` (the run-inspection instrument router). EXCLUDES `piflow-release`
+// (publishing the SDK itself) and `piflow-web-design` (marketing-site only). The prepack script copies
+// exactly these into the packaged dir; the dev fallback applies the same allowlist so dev ≡ packaged. A bare
+// install with no manifest installs EXACTLY this set — nothing more.
+export const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect'] as const;
 
 /** Optional, OPT-IN skill add-ons: id → the skill dir(s) it installs + a one-line wizard description.
  *  MIRROR the skill-name list in scripts/bundle-skills.mjs (the same dual-copy discipline as DEFAULT_SKILLS). */

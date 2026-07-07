@@ -15,9 +15,10 @@ const canonical = path.join(repoRoot, '.claude', 'skills');
 const dest = path.join(pkgRoot, 'skills');
 
 // The DEFAULT skill set travels to a consumer repo BY DEFAULT — the workflow-authoring trio plus piflow-fixer
-// (the fixer playbook). EXCLUDES piflow-release (SDK publishing) and piflow-web-design (marketing-site only).
-// MIRROR DEFAULT_SKILLS in src/skills.ts (this plain .mjs can't import the TS catalog).
-const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer'];
+// (the fixer playbook) and piflow-inspect (the instrument router). EXCLUDES piflow-release (SDK publishing)
+// and piflow-web-design (marketing-site only). MIRROR DEFAULT_SKILLS in src/skills.ts (this plain .mjs can't
+// import the TS catalog).
+const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect'];
 // Plus the opt-in ADD-ON skills so `skills install --with/--all` can reach them from the tarball. MIRROR
 // SKILL_ADDONS in src/skills.ts (this plain .mjs can't import the TS catalog) — understand → okf-slices,
 // memory → memory-slices.
