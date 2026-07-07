@@ -53,7 +53,7 @@ export type { NamespaceDesc, NamespaceMeta, ThreadRow, ThreadNode, SnapshotNames
 
 // M8 — the issues ENDPOINT projection: a thin observe wrapper over the optimize-substrate ledger
 // (`listIssues`, optimize/substrate/issues.ts) so the server/GUI never re-implement the ledger read.
-export { nodeIssuesProjection } from './issues.js';
+export { nodeIssuesProjection, allIssuesProjection } from './issues.js';
 
 // SCOPE — resolve the launched project's product roots from a cwd + build a registry scoped to them. The shared
 // spine behind "a view shows the project you launched it in, not the whole global registry" (piflowctl gui/tui).

@@ -149,7 +149,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `1be2fac` 2026-07-03 — feat(gui): RemoteSkillPanel — clickable detail page for online skills
 - `462621f` 2026-07-03 — feat(gui): right-dock single slot + chrome that yields to the card
 - `c022cfa` 2026-07-03 — feat(gui): chat becomes a floating card + the menu is part of the card
+- `ea5c576` 2026-07-05 — fix(gui): mark a rejected-only tool across the HUD + run-digest panel
 - `4a19f22` 2026-07-06 — feat(observe): M8 — substrate exposure (lineage on the index, issues endpoint + side card)
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `b0e276d` 2026-07-06 — feat(gui): run-level issues card (I key) — grouped by node, filter, jump-to-node
 
 ### Lessons — memory cluster
 
@@ -169,6 +172,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[daytona-cloud-path]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
+- [[fixer-two-half-law]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
 - [[gui-live-viewer-scope]]
@@ -177,6 +181,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[harden-node-completes-run-to-completion]]
 - [[harden-write-forcing-experiment]]
 - [[hooks-give-info-never-autofix]]
+- [[loop-prevention-laws]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
 - [[minimax-m3-framing]]
@@ -189,6 +194,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-init-scaffolder]]
+- [[piflow-issue-interface]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
@@ -196,6 +202,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[playbook-skills-depth-over-budget]]
 - [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
@@ -204,15 +211,16 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[two-front-reporting]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `loadIndex` (gui/src/data/runIndex.ts:61) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:728) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:174) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
+- `NodeHud` (gui/src/components/NodeHud.tsx:101) — 1 caller in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:730) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `loadRunView` (gui/src/data/runView.ts:176) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `watchRun` (packages/cli/src/watch.ts:61) — 15 callers in `packages/cli/src/watch.ts`, `packages/cli/src/telemetry.ts`, `packages/server/src/handlers.ts`, `tui/model.mjs` +3 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/watch.test.ts` +1
 
-<sub>derived 2026-07-07 · arc=89 commits · files=8 · lessons=52</sub>
+<sub>derived 2026-07-07 · arc=92 commits · files=8 · lessons=57</sub>
 <!-- okf:auto-end -->

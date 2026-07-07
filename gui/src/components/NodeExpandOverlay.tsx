@@ -20,9 +20,11 @@ export interface NodeExpandOverlayProps {
   data: FlowNodeData | null;
   run: string;
   onClose: () => void;
+  /** when the run-level issues card jumps to a node, the issue to open in the HUD's issues-mode. */
+  focusIssue?: { node: string; issueId: string } | null;
 }
 
-export function NodeExpandOverlay({ id, data, run, onClose }: NodeExpandOverlayProps) {
+export function NodeExpandOverlay({ id, data, run, onClose, focusIssue }: NodeExpandOverlayProps) {
   const reduce = useReducedMotion() ?? false;
   const windowRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -77,7 +79,7 @@ export function NodeExpandOverlay({ id, data, run, onClose }: NodeExpandOverlayP
               pointerEvents: "none",
             }}
           >
-            <NodeHud id={id} data={data} run={run} onClose={onClose} reduce={reduce} dialogRef={windowRef} />
+            <NodeHud key={id} id={id} data={data} run={run} onClose={onClose} reduce={reduce} dialogRef={windowRef} focusIssue={focusIssue} />
           </div>
         </>
       )}

@@ -8,11 +8,11 @@
 // Run: npx vitest run packages/core/test/observe-issues.test.ts
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { writeIssueFile, listIssues, computeIssueId, type Issue } from '../src/optimize/substrate/issues.js';
-import { nodeIssuesProjection } from '../src/observe/issues.js';
+import { nodeIssuesProjection, allIssuesProjection } from '../src/observe/issues.js';
 
 const tmpDirs: string[] = [];
 const scratch = async (): Promise<string> => {
@@ -63,5 +63,42 @@ describe('nodeIssuesProjection — byte-parity with listIssues', () => {
     const projected = await nodeIssuesProjection(templateDir, 'never-triaged');
     expect(projected).toEqual(await listIssues(templateDir, { node: 'never-triaged' }));
     expect(projected).toEqual([]);
+  });
+});
+
+describe('allIssuesProjection — the run-level aggregate (all nodes, viewer-tolerant)', () => {
+  it("aggregates every node's ledger into one list", async () => {
+    const templateDir = await scratch();
+    await writeIssueFile(join(templateDir, 'nodes', 'gameplay', 'issues', 'soggy-crust.md'), makeIssue('gameplay', 'soggy-crust', { severity: 'critical' }));
+    await writeIssueFile(join(templateDir, 'nodes', 'gameplay', 'issues', 'slow-compose.md'), makeIssue('gameplay', 'slow-compose', { severity: 'medium' }));
+    await writeIssueFile(join(templateDir, 'nodes', 'research', 'issues', 'stale-cache.md'), makeIssue('research', 'stale-cache'));
+
+    const all = await allIssuesProjection(templateDir);
+
+    expect(all).toHaveLength(3);
+    expect(new Set(all.map((r) => `${r.node}/${r.issue.name}`))).toEqual(
+      new Set(['gameplay/soggy-crust', 'gameplay/slow-compose', 'research/stale-cache']),
+    );
+  });
+
+  it('TOLERATES a node with an unreadable/legacy ledger — skips it, still returns the valid nodes, never throws', async () => {
+    const templateDir = await scratch();
+    await writeIssueFile(join(templateDir, 'nodes', 'gameplay', 'issues', 'soggy-crust.md'), makeIssue('gameplay', 'soggy-crust'));
+    // a bespoke/legacy file that the fail-closed M2 parser rejects (missing required keys) — must NOT
+    // blank the whole run-level view, unlike the fail-closed per-node route.
+    await mkdir(join(templateDir, 'nodes', 'w1-design', 'issues'), { recursive: true });
+    await writeFile(join(templateDir, 'nodes', 'w1-design', 'issues', 'legacy.md'), '---\nissue: legacy\nfoot: bespoke\n---\nold format\n');
+
+    // fail-closed per-node route DOES throw on that node (the contract we keep) …
+    await expect(listIssues(templateDir, { node: 'w1-design' })).rejects.toThrow();
+
+    // … but the run-level aggregate degrades gracefully.
+    const all = await allIssuesProjection(templateDir);
+    expect(all.map((r) => `${r.node}/${r.issue.name}`)).toEqual(['gameplay/soggy-crust']);
+  });
+
+  it('returns [] when the template has no nodes dir — never throws', async () => {
+    const templateDir = await scratch();
+    expect(await allIssuesProjection(templateDir)).toEqual([]);
   });
 });

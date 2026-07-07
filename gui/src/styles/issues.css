@@ -1,0 +1,158 @@
+/* issues.css — the M8 issue surfaces (IssueBits): GitHub-issues idiom in the light-glass vocabulary.
+   Status color: OPEN = green, RESOLVED/closed = violet (GitHub's purple), REGRESSED/reopened = amber. */
+
+/* ── status glyph ─────────────────────────────────────────────────────────────────── */
+.ds-issue-ic { flex: none; }
+.ds-issue-ic[data-kind="open"] { color: var(--ds-success-fg); }
+.ds-issue-ic[data-kind="closed"] { color: var(--ds-violet-600); }
+.ds-issue-ic[data-kind="reopened"] { color: var(--ds-warning-fg); }
+
+/* ── the "N open · M closed" count cluster (identity-row affordance) ──────────────────── */
+.ds-issue-counts {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: var(--ds-text-sm); line-height: 1;
+}
+.ds-issue-counts--compact { gap: 7px; }
+.ds-issue-count { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ds-issue-count__v { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--ds-text-primary); }
+.ds-issue-count__l { color: var(--ds-text-tertiary); }
+
+/* a clickable count cluster (wrapped in a button by the caller) reads as an affordance */
+button.ds-issue-countbtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 8px; border: 1px solid var(--ds-border-hairline); border-radius: var(--ds-radius-full);
+  background: var(--ds-bg-surface); cursor: pointer; transition: background 120ms, border-color 120ms;
+}
+button.ds-issue-countbtn:hover { background: var(--ds-bg-hover); border-color: var(--ds-border-strong); }
+button.ds-issue-countbtn.is-active { border-color: var(--ds-violet-600); }
+
+/* ── one issue row (shared by every list) ────────────────────────────────────────────── */
+.ds-issue-row {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 9px; text-align: left; border: 0;
+  border-radius: var(--ds-radius-md); background: transparent;
+  color: var(--ds-text-primary); font-size: var(--ds-text-sm); line-height: 1.35;
+}
+button.ds-issue-row { cursor: pointer; transition: background 120ms; }
+button.ds-issue-row:hover { background: var(--ds-bg-hover); }
+.ds-issue-row.is-sel { background: var(--ds-bg-sunken); }
+.ds-issue-row[data-closed="true"] .ds-issue-row__title { color: var(--ds-text-secondary); }
+
+.ds-issue-row__node {
+  flex: none; font-size: var(--ds-text-xs); color: var(--ds-text-tertiary);
+  padding: 1px 6px; border-radius: var(--ds-radius-full); background: var(--ds-bg-sunken);
+}
+.ds-issue-row__title {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ds-issue-row__status {
+  flex: none; font-size: var(--ds-text-xs); text-transform: lowercase; white-space: nowrap;
+  padding: 1px 6px; border-radius: var(--ds-radius-full); border: 1px solid transparent;
+}
+/* the three live fix-cycle states read as "in progress" (blue); a reopened `regressed` reads amber. */
+.ds-issue-row__status[data-phase="in-progress"] { color: var(--ds-blue-600); border-color: var(--ds-blue-200); background: var(--ds-blue-50); }
+.ds-issue-row__status[data-phase="reopened"] { color: var(--ds-warning-fg); border-color: var(--ds-warning-fg); }
+
+.ds-issue-row__sev {
+  flex: none; font-size: var(--ds-text-xs); text-transform: uppercase; letter-spacing: 0.03em;
+}
+.ds-issue-row__sev[data-tone="block"] { color: var(--ds-error-fg); }
+.ds-issue-row__sev[data-tone="warn"] { color: var(--ds-warning-fg); }
+.ds-issue-row__sev[data-tone="muted"] { color: var(--ds-text-tertiary); }
+
+/* ── the full issue content (parsed "original issue file") ───────────────────────────── */
+.ds-issue-content { display: flex; flex-direction: column; gap: 12px; }
+.ds-issue-content__head { display: flex; align-items: center; gap: 8px; }
+.ds-issue-content__title { flex: 1 1 auto; margin: 0; font-size: var(--ds-text-md); font-weight: 600; color: var(--ds-text-primary); }
+
+/* ── status PROGRESSION stepper (the optimize loop: open → active → fix-landed → verifying → resolved) ── */
+.ds-issue-life { list-style: none; display: flex; margin: 2px 0 0; padding: 0; }
+.ds-issue-life__stage {
+  position: relative; flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+}
+/* the connector INTO a stage: filled once the stage is reached (not `pending`); tinted at the terminals. */
+.ds-issue-life__stage::before {
+  content: ""; position: absolute; top: 7px; right: 50%; left: -50%; height: 2px;
+  background: var(--ds-border-hairline); z-index: 0;
+}
+.ds-issue-life__stage:first-child::before { display: none; }
+.ds-issue-life__stage:not([data-state="pending"])::before { background: var(--ds-blue-300); }
+.ds-issue-life__stage[data-state="closed"]::before { background: var(--ds-violet-300); }
+.ds-issue-life__stage[data-state="reopened"]::before { background: var(--ds-warning-fg); }
+
+.ds-issue-life__dot {
+  position: relative; z-index: 1; flex: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1.5px solid var(--ds-border-hairline); background: var(--ds-bg-surface);
+  color: #fff; box-sizing: border-box;
+}
+.ds-issue-life__stage[data-state="done"] .ds-issue-life__dot { background: var(--ds-blue-500); border-color: var(--ds-blue-500); }
+.ds-issue-life__stage[data-state="closed"] .ds-issue-life__dot { background: var(--ds-violet-600); border-color: var(--ds-violet-600); }
+.ds-issue-life__stage[data-state="reopened"] .ds-issue-life__dot { background: var(--ds-warning-fg); border-color: var(--ds-warning-fg); }
+/* the "you are here" dot: blue ring + halo while a fix is in flight; a quiet grey ring while still just open. */
+.ds-issue-life[data-phase="in-progress"] .ds-issue-life__stage[data-state="current"] .ds-issue-life__dot {
+  border-color: var(--ds-blue-500); background: var(--ds-blue-50); box-shadow: 0 0 0 3px var(--ds-accent-ring);
+}
+.ds-issue-life[data-phase="open"] .ds-issue-life__stage[data-state="current"] .ds-issue-life__dot {
+  border-color: var(--ds-border-strong); background: var(--ds-bg-surface);
+}
+
+.ds-issue-life__label {
+  font-size: var(--ds-text-xs); line-height: 1.1; color: var(--ds-text-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+}
+.ds-issue-life__stage[data-state="done"] .ds-issue-life__label { color: var(--ds-text-secondary); }
+.ds-issue-life__stage[data-state="current"] .ds-issue-life__label { color: var(--ds-text-primary); font-weight: 600; }
+.ds-issue-life__stage[data-state="closed"] .ds-issue-life__label { color: var(--ds-violet-600); font-weight: 600; }
+.ds-issue-life__stage[data-state="reopened"] .ds-issue-life__label { color: var(--ds-warning-fg); font-weight: 600; }
+
+.ds-issue-life__caption { margin: -4px 0 0; font-size: var(--ds-text-xs); color: var(--ds-text-secondary); }
+.ds-issue-life__caption[data-phase="closed"] { color: var(--ds-violet-600); }
+.ds-issue-life__caption[data-phase="reopened"] { color: var(--ds-warning-fg); }
+
+.ds-issue-facts { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; }
+.ds-issue-fact { display: flex; gap: 6px; align-items: baseline; }
+.ds-issue-fact__k { margin: 0; font-size: var(--ds-text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ds-text-tertiary); }
+.ds-issue-fact__v { margin: 0; font-size: var(--ds-text-sm); color: var(--ds-text-primary); }
+.ds-issue-fact__v code { font-size: var(--ds-text-xs); color: var(--ds-text-code); }
+
+.ds-issue-attempts { border-top: 1px solid var(--ds-border-hairline); padding-top: 8px; }
+.ds-issue-attempts__head { margin: 0 0 6px; font-size: var(--ds-text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ds-text-tertiary); }
+.ds-issue-attempts__empty { margin: 0; font-size: var(--ds-text-xs); color: var(--ds-text-tertiary); }
+.ds-issue-attempts__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ds-issue-attempt { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--ds-text-xs); }
+.ds-issue-attempt__n { flex: none; font-variant-numeric: tabular-nums; color: var(--ds-text-tertiary); }
+.ds-issue-attempt__commit { color: var(--ds-text-code); }
+.ds-issue-attempt__by { color: var(--ds-success-fg); }
+.ds-issue-attempt__reg { color: var(--ds-warning-fg); }
+
+.ds-issue-content__body { border-top: 1px solid var(--ds-border-hairline); padding-top: 10px; }
+
+/* ── in-HUD issues list (NodeHud issues-mode: LEFT column replaces the input files) ── */
+.ds-hud-issues { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.ds-hud-issues__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 2px 5px; border-bottom: 1px solid var(--ds-border-hairline);
+}
+.ds-hud-issues__title { font-size: var(--ds-text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--ds-text-tertiary); }
+.ds-hud-issues__list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+
+/* ── run-level card: filter-by-node chip row + per-node groups ── */
+.ds-issue-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.ds-issue-filter__chip {
+  font-size: var(--ds-text-xs); padding: 3px 9px; border-radius: var(--ds-radius-full);
+  border: 1px solid var(--ds-border-hairline); background: var(--ds-bg-surface);
+  color: var(--ds-text-secondary); cursor: pointer; transition: background 120ms, border-color 120ms, color 120ms;
+}
+.ds-issue-filter__chip:hover { background: var(--ds-bg-hover); }
+.ds-issue-filter__chip.is-active { border-color: var(--ds-violet-600); color: var(--ds-text-primary); background: var(--ds-bg-hover); }
+
+.ds-issue-group { margin-top: 10px; }
+.ds-issue-group__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 2px 4px; border-bottom: 1px solid var(--ds-border-hairline);
+}
+.ds-issue-group__node { font-size: var(--ds-text-sm); font-weight: 600; color: var(--ds-text-primary); }
+.ds-issue-group__list { display: flex; flex-direction: column; gap: 2px; padding-top: 3px; }

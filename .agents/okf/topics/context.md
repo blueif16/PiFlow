@@ -54,8 +54,8 @@ SWITCH (the CLI — one word to live in + escape hatches)
 - `packages/cli/src/context.ts:56` — `hostSetupHint()` — setup-on-miss guidance; `selfhost` = the FREE serve + Cloudflare quick-tunnel (`*.trycloudflare.com`)
 - `packages/cli/src/context.ts:73` — `workerSetupHint()` — cloud-worker cred setup guidance (`E2B_API_KEY` / `DAYTONA_API_KEY`)
 TERMINAL (the merge — context worker IS the sandbox)
-- `packages/cli/src/run.ts:816` — `resolveRunSandbox()` — the ONE resolver: `--sandbox` (legacy override) > context worker > `inmemory` default
-- `packages/cli/src/run.ts:891` — `runRunCli` wiring — sets `parsed.sandbox = resolveRunSandbox(...)` before BOTH the local (`runTemplate`) and remote (`remoteStartBody`) paths
+- `packages/cli/src/run.ts:893` — `resolveRunSandbox()` — the ONE resolver: `--sandbox` (legacy override) > context worker > `inmemory` default
+- `packages/cli/src/run.ts:968` — `runRunCli` wiring — sets `parsed.sandbox = resolveRunSandbox(...)` before BOTH the local (`runTemplate`) and remote (`remoteStartBody`) paths
 - `packages/cli/src/context-store.ts:134` — `resolveActive()` — the `--context` flag > `PIFLOW_CONTEXT` env > persisted `current` > `local` ladder (which context is active)
 
 # Freshness (anti-drift)
@@ -124,12 +124,18 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `7a3ee69` 2026-07-02 — fix(cli): fail loud on --sandbox e2b without E2B_TEMPLATE (no silent exit-127)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `9db5099` 2026-07-02 — fix(cli,core,server): anchor a run at its product, not process.cwd()
 - `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `20e9eae` 2026-07-02 — feat(core,cli): node --rerun — targeted rerun-set, not a noResume stage window
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `7a072d0` 2026-07-05 — fix(cli): dry-run plan discovers script tools — the preview must not lie
+- `22a4ccc` 2026-07-05 — fix(cli): dry-run preview renders the "optional, not present" note
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 
 ### Lessons — memory cluster
 
@@ -143,6 +149,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[context-composition-telemetry]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
+- [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[g6-agenttype-presets]]
 - [[gui-nodehud-redesign]]
@@ -161,6 +168,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
+- [[playbook-skills-depth-over-budget]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
@@ -175,5 +183,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-07 · arc=44 commits · files=3 · lessons=32</sub>
+<sub>derived 2026-07-07 · arc=50 commits · files=3 · lessons=34</sub>
 <!-- okf:auto-end -->

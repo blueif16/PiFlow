@@ -18,7 +18,7 @@ import "../styles/modes.css";
  *  left-edge skill marketplace. Owned here with the view-mode keys so the whole bottom-left key cluster lives
  *  in one handler. `muted` silences the keys while a true modal (Start-run / Migrate-run) is open — a keypress
  *  must not act beneath its scrim. */
-export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, marketOpen, onToggleMarket, muted = false }: { chatOpen: boolean; onToggleChat: () => void; digestOpen: boolean; onToggleDigest: () => void; marketOpen: boolean; onToggleMarket: () => void; muted?: boolean }) {
+export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, marketOpen, onToggleMarket, issuesOpen, onToggleIssues, muted = false }: { chatOpen: boolean; onToggleChat: () => void; digestOpen: boolean; onToggleDigest: () => void; marketOpen: boolean; onToggleMarket: () => void; issuesOpen: boolean; onToggleIssues: () => void; muted?: boolean }) {
   const { mode, toggle } = useViewMode();
 
   useEffect(() => {
@@ -31,6 +31,7 @@ export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, ma
       if (k === "p") { e.preventDefault(); onToggleChat(); return; }
       if (k === "d") { e.preventDefault(); onToggleDigest(); return; }
       if (k === "s") { e.preventDefault(); onToggleMarket(); return; }
+      if (k === "i") { e.preventDefault(); onToggleIssues(); return; }
       const hit = VIEW_MODES.find((m) => m.key === k);
       if (!hit) return;
       e.preventDefault();
@@ -38,7 +39,7 @@ export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, ma
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, onToggleChat, onToggleDigest, onToggleMarket, muted]);
+  }, [toggle, onToggleChat, onToggleDigest, onToggleMarket, onToggleIssues, muted]);
 
   return createPortal(
     <div className="ds-modebar-layer">
@@ -76,6 +77,16 @@ export function ModeBar({ chatOpen, onToggleChat, digestOpen, onToggleDigest, ma
         >
           <span className="ds-mode-btn__cap" aria-hidden="true">D</span>
           <span className="ds-mode-btn__label">Digest</span>
+        </button>
+        <button
+          type="button"
+          className={`ds-mode-btn${issuesOpen ? " is-active" : ""}`}
+          aria-pressed={issuesOpen}
+          title="Issues — press I"
+          onClick={onToggleIssues}
+        >
+          <span className="ds-mode-btn__cap" aria-hidden="true">I</span>
+          <span className="ds-mode-btn__label">Issues</span>
         </button>
         <button
           type="button"

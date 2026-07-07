@@ -92,12 +92,18 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `7a3ee69` 2026-07-02 — fix(cli): fail loud on --sandbox e2b without E2B_TEMPLATE (no silent exit-127)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `9db5099` 2026-07-02 — fix(cli,core,server): anchor a run at its product, not process.cwd()
 - `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `20e9eae` 2026-07-02 — feat(core,cli): node --rerun — targeted rerun-set, not a noResume stage window
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `7a072d0` 2026-07-05 — fix(cli): dry-run plan discovers script tools — the preview must not lie
+- `22a4ccc` 2026-07-05 — fix(cli): dry-run preview renders the "optional, not present" note
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 
 ### Lessons — memory cluster
 
@@ -105,6 +111,7 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - [[agentic-design-library]]
 - [[blueprints-layer]]
 - [[cloud-control-plane-local-cloud-switch]]
+- [[frozen-input-reruns]]
 - [[model-provider-single-default-fixture]]
 - [[omniscience-piflow-setup]]
 - [[optimize-substrate-program]]
@@ -116,9 +123,9 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 
 - `pieSlugList` (packages/core/src/names/slugify.ts:64) — 5 callers in `packages/core/src/names/generate-pies.mjs`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `pieSlug` (packages/core/src/names/slugify.ts:43) — 4 callers in `packages/core/src/names/slugify.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
-- `generateRunName` (packages/core/src/names/generator.ts:40) — 7 callers in `packages/cli/src/run.ts`, `packages/server/src/start-run.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+- `generateRunName` (packages/core/src/names/generator.ts:40) — 8 callers in `packages/core/src/optimize/substrate/judge.ts`, `packages/server/src/start-run.ts`, `packages/cli/src/run.ts`, `packages/core/src/names/index.ts` +1 more; tests: `packages/core/test/names.test.ts`
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-07 · arc=39 commits · files=7 · lessons=9</sub>
+<sub>derived 2026-07-07 · arc=45 commits · files=7 · lessons=10</sub>
 <!-- okf:auto-end -->

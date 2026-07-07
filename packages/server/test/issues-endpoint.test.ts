@@ -102,12 +102,20 @@ describe("issues endpoint", () => {
     expect(rows.map((r) => r.issue.name)).toEqual(["soggy-crust", "slow-compose"]); // severity-desc
   });
 
-  it("400s when ?node= is missing", async () => {
-    const { runDir } = fixtureLayout();
+  it("returns the run-LEVEL aggregate (every node's issues) when ?node= is omitted", async () => {
+    const { runDir, templateDir } = fixtureLayout();
+    await writeIssueFile(join(templateDir, "nodes", "gameplay", "issues", "soggy-crust.md"), makeIssue("gameplay", "soggy-crust", { severity: "critical" }));
+    await writeIssueFile(join(templateDir, "nodes", "research", "issues", "stale-cache.md"), makeIssue("research", "stale-cache"));
     runDirStub = { runDir, workspaceRoot: null, historyDirs: [] };
+
     const { status, json } = await call(piflowNodeIssues, { method: "GET", url: "/__piflow/issues/flaky-pecan" });
-    expect(status).toBe(400);
-    expect((json as { error: string }).error).toMatch(/node/);
+
+    expect(status).toBe(200); // no longer a 400 — the aggregate is a first-class view
+    const rows = json as Array<{ node: string; issue: { name: string } }>;
+    // both nodes contribute — the run-level card is 'characterized by node' across the whole template.
+    expect(new Set(rows.map((r) => `${r.node}/${r.issue.name}`))).toEqual(
+      new Set(["gameplay/soggy-crust", "research/stale-cache"]),
+    );
   });
 
   it("404s when the run does not resolve", async () => {

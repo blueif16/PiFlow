@@ -41,7 +41,7 @@ BIND
 - `packages/core/src/runner/tool-config.ts:60` — `assembleRunTools()` — seed catalog+rows into the registry, union node `mcp.servers`
 - `packages/tool-bridge/src/index.ts:62` — `callTool()` — the generated `-e` call site that executes a bound `mcp.*`/`oc.*` tool
 SKILLS
-- `packages/core/src/workflow/ops/skill.ts:40` — `resolveSkillStage()` — `node.skill` → host source + staged `.pi/skills/<name>` dir (seed seam)
+- `packages/core/src/workflow/ops/skill.ts:48` — `resolveSkillStage()` — `node.skill` → host source + staged `.pi/skills/<name>` dir (seed seam)
 - `packages/core/src/runner/command.ts:92` — emits `pi --skill <dir>` (additive even under `--no-skills`)
 
 # Freshness (anti-drift)
@@ -94,9 +94,12 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `b5972f2` 2026-06-26 — feat(skills): wire node.skill — stage the skill folder into the sandbox + emit --skill (reuse the seed seam)
 - `7126ce1` 2026-06-28 — feat(core): skill requires/allowed manifest + resolver + preflight (SA-A)
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
+- `9db5099` 2026-07-02 — fix(cli,core,server): anchor a run at its product, not process.cwd()
+- `5d1ef87` 2026-07-02 — fix(core): skill staging — collision-free naming for `.../SKILL.md` refs
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 - `762c08f` 2026-07-03 — feat(core+cli): catalog introspect --as <alias> — bridge registry names to local bind names
 - `507b890` 2026-07-03 — feat(core): parseSkillDoc — manifest widened with description + body
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
 
 ### Lessons — memory cluster
 
@@ -119,6 +122,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
+- [[fixer-two-half-law]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
@@ -127,7 +131,9 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
 - [[hooks-give-info-never-autofix]]
+- [[issue-lifecycle-gate-redesign]]
 - [[local-docker-sandbox-mode]]
+- [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[minimax-m3-framing]]
@@ -146,6 +152,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[playbook-skills-depth-over-budget]]
 - [[roadmap-bookkeeping-linear]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[skill-marketplace-gui-design]]
@@ -157,11 +164,11 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 
 ### Code anchors / blast radius (codegraph)
 
-- `resolveRunTools` (packages/core/src/runner/entry.ts:40) — 2 callers in `packages/core/src/runner/entry.ts`; ⚠ no covering tests found
+- `resolveRunTools` (packages/core/src/runner/entry.ts:42) — 2 callers in `packages/core/src/runner/entry.ts`; ⚠ no covering tests found
 - `listServerTools` (packages/tool-bridge/src/index.ts:105) — 2 callers in `packages/core/src/catalog/introspect.ts`; tests: `packages/tool-bridge/test/list-server-tools.test.ts`
 - `seededRegistry` (packages/core/src/tools/catalog.ts:58) — 8 callers in `packages/cli/src/inspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog.test.ts`
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/tool-config.test.ts`, `packages/core/test/catalog-introspect.test.ts`
 - `introspectMcpServer` (packages/core/src/catalog/introspect.ts:109) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
 
-<sub>derived 2026-07-07 · arc=31 commits · files=9 · lessons=53</sub>
+<sub>derived 2026-07-07 · arc=34 commits · files=9 · lessons=57</sub>
 <!-- okf:auto-end -->

@@ -38,7 +38,7 @@ RAW `.pi` → READ (lean snapshot)
 - `packages/core/src/observe/read.ts:82` — `readRunModel()` — folds run.json + io.json into RunModel (resolveStructure for stages/edges)
 - `packages/core/src/observe/read.ts:62` — `deriveStatus()` — verified-not-trusted status downgrade
 DISTILL (rich per-node reducer)
-- `packages/core/src/observe/distill.ts:187` — `createNodeAccumulator()` — the shared events.jsonl reducer (per-node tokens + cost + contextPeak)
+- `packages/core/src/observe/distill.ts:198` — `createNodeAccumulator()` — the shared events.jsonl reducer (per-node tokens + cost + contextPeak)
 - `packages/core/src/observe/distill.ts:271` — `snapshot()` — the NON-DESTRUCTIVE live twin of `finalize()` (frozen copy, open spans read-only) — what the live fold consumes
 - `packages/core/src/observe/distill.ts:281` — `finalize()` — the DESTRUCTIVE terminal read (synth-closes open spans); buildRunView only
 - `packages/core/src/observe/distill.ts:169` — `costScalar` — coerces pi's `usage.cost` into the per-node cost tally (the COST number the GUI shows is COMPUTED here, not in gui)
@@ -175,6 +175,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `f8854d8` 2026-07-05 — fix(tui): mark a rejected-only tool in the per-node tool tally
 - `4a19f22` 2026-07-06 — feat(observe): M8 — substrate exposure (lineage on the index, issues endpoint + side card)
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `dfa3583` 2026-07-06 — feat(server): issues route serves the run-level aggregate when ?node is omitted
 
 ### Lessons — memory cluster
 
@@ -250,7 +251,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `assembleNode` (packages/core/src/observe/runView.ts:374) — 4 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/watch.ts`; tests: `packages/core/test/claude-accumulator.test.ts`
 - `NodeTokenSpine` (packages/core/src/observe/runView.ts:294) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:313) — 2 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`
-- `RunView` (packages/core/src/observe/runView.ts:135) — 9 callers in `packages/core/src/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
+- `RunView` (packages/core/src/observe/runView.ts:135) — 9 callers in `packages/core/src/index.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-07 · arc=86 commits · files=13 · lessons=64</sub>
+<sub>derived 2026-07-07 · arc=87 commits · files=13 · lessons=64</sub>
 <!-- okf:auto-end -->

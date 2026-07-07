@@ -231,9 +231,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `CHECK_KINDS` (packages/core/src/checks.ts:62) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
+- `CHECK_KINDS` (packages/core/src/checks.ts:62) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
 - `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
-- `evaluateChecks` (packages/core/src/checks.ts:117) — 8 callers in `packages/core/src/optimize/substrate/measure.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
+- `evaluateChecks` (packages/core/src/checks.ts:117) — 3 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
 <sub>derived 2026-07-07 · arc=88 commits · files=8 · lessons=73</sub>
