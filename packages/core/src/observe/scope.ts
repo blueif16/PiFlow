@@ -11,7 +11,7 @@
 
 import fssync from 'node:fs';
 import path from 'node:path';
-import { loadRegistry, upsertRoot, type Registry } from './registry.js';
+import { loadRegistry, upsertRoot, registerProductRoot, type Registry } from './registry.js';
 
 /**
  * Is `dir` a pi-flow PRODUCT — does its `.piflow/` hold at least one REAL workflow (`<wf>/template/meta.json`
@@ -89,6 +89,28 @@ export function resolveScope(cwd: string): { scopeRoot: string; roots: string[] 
   const enclosing = findProductRoot(cwd);
   const scopeRoot = enclosing ?? path.resolve(cwd);
   return { scopeRoot, roots: enclosing ? [enclosing] : [] };
+}
+
+/**
+ * `resolveScope` PLUS a best-effort self-register of the resolved focus into the global registry — the
+ * SAME `registerProductRoot` self-registration `runWorkflow` performs at the start of a run
+ * (`runner/entry.ts`), triggered here instead by merely LAUNCHING a viewer (`piflowctl gui`/`tui`) inside a
+ * product folder. Before this, a product only became visible to OTHER workspaces' switchers after its first
+ * `piflowctl run` — opening the viewer alone left it undiscoverable elsewhere; this closes that gap.
+ * Same non-fatal contract as `registerProductRoot` (a registry write failure never blocks scope
+ * resolution) and the same tmpdir guard (inherited — never self-registers a scratch/test cwd). NO-OP (no
+ * write) when `cwd` isn't inside any product (`roots` empty) — nothing real to register.
+ */
+export async function resolveAndRegisterScope(cwd: string): Promise<{ scopeRoot: string; roots: string[] }> {
+  const scope = resolveScope(cwd);
+  if (scope.roots.length) {
+    try {
+      await registerProductRoot(scope.scopeRoot);
+    } catch {
+      /* best-effort — mirrors registerProductRoot's own non-fatal contract */
+    }
+  }
+  return scope;
 }
 
 /** An EPHEMERAL registry built from explicit roots (never reads or writes the global `~/.piflow/products.json`). */

@@ -8,7 +8,7 @@
 //     suite caused by running workflows without setting PIFLOW_HOME (packages/server/test/http-replay-e2e).
 //   • (M3) saveRegistry SELF-HEALS: an entry whose root no longer exists on disk is dropped before writing.
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -19,6 +19,7 @@ import {
   productsFile,
   type Registry,
 } from '../src/observe/registry.js';
+import { resolveAndRegisterScope } from '../src/observe/scope.js';
 
 let home: string;
 let prevHome: string | undefined;
@@ -28,6 +29,14 @@ const realScratchDirs: string[] = [];
 function mkRealDir(): string {
   const d = mkdtempSync(path.join(process.cwd(), '.piflow-registry-test-'));
   realScratchDirs.push(d);
+  return d;
+}
+// A REAL (non-tmp) dir shaped as a pi-flow product (`.piflow/<wf>/template/meta.json`) — the ONLY shape
+// `resolveScope`'s `isProductRoot` recognizes. Non-tmp so `registerProductRoot`'s M3 guard doesn't no-op it.
+function mkRealProduct(): string {
+  const d = mkRealDir();
+  mkdirSync(path.join(d, '.piflow', 'wf', 'template'), { recursive: true });
+  writeFileSync(path.join(d, '.piflow', 'wf', 'template', 'meta.json'), JSON.stringify({ name: 'wf' }));
   return d;
 }
 
@@ -112,5 +121,38 @@ describe('saveRegistry — self-heals dead entries (M3)', () => {
     const roots = onDisk.products.map((p) => p.root);
     expect(roots).toContain(alive); // a real, existing root survives
     expect(roots).not.toContain(ghostRoot); // a dead root is pruned, never resurrected
+  });
+});
+
+// resolveAndRegisterScope — `resolveScope` PLUS a self-register side effect, so merely LAUNCHING a viewer
+// (`piflowctl gui`/`tui`) inside a product folder is enough to make it discoverable from every OTHER
+// workspace's switcher, without requiring a `piflowctl run` there first.
+describe('resolveAndRegisterScope', () => {
+  it('launching inside a product self-registers it — no run required first', async () => {
+    const root = mkRealProduct();
+    expect(existsSync(productsFile())).toBe(false); // nothing registered yet
+
+    const { roots } = await resolveAndRegisterScope(root);
+
+    expect(roots).toEqual([root]); // scope resolution still returns the correct focus
+    expect(loadRegistry().products.some((p) => p.root === root)).toBe(true); // AND it's now on disk
+  });
+
+  it('launching outside any product resolves an empty scope and registers nothing', async () => {
+    const outside = mkdtempSync(path.join(tmpdir(), 'piflow-outside-')); // isolated — no product ancestor
+    try {
+      const { roots } = await resolveAndRegisterScope(outside);
+      expect(roots).toEqual([]);
+      expect(existsSync(productsFile())).toBe(false); // no write for a non-product cwd
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('launching twice from the same product stays ONE entry, not a duplicate', async () => {
+    const root = mkRealProduct();
+    await resolveAndRegisterScope(root);
+    await resolveAndRegisterScope(root);
+    expect(loadRegistry().products.filter((p) => p.root === root)).toHaveLength(1);
   });
 });
