@@ -35,6 +35,17 @@ export function loopFingerprint(name: string, args: unknown): string {
 }
 
 /**
+ * The ONE human/agent-facing detail string for an identical-args tool loop — `<tool> called <n>× with
+ * identical args`. The SINGLE source both consumers render: the post-hoc telemetry anomaly (telemetry.ts's
+ * `tool-loop`) AND the LIVE deterministic breaker (runner/tool-loop-breaker.ts). Keeping the format here
+ * makes the two surfaces name a loop IDENTICALLY — the single-data-path law: one detector (`maxToolRepeat`),
+ * two consumers.
+ */
+export function toolLoopDetail(repeatedTool: string, maxToolRepeat: number): string {
+  return `${repeatedTool} called ${maxToolRepeat}× with identical args`;
+}
+
+/**
  * (P6) A tiny consecutive-run tracker for `loopScore` — the LONGEST run of back-to-back identical
  * fingerprints. `see(fp)` folds one tool call in order; `.value` is the running longest run. Distinct from a
  * global-peak counter (maxToolRepeat): a repeat only counts if it is IMMEDIATELY after the same fingerprint.

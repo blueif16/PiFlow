@@ -17,7 +17,7 @@ export interface ExecRunner {
     sandbox: Sandbox,
     cmd: string,
     opts: ExecWatchdogOpts,
-  ): Promise<{ result: ExecResult; killed: null | 'timeout' | 'stall' }>;
+  ): Promise<{ result: ExecResult; killed: null | 'timeout' | 'stall' | 'tool-loop' }>;
 }
 
 /** Watchdog knobs handed to the exec runner. */
@@ -28,6 +28,20 @@ export interface ExecWatchdogOpts {
   stallMs: number;
   /** ms to wait after SIGTERM before SIGKILL (the kill grace). */
   killGraceMs: number;
+  /**
+   * (tool-loop breaker) The identical-args kill threshold — one tool called with the SAME args this many
+   * times terminates the node (0 = off). This is the CONFIG knob node-lifecycle reads to arm the per-node
+   * breaker; the exec runner itself does NOT detect loops (it has no parsed-event view) — it only honors the
+   * `breakerSignal` the armed breaker aborts. Grouped with the other kill knobs (all live on `ctx.watchdog`).
+   */
+  toolLoopLimit: number;
+  /**
+   * (tool-loop breaker) A PER-NODE external abort trigger the exec runner honors: when it aborts, the exec is
+   * killed through the SAME kill seam as the timeout/stall watchdogs and reported as `killed: 'tool-loop'`.
+   * node-lifecycle arms a breaker (fed by the live event fold) that aborts it on the identical-args threshold.
+   * Absent ⇒ no tool-loop kill (byte-identical to before — a test / the repair re-exec omit it).
+   */
+  breakerSignal?: AbortSignal;
   /**
    * (per-node stop) Forwarded VERBATIM into `sandbox.exec`'s `ExecOpts.onSpawn` — fired once with the
    * spawned child's pid. The runner threads a callback here that persists the node's pid to
@@ -65,7 +79,7 @@ export interface CheckpointWaiter {
 export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
   new Promise((resolve) => {
     let settled = false;
-    let trippedAs: null | 'timeout' | 'stall' = null;
+    let trippedAs: null | 'timeout' | 'stall' | 'tool-loop' = null;
     let lastEventAt = Date.now();
     const ac = new AbortController();
     let graceTimer: NodeJS.Timeout | undefined;
@@ -77,7 +91,7 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
       if (graceTimer) clearTimeout(graceTimer);
       resolve({ result, killed: trippedAs });
     };
-    const trip = (kind: 'timeout' | 'stall'): void => {
+    const trip = (kind: 'timeout' | 'stall' | 'tool-loop'): void => {
       if (settled || trippedAs) return;
       trippedAs = kind;
       try { ac.abort(); } catch { /* no-op */ } // real kill: a signal-honoring provider reaps the group
@@ -90,6 +104,12 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
     const stallTimer = opts.stallMs > 0
       ? setInterval(() => { if (Date.now() - lastEventAt > opts.stallMs) trip('stall'); }, Math.max(25, Math.floor(opts.stallMs / 4)))
       : (setInterval(() => {}, 1 << 30) as NodeJS.Timeout); // inert sentinel cleared in settle()
+    // (tool-loop breaker) An armed breaker (node-lifecycle, fed by the live event fold) aborts this signal on
+    // the identical-args threshold → the SAME kill path as timeout/stall, reported as `killed: 'tool-loop'`.
+    if (opts.breakerSignal) {
+      if (opts.breakerSignal.aborted) trip('tool-loop');
+      else opts.breakerSignal.addEventListener('abort', () => trip('tool-loop'), { once: true });
+    }
     const touch = (): void => { lastEventAt = Date.now(); };
     sandbox
       // Relay onSpawn through to the sandbox so the runner's pid-persist fires the instant the child exists.

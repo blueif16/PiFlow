@@ -180,6 +180,8 @@ export interface FailureSignals {
   failedChecks: { kind: string; path: string | null; reason: string }[];
   killedTimeout: boolean;
   killedStall: boolean;
+  /** The deterministic tool-loop breaker killed the node (one tool run with identical args past the limit). */
+  killedToolLoop?: boolean;
   /** The node's process exit code (0 = clean). */
   exitCode: number;
   /** The tail of the agent's stderr (matched against the infra-noise regex). */
@@ -210,8 +212,9 @@ export function classifyFailure(n: FailureSignals): FailureClass {
   // A declarative integrity check FAILED on an otherwise-present artifact (#6: a QUALITY verdict).
   if (n.failedChecks && n.failedChecks.length) return 'quality-gap';
   // Watchdog kills → escalate (a same-model retry just loops/stalls the same way) — but stall/timeout
-  // are capability/budget misses (escalate), so they fall through to quality-gap below by default.
-  if (n.killedStall || n.killedTimeout) return 'quality-gap';
+  // are capability/budget misses (escalate), so they fall through to quality-gap below by default. A
+  // deterministic tool-loop kill is the same class: a same-model retry would loop identically → escalate.
+  if (n.killedStall || n.killedTimeout || n.killedToolLoop) return 'quality-gap';
   // Infra noise (rate-limit / connection reset) on a nonzero exit — transient, a same-model retry fixes it.
   if (n.exitCode && n.exitCode !== 0 && /rate.?limit|ECONN|ETIMEDOUT|EAI_AGAIN|socket hang up|\b429\b|\b5\d\d\b|network/i.test(n.stderrTail || '')) return 'infra';
   // No parseable return block — retry once, then escalate.
@@ -234,6 +237,7 @@ export function consultPreamble(n: FailureSignals): string {
   if (n.failedChecks && n.failedChecks.length) ev.push(`failed integrity check(s): ${n.failedChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
   if (n.killedStall) ev.push('went silent with no tool running (model stalled)');
   if (n.killedTimeout) ev.push('exceeded the node time budget');
+  if (n.killedToolLoop) ev.push('looped: called one tool repeatedly with identical args (deterministic tool-loop kill)');
   if (!n.parsedOk) ev.push('produced no parseable return-protocol block');
   if (n.stderrTail) ev.push(`stderr: ${n.stderrTail.slice(-160)}`);
   return [

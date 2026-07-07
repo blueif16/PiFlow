@@ -20,7 +20,8 @@ import { markersFromNode, emitMarkers } from '../contract.js';
 import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas } from './schema.js';
 import { runHooks } from '../hooks/index.js';
-import { NodeRecorder, recordingSandbox } from './events.js';
+import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
+import { createToolLoopBreaker } from './tool-loop-breaker.js';
 // (P3) Forks B/C/D route through `ctx.drivers.get(node.executor)` — the per-run driver table — instead of
 // `effectiveModel`/`claudeExecutorEnvAdditions`/the `isClaude` parse ternary. Those value imports are gone;
 // the driver's run-side methods (resolveModel/augmentSandbox/parseResult) wrap the SAME shipped functions
@@ -543,10 +544,23 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     rec.driverId = drv.id;
     rec.driverVersion = drv.version;
 
+    // (tool-loop breaker) Arm a LIVE, deterministic backstop: fold each streamed event through THIS node's
+    // driver accumulator (the SAME identical-args detector telemetry replays post-hoc) and ABORT the exec when
+    // one tool crosses `ctx.watchdog.toolLoopLimit` identical-args calls — so a runaway loop is killed on the
+    // critical path instead of grinding to context exhaustion. It rides the recorder's onEvent tee (the
+    // driver-agnostic live fold) and the EXISTING watchdog kill seam. Disabled (limit<=0) or a driver with no
+    // event decode ⇒ no breaker (byte-identical to before). The repair re-exec below deliberately omits it.
+    const breakerLimit = ctx.watchdog.toolLoopLimit;
+    const breakerAcc = breakerLimit > 0 ? drv.eventAccumulator?.() : undefined;
+    const breakerAc = breakerAcc ? new AbortController() : undefined;
+    const breaker = breakerAcc && breakerAc ? createToolLoopBreaker(breakerAcc, breakerLimit, () => breakerAc.abort()) : null;
+    const onEvent: EventSink | undefined = breaker
+      ? (evNodeId, ev) => { breaker.push(ev); ctx.onEvent?.(evNodeId, ev); }
+      : ctx.onEvent;
     // `nodeTimeoutMs` is resolved ONCE above (shared with the cloud per-command cap at scope.create).
     // Tee the agent's stdout into a per-node slimmed events archive (additive — the wrap chains the
     // watchdog's own onStdout, so recording can never disable the stall kill). See ./events.ts.
-    const recorder = ctx.recordEvents ? new NodeRecorder(ctx.outDir, node.id, ctx.onEvent) : null;
+    const recorder = ctx.recordEvents ? new NodeRecorder(ctx.outDir, node.id, onEvent) : null;
     const execSandbox = recorder ? recordingSandbox(sandbox, recorder) : sandbox;
     // (per-node stop) PERSIST the spawned pi's pid to `.pi/nodes/<id>/pid.json` the instant the child exists,
     // so a separate `piflowctl node <run> <id> --stop` can signal THIS node's live process group. SCOPED to
@@ -557,7 +571,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     const hostSignalable = IN_PLACE_KINDS.has(ctx.providerKind);
     const onSpawn = hostSignalable ? (pid: number): void => { void writeNodePid(ctx.outDir, node.id, pid); } : undefined;
     // `let result` (not `const`): the G8 repair loop re-execs in the live sandbox and re-binds it.
-    const exec0 = await ctx.execRunner(execSandbox, cmd, { ...ctx.watchdog, nodeTimeoutMs, onSpawn });
+    const exec0 = await ctx.execRunner(execSandbox, cmd, { ...ctx.watchdog, nodeTimeoutMs, onSpawn, breakerSignal: breakerAc?.signal });
     let result = exec0.result;
     const { killed } = exec0;
     await recorder?.close();
@@ -829,9 +843,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
 
     let st: NodeStatusRecord['status'];
     const issues: string[] = [];
-    if (killed === 'timeout' || killed === 'stall' || result.code !== 0) {
+    if (killed === 'timeout' || killed === 'stall' || killed === 'tool-loop' || result.code !== 0) {
       st = 'error';
-      if (killed) issues.push(`killed: ${killed === 'timeout' ? 'exceeded node timeout' : 'silent stall'}`);
+      if (killed === 'tool-loop') issues.push(`killed: tool-loop — ${breaker?.reason ?? 'one tool called repeatedly with identical args'}`);
+      else if (killed) issues.push(`killed: ${killed === 'timeout' ? 'exceeded node timeout' : 'silent stall'}`);
       else issues.push(`nonzero exit ${result.code}`);
     } else if (missing.length) {
       st = 'blocked';
@@ -924,6 +939,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
 
     if (killed === 'timeout') rec.killedTimeout = true;
     if (killed === 'stall') rec.killedStall = true;
+    if (killed === 'tool-loop') rec.killedToolLoop = true;
 
     // (G12 — M4) CAPTURE the EMPIRICAL failure signals for `runNodeWithRetries` (the retry / escalate
     // lanes). Set ONLY on a non-ok verdict so a clean node leaves none — `classifyFailure`/`consultPreamble`
@@ -940,6 +956,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         failedChecks: failedChecks.map((c) => ({ kind: c.kind, path: c.path, reason: c.reason })),
         killedTimeout: killed === 'timeout',
         killedStall: killed === 'stall',
+        killedToolLoop: killed === 'tool-loop',
         exitCode: result.code,
         stderrTail: (result.stderr || '').slice(-400),
         parsedOk: parsed != null,

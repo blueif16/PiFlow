@@ -14,7 +14,7 @@
 
 import type { RunView, RunViewNode } from './runView.js';
 import type { RunUpdate } from './types.js';
-import { createNodeAccumulator, type LiveMetrics, type NodeAccumulator } from './distill.js';
+import { createNodeAccumulator, toolLoopDetail, type LiveMetrics, type NodeAccumulator } from './distill.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
 import { builtinDrivers } from '../runner/drivers/table.js';
 import type { AgentDriver } from '../runner/drivers/types.js';
@@ -204,7 +204,7 @@ function detectAnomalies(m: NodeMetrics, th: TelemetryThresholds): Anomaly[] {
     out.push({ kind: 'context-pressure', nodeId: m.id, detail: `context ${Math.round(pct * 100)}% of ${m.contextWindow} (peak ${m.contextPeak})`, value: pct, threshold: th.contextPct });
   }
   if (m.maxToolRepeat >= th.toolRepeat) {
-    out.push({ kind: 'tool-loop', nodeId: m.id, detail: `${m.repeatedTool} called ${m.maxToolRepeat}× with identical args`, value: m.maxToolRepeat, threshold: th.toolRepeat });
+    out.push({ kind: 'tool-loop', nodeId: m.id, detail: toolLoopDetail(m.repeatedTool ?? 'a tool', m.maxToolRepeat), value: m.maxToolRepeat, threshold: th.toolRepeat });
   }
   // slow needs a real cross-run mean (priorSamples>0) — else expectedMs is just this run's own duration.
   if (m.priorSamples > 0 && m.durationMs != null && m.expectedMs && m.expectedMs > 0) {

@@ -58,6 +58,7 @@ export { requestFreeze, clearFreeze, freezeFile, defaultFreezeSignal } from './m
 // internal-importing tests (self-correction-l1 / warm-resume-l1) keep resolving these from runner.ts.
 import { defaultExecRunner, defaultCheckpointWait } from './exec-runner.js';
 import type { ExecRunner, ExecWatchdogOpts, CheckpointWaiter } from './exec-runner.js';
+import { DEFAULT_TOOL_LOOP_LIMIT } from './tool-loop-breaker.js';
 export { defaultExecRunner, defaultCheckpointWait } from './exec-runner.js';
 export type { ExecRunner, ExecWatchdogOpts, CheckpointWaiter } from './exec-runner.js';
 
@@ -161,6 +162,15 @@ export interface RunOptions {
   stallMs?: number;
   /** ms after SIGTERM before SIGKILL. Default 3000 (run.mjs 904–911). */
   killGraceMs?: number;
+  /**
+   * (tool-loop breaker) Identical-args kill threshold — one tool called with the SAME args this many times
+   * deterministically terminates the node (`error`, `killedToolLoop`), riding the same kill seam as the
+   * timeout/stall watchdogs. A BACKUP guard against a runaway loop grinding a node to context exhaustion.
+   * 0 disables it (off switch). Default `DEFAULT_TOOL_LOOP_LIMIT` (10) — a deliberate backstop ABOVE the
+   * advisory `tool-loop` anomaly floor (DEFAULT_THRESHOLDS.toolRepeat = 3), so short legitimate repetition
+   * trips only the advisory surface, never the kill.
+   */
+  toolLoopLimit?: number;
   /**
    * Max node processes IN-FLIGHT at once (the G2 concurrency cap) — ONE global limiter across the whole
    * run (stages run sequentially, so global === per-stage at any instant). Bounds the stage fan-out that
@@ -463,6 +473,7 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
       nodeTimeoutMs: opts.nodeTimeoutMs ?? 1_800_000,
       stallMs: opts.stallMs ?? 0,
       killGraceMs: opts.killGraceMs ?? 3000,
+      toolLoopLimit: opts.toolLoopLimit ?? DEFAULT_TOOL_LOOP_LIMIT,
     },
     status: {
       run,
