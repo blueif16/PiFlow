@@ -164,22 +164,20 @@ export const piflowRunDigest: Middleware = async (req, res, next) => {
 };
 
 /**
- * `GET /__piflow/issues/<run>?node=<id>` — the M8 issues route: the optimize-substrate issue LEDGER
- * (docs/specs/optimize-substrate-plan.md §M2) for one node TYPE, node-scoped rather than run-scoped (the
- * ledger accumulates across every run of the node — a viewer badges rows against the run it opened the card
- * from, client-side). Clones the `piflowRunDigest` handler shape: resolve the run's TEMPLATE dir (via
- * `templateDirFor`, defined below — the same helper `piflowNodeWriteback` already uses), then project via
- * core's `nodeIssuesProjection` (a thin wrapper over `listIssues`; NO reimplementation here) and send the
- * result verbatim. `next()` when the URL isn't this route; 400 on a missing `?node=`; the SAME 404 semantics
- * as `templateDirFor` (run not found, or the run resolves but carries no template) — never a raw 500 for
- * either.
+ * `GET /__piflow/issues/<run>[?node=<id>]` — the M8 issues route: the optimize-substrate issue LEDGER
+ * (docs/specs/optimize-substrate-plan.md §M2). The ledger is node-TYPE-scoped (accumulates across every run
+ * of the node — a viewer badges rows against the run it opened the card from, client-side). `?node` is
+ * OPTIONAL: present ⇒ that ONE node's fail-closed ledger (`nodeIssuesProjection`); absent ⇒ the run-LEVEL
+ * aggregate across every node (`allIssuesProjection`, viewer-tolerant so one unreadable/legacy node ledger
+ * can't blank the whole run's issues card). Clones the `piflowRunDigest` handler shape: resolve the run's
+ * TEMPLATE dir (via `templateDirFor`), project via core, send verbatim. `next()` when the URL isn't this
+ * route; the SAME 404 semantics as `templateDirFor` (run not found, or no template) — never a raw 500.
  */
 export const piflowNodeIssues: Middleware = async (req, res, next) => {
   const m = req.url?.match(/^\/__piflow\/issues\/([^/?]+)/);
   if (!m) return next();
   const run = decodeURIComponent(m[1]);
   const nodeId = new URL(req.url!, "http://localhost").searchParams.get("node");
-  if (!nodeId) return sendJson(res, 400, { error: "missing ?node=<id>" });
 
   const tpl = await templateDirFor(run);
   if (!tpl.ok) return sendJson(res, tpl.status, { error: tpl.error });
@@ -187,13 +185,16 @@ export const piflowNodeIssues: Middleware = async (req, res, next) => {
   const obs = findCore("observe/index.js");
   if (!obs) return sendJson(res, 500, { error: "@piflow/core observe dist not found — run: npm run build (at repo root)" });
   try {
-    const { nodeIssuesProjection } = (await import(pathToFileURL(obs).href)) as {
+    const { nodeIssuesProjection, allIssuesProjection } = (await import(pathToFileURL(obs).href)) as {
       nodeIssuesProjection: (templateDir: string, nodeId: string) => Promise<unknown[]>;
+      allIssuesProjection: (templateDir: string) => Promise<unknown[]>;
     };
-    const issues = await nodeIssuesProjection(tpl.templateDir, nodeId);
+    const issues = nodeId
+      ? await nodeIssuesProjection(tpl.templateDir, nodeId)
+      : await allIssuesProjection(tpl.templateDir);
     sendJson(res, 200, issues);
   } catch (e) {
-    sendJson(res, 500, { error: `issues list failed for "${run}"/"${nodeId}" (${String(e)})` });
+    sendJson(res, 500, { error: `issues list failed for "${run}"/"${nodeId ?? "*"}" (${String(e)})` });
   }
 };
 
