@@ -72,6 +72,7 @@ Every candidate defect runs this FIRST — it is the whole reason the ledger nev
 ## Step 3 — the `sig` tag IS the dedup, so choose it right
 Issue identity is the exact `(node, sig)` hash — there is no fuzzy or semantic matching anywhere in the ledger
 (`issues.ts:106-108`). So the `sig` you choose is the one load-bearing judgment call of the whole turn:
+
 - **Shape:** `<node>::<stable-defect-tag>` naming the ROOT-CAUSE / mechanism PATTERN, **never** the instance
   data — `gameplay::unfeasible-traversal`, not `gameplay::gap-is-630px`; `gameplay::pacing-shape`, not
   `gameplay::fill-is-28pct`.
