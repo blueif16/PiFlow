@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { sortIssues, isCurrentRun, isClosed, issueCounts, groupByNode, type IssueRecord, type Issue, type Severity, type Status } from "./nodeIssues";
+import {
+  sortIssues, isCurrentRun, isClosed, issueCounts, groupByNode,
+  lifecycleView, LIFECYCLE_STAGES, STATUS_META,
+  type IssueRecord, type Issue, type Severity, type Status,
+} from "./nodeIssues";
 
 // A minimal Issue factory — only the fields the sort/badge predicates read matter; the rest are inert.
 function issue(name: string, over: Partial<Issue> = {}): Issue {
@@ -117,6 +121,58 @@ describe("issueCounts", () => {
 
   it("is {open:0, closed:0} for an empty ledger", () => {
     expect(issueCounts([])).toEqual({ open: 0, closed: 0 });
+  });
+});
+
+// The optimize loop's status PROGRESSION: open → active → fix-landed → verifying → resolved, with
+// `regressed` = a resolved issue reopened (it completed the pipeline once, then bounced back). lifecycleView
+// projects a status onto this fixed rail; the stepper + row tone read only this, so it must never drift from
+// core's ALLOWED_TRANSITIONS.
+describe("lifecycleView", () => {
+  // the rail's shape, pinned — an off-by-one or a reordered stage breaks the whole progression display.
+  it("has the five pipeline stages in transition order (no `regressed` — it's a reopen, not a stage)", () => {
+    expect(LIFECYCLE_STAGES.map((s) => s.key)).toEqual(["open", "active", "fix-landed", "verifying", "resolved"]);
+  });
+
+  const states = (status: Status) => lifecycleView(status).map((s) => s.state);
+
+  it("marks the current stage `current`, earlier stages `done`, later `pending`", () => {
+    expect(states("open")).toEqual(["current", "pending", "pending", "pending", "pending"]);
+    expect(states("active")).toEqual(["done", "current", "pending", "pending", "pending"]);
+    expect(states("fix-landed")).toEqual(["done", "done", "current", "pending", "pending"]);
+    expect(states("verifying")).toEqual(["done", "done", "done", "current", "pending"]);
+  });
+
+  it("shows a resolved issue as the full rail complete (terminal stage `current`, nothing pending)", () => {
+    expect(states("resolved")).toEqual(["done", "done", "done", "done", "current"]);
+  });
+
+  it("shows a regressed issue as the whole rail walked, terminal `resolved` flagged `reopened`", () => {
+    // regressed is only reachable from resolved, so every prior stage was passed.
+    expect(states("regressed")).toEqual(["done", "done", "done", "done", "reopened"]);
+  });
+
+  it("keeps each stage's key/label aligned to LIFECYCLE_STAGES regardless of status", () => {
+    for (const status of Object.keys(STATUS_META) as Status[]) {
+      expect(lifecycleView(status).map((s) => s.key)).toEqual(LIFECYCLE_STAGES.map((s) => s.key));
+    }
+  });
+});
+
+describe("STATUS_META", () => {
+  it("phases the three live states as in-progress, resolved as closed, regressed as reopened", () => {
+    expect(STATUS_META.open.phase).toBe("open");
+    expect(STATUS_META.active.phase).toBe("in-progress");
+    expect(STATUS_META["fix-landed"].phase).toBe("in-progress");
+    expect(STATUS_META.verifying.phase).toBe("in-progress");
+    expect(STATUS_META.resolved.phase).toBe("closed");
+    expect(STATUS_META.regressed.phase).toBe("reopened");
+  });
+
+  it("marks exactly the `closed` phase as isClosed (the two status models agree)", () => {
+    for (const status of Object.keys(STATUS_META) as Status[]) {
+      expect(isClosed(status)).toBe(STATUS_META[status].phase === "closed");
+    }
   });
 });
 

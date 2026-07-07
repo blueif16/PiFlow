@@ -10,7 +10,10 @@
  */
 import type { ReactNode } from "react";
 import { MarkdownReader } from "./MarkdownReader";
-import { isClosed, isCurrentRun, type IssueRecord, type Issue, type Severity, type Status } from "../data/nodeIssues";
+import {
+  isClosed, isCurrentRun, lifecycleView, STATUS_META,
+  type IssueRecord, type Issue, type Severity, type Status,
+} from "../data/nodeIssues";
 import "../styles/issues.css";
 
 // severity → the shared tone vocabulary (matches the digest idiom: block=red · warn=amber · muted=gray).
@@ -83,8 +86,10 @@ export function IssueRow({
       <IssueStatusIcon status={issue.status} title={issue.status} />
       {showNode && <span className="ds-issue-row__node">{record.node}</span>}
       <span className="ds-issue-row__title" title={issue.title}>{issue.title}</span>
-      {issue.status !== "open" && !isClosed(issue.status) && (
-        <span className="ds-issue-row__status" data-kind={iconKind(issue.status)}>{issue.status}</span>
+      {/* the exact in-flight/reopened state — open + resolved are already carried by the icon, so only the
+          three live states (active/fix-landed/verifying) and a reopened `regressed` get a toned pill. */}
+      {STATUS_META[issue.status].phase !== "open" && !isClosed(issue.status) && (
+        <span className="ds-issue-row__status" data-phase={STATUS_META[issue.status].phase}>{STATUS_META[issue.status].label}</span>
       )}
       <span className="ds-issue-row__sev" data-tone={SEVERITY_TONE[issue.severity]}>{issue.severity}</span>
       {badge && <span className="ds-nflag" data-tone="retry" title="referenced by the currently-viewed run">this run</span>}
@@ -96,8 +101,48 @@ export function IssueRow({
     : <div className={cls} data-closed={isClosed(issue.status)}>{body}</div>;
 }
 
-/** The issue's full content — the parsed "original issue file": a facts header (status · severity · seen · fix
- *  attempts) over the verbatim markdown context brief. This is what the CENTER pane / detail view renders. */
+/** The optimize-loop PROGRESSION stepper — the issue's position on the fixed rail
+ *  `open → active → fix-landed → verifying → resolved` (a `regressed` issue = the resolved terminal reopened).
+ *  The elegant at-a-glance "where in the fix cycle is this?" signal, driven purely by `lifecycleView`. */
+export function IssueLifecycle({ status }: { status: Status }) {
+  const phase = STATUS_META[status].phase;
+  return (
+    <ol className="ds-issue-life" data-phase={phase} aria-label={`status: ${STATUS_META[status].label}`}>
+      {lifecycleView(status).map((s) => {
+        const closedTerminal = s.state === "current" && phase === "closed";
+        return (
+          <li
+            key={s.key}
+            className="ds-issue-life__stage"
+            data-state={closedTerminal ? "closed" : s.state}
+            aria-current={s.state === "current" || s.state === "reopened" ? "step" : undefined}
+          >
+            <span className="ds-issue-life__dot" aria-hidden="true">
+              {(s.state === "done" || closedTerminal) && <LifeCheck />}
+            </span>
+            <span className="ds-issue-life__label">{s.label}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** A one-line plain-language summary of where the issue is in the loop (pairs with the stepper). */
+function lifecycleCaption(issue: Issue): string {
+  switch (issue.status) {
+    case "open": return issue.attempts.length > 0 ? "Awaiting re-work after a prior fix attempt." : "Awaiting a fix.";
+    case "active": return "A fixer is working this issue.";
+    case "fix-landed": return "A fix has landed — awaiting verification.";
+    case "verifying": return "Re-running to prove the fix held.";
+    case "resolved": return `Closed · ${issue.reason ?? "fixed"}.`;
+    case "regressed": return "Was resolved, then regressed — reopened for re-work.";
+  }
+}
+
+/** The issue's full content — the parsed "original issue file": the status PROGRESSION + the RECORDINGS
+ *  (append-only fix-attempt history + when-seen) over the verbatim markdown context brief. This is what the
+ *  CENTER pane / detail view renders. */
 export function IssueContent({ record }: { record: IssueRecord }) {
   const { issue }: { issue: Issue } = record;
   return (
@@ -108,33 +153,48 @@ export function IssueContent({ record }: { record: IssueRecord }) {
         <span className="ds-issue-row__sev" data-tone={SEVERITY_TONE[issue.severity]}>{issue.severity}</span>
       </header>
 
+      {/* the status PROGRESSION — where this issue sits in the per-node optimize loop */}
+      <IssueLifecycle status={issue.status} />
+      <p className="ds-issue-life__caption" data-phase={STATUS_META[issue.status].phase}>{lifecycleCaption(issue)}</p>
+
       <dl className="ds-issue-facts">
-        <Fact k="status" v={issue.status} />
-        {issue.reason && <Fact k="reason" v={issue.reason} />}
         <Fact k="first seen" v={issue.firstSeen} />
         <Fact k="last seen" v={issue.lastSeen} />
         <Fact k="signature" v={<code>{issue.sig}</code>} />
       </dl>
 
-      {issue.attempts.length > 0 && (
-        <section className="ds-issue-attempts">
-          <h4 className="ds-issue-attempts__head">fix attempts · {issue.attempts.length}</h4>
+      {/* the RECORDINGS — the append-only fix-loop history (honest even when empty). */}
+      <section className="ds-issue-attempts">
+        <h4 className="ds-issue-attempts__head">fix attempts · {issue.attempts.length}</h4>
+        {issue.attempts.length === 0 ? (
+          <p className="ds-issue-attempts__empty">No fix attempted yet.</p>
+        ) : (
           <ol className="ds-issue-attempts__list">
             {issue.attempts.map((a, i) => (
               <li key={i} className="ds-issue-attempt" data-regressed={!!a.regressedIn}>
+                <span className="ds-issue-attempt__n">#{i + 1}</span>
                 <code className="ds-issue-attempt__commit">{a.commit}</code>
                 <span className="ds-issue-attempt__by">verified · {a.verifiedByRun}</span>
-                {a.regressedIn && <span className="ds-issue-attempt__reg">regressed · {a.regressedIn}</span>}
+                {a.regressedIn && <span className="ds-issue-attempt__reg">↩ regressed · {a.regressedIn}</span>}
               </li>
             ))}
           </ol>
-        </section>
-      )}
+        )}
+      </section>
 
       <div className="ds-issue-content__body">
         <MarkdownReader source={issue.body} />
       </div>
     </div>
+  );
+}
+
+/** The small check glyph inside a completed / closed stepper dot. */
+function LifeCheck() {
+  return (
+    <svg width="9" height="9" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M13 4.5 6.5 11.5 3 8" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
