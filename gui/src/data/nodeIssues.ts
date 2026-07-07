@@ -79,3 +79,43 @@ export function isCurrentRun(record: IssueRecord, run: string): boolean {
   if (issue.firstSeen === run || issue.lastSeen === run) return true;
   return issue.attempts.some((a) => a.verifiedByRun === run || a.regressedIn === run);
 }
+
+// ── status partition + counts + grouping (the GitHub-issues model, pure so it's testable) ─────────────────
+
+/** True when the issue is CLOSED. GitHub semantics: only `resolved` is closed; every other status —
+ *  open/active/fix-landed/verifying and a reopened `regressed` — counts as OPEN. */
+export function isClosed(status: Status): boolean {
+  return status === "resolved";
+}
+
+/** The open/closed tallies the identity-row count cluster renders (`◎ N open · ✓ M closed`). */
+export function issueCounts(records: IssueRecord[]): { open: number; closed: number } {
+  let closed = 0;
+  for (const r of records) if (isClosed(r.issue.status)) closed++;
+  return { open: records.length - closed, closed };
+}
+
+/** One node's issues, for the run-level card's grouped rendering. */
+export interface IssueGroup {
+  node: string;
+  records: IssueRecord[];
+}
+
+/** Partition records by node, ordered worst-severity-first (then node name), each group sorted by
+ *  `sortIssues`. The run-level "characterized by node" view + its node filter read this. */
+export function groupByNode(records: IssueRecord[]): IssueGroup[] {
+  const byNode = new Map<string, IssueRecord[]>();
+  for (const r of records) {
+    const bucket = byNode.get(r.node);
+    if (bucket) bucket.push(r);
+    else byNode.set(r.node, [r]);
+  }
+  const topRank = (rs: IssueRecord[]) => Math.max(...rs.map((r) => SEVERITY_RANK[r.issue.severity]));
+  return [...byNode.entries()]
+    .map(([node, rs]) => ({ node, records: sortIssues(rs) }))
+    .sort((a, b) => {
+      const bySeverity = topRank(b.records) - topRank(a.records); // worst node first
+      if (bySeverity !== 0) return bySeverity;
+      return a.node < b.node ? -1 : a.node > b.node ? 1 : 0; // tiebreak: node name ASC
+    });
+}
