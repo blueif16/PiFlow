@@ -11,6 +11,8 @@
 // malformed-case test bite. A typo'd key (`own` for `owns`, `dep` for `deps`) must FAIL, not pass
 // silently — a loose schema is the bug the validation test exists to catch.
 
+import { gateEntrySchema } from './gate-entry.schema.js';
+
 /** The draft-2020-12 JSON Schema object for a template `node.json`. Frozen; import to validate. */
 export const nodeSchema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -325,6 +327,17 @@ export const nodeSchema = {
       description: 'The unified node-op envelope (G13) — one ordered list; each entry has exactly one body.',
       items: { $ref: '#/$defs/op' },
     },
+    gates: {
+      // (gate-list-and-additive-profiles.md §a) The UNIFIED, additive gate LIST — the owner-decided node
+      // gating surface. Each entry is a typed `GateEntry` (`execution`/`agentic`/`hitl`); the loader FANS
+      // it out at load onto the existing carriers (execution → op[]/io.checks; agentic → `judgeGate` →
+      // `materializeJudgeNodes`; hitl → `checkpoint`). NO on/off switch — composition is append-only. The
+      // TEMPLATE default carries `execution` gates; a PROFILE overlay APPENDS agentic/hitl. Empty/omitted ⇒
+      // no gates (byte-identical to today). A profile's per-node additions merge INTO this same list.
+      type: 'array',
+      description: 'The additive typed gate list (execution|agentic|hitl) — fanned out at load. Empty/omitted ⇒ no gates.',
+      items: { $ref: '#/$defs/gateEntry' },
+    },
     judgeGate: {
       // (expert-representations · "Judge expansion") A JUDGE GATE authored on this PRODUCER node: a
       // DIFFERENT model (resolved through `judgeTier`) evaluates this node's output against `rubric` and
@@ -390,6 +403,9 @@ export const nodeSchema = {
     },
   },
   $defs: {
+    // (gate-list-and-additive-profiles.md §a) ONE typed additive gate — the SHARED fragment, also embedded
+    // by profile.schema.ts. Referenced by the `gates` property above via `#/$defs/gateEntry`.
+    gateEntry: gateEntrySchema,
     op: {
       type: 'object',
       additionalProperties: false,
