@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { IssueRecord, Issue, MeasureReport, SubstrateJudgeResult, FixIssueResult, SubstrateEvent } from '@piflow/core';
 import {
   routeOptimize, firstPositional, parseSubstrateTriageArgs, parseSubstrateFixArgs, parseSubstrateAdoptArgs,
-  runSubstrateTriageCli, runSubstrateFixCli, runSubstrateAdoptCli, runsHomeFor, DEFAULT_FIX_CAP,
+  runSubstrateTriageCli, runSubstrateFixCli, runSubstrateAdoptCli, runsHomeFor, DEFAULT_FIX_CAP, resolveNodeAndRun,
 } from '../src/optimize-substrate.js';
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'substrate-cli-'));
@@ -90,6 +90,38 @@ describe('parsers', () => {
   });
 });
 
+// ── resolveNodeAndRun — reconcile a DOTTED --node with an optional EXPLICIT --run ─────────────────────────────
+describe('resolveNodeAndRun — a dotted --node pins a run exactly like --run; an EXPLICIT --run must agree', () => {
+  it('no explicit --run: the dotted ref\'s own run becomes the effective pin', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await fs.mkdir(path.join(runsHome, 'tS2'), { recursive: true });
+    expect(resolveNodeAndRun('tS2.gameplay', undefined, runsHome)).toEqual({ node: 'gameplay', run: 'tS2' });
+  });
+
+  it('an EXPLICIT --run that AGREES with the dotted ref is allowed', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await fs.mkdir(path.join(runsHome, 'tS2'), { recursive: true });
+    expect(resolveNodeAndRun('tS2.gameplay', 'tS2', runsHome)).toEqual({ node: 'gameplay', run: 'tS2' });
+  });
+
+  it('an EXPLICIT --run that DISAGREES with the dotted ref errors clearly', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await fs.mkdir(path.join(runsHome, 'tS2'), { recursive: true });
+    await fs.mkdir(path.join(runsHome, 'other'), { recursive: true });
+    expect(() => resolveNodeAndRun('tS2.gameplay', 'other', runsHome)).toThrowError(/tS2\.gameplay.*"tS2".*"other"|disagree/s);
+  });
+
+  it('a plain (dot-free) node is a no-op passthrough — the explicit --run (if any) is untouched', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    expect(resolveNodeAndRun('gameplay', 'tS2', runsHome)).toEqual({ node: 'gameplay', run: 'tS2' });
+    expect(resolveNodeAndRun('gameplay', undefined, runsHome)).toEqual({ node: 'gameplay', run: undefined });
+  });
+});
+
 // ── TRIAGE orchestration (measure THEN judge; selection) ──────────────────────────────────────────────────────
 describe('runSubstrateTriageCli — measure feeds judge; --topk selects fresh, un-triaged, newest-first', () => {
   it('runs measure BEFORE judge for each selected run, newest-first, skipping reused + already-triaged runs', async () => {
@@ -127,6 +159,37 @@ describe('runSubstrateTriageCli — measure feeds judge; --topk selects fresh, u
       print: () => {},
     });
     expect(calls).toEqual(['m:tS2', 'j:tS2']); // triaged marker present, but --run forces it
+  });
+
+  it('a DOTTED --node tS2.gameplay selects exactly the pinned run tS2 (≡ --node gameplay --run tS2)', async () => {
+    const dir = await tmp();
+    const templateDir = path.join(dir, 'template');
+    const runsHome = path.join(dir, 'runs');
+    const pinned = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    const calls: string[] = [];
+    await runSubstrateTriageCli(['--node', 'tS2.gameplay'], {
+      resolveScope: () => ({ templateDir, runsHome }),
+      resolveRunDir: () => pinned,
+      measure: async (rd) => { calls.push(`m:${path.basename(rd)}`); return okReport(); },
+      judge: async (rd) => { calls.push(`j:${path.basename(rd)}`); return judged([]); },
+      print: () => {},
+    });
+    expect(calls).toEqual(['m:tS2', 'j:tS2']); // dotted ref forces the exact pinned run, same as --run
+  });
+
+  it('a DOTTED --node combined with a DISAGREEING explicit --run exits 2', async () => {
+    const dir = await tmp();
+    const templateDir = path.join(dir, 'template');
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z' });
+    await seedRun(runsHome, 'other', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z' });
+    const errs: string[] = [];
+    await runSubstrateTriageCli(['--node', 'tS2.gameplay', '--run', 'other'], {
+      resolveScope: () => ({ templateDir, runsHome }),
+      printErr: (s) => errs.push(s),
+    });
+    expect(process.exitCode).toBe(2);
+    expect(errs.join('\n')).toMatch(/disagree/);
   });
 
   it('missing --node exits 2', async () => {

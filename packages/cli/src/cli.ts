@@ -93,9 +93,11 @@ USAGE
   piflowctl optimize triage --node <id> [--run <id> | --topk K]  the PER-NODE substrate: measure (hard) THEN
                                             judge (soft) a node's finished run(s) → issue files. --run pins one
                                             exact run; --topk K (default 1) scans the newest un-triaged runs.
+                                            --node also takes a DOTTED <run>.<id> ref, ≡ --node <id> --run <run>.
   piflowctl optimize fix    --node <id> [--issue <name> | --status open,regressed] [--watch] [--cap N] [--no-prove]
                                             fix the node's issues (severity-desc): candidate copy → fixer → prove
                                             → strict-improvement gate → STAGE a manifest. --watch streams progress.
+                                            --node also takes a DOTTED <run>.<id> ref, ≡ --node <id> --run <run>.
   piflowctl optimize        --node <id> [--run <id> | --topk K]  the FULL loop = triage THEN fix (the default).
   piflowctl optimize adopt  --manifest <path> [--template <d>] [--backup-dir <d>]  LAND a staged substrate
                                             manifest onto the live product (adopt + commit + resolve the issue).

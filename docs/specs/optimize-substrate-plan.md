@@ -21,6 +21,11 @@ piflowctl runs            [--node X] [--status ok|error] [--since d] [--json]  #
 ```
 
 - ⚡ `--run <id>` pins triage to an exact run (reproducible demos); `--topk` is the recency scan.
+- ⚡ `--node` also accepts a DOTTED `<run>.<id>` ref (`--node tS2.gameplay` ≡ `--node gameplay --run tS2`)
+  on both `triage` and `fix`; an EXPLICIT `--run` that disagrees with the ref errors, agreeing is fine.
+  Since a spawned child run's OWN id is `<parentId>.<nodeId>[.<n>]` (`childRunName`), a dotted value is
+  ambiguous — the FULL string is checked first (a genuine child-run id wins), else segment 0 must itself
+  name a run (`parseNodeRef`, `runs-scan.ts`).
 - ⚡ Full-loop (bare `--node`) = triage, then fix EVERY issue of the node whose status is
   `open|regressed` after the triage pass, ordered severity-desc then firstSeen-asc, under the
   per-pass cap. Say nothing → full optimization (the locked default).
