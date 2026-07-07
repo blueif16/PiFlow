@@ -100,18 +100,74 @@ export async function packRunDir(run: string, opts: PackOpts = {}): Promise<Buff
   return gzipSync(Buffer.from(JSON.stringify(doc)));
 }
 
+export interface UnpackOpts {
+  /**
+   * Skip a dest that is ALREADY filled (exists with size > 0) instead of overwriting it — so a caller's
+   * pre-placed file (a pin) survives the unpack. Default false: OVERWRITE (a migration reload wants the
+   * bundle to win). `stageBaselineRun` passes true (a fork must never clobber a pin).
+   */
+  skipFilled?: boolean;
+}
+
 /**
- * Unpack a bundle buffer into `destRun`, recreating the directory tree and overwriting existing files.
- * Returns the written relative paths. The caller resumes via `runFromTemplate` (journal-driven) afterwards.
+ * Unpack a bundle buffer into `destRun`, recreating the directory tree. By default OVERWRITES existing files
+ * (a migration reload). With `skipFilled`, an already-filled dest (size > 0) is left untouched — the seed
+ * never clobbers a pre-placed pin. Returns the WRITTEN relative paths (a skipped dest is omitted). The caller
+ * resumes via `runFromTemplate` (journal-driven) afterwards.
  */
-export async function unpackRunDir(bundle: Buffer, destRun: string): Promise<string[]> {
+export async function unpackRunDir(bundle: Buffer, destRun: string, opts: UnpackOpts = {}): Promise<string[]> {
   const doc = JSON.parse(gunzipSync(bundle).toString('utf8')) as BundleDoc;
   const written: string[] = [];
   for (const [rel, b64] of Object.entries(doc.files)) {
     const abs = path.join(destRun, rel);
+    if (opts.skipFilled) {
+      // Filled ⇒ a pin (or an earlier seed) already owns this dest — leave it VERBATIM.
+      try {
+        if ((await fs.stat(abs)).size > 0) continue;
+      } catch {
+        /* absent ⇒ not filled ⇒ write it below */
+      }
+    }
     await fs.mkdir(path.dirname(abs), { recursive: true });
     await fs.writeFile(abs, Buffer.from(b64, 'base64'));
     written.push(rel);
   }
   return written;
+}
+
+/**
+ * The run-dir entries a BASELINE SEED must NOT carry: the JOURNAL — BOTH the primary `.pi/journal.json` AND
+ * its fallback `.pi/journal.bak` (loadJournal reads the `.bak` when the primary is absent — journal.ts:275 —
+ * so dropping only the primary would leave the seed with a live journal that marks the windowed node `reused`
+ * unless its output happens to be deleted). Without any journal the windowed re-run has no reuse entry for the
+ * node(s) under test and unconditionally re-runs (journal.ts) — while the `--from`-pinned upstream prefix
+ * stays force-`reused`. Everything ELSE travels (artifacts + .pi/state.json + run.json + workflow.json + warm
+ * sessions) so the reused upstream is frozen ON DISK, exactly like `spawnChildRun`'s replay construction
+ * relies on. (The host-local run.lock/freeze are dropped by `packRunDir`'s BUNDLE_EXCLUDE.)
+ */
+export const BASELINE_SEED_EXCLUDE: string[] = ['.pi/journal.json', '.pi/journal.bak'];
+
+export interface StageBaselineOpts {
+  /** Relative paths (posix) to skip, ON TOP of the journal + the host-local sentinels. */
+  exclude?: string[];
+  /** Skip an already-filled dest so a pre-placed pin survives. Default TRUE (a fork must never clobber a pin). */
+  skipFilled?: boolean;
+}
+
+/**
+ * SEED a fresh run dir from a COMPLETED baseline run's durable state, so a windowed `--from` re-run treats the
+ * upstream closure as frozen-`reused` (its artifacts + promoted state are on disk) while the node(s) under
+ * test re-run (their journal entry is deliberately dropped — `BASELINE_SEED_EXCLUDE`). This is the SAME
+ * primitive `spawnChildRun` constructs a replay-from-node-start with — bundle(baseline − journal − host
+ * sentinels) → unpack — extracted so the `run --baseline` CLI path and `spawnChildRun` share ONE seed
+ * implementation, never two. Skip-filled by default: a caller's pre-placed pin is never clobbered. Returns
+ * the WRITTEN relative paths.
+ */
+export async function stageBaselineRun(
+  baselineDir: string,
+  destRun: string,
+  opts: StageBaselineOpts = {},
+): Promise<string[]> {
+  const bundle = await packRunDir(baselineDir, { exclude: [...BASELINE_SEED_EXCLUDE, ...(opts.exclude ?? [])] });
+  return unpackRunDir(bundle, destRun, { skipFilled: opts.skipFilled ?? true });
 }
