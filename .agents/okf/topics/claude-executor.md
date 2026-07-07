@@ -27,7 +27,7 @@ a claude success still falls through to the executor-agnostic driver gates, so s
 
 # Anchors
 SELECT (route + credential + model)
-- `packages/core/src/runner/command.ts:160` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
+- `packages/core/src/runner/command.ts:164` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
 - `packages/core/src/runner/node-lifecycle.ts:208` — `runNode` — builds the claude env additions (`claudeExecutorEnvAdditions`) before sandbox create
 - `packages/core/src/runner/claude-executor.ts:124` — `claudeExecutorEnvAdditions` — injects `CLAUDE_CODE_OAUTH_TOKEN` + `CLAUDE_CONFIG_DIR`, empties the API-key vars (subscription-only, never silent API billing)
 - `packages/core/src/runner/claude-executor.ts:100` — `resolveClaudeOAuthToken` — layered host-side token resolve: SecretResolver env → `~/.piflow/claude-code.json` → local Keychain/`.credentials.json`
@@ -103,11 +103,20 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `bcc7657` 2026-07-02 — fix(core): consolidate run staging + sessions under one .pi/
+- `152925f` 2026-07-02 — feat(core): per-node `thinking` — operator-free reasoning cap in node.json
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `5d1ef87` 2026-07-02 — fix(core): skill staging — collision-free naming for `.../SKILL.md` refs
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 - `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
+- `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `6a45c20` 2026-07-05 — feat(core): wire script-tool preflight into node-lifecycle before the bind check
+- `e4d5c2e` 2026-07-05 — feat(core): optional tools.defs entries — presence-based tool offering
+- `980fe02` 2026-07-05 — fix(core): resolve contract.schema through the SAME token map as path
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 
 ### Lessons — memory cluster
 
@@ -125,6 +134,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
+- [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
 - [[omniscience-piflow-setup]]
 - [[optimize-fixer-tier-finding]]
@@ -147,10 +157,10 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 ### Code anchors / blast radius (codegraph)
 
 - `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:15) — 3 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
-- `claudeCommand` (packages/core/src/runner/command.ts:133) — 3 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/runner/index.ts`; ⚠ no covering tests found
-- `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
-- `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 6 callers in `packages/core/src/runner/drivers/claude-code.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
+- `claudeCommand` (packages/core/src/runner/command.ts:135) — 1 caller; tests: `packages/core/test/command-thinking.test.ts`
+- `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 8 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/optimize/substrate/agent.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
+- `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=35 commits · files=5 · lessons=31</sub>
+<sub>derived 2026-07-07 · arc=44 commits · files=5 · lessons=32</sub>
 <!-- okf:auto-end -->

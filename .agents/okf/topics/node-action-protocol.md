@@ -138,9 +138,19 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `bcc7657` 2026-07-02 — fix(core): consolidate run staging + sessions under one .pi/
+- `152925f` 2026-07-02 — feat(core): per-node `thinking` — operator-free reasoning cap in node.json
+- `5d1ef87` 2026-07-02 — fix(core): skill staging — collision-free naming for `.../SKILL.md` refs
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 - `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
+- `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `0e2023f` 2026-07-05 — feat(core): add the script ToolSource + tools.defs to types and schema
+- `6a45c20` 2026-07-05 — feat(core): wire script-tool preflight into node-lifecycle before the bind check
+- `e4d5c2e` 2026-07-05 — feat(core): optional tools.defs entries — presence-based tool offering
+- `980fe02` 2026-07-05 — fix(core): resolve contract.schema through the SAME token map as path
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 
 ### Lessons — memory cluster
 
@@ -165,6 +175,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
+- [[fixer-two-half-law]]
+- [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
@@ -175,7 +187,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[harden-node-completes-run-to-completion]]
 - [[harden-write-forcing-experiment]]
 - [[hooks-give-info-never-autofix]]
+- [[issue-lifecycle-gate-redesign]]
 - [[local-docker-sandbox-mode]]
+- [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
@@ -194,6 +208,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
+- [[piflow-issue-interface]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
@@ -201,6 +216,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
+- [[playbook-skills-depth-over-budget]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
@@ -217,8 +233,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 - `CHECK_KINDS` (packages/core/src/checks.ts:62) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
 - `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
-- `evaluateChecks` (packages/core/src/checks.ts:117) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
+- `evaluateChecks` (packages/core/src/checks.ts:117) — 8 callers in `packages/core/src/optimize/substrate/measure.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/checks.test.ts`
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-07 · arc=78 commits · files=8 · lessons=67</sub>
+<sub>derived 2026-07-07 · arc=88 commits · files=8 · lessons=73</sub>
 <!-- okf:auto-end -->

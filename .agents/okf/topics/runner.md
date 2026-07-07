@@ -28,12 +28,12 @@ TEMPLATE-RUN JOIN
 - `packages/core/src/runner/entry.ts:163` — `runFromTemplate` — load → instantiate → compile → run
 - `packages/core/src/workflow/template/instantiate.ts:98` — `instantiateRun` — materialize `${RUN}/.pi/nodes/<id>/`
 PER-NODE RUNNER EXEC
-- `packages/core/src/runner/runner.ts:374` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
-- `packages/core/src/runner/node-lifecycle.ts:99` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
+- `packages/core/src/runner/runner.ts:390` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
+- `packages/core/src/runner/node-lifecycle.ts:113` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
 - `packages/core/src/runner/node-lifecycle.ts:490` — artifact host-stat — a node is `ok` only if its declared artifacts exist
-- `packages/core/src/runner/node-lifecycle.ts:1003` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
+- `packages/core/src/runner/node-lifecycle.ts:1104` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode`/`finishNode` no longer live in `packages/core/src/runner/runner.ts` (the §2.1 split moved the per-node lifecycle to `packages/core/src/runner/node-lifecycle.ts`; runner.ts only re-exports them) — the stage loop is the run-level concern in runner.ts, the per-node concern is in node-lifecycle.ts. This is the DYNAMIC exec spine carved out of the former `runtime-core`; its static sibling (`workflow-compile`) ends at the compiled `Workflow`, which is exactly where this slice begins. Threads that cross this spine each have their own slice: `sandbox` (the jail runNode creates), `per-node-routing-and-fusion` (the model on the pi command), `node-action-protocol` (the gates between exec and finish).
@@ -177,12 +177,24 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `4c5def0` 2026-07-02 — feat(P5): driver-selected accumulator + Claude stream-json decode (count-only) + executor on the wire (GREEN)
+- `bcc7657` 2026-07-02 — fix(core): consolidate run staging + sessions under one .pi/
+- `9db5099` 2026-07-02 — fix(cli,core,server): anchor a run at its product, not process.cwd()
+- `152925f` 2026-07-02 — feat(core): per-node `thinking` — operator-free reasoning cap in node.json
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
+- `5d1ef87` 2026-07-02 — fix(core): skill staging — collision-free naming for `.../SKILL.md` refs
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `20e9eae` 2026-07-02 — feat(core,cli): node --rerun — targeted rerun-set, not a noResume stage window
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 - `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
+- `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `0e2023f` 2026-07-05 — feat(core): add the script ToolSource + tools.defs to types and schema
+- `6a45c20` 2026-07-05 — feat(core): wire script-tool preflight into node-lifecycle before the bind check
+- `e4d5c2e` 2026-07-05 — feat(core): optional tools.defs entries — presence-based tool offering
+- `980fe02` 2026-07-05 — fix(core): resolve contract.schema through the SAME token map as path
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 
 ### Lessons — memory cluster
 
@@ -201,10 +213,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 6 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run.test.ts`
+- `runNode` (packages/core/src/runner/node-lifecycle.ts:113) — 1 caller in `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
+- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 8 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
-- `RunContext` (packages/core/src/runner/run-context.ts:32) — 8 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
+- `RunContext` (packages/core/src/runner/run-context.ts:32) — 16 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/runner.ts` +1 more; ⚠ no covering tests found
 - `InstantiateRunOpts` (packages/core/src/workflow/template/instantiate.ts:40) — 4 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/template/instantiate.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=128 commits · files=7 · lessons=11</sub>
+<sub>derived 2026-07-07 · arc=140 commits · files=7 · lessons=11</sub>
 <!-- okf:auto-end -->
