@@ -90,6 +90,13 @@
               color var(--ds-dur-fast) var(--ds-ease-standard);
 }
 .ds-dir__row:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+/* closes out a run of PINNED rows (the switcher's "Template" row) — a plain hairline, so it reads as
+   fixed-on-top and separate from the normal (sorted) rows beneath, with no extra chrome. */
+.ds-dir__divider {
+  height: 1px;
+  margin: var(--ds-space-1) 0;
+  background: var(--ds-border-hairline);
+}
 .ds-dir__row:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--ds-accent-ring);

@@ -42,6 +42,10 @@ export interface IndexNamespace {
   id: string;
   name: string;
   meta?: { id: string; name: string; description?: string; phases?: string[] };
+  /** the workflow's `template/meta.json` path, when it's authored on disk — present even with ZERO runs
+   *  (core's `discoverNamespaces` resolves it straight from the template, independent of any run). Drives
+   *  the pinned "Template" row in the switcher. Null for a template-less namespace (runs-only, legacy). */
+  templatePath?: string | null;
   threads: IndexThread[];
 }
 
@@ -185,7 +189,7 @@ export function homeWorkspace(ix: GlobalIndex, roots: string[]): string | null {
   return hit ? hit.id : null;
 }
 
-export interface SwitcherEntry { run: string; viewable: boolean; productId: string; nsId: string; }
+export interface SwitcherEntry { run: string; viewable: boolean; productId: string; nsId: string; kind: "run" | "template"; }
 
 /** The switcher's run-leaf orderings. `time` is the default (what the panel opens on). */
 export type ThreadSortMode = "time" | "name" | "status";
@@ -240,22 +244,32 @@ export function indexToTree(
   const products = scoped.length ? scoped : ix.products;
   for (const p of products) {
     for (const ns of p.namespaces) {
+      const children: DirEntry[] = [];
+      // The pinned "Template" row — the canonical workflow, no run needed. Always FIRST + `pinned` (the
+      // panel divides it from the run rows below); present whenever the namespace has an authored template
+      // on disk, even with zero runs (that's the whole point of pinning it).
+      if (ns.templatePath) {
+        const id = `tpl:${p.id}/${ns.id}`;
+        map.set(id, { run: id, viewable: true, productId: p.id, nsId: ns.id, kind: "template" });
+        children.push({ id, name: "Template", kind: "file", typeLabel: "template", pinned: true });
+      }
+      for (const t of sortThreads(ns.threads, sort)) {
+        const id = `t:${p.id}/${ns.id}/${t.run}`;
+        map.set(id, { run: t.run, viewable: t.viewable, productId: p.id, nsId: ns.id, kind: "run" });
+        children.push({
+          id,
+          name: t.run,
+          kind: "file",
+          typeLabel: t.state,
+          run: { state: t.state, ok: t.ok, frac: t.frac, done: t.nodesDone, total: t.nodesTotal },
+        });
+      }
       tree.push({
         id: `n:${p.id}/${ns.id}`,
         name: ns.name,
         kind: "folder",
         secondaryLabel: ns.name !== ns.id ? ns.id : undefined,
-        children: sortThreads(ns.threads, sort).map((t) => {
-          const id = `t:${p.id}/${ns.id}/${t.run}`;
-          map.set(id, { run: t.run, viewable: t.viewable, productId: p.id, nsId: ns.id });
-          return {
-            id,
-            name: t.run,
-            kind: "file" as const,
-            typeLabel: t.state,
-            run: { state: t.state, ok: t.ok, frac: t.frac, done: t.nodesDone, total: t.nodesTotal },
-          };
-        }),
+        children,
       });
     }
   }

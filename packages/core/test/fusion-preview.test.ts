@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { expandFusion, withNodeFusion } from '../src/workflow/fusion/expand.js';
-import { previewView } from '../src/observe/runView.js';
+import { previewView, buildTemplateView } from '../src/observe/runView.js';
 import { compile } from '../src/index.js';
 import type { NodeIntent, WorkflowSpec } from '../src/types.js';
 
@@ -130,5 +130,38 @@ describe('previewView — compiled Workflow → run-view (no run on disk)', () =
     expect(view.edges.filter((e) => e.from === 'synth').map((e) => e.to)).toEqual(['publish']);
     // the judge carries the fusion preset agentType so the GUI brands it with the fusion icon.
     expect(view.nodes.find((n) => n.id === 'synth')?.agentType).toBe('fusion-judge-moa');
+  });
+});
+
+describe('buildTemplateView — compiled Workflow → the BARE template shape (a subset of RunView)', () => {
+  it('places nodes into the SAME stages/edges previewView would (shared placement, no duplication)', () => {
+    const wf = compile(linear());
+    const tv = buildTemplateView(wf);
+    expect(tv.stages).toEqual(previewView(wf).stages);
+    expect(tv.edges).toEqual(previewView(wf).edges);
+  });
+
+  it('carries ONLY identity + placement — no telemetry field exists on the node at all (not even zeroed)', () => {
+    const tv = buildTemplateView(compile(linear()));
+    const a = tv.nodes.find((n) => n.id === 'alpha')!;
+    expect(a.model).toBe('m-a');
+    expect(a.stageIndex).toBe(1);
+    expect(a.lane).toBe(0);
+    // the load-bearing claim: a RunViewNode always HAS these keys (even zeroed); a TemplateViewNode must not.
+    expect('status' in a).toBe(false);
+    expect('toolCalls' in a).toBe(false);
+    expect('tokens' in a).toBe(false);
+    expect('reads' in a).toBe(false);
+  });
+
+  it('carries agentType branding through (the GUI catalog lookup), like previewView', () => {
+    const tv = buildTemplateView(compile(linear()));
+    expect(tv.nodes.find((n) => n.id === 'beta')?.agentType).toBe('general-purpose');
+  });
+
+  it('stamps the run id from opts, defaulting to the workflow name', () => {
+    const wf = compile(linear());
+    expect(buildTemplateView(wf).run).toBe('lin');
+    expect(buildTemplateView(wf, { run: 'my-ns' }).run).toBe('my-ns');
   });
 });

@@ -12,8 +12,8 @@ export type { RunModel, RunUpdate, NodeView, StageView, EdgeView } from './types
 // GUI middleware, the TUI, and the CLI all build the SAME enriched view from these (no view-local copy).
 export { createNodeAccumulator } from './distill.js';
 export type { RichNode, RichTokens, NodeAccumulator } from './distill.js';
-export { buildRunView, previewView, makeDisplayPath, scopeKind } from './runView.js';
-export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens, ScopeBucket, ReadRef, WriteRef, ArtifactRef, NodeAudit, PreviewViewOpts, ScopeKind } from './runView.js';
+export { buildRunView, previewView, buildTemplateView, makeDisplayPath, scopeKind } from './runView.js';
+export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens, ScopeBucket, ReadRef, WriteRef, ArtifactRef, NodeAudit, PreviewViewOpts, ScopeKind, TemplateView, TemplateViewNode } from './runView.js';
 // Context-composition — the ordered "element tree" (force-injected prompt + every agent read, each with
 // range/coverage/sha/order) + the advertised-vs-read blind-spot. A PROJECTION over events.jsonl + prompt.md
 // + the run-time reads-manifest, computed once here (never in a view). See observe/contextComposition.ts.

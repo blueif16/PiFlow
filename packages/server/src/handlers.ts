@@ -11,7 +11,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, isAbsolute, sep, basename, dirname } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, sendJson, type Middleware, type Next } from "./resolve.js";
+import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, resolveTemplateDir, sendJson, type Middleware, type Next } from "./resolve.js";
 import { parseChannel, sessionKeyFor } from "./control-channel.js";
 import { piflowStartRun, makePiflowStartRun } from "./start-run.js";
 import { piflowMigrate, makePiflowMigrate } from "./migrate.js";
@@ -195,6 +195,33 @@ export const piflowNodeIssues: Middleware = async (req, res, next) => {
     sendJson(res, 200, issues);
   } catch (e) {
     sendJson(res, 500, { error: `issues list failed for "${run}"/"${nodeId ?? "*"}" (${String(e)})` });
+  }
+};
+
+/** `GET /__piflow/template-view/<productId>/<nsId>` — the pinned "canonical template, no run" surface:
+ *  compile the workflow's AUTHORED template as-is (no fusion expansion — that's the separate interactive
+ *  `piflowPreview`) and project it through core's lean `buildTemplateView`. Resolves via the namespace
+ *  itself (`resolveTemplateDir`), so it works even when the workflow has never been run. */
+export const piflowTemplateView: Middleware = async (req, res, next) => {
+  const m = req.url?.match(/^\/__piflow\/template-view\/([^/]+)\/([^/?]+)/);
+  if (!m) return next();
+  const productId = decodeURIComponent(m[1]);
+  const nsId = decodeURIComponent(m[2]);
+
+  const resolved = await resolveTemplateDir(productId, nsId);
+  if (!resolved) return sendJson(res, 404, { error: `no template for "${productId}/${nsId}" — is its repo registered?` });
+
+  const core = findCore("index.js");
+  const obs = findCore("observe/index.js");
+  if (!core || !obs) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
+  try {
+    const { loadTemplate, compile } = await import(pathToFileURL(core).href);
+    const { buildTemplateView } = await import(pathToFileURL(obs).href);
+    const spec = await loadTemplate(resolved.templateDir);
+    const wf = compile(spec);
+    sendJson(res, 200, buildTemplateView(wf, { run: nsId }));
+  } catch (e) {
+    sendJson(res, 500, { error: `template view failed for "${nsId}" (${String(e)})` });
   }
 };
 
@@ -976,6 +1003,7 @@ export const apiHandlers: Middleware[] = [
   piflowRunView,
   piflowRunDigest,
   piflowNodeIssues,
+  piflowTemplateView,
   piflowPreview,
   piflowSaveRun,
   piflowFile,

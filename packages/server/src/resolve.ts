@@ -98,3 +98,21 @@ export async function resolveRunDir(run: string): Promise<{ runDir: string; work
   } catch { /* fall through */ }
   return null;
 }
+
+/** Resolve a NAMESPACE's (workflow's) template dir directly by `{productId, nsId}` — no run involved, so it
+ *  resolves even for a workflow with ZERO runs (the pinned-template surface's whole reason to exist). Shared
+ *  by the `/__piflow/template-view` endpoint; mirrors `resolveRunDir`'s lookup shape but keys off the
+ *  namespace's own `templatePath` (already carried on every snapshot namespace) rather than a run thread. */
+export async function resolveTemplateDir(productId: string, nsId: string): Promise<{ templateDir: string } | null> {
+  const lib = findLib("index-snapshot.mjs");
+  if (!lib) return null;
+  try {
+    const { loadScopedRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
+    const ix = await buildSnapshot(loadScopedRegistry());
+    const product = (ix.products ?? []).find((p: { id?: string }) => p.id === productId);
+    const ns = (product?.namespaces ?? []).find((n: { id?: string }) => n.id === nsId);
+    if (!ns?.templatePath) return null;
+    return { templateDir: dirname(ns.templatePath as string) };
+  } catch { /* fall through */ }
+  return null;
+}

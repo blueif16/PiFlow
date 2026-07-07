@@ -37,6 +37,9 @@ export interface DirEntry {
    *  GUI computes nothing. Present ⇒ the row renders a slim status-colored progress bar + a done/total
    *  count in place of `typeLabel`; absent (the canvas file navigator) ⇒ today's rendering, unchanged. */
   run?: { state: string; ok: boolean | null; frac: number; done: number; total: number };
+  /** fixed to the TOP of its column, ahead of normal sort order (the workspace switcher's pinned "Template"
+   *  row) — a divider renders right after the last pinned entry so it reads as separate from the rest. */
+  pinned?: boolean;
   children?: DirEntry[];
 }
 
@@ -145,11 +148,15 @@ export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = fa
                 exit={reduce ? { opacity: 0 } : { opacity: 0, x: enterX }}
                 transition={{ duration: reduce ? 0 : 0.18, ease: [0.2, 0.8, 0.2, 1] }}
               >
-                {col.entries.map((entry) => {
+                {col.entries.map((entry, i) => {
                   const current = entry.kind === "folder" ? entry.id === selectedId : entry.id === fileId;
                   // run-leaf tone (index fields only — runRowStatus is the pure state+ok → tone law)
                   const runTone = entry.run ? runRowStatus(entry.run.state, entry.run.ok) : null;
-                  return (
+                  // a divider closes out a run of pinned rows (e.g. the switcher's "Template" row) — fires
+                  // once, right after the LAST pinned entry, so pinned rows read as fixed-on-top and
+                  // separate from the normal (sorted) rows beneath them.
+                  const closesPinned = entry.pinned && !col.entries[i + 1]?.pinned;
+                  return [
                     <button
                       key={entry.id}
                       type="button"
@@ -181,8 +188,9 @@ export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = fa
                       ) : (
                         entry.typeLabel && <span className="ds-dir__type">{entry.typeLabel}</span>
                       )}
-                    </button>
-                  );
+                    </button>,
+                    closesPinned ? <div key={`${entry.id}-div`} className="ds-dir__divider" role="separator" /> : null,
+                  ];
                 })}
               </motion.div>
             );

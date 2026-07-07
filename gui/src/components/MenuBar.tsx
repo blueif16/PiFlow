@@ -27,7 +27,7 @@ import "../styles/startrun.css";
 // `onStartRun` deploys the StartRunPanel (owned by CanvasInner so it can wire the returned run into
 // the run-select seam). Which control server the GUI talks to is shown by the ControlPlaneChip
 // (bottom-right, beside the chat launcher), not here — this bar carries the workspace/run switcher + run actions.
-export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRun, onStartRun, onMigrateRun, ix, hidden = false, peeking = false, onDismissMenu }: { activeRun: string; workspaceName: string | null; onOpenWorkspaces: () => void; onSelectRun: (run: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null; hidden?: boolean; peeking?: boolean; onDismissMenu?: () => void }) {
+export function MenuBar({ activeRun, viewingTemplate = false, workspaceName, onOpenWorkspaces, onSelectRun, onSelectTemplate, onStartRun, onMigrateRun, ix, hidden = false, peeking = false, onDismissMenu }: { activeRun: string; viewingTemplate?: boolean; workspaceName: string | null; onOpenWorkspaces: () => void; onSelectRun: (run: string) => void; onSelectTemplate: (productId: string, nsId: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null; hidden?: boolean; peeking?: boolean; onDismissMenu?: () => void }) {
   const { expandedId, collapse } = useExpand();
   const [open, setOpen] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -105,7 +105,7 @@ export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRu
         >
           <span className="ds-menubar__ns">{active?.nsName ?? "workspace"}</span>
           <span className="ds-menubar__sep" aria-hidden="true">/</span>
-          <span className="ds-menubar__run">{activeRun}</span>
+          <span className="ds-menubar__run">{viewingTemplate ? "Template" : activeRun}</span>
           <svg className={`ds-menubar__chev${open ? " is-open" : ""}`} width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -170,7 +170,8 @@ export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRu
             onOpenFile={(entry) => {
               const hit = resolve(entry.id);
               if (!hit) return;
-              onSelectRun(hit.run); // viewable OR live — the canvas + companion handle both
+              if (hit.kind === "template") onSelectTemplate(hit.productId, hit.nsId);
+              else onSelectRun(hit.run); // viewable OR live — the canvas + companion handle both
               setOpen(false);
               onDismissMenu?.();
             }}

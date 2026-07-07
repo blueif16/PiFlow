@@ -29,7 +29,7 @@ own control-session channel.
 SOURCE
 - `packages/server/src/handlers.ts:103` — `piflowRunView` — `/__piflow/run-view/<run>` distills real `.pi/` via core `buildRunView`
 - `packages/server/src/handlers.ts:35` — `piflowRunStream` — `/__piflow/stream/<run>` SSE feed of `observe.watchRun`
-- `gui/src/data/runIndex.ts:60` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
+- `gui/src/data/runIndex.ts:65` — `loadIndex()` — reads the global `~/.piflow` index via `/__piflow/index.json`
 SHAPE
 - `gui/src/data/runView.ts:174` — `loadRunView()` — fetches the distilled RunView (the GUI's real-data contract)
 - `gui/src/data/runView.ts:728` — `toFlowGraph()` — RunView → positioned FlowNodes + collapsed edges (resolves agentType icon)
@@ -220,9 +220,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `NodeHud` (gui/src/components/NodeHud.tsx:98) — 1 caller in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
-- `loadIndex` (gui/src/data/runIndex.ts:61) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:730) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `NodeHud` (gui/src/components/NodeHud.tsx:101) — 1 caller in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
+- `loadIndex` (gui/src/data/runIndex.ts:65) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `loadRunView` (gui/src/data/runView.ts:176) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 15 callers in `packages/cli/src/watch.ts`, `packages/cli/src/telemetry.ts`, `tui/model.mjs`, `packages/server/src/handlers.ts` +3 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/watch.test.ts` +1
 

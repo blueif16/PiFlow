@@ -75,7 +75,7 @@ import { GateRail } from "./GateRail";
 import { GateDropCard, type DropCardTarget } from "./GateDropCard";
 import { AgentRail } from "./AgentRail";
 import { AgentDropCard, type AgentCardTarget } from "./AgentDropCard";
-import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, runViewToLiveModel, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
+import { loadRunView, loadPreview, saveRunFusion, loadRunTree, toFlowGraph, buildDirectory, liveModelToRunView, runViewToLiveModel, digestLiveSig, loadAgentCatalog, loadNodeConfig, dropChipOnNode, loadTemplateView, templateViewToRunView, type GateChip, type AuthoredNodeConfig, type AgentCatalog } from "../data/runView";
 import type { AgentChip } from "../data/agentChips";
 import type { SkillChip } from "../data/skillChips";
 import type { RailKind } from "../data/gates";
@@ -167,6 +167,11 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // fetch, error on a failed one, connecting until the first result). A pure health signal, not a data input.
   const [controlHealth, setControlHealth] = useState<ControlHealth>("connecting");
   const [activeRun, setActiveRun] = useState<string>("");
+  // (Pinned template) the workflow whose CANONICAL template is being viewed, with no run involved — set by
+  // selecting the switcher's pinned "Template" row. Mutually exclusive with a real activeRun (selecting
+  // either clears the other); the graph-loading effect below owns fetching+rendering it separately from
+  // the run-view poll, since it's a genuinely different endpoint/shape, not a disguised run.
+  const [activeTemplate, setActiveTemplate] = useState<{ productId: string; nsId: string } | null>(null);
   // (Workspace switch) the entered folder = a `product` in the index. It sits ABOVE activeRun: entering a
   // workspace re-scopes the run set (+ the pi session). Null until the first-focus effect seeds it. The
   // launcher (full-screen) toggles via `workspaceOpen`; `lastRunByWorkspace` restores where you were on re-entry.
@@ -272,6 +277,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // effect below drives the graph instead, so this poll SKIPS (no 3 s re-poll). The flag defaults to 'poll',
   // and on any SSE failure/finish `sseLive` flips false → this poll takes over VERBATIM (the degrade path).
   useEffect(() => {
+    if (activeTemplate) return; // (Pinned template) the dedicated effect below owns the graph instead
     if (!activeRun) { setNodes([]); setEdges([]); setDir({ tree: [], fileToNode: {} }); return; }
     if (sseLive) return; // (P3) the enriched-live effect owns the graph — don't poll or re-arm
     let alive = true;
@@ -309,7 +315,37 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
     load();
     return () => { alive = false; if (timer) clearTimeout(timer); };
     // `runViewNonce` forces a one-off re-load after a run-first gate bake (a DONE run's poll has stopped).
-  }, [activeRun, fusionOverrides, sseLive, setNodes, setEdges, endpointBase, runViewNonce]);
+  }, [activeRun, fusionOverrides, sseLive, setNodes, setEdges, endpointBase, runViewNonce, activeTemplate]);
+
+  // (Pinned template) load the workflow's canonical template ONCE per selection — no run, no polling, no
+  // live stream: it's a static, compiled shape that only changes if the author edits the template itself.
+  // Adapts through the SAME toFlowGraph/deriveZones the run-view path uses (templateViewToRunView widens
+  // the lean TemplateView into a RunView at the render boundary), so the canvas needs no template-specific
+  // rendering — only this fetch is different.
+  useEffect(() => {
+    if (!activeTemplate) return;
+    let alive = true;
+    (async () => {
+      try {
+        const [tv, agents] = await Promise.all([
+          loadTemplateView(activeTemplate.productId, activeTemplate.nsId),
+          loadAgentCatalog(),
+        ]);
+        if (!alive) return;
+        setLoadError(null);
+        setAgentCatalog(agents);
+        const view = templateViewToRunView(tv);
+        const { nodes: n, edges: e } = toFlowGraph(view, agents);
+        setNodes([...deriveZones(view).map(toZoneFlowNode), ...n]);
+        setEdges(e);
+        setDir({ tree: [], fileToNode: {} }); // a template has no run files
+      } catch (err) {
+        if (!alive) return;
+        setLoadError(String((err as Error)?.message ?? err));
+      }
+    })();
+    return () => { alive = false; };
+  }, [activeTemplate, setNodes, setEdges, endpointBase]);
 
   // ── (P3) Enriched-live render path — active only when `sseLive` (flag 'sse' + a live streaming run) ────────
   // The graph is built from the SSE-enriched `live.model` (adapter → toFlowGraph); the GUI computes nothing.
@@ -412,7 +448,17 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
 
   // switch the viewed run (from the menu-bar switcher): load it + close any open node / file
   const selectRun = useCallback((run: string) => {
+    setActiveTemplate(null); // a real run replaces a pinned template, never layers with it
     setActiveRun(run);
+    setExpandedId(null);
+    setOpenFile(null);
+  }, []);
+
+  // (Pinned template) switch to the workflow's canonical template — no run: clear activeRun so every
+  // run-scoped side panel (digest/issues/companion) naturally falls back to its existing "no run" state.
+  const selectTemplate = useCallback((productId: string, nsId: string) => {
+    setActiveTemplate({ productId, nsId });
+    setActiveRun("");
     setExpandedId(null);
     setOpenFile(null);
   }, []);
@@ -673,7 +719,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           />
           {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
               scrim (by design), so opening one must close the other or they stack. */}
-          <MenuBar activeRun={activeRun} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} hidden={cardOpen && !menuPeek} peeking={cardOpen && menuPeek} onDismissMenu={() => setMenuPeek(false)} />
+          <MenuBar activeRun={activeRun} viewingTemplate={!!activeTemplate} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onSelectTemplate={selectTemplate} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} hidden={cardOpen && !menuPeek} peeking={cardOpen && menuPeek} onDismissMenu={() => setMenuPeek(false)} />
           {/* Full-screen "switch workspace" launcher (opened by the MenuBar ⊞ pill). Entering a folder re-scopes
               the console via enterWorkspace; a live run routes through its detach-the-session confirm. */}
           <WorkspaceLauncher open={workspaceOpen} ix={ix} activeWorkspace={activeWorkspace} liveRun={liveRun} onEnter={enterWorkspace} onClose={() => setWorkspaceOpen(false)} />

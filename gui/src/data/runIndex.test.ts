@@ -212,7 +212,7 @@ describe("indexToTree — workspace-scoped root column (M5)", () => {
     const { tree, resolve } = indexToTree(treeIndex(), "alpha");
     const leafId = tree[0].children?.[0]?.id;
     expect(leafId).toBeTruthy();
-    expect(resolve(leafId!)).toEqual({ run: "r-running", viewable: true, productId: "alpha", nsId: "gmA" });
+    expect(resolve(leafId!)).toEqual({ run: "r-running", viewable: true, productId: "alpha", nsId: "gmA", kind: "run" });
   });
 
   // T1 — every run leaf carries the index thread fields VERBATIM (the GUI computes nothing) so the
@@ -240,6 +240,57 @@ describe("indexToTree — workspace-scoped root column (M5)", () => {
   it("orders leaves by the requested sort mode (name mode reorders what time mode built)", () => {
     const byName = indexToTree(treeIndex(), "alpha", "name");
     expect(byName.tree[0].children?.map((c) => c.name)).toEqual(["r-done-new", "r-done-old", "r-null", "r-running"]);
+  });
+});
+
+// The pinned "Template" row — the canonical workflow, no run needed. Present whenever the namespace has an
+// authored template on disk (`templatePath`), even with zero runs; absent for a template-less namespace.
+function templatedIndex(): GlobalIndex {
+  return index([
+    {
+      id: "alpha",
+      name: "alpha",
+      root: "/repos/alpha",
+      namespaces: [
+        {
+          id: "gmA",
+          name: "Game Omni",
+          templatePath: "/repos/alpha/.piflow/gmA/template/meta.json",
+          threads: [thread("r1", { state: "done", updatedAt: "2026-07-01T00:00:00Z" })],
+        },
+      ],
+    },
+  ]);
+}
+
+describe("indexToTree — pinned Template row (no run needed)", () => {
+  it("prepends a pinned Template leaf ahead of every run leaf", () => {
+    const { tree } = indexToTree(templatedIndex(), "alpha");
+    const children = tree[0].children ?? [];
+    expect(children[0]?.name).toBe("Template");
+    expect(children[0]?.pinned).toBe(true);
+    expect(children.slice(1).map((c) => c.name)).toEqual(["r1"]);
+  });
+
+  it('resolve() maps the Template leaf to its owning product/namespace with kind "template"', () => {
+    const { tree, resolve } = indexToTree(templatedIndex(), "alpha");
+    const tplId = tree[0].children?.[0]?.id;
+    expect(tplId).toBeTruthy();
+    expect(resolve(tplId!)).toEqual({ run: tplId, viewable: true, productId: "alpha", nsId: "gmA", kind: "template" });
+  });
+
+  it("omits the pinned row entirely for a template-less namespace (runs-only, no templatePath)", () => {
+    const { tree } = indexToTree(treeIndex(), "alpha"); // treeIndex()'s namespace sets no templatePath
+    expect(tree[0].children?.every((c) => !c.pinned)).toBe(true);
+  });
+
+  it("stands up even with ZERO runs — the whole reason to pin it", () => {
+    const ix = index([
+      { id: "alpha", name: "alpha", root: "/repos/alpha", namespaces: [{ id: "gmA", name: "Game Omni", templatePath: "/repos/alpha/.piflow/gmA/template/meta.json", threads: [] }] },
+    ]);
+    const { tree } = indexToTree(ix, "alpha");
+    expect(tree[0].children).toHaveLength(1);
+    expect(tree[0].children?.[0]?.name).toBe("Template");
   });
 });
 
