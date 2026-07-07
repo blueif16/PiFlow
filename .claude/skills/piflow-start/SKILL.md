@@ -29,14 +29,6 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
   or paste an ad-hoc prompt — if the prompt you want isn't in the bank, ADD it (status `pending`) first, then
   consume it. On a clean run: flip its `status` → `running` and append a `runs[]` record (flow commit · pi
   model · node reached · verdict). Never reuse a prompt across two from-scratch runs.
-- **COMPARATIVE RERUNS FREEZE UPSTREAM — a comparison without a fixed input is not an experiment.** Any rerun
-  whose result will be COMPARED to another run (an A/B arm, a fix verification, a replicate batch) must hold
-  every upstream input fixed: after the dry-run materializes the new run dir, COPY the baseline run's upstream
-  artifacts (e.g. `spec/classification.json`) **plus `.pi/state.json`** into it, then launch with
-  `--from <node-under-test>` — the status table must show the upstream node as `reused`, not `ok`. Rerunning
-  an upstream producer fresh varies its prose output and confounds the arm. Claims discipline rides on this:
-  binary mechanism/mark flips are honest at N=1; any LEVEL claim (quality score, tokens, wall-clock — report
-  token counts first, wall-clock last: provider rates shift) needs N≥3 frozen-input replicates.
 - **PROVIDER = pi's NATIVE DEFAULT — do not inject it.** pi resolves the model itself from
   `~/.pi/agent/models.json` (the first auth-resolved provider = `availableModels[0]`). Pin it deterministically
   with pi's OWN mechanism — `~/.pi/agent/settings.json` → `{ "defaultProvider": "<gw>", "defaultModel":
