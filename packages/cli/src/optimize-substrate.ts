@@ -26,7 +26,7 @@ import {
 } from '@piflow/core';
 import { resolveNodeRunDir } from './node.js';
 import { templateDirFor } from './optimize-fix.js';
-import { scanRunsHome, nodeRanFresh, type ScanRunsHomeDeps } from './runs-scan.js';
+import { scanRunsHome, nodeRanFresh, parseNodeRef, type ScanRunsHomeDeps, type NodeRef } from './runs-scan.js';
 
 // ── dispatch routing (the M5.1 table, pure + testable) ──────────────────────────────────────────────────────
 
@@ -233,6 +233,33 @@ export function parseSubstrateAdoptArgs(argv: string[]): SubstrateAdoptArgs {
   return out;
 }
 
+// ── dotted --node <run>.<node> resolution (parseNodeRef, runs-scan.ts) ──────────────────────────────────────
+
+/** The bare node id encoded in a `--node` value that MAY be a dotted `<run>.<node>` reference — segment 1
+ *  (node ids never contain dots; this is a plain string split, no fs access, so it is safe to compute BEFORE
+ *  `resolveScope` even needs a runs home). A dot-free value passes through unchanged. */
+function bareNodeId(nodeArg: string): string {
+  return nodeArg.includes('.') ? (nodeArg.split('.')[1] ?? nodeArg) : nodeArg;
+}
+
+/**
+ * Reconcile a possibly-dotted `--node` value with an optional EXPLICIT `--run`, once `runsHome` is known
+ * (`resolveScope` already ran on the bare node id — see `bareNodeId`). A dotted ref pins a run exactly like
+ * `--run` would (`parseNodeRef`); an explicit `--run` that DISAGREES with the ref's run is a contradiction
+ * (clear error); agreeing — or omitting `--run` altogether — is fine, and the ref's run becomes the effective
+ * pin. A plain (dot-free) node is a no-op passthrough (the explicit `--run`, if any, is untouched).
+ */
+export function resolveNodeAndRun(nodeArg: string, explicitRun: string | undefined, runsHome: string): NodeRef {
+  const ref = parseNodeRef(nodeArg, runsHome);
+  if (ref.run && explicitRun && ref.run !== explicitRun) {
+    throw new Error(
+      `piflowctl optimize: --node "${nodeArg}" pins run "${ref.run}", but --run "${explicitRun}" was also given ` +
+      `and they disagree — pass one, or make them agree.`,
+    );
+  }
+  return { node: ref.node, run: ref.run ?? explicitRun };
+}
+
 // ── shared deps + tiny helpers ──────────────────────────────────────────────────────────────────────────────
 
 /** The injectable seam shared by the substrate verbs — every default is the real core/fs; a test passes fakes
@@ -297,10 +324,16 @@ export async function runSubstrateTriageCli(argv: string[], deps: SubstrateCliDe
     process.exitCode = 2;
     return;
   }
+  const dottedNode = a.node.includes('.');
   let templateDir: string;
   let runsHome: string;
   try {
-    ({ templateDir, runsHome } = (deps.resolveScope ?? resolveSubstrateScope)({ node: a.node, template: a.template, run: a.run, cwd: deps.cwd }));
+    ({ templateDir, runsHome } = (deps.resolveScope ?? resolveSubstrateScope)({ node: bareNodeId(a.node), template: a.template, run: a.run, cwd: deps.cwd }));
+    if (dottedNode) {
+      const ref = resolveNodeAndRun(a.node, a.run, runsHome);
+      a.node = ref.node;
+      a.run = ref.run;
+    }
   } catch (e) {
     printErr((e as Error).message);
     process.exitCode = 2;
@@ -372,10 +405,16 @@ export async function runSubstrateFixCli(argv: string[], deps: SubstrateCliDeps 
     process.exitCode = 2;
     return;
   }
+  const dottedNode = a.node.includes('.');
   let templateDir: string;
   let runsHome: string;
   try {
-    ({ templateDir, runsHome } = (deps.resolveScope ?? resolveSubstrateScope)({ node: a.node, template: a.template, run: a.run, cwd: deps.cwd }));
+    ({ templateDir, runsHome } = (deps.resolveScope ?? resolveSubstrateScope)({ node: bareNodeId(a.node), template: a.template, run: a.run, cwd: deps.cwd }));
+    if (dottedNode) {
+      const ref = resolveNodeAndRun(a.node, a.run, runsHome);
+      a.node = ref.node;
+      a.run = ref.run;
+    }
   } catch (e) {
     printErr((e as Error).message);
     process.exitCode = 2;

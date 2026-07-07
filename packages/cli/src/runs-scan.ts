@@ -76,3 +76,33 @@ export function runLevelStatus(status: RunStatus): 'ok' | 'error' | 'running' {
   if (!status.done) return 'running';
   return status.ok === true ? 'ok' : 'error';
 }
+
+/** `parseNodeRef`'s result: the bare node id, plus — for a DOTTED ref — the run it pins. */
+export interface NodeRef {
+  node: string;
+  run?: string;
+}
+
+/**
+ * Parse a `--node` value that may be a DOTTED `<run>.<node>` reference — `--node tS2.gameplay` ≡ `--node
+ * gameplay --run tS2` — into `{ node, run? }`. No dot → `{ node: value }` (behavior byte-unchanged; the
+ * overwhelming common case never touches the filesystem).
+ *
+ * A dotted value is ambiguous on its face: the child-run mint rule (`childRunName`, names/child.ts) names a
+ * spawned child run `<parentId>.<nodeId>[.<n>]`, so `tS2.gameplay` could ITSELF be an existing child run's own
+ * id (its node is segment 1) — or `tS2` could be a plain base run with `gameplay` just the node inside it (also
+ * segment 1). Either reading yields the same `node` (segment 1); only which run gets pinned differs, so: the
+ * FULL string is checked FIRST (a genuine child-run id is the more specific match and wins), else segment 0
+ * must itself name a run, else a clear error naming both attempts (the value names no run at all).
+ */
+export function parseNodeRef(value: string, runsHome: string): NodeRef {
+  if (!value.includes('.')) return { node: value };
+  const segments = value.split('.');
+  const node = segments[1];
+  const runIds = new Set(listRunIds(runsHome));
+  if (runIds.has(value)) return { run: value, node };
+  if (runIds.has(segments[0])) return { run: segments[0], node };
+  throw new Error(
+    `piflowctl: dotted --node "${value}" names no run under ${runsHome} — looked for a run "${value}" and a run "${segments[0]}".`,
+  );
+}
