@@ -13,9 +13,6 @@ import fssync from 'node:fs';
 import path from 'node:path';
 import { loadRegistry, upsertRoot, type Registry } from './registry.js';
 
-/** Dir names never worth descending into when scanning for products (build output, deps, test fixtures). */
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'out', 'coverage', 'tmp', '.tmp', 'fixtures', '__fixtures__']);
-
 /**
  * Is `dir` a pi-flow PRODUCT — does its `.piflow/` hold at least one REAL workflow (`<wf>/template/meta.json`
  * or a `<wf>/runs/` dir)? This is the guard that separates a product's `.piflow` from the GLOBAL home `~/.piflow`
@@ -78,46 +75,20 @@ export function templateLayout(templateDir: string): { productRoot: string | nul
 }
 
 /**
- * Every product root AT or UNDER `start` — a recursive, depth-bounded walk that skips deps/build/fixtures and
- * every dot-dir (so `.git`, `.claude/worktrees/*`, and the `.piflow` dir itself are never descended into). The
- * start dir is always tested (even if named like a skip dir). Roots are absolute + sorted (stable order).
- */
-export function findProductRootsUnder(start: string, maxDepth = 6): string[] {
-  const roots: string[] = [];
-  const seen = new Set<string>();
-  const walk = (dir: string, depth: number): void => {
-    let entries;
-    try {
-      entries = fssync.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return; // unreadable dir — skip
-    }
-    if (isProductRoot(dir) && !seen.has(dir)) {
-      seen.add(dir);
-      roots.push(dir);
-    }
-    if (depth >= maxDepth) return;
-    for (const e of entries) {
-      if (!e.isDirectory()) continue;
-      if (e.name.startsWith('.')) continue; // .piflow, .git, .claude, …
-      if (SKIP_DIRS.has(e.name)) continue;
-      walk(path.join(dir, e.name), depth + 1);
-    }
-  };
-  walk(path.resolve(start), 0);
-  return roots.sort();
-}
-
-/**
- * The display scope for a launch `cwd`: the enclosing project (walk up to the nearest real `.piflow/`) OR, when
- * launched outside any project, `cwd` itself — then EVERY product at/under that scope root. So from a subfolder
- * deep inside project P you get P (and P's nested sub-products); from a parent of many projects you get all of
- * them. Empty `roots` ⇒ nothing product-shaped in scope (the caller falls back to the global view).
+ * THE LAW: one product workspace = exactly ONE `.piflow/`, scanned only at that product's OWN root. A view
+ * scoped to a workspace shows ONLY that workspace's workflows. `resolveScope` walks UP to the nearest
+ * enclosing product and stops there — it never recurses back DOWN to pick up a nested or sibling product
+ * (that down-discovery is exactly how e.g. `deploy/control-vm/e2e-template` inside piflow used to join the
+ * scope of a launch at the piflow root, and how a nested product dir leaked into its parent's view).
+ *
+ * Returns the enclosing root (`roots: [enclosing]`) when `cwd` is at or under a real project; when launched
+ * outside any project, `scopeRoot` is `cwd` itself and `roots` is EMPTY (nothing product-shaped in scope) —
+ * the caller falls back to the global registry rather than inventing a multi-workspace scope.
  */
 export function resolveScope(cwd: string): { scopeRoot: string; roots: string[] } {
   const enclosing = findProductRoot(cwd);
   const scopeRoot = enclosing ?? path.resolve(cwd);
-  return { scopeRoot, roots: findProductRootsUnder(scopeRoot) };
+  return { scopeRoot, roots: enclosing ? [enclosing] : [] };
 }
 
 /** An EPHEMERAL registry built from explicit roots (never reads or writes the global `~/.piflow/products.json`). */

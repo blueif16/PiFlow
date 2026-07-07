@@ -40,9 +40,9 @@ DEFINED
 - `packages/core/src/code-map.ts:35` — `buildNodeCodeMap()` — PURE per-node Tier-0 OKF slice seed (Leg B)
 - `packages/core/src/memory/seed.ts:17` — `writeIfAbsent()` — create-if-absent guard (never clobbers curated content)
 SEEDED (at scaffold time)
-- `packages/cli/src/scaffold.ts:396` — `scaffoldNew` → `seedSystemMemory` — seeds the template's system `memory.md`
-- `packages/cli/src/scaffold.ts:412` — `scaffoldAddNode` → `seedNodeMemory` + `seedNodeCodeMap` (line 435) — seeds both legs per node
-- `packages/cli/src/scaffold.ts:445` — `scaffoldMemory()` — backfill engine for `piflowctl memory scaffold`
+- `packages/cli/src/scaffold.ts:409` — `scaffoldNew` → `seedSystemMemory` — seeds the template's system `memory.md`
+- `packages/cli/src/scaffold.ts:425` — `scaffoldAddNode` → `seedNodeMemory` + `seedNodeCodeMap` (line 435) — seeds both legs per node
+- `packages/cli/src/scaffold.ts:458` — `scaffoldMemory()` — backfill engine for `piflowctl memory scaffold`
 CONSUMED (the out-of-band optimizer reads the legs; NEVER a worker node)
 - `packages/core/src/optimize/recurrence.ts:49` — `deriveRecurrence` — reads `memory.md` lesson blocks → RecurrenceIndex (the Leg-A reader; `triage` flips LAPSE→SKILL on it)
 - `packages/cli/src/understand.ts:132` — `resolveSlice` — dereference a lesson's `[[okf-slice]]` link to the linked slice's curated body (the Leg-A → Leg-B join)
@@ -224,11 +224,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `2efc3f3` 2026-07-02 — test(P2): failing golden tests + claudeCodeDriver stub (RED)
 - `f1d8a81` 2026-07-02 — test(P4): failing tests + stubs for driverFits + schema agent + drivers catalog (RED)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `661c325` 2026-07-02 — feat(core): templateLayout — derive productRoot + runsHome from a template path
 - `3ffbdc6` 2026-07-02 — feat(cli): understand --reconcile/--owns + phrase-fallback ranker + fixer FIND wire
 - `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
 - `f8fc81c` 2026-07-02 — feat(okf): CLI reader + fixer wire source ranking from the engine — M1b
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `20e9eae` 2026-07-02 — feat(core,cli): node --rerun — targeted rerun-set, not a noResume stage window
 - `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
 - `e0b6106` 2026-07-03 — feat(cli): marketplace P0 verbs — agents list · catalog sync|introspect · skill list|search|add
 - `6694161` 2026-07-03 — feat(cli,core): validate skill manifests at install time — export parseSkillManifest
@@ -239,6 +241,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `968b8f5` 2026-07-03 — feat(core+cli): bundled skill index — builder + pure BM25 ranker + staged fast path + skill index build verb
 - `507b890` 2026-07-03 — feat(core): parseSkillDoc — manifest widened with description + body
 - `746d448` 2026-07-03 — refactor(core+cli): hoist the skill install pipeline into @piflow/core
+- `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `71076e6` 2026-07-05 — feat(observe): per-turn reasoning-effort dissection — the raw signal
+- `6a45c20` 2026-07-05 — feat(core): wire script-tool preflight into node-lifecycle before the bind check
 - `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `43e77d3` 2026-07-06 — merge M1 — run identity: date-seq names, lineage fields, child runs
@@ -246,6 +252,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `521d6c9` 2026-07-06 — feat(cli): M5 — substrate CLI (optimize triage|fix|adopt, issues + runs verbs)
 - `591004b` 2026-07-06 — merge M5 — substrate CLI (optimize triage|fix|adopt, issues + runs verbs) + verifying→open back-edge
 - `6a16eb2` 2026-07-06 — feat(cli): dotted --node <run>.<node> reference for the substrate verbs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 
 ### Lessons — memory cluster
 
@@ -253,7 +261,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[agentic-design-library]]
 - [[codebase-memory-mcp-analysis]]
 - [[expert-representations]]
+- [[fixer-two-half-law]]
 - [[game-omni-reference-product]]
+- [[issue-lifecycle-gate-redesign]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
 - [[node-illustration-pipeline]]
@@ -270,8 +280,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
 - `buildNodeMemory` (packages/core/src/memory/skeleton.ts:15) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
-- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
+- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-07 · arc=170 commits · files=15 · lessons=14</sub>
+<sub>derived 2026-07-07 · arc=178 commits · files=15 · lessons=16</sub>
 <!-- okf:auto-end -->

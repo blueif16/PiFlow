@@ -469,7 +469,6 @@ export {
   buildSnapshot,
   isProductRoot,
   findProductRoot,
-  findProductRootsUnder,
   templateLayout,
   resolveScope,
   registryFromRoots,
