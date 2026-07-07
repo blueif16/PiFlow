@@ -386,12 +386,17 @@ async function upsertSubstrateManifest(stagingDir: string, record: SubstrateMani
 
 // ── the fixer prompt (agentic-prompt-design: the issue file IS the dispatch; a tight fix contract) ──────────
 
+/** The DEFAULT fixer playbook skill — staged for EVERY fixer spawn (fixed id, no per-node knob in v1). The
+ *  runner resolves it via `locateSkillStage` (Ring 1 `<piflowHome>/skills/piflow-fixer`); a miss is advisory. */
+export const FIXER_SKILL = 'piflow-fixer';
+
 /** Build the fixer agent's FULL prompt: the issue FILE verbatim (its context brief is the specification) + a
  *  root-cause fix contract. Exported so a test can pin the contract's load-bearing MUST/MUST-NOT lines
  *  (agent behaviour itself is proven by the M7 live demo — eval, not unit). */
 export function buildFixerPrompt(issueFileText: string, node: string): string {
   return [
     `<role>You are the FIXER agent for the "${node}" node — a senior engineer who ROOT-CAUSES a quality defect and repairs it at the source, inside an ISOLATED candidate copy of the node's read closure.</role>`,
+    `<playbook>Your fixer PLAYBOOK — the issue lifecycle (open→closed) and the two-foot quality/harness routing — is staged as the "${FIXER_SKILL}" skill for this turn; it is the procedure this contract assumes. Follow it.</playbook>`,
     `<issue>\nThe issue below is the WHOLE dispatch contract — its context brief is your specification. Read it in full before editing.\n\n${issueFileText}\n</issue>`,
     `<task>Root-cause the defect described in <issue>, then EDIT the files in your working directory (the candidate copy) to fix it at its ROOT — not its surface symptom.</task>`,
     [
@@ -504,6 +509,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     cwd: candidateRef,
     readScope: [candidateRef],
     owns: [candidateRef],
+    skill: FIXER_SKILL, // stage the default fixer playbook (Ring 1); a miss degrades to the promptless playbook.
     tier: opts.tier,
     model: opts.model,
     timeoutMs: opts.timeoutMs,

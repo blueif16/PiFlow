@@ -28,7 +28,7 @@ import {
 } from '../src/optimize/substrate/fix.js';
 import { renderSubstrateEvent, safeEmit, type SubstrateEvent } from '../src/optimize/substrate/events.js';
 import { computeIssueId, writeIssueFile, parseIssueFile, type Issue } from '../src/optimize/substrate/issues.js';
-import type { RunSubstrateAgentResult } from '../src/optimize/substrate/agent.js';
+import type { RunSubstrateAgentOpts, RunSubstrateAgentResult } from '../src/optimize/substrate/agent.js';
 import type { SpawnChildRunResult } from '../src/optimize/substrate/child-run.js';
 import type { MeasureReport } from '../src/optimize/substrate/measure.js';
 
@@ -330,6 +330,8 @@ describe('buildFixerPrompt — issue-as-dispatch + a root-cause / no-oracle / no
     expect(p).toMatch(/candidate copy/i);
     expect(p.toLowerCase()).toMatch(/must not.*(git|commit)/s);
     expect(p.toLowerCase()).toMatch(/must not edit.*(oracle|measurement|judge)/s);
+    // a data-tier anchor points the fixer at its staged playbook by id (the procedure this contract assumes).
+    expect(p).toContain('piflow-fixer');
   });
 });
 
@@ -426,6 +428,28 @@ describe('fixIssue — skip-proof path (prove off)', () => {
     expect(res.decision).toBe('staged'); // unmeasurable ⇒ stage-for-human
     expect(res.record.verifiedByRun).toBeNull();
     expect((await parseIssueFile(issuePath)).status).toBe('fix-landed'); // the skip-proof landing state
+  });
+});
+
+describe('fixIssue — stages the piflow-fixer playbook for the fixer spawn', () => {
+  it('passes skill:"piflow-fixer" to runAgent so the runner stages the DEFAULT fixer playbook (Ring 1)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    let capturedSkill: string | undefined = 'UNSET';
+    const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
+      capturedSkill = o.skill; // undefined before the wiring → RED against 'piflow-fixer'
+      await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); // a real edit → normal flow
+      return agentResult();
+    };
+    await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      prove: false,
+      runAgent: capturingRunAgent,
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    expect(capturedSkill).toBe('piflow-fixer');
   });
 });
 

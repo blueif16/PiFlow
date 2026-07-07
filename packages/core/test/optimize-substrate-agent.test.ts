@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import type { NodeSpec, ResolveResult } from '../src/types.js';
 import type { CommandContext } from '../src/runner/command.js';
 import type { ModelTiers } from '../src/runner/model-routing.js';
@@ -104,6 +105,35 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
       buildCommand: capturingBuilder(claudeStdout('ok'), capture),
     });
     expect(capture.node?.tools).toEqual({});
+  });
+
+  it('a `skill` rides VERBATIM onto the compiled node (so the runner stages it) AND degrades gracefully when absent from every ring', async () => {
+    // Point Ring 1 (`<piflowHome>/skills`) at an EMPTY home + run in an empty cwd (no Ring 0
+    // `.agents/skills`), so `piflow-fixer` is absent from BOTH rings. The wiring must still ride the ref
+    // onto the spawned spec (else the runner never even TRIES to stage), and a not-found skill must be
+    // ADVISORY — the fixer still runs its promptless playbook, never a hard fail.
+    const prevHome = process.env.PIFLOW_HOME;
+    const emptyHome = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-emptyhome-'));
+    process.env.PIFLOW_HOME = emptyHome;
+    try {
+      const capture: { node?: NodeSpec } = {};
+      const { status } = await runSubstrateAgent({
+        prompt: 'fix this node',
+        cwd: emptyHome,
+        readScope: [],
+        owns: [],
+        skill: 'piflow-fixer',
+        buildCommand: capturingBuilder(claudeStdout('ok'), capture),
+      });
+      // wiring: the skill ref landed on the node the runner compiles → its skill-staging path can fire.
+      expect(capture.node?.skill).toBe('piflow-fixer');
+      // graceful degrade: skill absent from every ring ⇒ advisory skill-missing, the node still runs to ok.
+      expect(status.status).toBe('ok');
+    } finally {
+      if (prevHome === undefined) delete process.env.PIFLOW_HOME;
+      else process.env.PIFLOW_HOME = prevHome;
+      await fs.rm(emptyHome, { recursive: true, force: true });
+    }
   });
 });
 

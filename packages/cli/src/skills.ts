@@ -17,14 +17,15 @@ import { fileURLToPath } from 'node:url';
 import type { PromptIO } from './init/types.js';
 import { createPromptIO } from './init/prompt.js';
 
-// The workflow-authoring TRIO — the ONLY skills that ship to a consumer repo BY DEFAULT. EXCLUDES
-// `piflow-release` (publishing the SDK itself) and `piflow-web-design` (marketing-site only). The prepack
-// script copies exactly these into the packaged dir; the dev fallback applies the same allowlist so dev ≡
-// packaged. A bare install with no manifest installs EXACTLY the trio — nothing more.
-export const TRIO = ['piflow-init', 'piflow-start', 'piflow-enhance'] as const;
+// The DEFAULT skill set — the skills that ship to a consumer repo BY DEFAULT: the workflow-authoring trio
+// (`piflow-init`/`start`/`enhance`) PLUS `piflow-fixer` (the fixer's playbook — also a human-facing fix
+// protocol). EXCLUDES `piflow-release` (publishing the SDK itself) and `piflow-web-design` (marketing-site
+// only). The prepack script copies exactly these into the packaged dir; the dev fallback applies the same
+// allowlist so dev ≡ packaged. A bare install with no manifest installs EXACTLY this set — nothing more.
+export const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer'] as const;
 
 /** Optional, OPT-IN skill add-ons: id → the skill dir(s) it installs + a one-line wizard description.
- *  MIRROR the skill-name list in scripts/bundle-skills.mjs (the same dual-copy discipline as TRIO). */
+ *  MIRROR the skill-name list in scripts/bundle-skills.mjs (the same dual-copy discipline as DEFAULT_SKILLS). */
 export const SKILL_ADDONS = {
   understand: {
     skills: ['okf-slices'],
@@ -203,7 +204,7 @@ export async function runSkillsCli(
   // repo-root .claude/skills) is filtered by the SAME resolved skill set so a source-checkout install
   // matches the published tarball exactly. ALWAYS pass `only` (both paths) so the packaged dir — which
   // now also carries add-on skills — never leaks a non-selected skill into a default install.
-  const skillSet = [...new Set([...TRIO, ...addons.flatMap((id) => SKILL_ADDONS[id].skills)])];
+  const skillSet = [...new Set([...DEFAULT_SKILLS, ...addons.flatMap((id) => SKILL_ADDONS[id].skills)])];
   const { dir: srcDir } = resolveSkillsSrc();
   const installed = installSkills(srcDir, targetDir, { force, only: skillSet });
   const skillsRoot = path.join(targetDir, '.claude', 'skills');
