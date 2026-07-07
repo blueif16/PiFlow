@@ -97,14 +97,17 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agentic-design-library]]
 - [[blueprints-layer]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[model-provider-single-default-fixture]]
 - [[omniscience-piflow-setup]]
+- [[optimize-substrate-program]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
 - [[runs-live-in-product-runs-folder]]
@@ -117,5 +120,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-03 · arc=38 commits · files=7 · lessons=7</sub>
+<sub>derived 2026-07-07 · arc=39 commits · files=7 · lessons=9</sub>
 <!-- okf:auto-end -->

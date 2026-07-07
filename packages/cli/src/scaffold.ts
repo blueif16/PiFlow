@@ -146,6 +146,11 @@ export interface NodeOpts {
   fusion?: { mode: 'moa' | 'best-of-n'; n?: number; panel?: string[]; judge?: string; obligations?: boolean; verify?: boolean };
   /** (G9) SUBWORKFLOW — inline a sub-template as a sub-DAG in place of this node. `ref` = sub-template dir, parent-root-relative. */
   subworkflow?: { ref: string };
+  /** (M0, optimize-substrate-plan.md) OPTIMIZER-FACING measure+judge block, emitted VERBATIM — the out-of-band
+   *  optimize substrate reads it straight off node.json via fs (never through toNodeIntent/the runtime
+   *  NodeSpec). `measure` is a raw `$defs/op`-shaped array (gate/run bodies are the meaningful ones post-run);
+   *  `judge` is a token-resolved path to the soft-judge file. */
+  optimize?: { measure?: Record<string, unknown>[]; judge?: string };
   /** Per-node jail-off → `contract.fullAccess` (run OUTSIDE the local fs jail; loosen-only, LOCAL-only). */
   fullAccess?: boolean;
   /** A write-first sentinel → `contract.fillSentinel` (still-present ⇒ the artifact is incomplete). */
@@ -384,6 +389,14 @@ export function buildNode(opts: NodeOpts): Record<string, unknown> {
   // place of this node. loadTemplate accepts any non-empty ref (it does NOT resolve the dir) — expandSubworkflow
   // is the resolution oracle.
   if (opts.subworkflow) node.subworkflow = { ref: opts.subworkflow.ref };
+  // (M0) OPTIMIZER-FACING passthrough — unlike fusion/judgeGate above, nothing here is derived or validated;
+  // it is read out-of-band via fs (loader.ts never wires it), so buildNode just carries the authored shape.
+  if (opts.optimize) {
+    node.optimize = {
+      ...(opts.optimize.measure?.length ? { measure: opts.optimize.measure } : {}),
+      ...(opts.optimize.judge ? { judge: opts.optimize.judge } : {}),
+    };
+  }
   if (opts.programmatic) node.programmatic = true;
   return node;
 }

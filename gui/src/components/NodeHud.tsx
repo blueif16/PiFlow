@@ -24,6 +24,7 @@ import { FileView, type FileTarget } from "./FileContent";
 import { CacheDonut } from "./CacheDonut";
 import { NodeHooks } from "./NodeGates";
 import { useSkill } from "./SkillContext";
+import { useIssues } from "./IssuesContext";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
 import { formatMs, formatBytes, formatTokens, type RunViewNode, type ScopeKind, type Tone } from "../data/runView";
@@ -286,6 +287,7 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
 
 /* ── the identity card (morph target), now pinned TOP-LEFT — compact chrome ── */
 function Identity({ id, data, reduce, onClose, status }: { id: string; data: FlowNodeData; reduce: boolean; onClose: () => void; status: FlowNodeData["status"] }) {
+  const { openIssues } = useIssues();
   return (
     <motion.div
       layoutId={`node-${id}`}
@@ -300,6 +302,10 @@ function Identity({ id, data, reduce, onClose, status }: { id: string; data: Flo
             <h2 className="ds-hud__title">{data.title}</h2>
           </div>
           <StatusPill status={status ?? "idle"} />
+          {/* (M8) node-TYPE issue ledger — opens the right-dock IssuesPanel via IssuesContext. */}
+          <Button size="sm" variant="ghost" aria-label="View issue ledger" title="Issue ledger for this node type" onClick={() => openIssues(id)}>
+            Issues
+          </Button>
           <Button iconOnly size="sm" variant="ghost" aria-label="Close" onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />

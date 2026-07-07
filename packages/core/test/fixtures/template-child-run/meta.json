@@ -1,0 +1,6 @@
+{
+  "id": "template-child-run",
+  "name": "template-child-run",
+  "description": "Two-node linear fixture (draft -> publish) for spawnChildRun's replay-from-node-start (M1).",
+  "phases": ["draft", "publish"]
+}

@@ -97,6 +97,18 @@ function resolveExecutor(node: NodeSpec, ctx: RunContext): NodeSpec['executor'] 
   return ctx.executorOverride?.[node.id] ?? ctx.executorDefault ?? node.executor;
 }
 
+/**
+ * The node's resolved WRITE SCOPE — `sandbox.write` (= `contract.owns`), TOKEN-RESOLVED against the
+ * launch `resolveCtx` (U7). This is the jail-enforced surface `scope.create` grants `writeScope` (below,
+ * `sandbox.write` on the resolved clone) — everything the node is authorized to touch. EXTRACTED out of
+ * `runNode`'s inline io-resolution block so a caller OUTSIDE the node lifecycle — `spawnChildRun`'s
+ * replay-from-node-start reset (optimize/substrate/child-run.ts, M1.4) — can compute the SAME set without
+ * re-deriving the resolve. Pure; `runNode` calls this exact helper (byte-equal behavior).
+ */
+export function resolveNodeWriteScope(node: NodeSpec, resolveCtx: ResolveCtx): string[] {
+  return resolveAll(node.sandbox.write, resolveCtx);
+}
+
 // Exported as the lifecycle seam: ./retry.ts drives the retry/escalate loop around `runNode`.
 export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: AttemptOverride = {}): Promise<NodeStatusRecord> {
   const rec = ctx.status.nodes[node.id];
@@ -234,7 +246,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       sandbox: {
         ...srcNode.sandbox,
         read: resolveAll(srcNode.sandbox.read, resolveCtx),
-        write: resolveAll(srcNode.sandbox.write, resolveCtx),
+        write: resolveNodeWriteScope(srcNode, resolveCtx),
         // (E10) resolve exec-scope tokens too ({{WORKSPACE}}/{{arg.*}}/{{state.*}}) so scope.create gets
         // PHYSICAL paths — the out-of-tree build's project-root cwd + the sibling read roots it imports.
         ...(srcNode.sandbox.execCwd ? { execCwd: resolveTokens(srcNode.sandbox.execCwd, resolveCtx) } : {}),

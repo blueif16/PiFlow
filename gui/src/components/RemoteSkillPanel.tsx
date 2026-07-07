@@ -9,8 +9,7 @@
  * the installed ring and becomes a bindable, draggable local card (via the context's installedNonce refresh).
  */
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { GlassSurface } from "./GlassSurface";
+import { SideCard } from "./SideCard";
 import { MarkdownReader } from "./MarkdownReader";
 import { ToolTag } from "./toolMeta";
 import { useRemoteSkill } from "./RemoteSkillContext";
@@ -35,14 +34,6 @@ export function RemoteSkillPanel() {
     return () => { alive = false; };
   }, [open?.source, open?.slug]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Escape closes (the shell-wide convention); layered, no scrim.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, close]);
-
   if (!open) return null;
 
   const doInstall = async () => {
@@ -56,19 +47,13 @@ export function RemoteSkillPanel() {
   const requires = detail?.requires ?? [];
   const extraAllowed = (detail?.allowed ?? []).filter((t) => !requires.includes(t));
 
-  return createPortal(
-    <div className="ds-skillpanel-layer">
-      <GlassSurface as="aside" variant="soft" className="ds-skillpanel" legibleText role="dialog" aria-label={`online skill ${open.name}`}>
+  return (
+    <SideCard open={!!open} onClose={close} accent="remote" ariaLabel={`online skill ${open.name}`}>
         <div className="ds-skillpanel__head">
           <div className="ds-skillpanel__title">
             <span className="ds-skillpanel__eyebrow">online skill · {open.index}</span>
             <h2 className="ds-skillpanel__name">{open.name}</h2>
           </div>
-          <button type="button" className="ds-skillpanel__close" aria-label="Close skill panel" title="Close (Esc)" onClick={close}>
-            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
         </div>
 
         <div className="ds-skillpanel__body">
@@ -137,8 +122,6 @@ export function RemoteSkillPanel() {
             </div>
           )}
         </div>
-      </GlassSurface>
-    </div>,
-    document.body,
+    </SideCard>
   );
 }

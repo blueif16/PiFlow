@@ -195,12 +195,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `f99854b` 2026-07-03 — feat(cli): piflowctl reply — answer a parked HITL checkpoint from the CLI
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 - `c039c4d` 2026-07-03 — Merge feat/skill-marketplace-p2 — marketplace GUI + skills endpoint + remote search + enforced requires-floor
+- `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `43e77d3` 2026-07-06 — merge M1 — run identity: date-seq names, lineage fields, child runs
+- `521d6c9` 2026-07-06 — feat(cli): M5 — substrate CLI (optimize triage|fix|adopt, issues + runs verbs)
+- `6a16eb2` 2026-07-06 — feat(cli): dotted --node <run>.<node> reference for the substrate verbs
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[agent-identity-surface]]
 - [[always-no-ff-merge-to-main]]
+- [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -211,7 +217,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[competitive-gaps-pdw]]
 - [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
+- [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
+- [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
@@ -229,6 +237,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
+- [[minimax-m3-framing]]
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
@@ -239,6 +248,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-program]]
+- [[overthinking-is-the-defect-not-token-caps]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
@@ -262,6 +273,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -271,5 +283,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:702) — 3 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 - `scaffoldNew` (packages/cli/src/scaffold.ts:396) — 4 callers in `packages/cli/src/blueprint-stamp.ts`, `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=135 commits · files=8 · lessons=63</sub>
+<sub>derived 2026-07-07 · arc=140 commits · files=8 · lessons=70</sub>
 <!-- okf:auto-end -->

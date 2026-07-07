@@ -151,6 +151,10 @@ export async function readRunModel(runDir: string, opts: ReadRunModelOpts = {}):
     // (P6) Surface the parked-for-migration flag so a `context migrate` freeze-wait can detect it uniformly
     // (this local reader AND the SSE snapshot/run-view both carry it). Absent on a normal run ⇒ false.
     frozen: status.frozen ?? false,
+    // (M1/M8 — child runs) verbatim off the ALREADY-PARSED status above — zero new I/O. Absent on a normal
+    // top-level run (RunStatus only ever sets these together, via `spawnChildRun`).
+    parent: status.parent,
+    spawnedBy: status.spawnedBy,
     startedAt: status.startedAt,
     updatedAt: status.updatedAt,
     durationMs: status.durationMs,

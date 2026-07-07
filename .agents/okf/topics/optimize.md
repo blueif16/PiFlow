@@ -137,6 +137,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agentic-design-library]]
 - [[blueprints-layer]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
@@ -159,6 +160,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[omniscience-piflow-setup]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-program]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
@@ -169,6 +171,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -178,5 +181,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-03 · arc=26 commits · files=19 · lessons=32</sub>
+<sub>derived 2026-07-07 · arc=26 commits · files=19 · lessons=35</sub>
 <!-- okf:auto-end -->

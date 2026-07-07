@@ -27,7 +27,7 @@ import "../styles/startrun.css";
 // `onStartRun` deploys the StartRunPanel (owned by CanvasInner so it can wire the returned run into
 // the run-select seam). Which control server the GUI talks to is shown by the ControlPlaneChip
 // (bottom-right, beside the chat launcher), not here — this bar carries the workspace/run switcher + run actions.
-export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRun, onStartRun, onMigrateRun, ix }: { activeRun: string; workspaceName: string | null; onOpenWorkspaces: () => void; onSelectRun: (run: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null }) {
+export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRun, onStartRun, onMigrateRun, ix, hidden = false, peeking = false, onDismissMenu }: { activeRun: string; workspaceName: string | null; onOpenWorkspaces: () => void; onSelectRun: (run: string) => void; onStartRun: () => void; onMigrateRun: () => void; ix: GlobalIndex | null; hidden?: boolean; peeking?: boolean; onDismissMenu?: () => void }) {
   const { expandedId, collapse } = useExpand();
   const [open, setOpen] = useState(false);
   const layerRef = useRef<HTMLDivElement>(null);
@@ -42,8 +42,24 @@ export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRu
     return () => { document.removeEventListener("mousedown", onDown, true); document.removeEventListener("keydown", onKey); };
   }, [open]);
 
+  // PEEKED over an open card (summoned by the card's menu handle): an outside click / Escape / a selection
+  // dismisses the bar again so it never lingers over the card.
+  useEffect(() => {
+    if (!peeking) return;
+    const onDown = (e: MouseEvent) => { if (!layerRef.current?.contains(e.target as Node)) onDismissMenu?.(); };
+    // capture + stopImmediatePropagation so an Escape dismisses the PEEK only — the open card's own Escape
+    // (SideCard) never also fires, so the card stays put.
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); onDismissMenu?.(); } };
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("keydown", onKey, true);
+    return () => { document.removeEventListener("mousedown", onDown, true); document.removeEventListener("keydown", onKey, true); };
+  }, [peeking, onDismissMenu]);
+
   const active = ix ? findThread(ix, activeRun) : null;
   const { tree, resolve } = useMemo(() => (ix ? indexToTree(ix) : { tree: [], resolve: () => undefined }), [ix]);
+
+  // hidden while a card is open (and not being peeked) — the open card hosts the menu handle instead.
+  if (hidden) return null;
 
   return createPortal(
     <div className="ds-menubar-layer" ref={layerRef}>
@@ -55,7 +71,7 @@ export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRu
           className="ds-menubar__workspace"
           aria-label="Switch workspace"
           title="Switch workspace — browse & enter another folder"
-          onClick={onOpenWorkspaces}
+          onClick={() => { onOpenWorkspaces(); onDismissMenu?.(); }}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
             <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
@@ -130,6 +146,7 @@ export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRu
               if (!hit) return;
               onSelectRun(hit.run); // viewable OR live — the canvas + companion handle both
               setOpen(false);
+              onDismissMenu?.();
             }}
           />
         </div>

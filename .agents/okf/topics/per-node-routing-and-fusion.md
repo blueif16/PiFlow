@@ -125,6 +125,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 
 **Alias matches** (review — may include false positives):
 - [[agent-identity-surface]]
+- [[agentic-design-library]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -146,12 +147,14 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
+- [[minimax-m3-framing]]
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[observe-single-data-path]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-program]]
 - [[per-node-routing-fusion]]
 - [[piflow-init-scaffolder]]
 - [[piflow-memory-system-v1]]
@@ -164,6 +167,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[swarm-consensus-deferred]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -173,5 +177,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/entry.ts`, `packages/server/src/handlers.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=47 commits · files=10 · lessons=40</sub>
+<sub>derived 2026-07-07 · arc=47 commits · files=10 · lessons=44</sub>
 <!-- okf:auto-end -->

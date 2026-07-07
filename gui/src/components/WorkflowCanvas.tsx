@@ -53,6 +53,8 @@ import { ControlPlaneChip, type ControlHealth } from "./ControlPlaneChip";
 import { ModeBar } from "./ModeBar";
 import { Companion } from "./Companion";
 import { RunDigestPanel } from "./RunDigestPanel";
+import { IssuesContext } from "./IssuesContext";
+import { IssuesPanel } from "./IssuesPanel";
 import { StartRunPanel } from "./StartRunPanel";
 import { MigrateRunPanel } from "./MigrateRunPanel";
 import { ExpandContext } from "./ExpandContext";
@@ -60,6 +62,7 @@ import { ViewModeContext, type ViewMode } from "./ViewModeContext";
 import { FusionContext, type FusionMode } from "./FusionContext";
 import { FusionSaveBar } from "./FusionSaveBar";
 import { ComposeContext } from "./ComposeContext";
+import { CardMenuContext } from "./CardMenuContext";
 import { BasisContext } from "./BasisContext";
 import { MarketContext } from "./MarketContext";
 import { SkillContext } from "./SkillContext";
@@ -120,6 +123,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // has stopped) — the newly-applied gate then appears on the graph without a manual reload.
   const [runViewNonce, setRunViewNonce] = useState(0);
   const [openSkill, setOpenSkill] = useState<string | null>(null); // the skill id shown in the left SkillPanel (null = closed)
+  const [openIssuesNode, setOpenIssuesNode] = useState<string | null>(null); // (M8) the node-TYPE id shown in the IssuesPanel (null = closed)
   const [openRemote, setOpenRemote] = useState<RemoteSkill | null>(null); // the ONLINE row shown in the RemoteSkillPanel
   const [installedNonce, setInstalledNonce] = useState(0); // bumped on a successful install → marketplace re-fetches
   const [companionOpen, setCompanionOpen] = useState(false); // bottom-right pi chat; launched by the "P" key
@@ -133,6 +137,29 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // The live control-plane endpoint. When a migrate re-points it (setEndpoint), this baseUrl changes and the
   // index poll + run-view loader below re-run against the new origin (they list it in their deps).
   const endpointBase = useEndpoint().baseUrl;
+
+  // ── RIGHT-edge SINGLE SLOT ─────────────────────────────────────────────────────────────────────────────
+  // Chat + the viewer cards (digest / skill / remote-skill / market) are mutually exclusive: only one
+  // right-dock panel shows at a time, so opening one CLOSES the rest — a new card REPLACES the prior, never a
+  // stack. `keep` is the slot being opened; every other occupant is cleared.
+  const closeRightSlot = useCallback((keep?: "chat" | "digest" | "skill" | "remote" | "market" | "issues") => {
+    if (keep !== "chat") setCompanionOpen(false);
+    if (keep !== "digest") setDigestOpen(false);
+    if (keep !== "skill") setOpenSkill(null);
+    if (keep !== "remote") setOpenRemote(null);
+    if (keep !== "market") setMarketOpen(false);
+    if (keep !== "issues") setOpenIssuesNode(null);
+  }, []);
+  const setChatOpen = useCallback((o: boolean) => { if (o) closeRightSlot("chat"); setCompanionOpen(o); }, [closeRightSlot]);
+  const toggleChat = useCallback(() => setChatOpen(!companionOpen), [setChatOpen, companionOpen]);
+  const toggleDigest = useCallback(() => { if (!digestOpen) closeRightSlot("digest"); setDigestOpen(!digestOpen); }, [digestOpen, closeRightSlot]);
+  const toggleMarket = useCallback(() => { if (!marketOpen) closeRightSlot("market"); setMarketOpen(!marketOpen); }, [marketOpen, closeRightSlot]);
+  // any right-dock card open (chat now floats too) ⇒ the top-right MenuBar HIDES so it never clashes with the
+  // card; the open card hosts a menu handle (CardMenuContext) that PEEKS the bar back over the card on click.
+  const cardOpen = digestOpen || !!openSkill || !!openRemote || marketOpen || companionOpen || !!openIssuesNode;
+  const [menuPeek, setMenuPeek] = useState(false);
+  useEffect(() => { if (!cardOpen) setMenuPeek(false); }, [cardOpen]); // reset the peek once no card is open
+  const cardMenu = useMemo(() => ({ onOpenMenu: () => setMenuPeek(true) }), []);
 
   const [ix, setIx] = useState<GlobalIndex | null>(null);
   // control-plane liveness for the ControlPlaneChip dot — driven by the index poll below (ok on a successful
@@ -425,20 +452,26 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
   // (Skill panel) which skill the left inspector shows — a skill chip anywhere calls openSkill(id). Opening the
   // LOCAL inspector closes the online detail (both are left-anchored — only one shows at a time).
   const skillApi = useMemo(
-    () => ({ open: openSkill, openSkill: (s: string) => { setOpenRemote(null); setOpenSkill(s); }, close: () => setOpenSkill(null) }),
-    [openSkill],
+    () => ({ open: openSkill, openSkill: (s: string) => { closeRightSlot("skill"); setOpenSkill(s); }, close: () => setOpenSkill(null) }),
+    [openSkill, closeRightSlot],
   );
   // (Remote skill panel) the ONLINE detail inspector — a remote marketplace card calls openRemote(row). Opening
   // it closes the local inspector; installedNonce bumps on a successful install so SkillMarketPanel re-fetches.
   const remoteSkillApi = useMemo(
     () => ({
       open: openRemote,
-      openRemote: (row: RemoteSkill) => { setOpenSkill(null); setOpenRemote(row); },
+      openRemote: (row: RemoteSkill) => { closeRightSlot("remote"); setOpenRemote(row); },
       close: () => setOpenRemote(null),
       installedNonce,
       bumpInstalled: () => setInstalledNonce((n) => n + 1),
     }),
-    [openRemote, installedNonce],
+    [openRemote, installedNonce, closeRightSlot],
+  );
+  // (M8 issues panel) which node TYPE's issue ledger the right-dock card shows — the NodeHud identity row
+  // calls openIssues(id). Opening it closes any other right-dock occupant (the single-slot law).
+  const issuesApi = useMemo(
+    () => ({ open: openIssuesNode, openIssues: (id: string) => { closeRightSlot("issues"); setOpenIssuesNode(id); }, close: () => setOpenIssuesNode(null) }),
+    [openIssuesNode, closeRightSlot],
   );
 
   const viewModeApi = useMemo(
@@ -574,7 +607,9 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
       <MarketContext.Provider value={marketApi}>
       <SkillContext.Provider value={skillApi}>
       <RemoteSkillContext.Provider value={remoteSkillApi}>
+      <IssuesContext.Provider value={issuesApi}>
       <RunStreamContext.Provider value={live}>
+      <CardMenuContext.Provider value={cardMenu}>
       <LayoutGroup>
         <div style={{ position: "relative", width: "100%", height: "100%", background: "var(--ds-bg-canvas)" }}>
           <OrbField />
@@ -645,14 +680,14 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           />
           {/* Start/Migrate are true modals and mutually exclusive — the chrome stays clickable above their
               scrim (by design), so opening one must close the other or they stack. */}
-          <MenuBar activeRun={activeRun} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} />
+          <MenuBar activeRun={activeRun} workspaceName={workspaceName} onOpenWorkspaces={() => setWorkspaceOpen(true)} onSelectRun={selectRun} onStartRun={() => { setMigrateOpen(false); setStartOpen(true); }} onMigrateRun={() => { setStartOpen(false); setMigrateOpen(true); }} ix={ix} hidden={cardOpen && !menuPeek} peeking={cardOpen && menuPeek} onDismissMenu={() => setMenuPeek(false)} />
           {/* Full-screen "switch workspace" launcher (opened by the MenuBar ⊞ pill). Entering a folder re-scopes
               the console via enterWorkspace; a live run routes through its detach-the-session confirm. */}
           <WorkspaceLauncher open={workspaceOpen} ix={ix} activeWorkspace={activeWorkspace} liveRun={liveRun} onEnter={enterWorkspace} onClose={() => setWorkspaceOpen(false)} />
           {/* Consolidated control-plane control (bottom-right, beside the chat launcher): the local ⇄ cloud
               switch + connect-a-remote, with a liveness dot (green reachable / red unreachable). */}
           <ControlPlaneChip health={controlHealth} />
-          <ModeBar chatOpen={companionOpen} onToggleChat={() => setCompanionOpen((o) => !o)} digestOpen={digestOpen} onToggleDigest={() => setDigestOpen((o) => !o)} marketOpen={marketOpen} onToggleMarket={() => setMarketOpen((o) => !o)} muted={startOpen || migrateOpen || workspaceOpen} />
+          <ModeBar chatOpen={companionOpen} onToggleChat={toggleChat} digestOpen={digestOpen} onToggleDigest={toggleDigest} marketOpen={marketOpen} onToggleMarket={toggleMarket} muted={startOpen || migrateOpen || workspaceOpen} />
           <FusionSaveBar active={mode === "fusion"} />
           {/* (Compose mode) the left-edge hexagon gate rail (drag source). It HIDES while the authoring
               overlay is open — both are left-anchored, and the overlay is the focus. */}
@@ -678,7 +713,7 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
             dropChip={dropChip}
             onComposingChange={setComposingNodeId}
           />
-          <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setCompanionOpen} />
+          <Companion activeRun={activeRun} open={companionOpen} onOpenChange={setChatOpen} />
           {/* Left-edge skill inspector — opened by clicking a loaded skill chip (node card / NodeHud) OR a
               marketplace card. */}
           <SkillPanel activeRun={activeRun} />
@@ -694,13 +729,18 @@ function CanvasInner({ initialExpandedId }: { initialExpandedId?: string }) {
           {/* Left-edge run-LEVEL digest (anomaly worklist + failure-onset), sourced from /__piflow/run-digest.
               Clicking an anomaly/onset node focuses that node on the canvas. */}
           <RunDigestPanel activeRun={activeRun} open={digestOpen} liveStatus={live.status} liveSig={digestSig} onFocusNode={setExpandedId} onClose={() => setDigestOpen(false)} />
+          {/* (M8) Right-dock issue ledger for one node TYPE — opened from the NodeHud identity row's "Issues"
+              affordance (IssuesContext). */}
+          <IssuesPanel activeRun={activeRun} />
           {/* Launch a run → on the 202, select it via `selectRun` so the live views observe the new run. */}
           <StartRunPanel open={startOpen} onClose={() => setStartOpen(false)} onStarted={selectRun} />
           {/* Migrate the active run → on the 202, re-point the console to the target serve + follow the run. */}
           <MigrateRunPanel open={migrateOpen} onClose={() => setMigrateOpen(false)} activeRun={activeRun} onMigrated={onMigrated} />
         </div>
       </LayoutGroup>
+      </CardMenuContext.Provider>
       </RunStreamContext.Provider>
+      </IssuesContext.Provider>
       </RemoteSkillContext.Provider>
       </SkillContext.Provider>
       </MarketContext.Provider>

@@ -172,6 +172,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `5eff54c` 2026-07-03 — feat(gui): base-agent rail on Basis mode — drag a preset onto a node to reassign agentType
 - `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 - `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
+- `350ffe1` 2026-07-03 — feat(gui): remote-skill detail fetch + installRemoteSkill client
+- `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `43e77d3` 2026-07-06 — merge M1 — run identity: date-seq names, lineage fields, child runs
 
 ### Lessons — memory cluster
 
@@ -199,5 +203,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/cli/src/agents.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; ⚠ no covering tests found
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 2 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-04 · arc=112 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-07 · arc=116 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

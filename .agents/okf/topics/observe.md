@@ -164,12 +164,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 - `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
 - `1419142` 2026-07-03 — feat(server): POST /__piflow/skill-install — one-click remote install
-- `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
-- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
-- `71076e6` 2026-07-05 — feat(observe): per-turn reasoning-effort dissection — the raw signal
-- `cfbf4eb` 2026-07-05 — feat(observe,cli): mega-think anomaly + the per-turn timeline table
-- `dfb781c` 2026-07-05 — fix(core/observe): add per-tool error tally to the stream reducer
-- `dc3b878` 2026-07-05 — fix(core/observe): thread toolErrorCounts into RankedTool.errors
+- `4a19f22` 2026-07-06 — feat(observe): M8 — substrate exposure (lineage on the index, issues endpoint + side card)
 
 ### Lessons — memory cluster
 
@@ -189,6 +184,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[config-is-truth-gui-is-projection]]
 - [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
+- [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
@@ -210,6 +206,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-program]]
 - [[overthinking-is-the-defect-not-token-caps]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
@@ -240,5 +237,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:114) — 8 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-06 · arc=81 commits · files=13 · lessons=57</sub>
+<sub>derived 2026-07-07 · arc=76 commits · files=13 · lessons=59</sub>
 <!-- okf:auto-end -->

@@ -147,6 +147,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
 - `350ffe1` 2026-07-03 — feat(gui): remote-skill detail fetch + installRemoteSkill client
 - `1be2fac` 2026-07-03 — feat(gui): RemoteSkillPanel — clickable detail page for online skills
+- `462621f` 2026-07-03 — feat(gui): right-dock single slot + chrome that yields to the card
+- `c022cfa` 2026-07-03 — feat(gui): chat becomes a floating card + the menu is part of the card
+- `4a19f22` 2026-07-06 — feat(observe): M8 — substrate exposure (lineage on the index, issues endpoint + side card)
 
 ### Lessons — memory cluster
 
@@ -181,6 +184,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-program]]
 - [[overthinking-is-the-defect-not-token-caps]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
@@ -210,5 +214,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadRunView` (gui/src/data/runView.ts:174) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/telemetry.ts`, `packages/cli/src/watch.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/observe.test.ts` +1
 
-<sub>derived 2026-07-06 · arc=86 commits · files=8 · lessons=51</sub>
+<sub>derived 2026-07-07 · arc=89 commits · files=8 · lessons=52</sub>
 <!-- okf:auto-end -->

@@ -391,10 +391,13 @@ export type { CheckpointMarker, CheckpointReply } from './runner/checkpoint.js';
 export { loadJournal, journalFile } from './runner/journal.js';
 export type { Journal, JournalNode } from './runner/journal.js';
 
-// Docker-style run-name generation (`<bake-adjective>-<pie>`, e.g. "flaky-pecan"): the CLI mints a
-// memorable, collision-checked run name when `--run/--id` is omitted, decoupling a run's identity from
-// any prompt id. `pieSlug`/`pieSlugList` back the regenerable `pies.json` (CSV → generate-pies.mjs).
+// Docker-style run-name generation (`<bake-adjective>-<pie>`, e.g. "flaky-pecan"): exported for a caller
+// that wants it. `pieSlug`/`pieSlugList` back the regenerable `pies.json` (CSV → generate-pies.mjs).
 export { generateRunName, ADJECTIVES, PIES, pieSlug, pieSlugList, type Rng } from './names/index.js';
+// M1 — the CLI's DEFAULT auto-mint: `YYMMDD-NN`, a zero-padded per-day counter (scales to hundreds of
+// runs, unlike a random pie pick) — decouples a run's identity from any prompt id. `childRunName` mints a
+// spawned CHILD run's id (`<parent>.<nodeId>`, optimize/substrate replay-from-node-start).
+export { generateDateSeqName, childRunName } from './names/index.js';
 
 // Observability source (the shared CONTRACT): ONE reader, ONE model, ONE live stream that the CLI, the
 // TUI, and a future GUI all render. `readRunModel(runDir)` is the one-shot snapshot; `watchRun(runDir)`
@@ -453,6 +456,8 @@ export {
   discoverNamespaces,
   discoverRunDirs,
   summarizeRun,
+  // (M8) the pure parent→children forest-builder over ThreadRow — the GUI run switcher's lineage nesting.
+  groupByParent,
   buildSnapshot,
   isProductRoot,
   findProductRoot,
@@ -468,10 +473,16 @@ export type {
   NamespaceDesc,
   NamespaceMeta,
   ThreadRow,
+  ThreadNode,
   SnapshotNamespace,
   SnapshotProduct,
   Snapshot,
 } from './observe/index.js';
+
+// (M8) the issues ENDPOINT projection — a thin observe wrapper over the optimize-substrate ledger
+// (`listIssues`), re-exported at the root so the server/GUI/TUI all reach it via the ONE package entry
+// (the `./observe` subpath is deliberately NOT in the package's exports map — see tui/model.mjs's note).
+export { nodeIssuesProjection } from './observe/index.js';
 
 // The MEMORY layer (piflow-memory-v1 §2) — the per-node + per-template self-correction surface the Hermes
 // optimizer/reconcile node READS + UPDATES from run traces. Two SEPARATE legs:
@@ -520,4 +531,20 @@ export type {
   OptimizeLoopStages, OptimizeLoopOpts, OptimizeLoopResult, RoundRecord, LoopStopReason,
   LongHorizonStages, LongHorizonOpts, LongHorizonResult, GenerationRecord,
   NextWorkflowPlan, RedesignStage, RunGeneration, LongHorizonStopReason,
+} from './optimize/index.js';
+
+// The OPTIMIZE SUBSTRATE (docs/specs/optimize-substrate-plan.md M0–M6) — the per-node measurement →
+// issue-decomposition → per-issue-fix pipeline, a SECOND optimization system beside the routing loop. Lifted to
+// the ROOT so the `piflowctl optimize triage|fix|adopt`, `issues`, and `runs` verbs (M5, packages/cli) can
+// import it from `@piflow/core` (the package's only public entry). Pure re-export of the optimize facade above.
+export {
+  listIssues, parseIssueFile, writeIssueFile, transitionIssue, reopen, stampAttempt, computeIssueId, assertTransition, ALLOWED_TRANSITIONS,
+  runSubstrateMeasure, runSubstrateJudge,
+  fixIssue, adoptSubstrateManifest, readSubstrateManifest, renderSubstrateEvent, UNPROVEN_BY_RUN,
+} from './optimize/index.js';
+export type {
+  Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
+  RunSubstrateMeasureOpts, MeasureReport, SubstrateJudgeOpts, SubstrateJudgeResult,
+  FixIssueOpts, FixIssueResult, SubstrateManifest, SubstrateManifestRecord,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,
 } from './optimize/index.js';

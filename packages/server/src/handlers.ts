@@ -163,6 +163,40 @@ export const piflowRunDigest: Middleware = async (req, res, next) => {
   }
 };
 
+/**
+ * `GET /__piflow/issues/<run>?node=<id>` — the M8 issues route: the optimize-substrate issue LEDGER
+ * (docs/specs/optimize-substrate-plan.md §M2) for one node TYPE, node-scoped rather than run-scoped (the
+ * ledger accumulates across every run of the node — a viewer badges rows against the run it opened the card
+ * from, client-side). Clones the `piflowRunDigest` handler shape: resolve the run's TEMPLATE dir (via
+ * `templateDirFor`, defined below — the same helper `piflowNodeWriteback` already uses), then project via
+ * core's `nodeIssuesProjection` (a thin wrapper over `listIssues`; NO reimplementation here) and send the
+ * result verbatim. `next()` when the URL isn't this route; 400 on a missing `?node=`; the SAME 404 semantics
+ * as `templateDirFor` (run not found, or the run resolves but carries no template) — never a raw 500 for
+ * either.
+ */
+export const piflowNodeIssues: Middleware = async (req, res, next) => {
+  const m = req.url?.match(/^\/__piflow\/issues\/([^/?]+)/);
+  if (!m) return next();
+  const run = decodeURIComponent(m[1]);
+  const nodeId = new URL(req.url!, "http://localhost").searchParams.get("node");
+  if (!nodeId) return sendJson(res, 400, { error: "missing ?node=<id>" });
+
+  const tpl = await templateDirFor(run);
+  if (!tpl.ok) return sendJson(res, tpl.status, { error: tpl.error });
+
+  const obs = findCore("observe/index.js");
+  if (!obs) return sendJson(res, 500, { error: "@piflow/core observe dist not found — run: npm run build (at repo root)" });
+  try {
+    const { nodeIssuesProjection } = (await import(pathToFileURL(obs).href)) as {
+      nodeIssuesProjection: (templateDir: string, nodeId: string) => Promise<unknown[]>;
+    };
+    const issues = await nodeIssuesProjection(tpl.templateDir, nodeId);
+    sendJson(res, 200, issues);
+  } catch (e) {
+    sendJson(res, 500, { error: `issues list failed for "${run}"/"${nodeId}" (${String(e)})` });
+  }
+};
+
 // A moa panel is REQUIRED; when neither the node nor ~/.piflow/fusion.json supplies one, the preview/save
 // falls back to these tiers so the toggle is demoable with zero config.
 const DEMO_PANEL = ["fast", "balanced", "deep"];
@@ -940,6 +974,7 @@ export const apiHandlers: Middleware[] = [
   piflowRunStream,
   piflowRunView,
   piflowRunDigest,
+  piflowNodeIssues,
   piflowPreview,
   piflowSaveRun,
   piflowFile,

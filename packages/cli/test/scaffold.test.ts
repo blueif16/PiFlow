@@ -662,3 +662,37 @@ describe('scaffold — fusion + subworkflow topology + contract extras (fullAcce
     expect(setup.io.reads).toContain('in.json');
   });
 });
+
+// M0 (optimize-substrate-plan.md) — the OPTIMIZER-FACING `optimize` block: `measure` is a raw $defs/op-shaped
+// array (post-run measurement ops the substrate scores against), `judge` a token-resolved path to a soft-judge
+// file. buildNode PASSES IT THROUGH VERBATIM (unlike fusion/judgeGate, nothing here is derived/validated) —
+// loader.ts's toNodeIntent deliberately never reads it (fs-only, optimizer-facing: the substrate reads
+// node.json straight off disk), so the round-trip only proves the schema accepts the emitted shape.
+describe('scaffold — optimize block (M0: measure + judge, optimizer-facing passthrough)', () => {
+  it('buildNode emits the optimize block verbatim and it round-trips through the real loadTemplate', async () => {
+    await scaffoldNew(DIR, { name: 'o', description: 'optimize block' });
+    await scaffoldAddNode(DIR, {
+      id: 'n',
+      artifacts: ['a.md'],
+      optimize: {
+        measure: [{ id: 'quality', when: 'post', gate: { kind: 'non-empty', path: 'a.md' } }],
+        judge: 'nodes/n/judge-soft.md',
+      },
+    });
+    await writeProse('n');
+
+    const node = await readJson(path.join(DIR, 'nodes', 'n', 'node.json'));
+    expect(node.optimize).toEqual({
+      measure: [{ id: 'quality', when: 'post', gate: { kind: 'non-empty', path: 'a.md' } }],
+      judge: 'nodes/n/judge-soft.md',
+    });
+    await expect(loadTemplate(DIR)).resolves.toBeDefined();
+  });
+
+  it('a node with no optimize opt omits the key (additive ⇒ byte-identical to today)', async () => {
+    await scaffoldNew(DIR, { name: 'o', description: 'no optimize' });
+    await scaffoldAddNode(DIR, { id: 'n', artifacts: ['a.md'] });
+    const node = await readJson(path.join(DIR, 'nodes', 'n', 'node.json'));
+    expect(node.optimize).toBeUndefined();
+  });
+});

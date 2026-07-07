@@ -142,6 +142,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `43e77d3` 2026-07-06 — merge M1 — run identity: date-seq names, lineage fields, child runs
 
 ### Lessons — memory cluster
 
@@ -175,6 +178,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[op-consumption-two-layer]]
+- [[optimize-substrate-program]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
@@ -188,6 +192,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[sandbox-readscope-default-on]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -197,5 +202,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `SeatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:202) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=73 commits · files=8 · lessons=42</sub>
+<sub>derived 2026-07-07 · arc=76 commits · files=8 · lessons=44</sub>
 <!-- okf:auto-end -->

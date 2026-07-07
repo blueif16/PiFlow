@@ -13,8 +13,7 @@
  * empty state, never a throw.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { GlassSurface } from "./GlassSurface";
+import { SideCard } from "./SideCard";
 import { ToolTag } from "./toolMeta";
 import { useSkill } from "./SkillContext";
 import { useRemoteSkill } from "./RemoteSkillContext";
@@ -57,7 +56,7 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
       if (!alive) return;
       setSkills(m?.skills ?? []);
       setMcpCatalog(m?.mcpCatalog ?? false);
-      setStatus(m && m.skills.length ? "loaded" : "empty");
+      setStatus((m?.skills?.length ?? 0) > 0 ? "loaded" : "empty");
     });
     return () => { alive = false; };
   }, [open, activeRun, installedNonce]);
@@ -103,14 +102,6 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
     return () => clearTimeout(t);
   }, [liveActive, query]);
 
-  // Escape closes (the shell-wide convention); the panel is layered (no scrim), so no click-away trap.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
   // the filtered projection (tested pure fn) — narrows by ring + query, PRESERVING the server's order.
   // (the online lane renders its own remote list; marketFilter only understands the two LOCAL rings)
   const localRing = ring === "online" ? undefined : (ring ?? undefined);
@@ -122,11 +113,8 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
 
   if (!open) return null;
 
-  return createPortal(
-    <div className="ds-market-layer">
-      <GlassSurface variant="window" className="ds-market" legibleText aria-label="Skill marketplace">
-        <button type="button" className="ds-market__close" onClick={onClose} title="Close (S)" aria-label="Close marketplace">✕</button>
-
+  return (
+    <SideCard open={open} onClose={onClose} accent="market" width="min(44vw, 520px)" ariaLabel="Skill marketplace" closeTitle="Close (S)">
         <header className="ds-market__head">
           <div className="ds-market__title">
             <span className="ds-market__eyebrow">skill marketplace</span>
@@ -232,9 +220,7 @@ export function SkillMarketPanel({ activeRun, open, onClose }: { activeRun: stri
             )}
           </>
         )}
-      </GlassSurface>
-    </div>,
-    document.body,
+    </SideCard>
   );
 }
 

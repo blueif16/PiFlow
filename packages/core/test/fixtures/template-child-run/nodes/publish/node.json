@@ -1,0 +1,13 @@
+{
+  "id": "publish",
+  "phase": "publish",
+  "deps": ["draft"],
+  "prompt": { "file": "prompt.md" },
+  "tools": { "allow": ["read", "write", "submit_result"] },
+  "contract": {
+    "artifacts": ["final.txt"],
+    "owns": ["final.txt"],
+    "readScope": ["{{RUN}}"],
+    "returnMode": "optional"
+  }
+}

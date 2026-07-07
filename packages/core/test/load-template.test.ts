@@ -416,6 +416,34 @@ describe('loadTemplate — per-node contract.fullAccess (the jail-off authoring 
   });
 });
 
+// M0 (optimize-substrate-plan.md) — the OPTIMIZER-FACING `optimize` block: `measure` reuses `$defs/op`
+// byte-for-byte (post-run measurement ops the substrate scores against); `judge` is a token-resolved path
+// to a soft-judge file. Loader `toNodeIntent` is DELIBERATELY NOT wired to it — the substrate reads it
+// straight off node.json via fs (precedent: memory.md / recurrence.ts:49) — so these tests only prove the
+// SCHEMA accepts/rejects it; there is nothing to assert on the compiled NodeSpec (byte-identical either way).
+describe('loadTemplate — optimize block (M0: measure + judge, optimizer-facing)', () => {
+  it('a node.json carrying a valid optimize block loads clean through the real loadTemplate', async () => {
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.optimize = {
+      measure: [{ id: 'quality', when: 'post', gate: { kind: 'non-empty', path: 'spec/classification.json' } }],
+      judge: 'nodes/w0-classify/judge-soft.md',
+    };
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    await expect(loadTemplate(dir)).resolves.toBeDefined();
+  });
+
+  it('an unknown key INSIDE optimize is rejected (additionalProperties:false bites, not just the outer block)', async () => {
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.optimize = { measure: [], bogus: true };
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    const e = await expectReject(dir);
+    expect(e.message).toMatch(/schema/i);
+    expect(e.message).toContain('w0-classify');
+  });
+});
+
 // #3 (M2) — the per-node `mcp.servers` field is now READ (the M1 carry). A committable template must
 // reference secrets as `$VAR`/`${VAR}` env REFERENCES, never a literal secret on disk. The loader rejects
 // a literal secret-bearing value loudly at author time (the SecretResolver allowlist contract, design §4).

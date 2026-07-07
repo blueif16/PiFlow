@@ -16,8 +16,7 @@
  * stream flip to "done" refetches the authoritative record.
  */
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { GlassSurface } from "./GlassSurface";
+import { SideCard } from "./SideCard";
 import { loadRunDigest, type RunDigest, type NodeDigest, type AnomalyKind } from "../data/runDigest";
 import { formatTokens, formatMs } from "../data/runView";
 import { ToolTag } from "./toolMeta";
@@ -159,11 +158,8 @@ export function RunDigestPanel({
     .sort((a, b) => nodeRank(a.n) - nodeRank(b.n) || a.i - b.i)
     .map((x) => x.n);
 
-  return createPortal(
-    <div className="ds-digest-layer">
-      <GlassSurface variant="window" className="ds-digest" legibleText aria-label="Run digest">
-        <button type="button" className="ds-digest__close" onClick={onClose} title="Close (D)" aria-label="Close digest">✕</button>
-
+  return (
+    <SideCard open={open} onClose={onClose} accent="digest" ariaLabel="Run digest" closeTitle="Close (D)">
         <header className="ds-digest__head">
           <div className="ds-digest__run" title={activeRun}>{activeRun || "—"}</div>
           <span className="ds-digest__verdict" data-tone={verdictTone}>{verdict}</span>
@@ -209,12 +205,12 @@ export function RunDigestPanel({
         )}
 
         <section className="ds-digest__section">
-          <h3 className="ds-digest__title">Worklist · {digest?.anomalies.length ?? 0}</h3>
-          {digest && digest.anomalies.length === 0 && (
+          <h3 className="ds-digest__title">Worklist · {digest?.anomalies?.length ?? 0}</h3>
+          {digest && (digest.anomalies?.length ?? 0) === 0 && (
             <p className="ds-digest__empty">No anomalies — every node ran within its bars.</p>
           )}
           <ul className="ds-digest__list">
-            {digest?.anomalies.map((a, i) => (
+            {digest?.anomalies?.map((a, i) => (
               <li key={`${a.kind}-${a.nodeId}-${i}`}>
                 <button type="button" className="ds-anom" data-tone={KIND_TONE[a.kind]} onClick={() => onFocusNode(a.nodeId)} title={`Focus ${a.nodeId}`}>
                   <span className="ds-anom__kind">{KIND_LABEL[a.kind]}</span>
@@ -226,7 +222,7 @@ export function RunDigestPanel({
           </ul>
         </section>
 
-        {digest && digest.rootCauses.length > 0 && (
+        {digest && (digest.rootCauses?.length ?? 0) > 0 && (
           <section className="ds-digest__section">
             <h3 className="ds-digest__title">Failure onset · {digest.rootCauses.length}</h3>
             <ul className="ds-digest__list">
@@ -320,9 +316,7 @@ export function RunDigestPanel({
             </ul>
           </section>
         )}
-      </GlassSurface>
-    </div>,
-    document.body,
+    </SideCard>
   );
 }
 

@@ -1,0 +1,27 @@
+{
+  "id": "template-child-run",
+  "meta": {
+    "name": "template-child-run",
+    "description": "Two-node linear fixture (draft -> publish) for spawnChildRun's replay-from-node-start (M1)."
+  },
+  "stages": [
+    [
+      "draft"
+    ],
+    [
+      "publish"
+    ]
+  ],
+  "nodes": {
+    "draft": {
+      "phase": "draft",
+      "deps": []
+    },
+    "publish": {
+      "phase": "publish",
+      "deps": [
+        "draft"
+      ]
+    }
+  }
+}

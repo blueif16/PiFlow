@@ -69,3 +69,54 @@ export type { CheckableTask, ReplayOracle, MineTask, CopyScope, ReplayDeps, Repl
 // oracle (which imports the product's verify harness + builds the candidate) stays product-side.
 export { mineTaskFromTrace, gameOmniNodeToMilestone } from './mine.js';
 export type { MineOpts } from './mine.js';
+
+// The SUBSTRATE issue LEDGER (docs/specs/optimize-substrate-plan.md §M2) — the second optimization system's
+// durable, reopenable worklist: one markdown file per issue under `<templateDir>/nodes/<node>/issues/`.
+// Parse/write/validate one issue file; list/filter/sort the ledger; the append-only attempt history; the
+// status-machine transition guards. A SIBLING system to the §7 Score+Triage worklist above, not a replacement.
+export {
+  computeIssueId, validateIssue, parseIssueFile, writeIssueFile, stampAttempt, reopen,
+  assertTransition, transitionIssue, listIssues, ALLOWED_TRANSITIONS,
+} from './substrate/issues.js';
+export type {
+  Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
+} from './substrate/issues.js';
+
+// The SUBSTRATE hard MEASUREMENT stage (docs/specs/optimize-substrate-plan.md §M3) — fires a node's
+// `optimize.measure` op[] (read straight off its node.json) + the built-in trace detectors + the run digest
+// into ONE deterministic `<runDir>/optimize/substrate/measure.<node>.json` report. Fully external to the
+// runner (node-lifecycle.ts is untouched); the M4 judge consumes this report as its hard-evidence input.
+export { runSubstrateMeasure } from './substrate/measure.js';
+export type { RunSubstrateMeasureOpts, MeasureReport, MeasureOpsSection, OpRunResult } from './substrate/measure.js';
+// The generic, product-agnostic pi-event trace DETECTORS (thinking-stall span, tool-loop identical-result
+// grouping, cumulative token-waste growth, provider-aware cache-miss) over `.pi/nodes/<id>/events.jsonl` —
+// core-legal (no product logic), reused directly by `measure.ts` and testable standalone over raw lines.
+export { analyzeEvents, analyzeTraceFile, DEFAULT_SUBSTRATE_THRESHOLDS } from './substrate/trace-metrics.js';
+export type {
+  SubstrateThresholds, TraceMetricsReport, ThinkingSpan, ToolLoopFlag, TokenWasteSignal, CacheMissFlag,
+} from './substrate/trace-metrics.js';
+
+// The SUBSTRATE FIX phase (docs/specs/optimize-substrate-plan.md §M6) — per ONE issue: activate → candidate
+// closure (the {{WORKSPACE}}-read closure MINUS the oracle exclusions) → fixer agent → prove-rerun → the
+// graded-delta gate (REUSING evaluateGate) → stage a substrate manifest; ADOPT is the SEPARATE human step
+// (adoptSubstrateManifest → adoptFile + commitAdoption → stampAttempt → status resolved). Its OWN dedicated
+// SubstrateEvent stream + renderSubstrateEvent projection (a sibling of optimize/events.ts, never shared).
+export {
+  fixIssue, adoptSubstrateManifest, commitAdoption, prepareCandidateClosure, foldGradedDelta,
+  hashCandidateTree, countChangedFiles, collectWorkspaceRefs, buildFixerPrompt, readSubstrateManifest,
+  UNPROVEN_BY_RUN,
+} from './substrate/fix.js';
+export type {
+  FixIssueOpts, FixIssueResult, CandidateClosure, FoldGradedOpts, FoldGradedResult,
+  CommitAdoptionResult, CommitIssueRef, SubstrateManifest, SubstrateManifestRecord,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult,
+} from './substrate/fix.js';
+export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
+export type { SubstrateEvent, SubstrateEventSink } from './substrate/events.js';
+
+// The SUBSTRATE SOFT-JUDGE stage (docs/specs/optimize-substrate-plan.md §M4) — spawns ONE judge agent turn
+// over a run's measure report + criteria/gold/memory + the existing ledger, then mechanically post-processes
+// the agent's issue DRAFTS into identity-stamped Issue files and stamps the triaged marker. The `optimize
+// triage` CLI (M5) runs runSubstrateMeasure FIRST, then this — hard-feeds-soft is that verb's contract.
+export { runSubstrateJudge } from './substrate/judge.js';
+export type { SubstrateJudgeOpts, SubstrateJudgeResult } from './substrate/judge.js';

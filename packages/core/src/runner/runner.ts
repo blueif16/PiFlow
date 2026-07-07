@@ -73,6 +73,16 @@ export interface RunOptions {
   name?: string;
   /** The originating prompt id (if any) recorded into `run.json`'s `promptId` — run metadata, not the id. */
   promptId?: string;
+  /**
+   * (M1 — child runs) The PARENT run's id, recorded into `run.json`'s `parent` — set ONLY by
+   * `spawnChildRun` (optimize/substrate's replay-from-node-start). Absent on a normal top-level run.
+   */
+  parent?: string;
+  /**
+   * (M1 — child runs) WHO/WHY spawned this run, recorded into `run.json`'s `spawnedBy` — set ONLY by
+   * `spawnChildRun`, alongside `parent`. Absent on a normal top-level run.
+   */
+  spawnedBy?: { by: string; issue?: string; issueId?: string };
   /** Host-side run dir — the filesystem-as-contract namespace across sandboxes. Default `out/<run>`. */
   outDir?: string;
   /** Base checkout root for a run-scoped provider (worktree-path source / prompt-rewrite anchor). Default cwd. */
@@ -461,6 +471,9 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
       name: opts.name ?? run,
       // The originating prompt id, when one was supplied — run METADATA, traceable but NOT the run id.
       ...(opts.promptId ? { promptId: opts.promptId } : {}),
+      // (M1 — child runs) Lineage — set ONLY by spawnChildRun, never a normal top-level run.
+      ...(opts.parent ? { parent: opts.parent } : {}),
+      ...(opts.spawnedBy ? { spawnedBy: opts.spawnedBy } : {}),
       source: wf.meta.name,
       profile: opts.profile ?? null,
       provider: opts.providerName,
