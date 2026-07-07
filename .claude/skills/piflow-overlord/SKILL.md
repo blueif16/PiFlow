@@ -50,6 +50,11 @@ Two entry points, by what you're taking the seat over:
   <id>` for both phases in one call (the default full loop). Once a manifest gates ACCEPT, land it yourself
   with `piflowctl optimize adopt --manifest <path>` — a separate, explicit step, never a side effect of `fix`.
   `--node` also takes a dotted `<run>.<id>` ref to pin one run.
+- **Before the loop — is the RUNWAY ready?** (phase 0, do this FIRST). The loop is only as good as the
+  MEASURES it optimizes against, so before starting triage confirm each node's hard measures (deterministic
+  gates — the floor) + soft measures (the criteria/judge — quality above the floor) EXIST, are wired into
+  triage/judge, and actually FIRE (a silently-skipped gate is false-green — its loop optimizes noise).
+  Runway maturity bounds optimization quality. Full pre-flight: **`references/measurement-runway.md`**.
 - **Optimizing MORE THAN ONE node?** Order matters — default UPSTREAM-FIRST: a node's quality is bounded by its
   INPUT, so optimize the source node first and propagate each adopted fix DOWN (`run --from <k> --until <k+1>`
   re-materializes the next node's input from the improved upstream), parallel only under a time crunch. The full
