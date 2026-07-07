@@ -194,6 +194,78 @@ export async function loadPreview(run: string, overrides: Record<string, string>
   return (await res.json()) as RunView;
 }
 
+/** One node's identity + placement as the AUTHORED template declares it — no telemetry (a template never
+ *  ran). Mirrors core's `TemplateViewNode` (observe/runView.ts). */
+export interface TemplateViewNode {
+  id: string;
+  label: string;
+  phase: string | null;
+  agentType?: string;
+  model?: string | null;
+  provider?: string | null;
+  stageIndex?: number;
+  lane?: number;
+}
+
+/** The bare template's shape — the same `{stages, edges, nodes}` CONTOUR as `RunView` (so it widens cleanly
+ *  into one via `templateViewToRunView`), but none of its telemetry. Mirrors core's `TemplateView`. */
+export interface TemplateView {
+  run: string;
+  source?: string;
+  stages: RunViewStage[];
+  edges: RunViewEdge[];
+  nodes: TemplateViewNode[];
+}
+
+/** Fetch the PINNED template view for a workflow — no run required, so it resolves even for a workflow
+ *  with zero runs. `/__piflow/template-view/<productId>/<nsId>` compiles the AUTHORED template as-is (no
+ *  fusion expansion — that's the separate interactive `loadPreview`). */
+export async function loadTemplateView(productId: string, nsId: string): Promise<TemplateView> {
+  const res = await apiFetch(`/__piflow/template-view/${encodeURIComponent(productId)}/${encodeURIComponent(nsId)}`);
+  if (!res.ok) throw new Error(`Failed to load template view for "${productId}/${nsId}": ${res.status} ${res.statusText}`);
+  return (await res.json()) as TemplateView;
+}
+
+/** Widen a bare `TemplateView` into the full `RunView` contract so it renders through the EXACT SAME
+ *  `toFlowGraph` path as a real run — the ONE place defaults get filled in for rendering (mirrors
+ *  `liveModelToRunView`'s role for the SSE path); the core type itself stays honest. Every node renders
+ *  `pending` (⇒ the idle skin); `done: true` since a template never changes without a fresh reload — no
+ *  point re-polling it every 3s like a running run. */
+export function templateViewToRunView(tv: TemplateView): RunView {
+  return {
+    run: tv.run,
+    source: tv.source,
+    done: true,
+    ok: null,
+    totals: { nodes: tv.nodes.length, ok: 0, failed: 0 },
+    stages: tv.stages,
+    edges: tv.edges,
+    nodes: tv.nodes.map((n) => ({
+      id: n.id,
+      label: n.label,
+      phase: n.phase,
+      ...(n.agentType ? { agentType: n.agentType } : {}),
+      status: "pending",
+      model: n.model ?? null,
+      provider: n.provider ?? null,
+      toolCalls: 0,
+      toolBreakdown: {},
+      timeline: [],
+      reads: [],
+      scopes: [],
+      writes: [],
+      artifacts: [],
+      bash: [],
+      retries: 0,
+      stopReason: null,
+      truncated: false,
+      thinkingChars: 0,
+      ...(n.stageIndex != null ? { stageIndex: n.stageIndex } : {}),
+      ...(n.lane != null ? { lane: n.lane } : {}),
+    })),
+  };
+}
+
 /** BAKE the current fusion overrides into THIS run (POST /__piflow/save-run) — rewrites the run's
  *  `.pi/workflow.json` + `run.json` to the edited structure (NOT the template). Returns ok/error. */
 export async function saveRunFusion(run: string, overrides: Record<string, string>): Promise<{ ok: boolean; error?: string }> {

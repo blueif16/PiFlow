@@ -567,6 +567,40 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
   return { view, audit };
 }
 
+/** Placement: stage column (1-based, gap-free) + the node's lane within its parallel stage — the SAME
+ *  coordinates `toFlowGraph` lays out by. Shared by every reader that projects a compiled `Workflow`
+ *  directly (no run on disk) — `previewView` and `buildTemplateView` both stamp from this ONE placement. */
+function placeStages(wf: Workflow): { stages: RunViewStage[]; place: Map<string, { stageIndex: number; lane: number }> } {
+  const place = new Map<string, { stageIndex: number; lane: number }>();
+  const stages: RunViewStage[] = wf.stages
+    .filter((st) => st.nodeIds.length > 0)
+    .map((st, i) => {
+      const index = i + 1;
+      st.nodeIds.forEach((id, lane) => place.set(id, { stageIndex: index, lane }));
+      return { index, phase: st.phase ?? '—', parallel: !!st.parallel, nodeIds: [...st.nodeIds] };
+    });
+  return { stages, place };
+}
+
+/** One RunViewEdge per produced file (the GUI collapses same-pair edges); self-edges dropped, like
+ *  buildRunView. Shared by `previewView` and `buildTemplateView` (both collapse a compiled `Workflow`'s
+ *  edges the same way; only `buildRunView`'s run-local `resolveStructure` ladder is a different concern). */
+function collapseWorkflowEdges(wf: Workflow): RunViewEdge[] {
+  const edges: RunViewEdge[] = [];
+  const seen = new Set<string>();
+  for (const e of wf.edges) {
+    if (e.from === e.to) continue;
+    const files = e.files && e.files.length ? e.files : [''];
+    for (const f of files) {
+      const key = `${e.from}|${e.to}|${f}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({ from: e.from, to: e.to, path: f });
+    }
+  }
+  return edges;
+}
+
 /** Synthetic-view options: the run id/provider/model to STAMP on the preview (defaults to the wf name). */
 export interface PreviewViewOpts { run?: string; provider?: string; model?: string | null }
 
@@ -580,30 +614,8 @@ export interface PreviewViewOpts { run?: string; provider?: string; model?: stri
  * alias so a tier-routed sibling still labels (the runner resolves tier→model later).
  */
 export function previewView(wf: Workflow, opts: PreviewViewOpts = {}): RunView {
-  // Placement: stage column (1-based, gap-free) + the node's lane within its parallel stage — the SAME
-  // coordinates `toFlowGraph` lays out by, so the preview positions exactly as a real run-view.
-  const place = new Map<string, { stageIndex: number; lane: number }>();
-  const stages: RunViewStage[] = wf.stages
-    .filter((st) => st.nodeIds.length > 0)
-    .map((st, i) => {
-      const index = i + 1;
-      st.nodeIds.forEach((id, lane) => place.set(id, { stageIndex: index, lane }));
-      return { index, phase: st.phase ?? '—', parallel: !!st.parallel, nodeIds: [...st.nodeIds] };
-    });
-
-  // One RunViewEdge per produced file (the GUI collapses same-pair edges); self-edges dropped, like buildRunView.
-  const edges: RunViewEdge[] = [];
-  const seen = new Set<string>();
-  for (const e of wf.edges) {
-    if (e.from === e.to) continue;
-    const files = e.files && e.files.length ? e.files : [''];
-    for (const f of files) {
-      const key = `${e.from}|${e.to}|${f}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      edges.push({ from: e.from, to: e.to, path: f });
-    }
-  }
+  const { stages, place } = placeStages(wf);
+  const edges = collapseWorkflowEdges(wf);
 
   const nodes: RunViewNode[] = Object.values(wf.nodes).map((n) => {
     const p = place.get(n.id);
@@ -652,4 +664,55 @@ export function previewView(wf: Workflow, opts: PreviewViewOpts = {}): RunView {
     edges,
     nodes,
   };
+}
+
+/** One node's identity + placement as the AUTHORED template declares it — nothing else. Deliberately NOT a
+ *  `RunViewNode`: a template never ran, so there is no telemetry to pad with zeros. */
+export interface TemplateViewNode {
+  id: string;
+  label: string;
+  phase: string | null;
+  agentType?: string;
+  model?: string | null;
+  provider?: string | null;
+  stageIndex?: number;
+  lane?: number;
+}
+
+/** The bare template's shape — a subset of `RunView`'s CONTOUR (same `{stages, edges, nodes}` contract, so
+ *  a client-side adapter can widen it into a `RunView` for reuse of the one render path) but not its
+ *  telemetry: only what the template itself declares. */
+export interface TemplateView {
+  run: string;
+  source?: string;
+  stages: RunViewStage[];
+  edges: RunViewEdge[];
+  nodes: TemplateViewNode[];
+}
+
+/**
+ * Project a COMPILED `Workflow` into its bare template shape — "the canonical workflow, no run needed" view
+ * (docs the `gui` slice's pinned-template row). Shares `placeStages`/`collapseWorkflowEdges` with
+ * `previewView` (same compiled-`Workflow`-in projection), but carries NONE of `previewView`'s zeroed
+ * telemetry fields — those exist so the fusion-preview editor can render/save through the full `RunView`
+ * contract; a pinned template has no such need, so this stays a genuinely lean subset. `buildRunView`
+ * (a real run's telemetry) is a separate, unrelated reader — it resolves structure from run-local
+ * `.pi/workflow.json` via `resolveStructure`, not from an in-memory compiled `Workflow`.
+ */
+export function buildTemplateView(wf: Workflow, opts: { run?: string } = {}): TemplateView {
+  const { stages, place } = placeStages(wf);
+  const edges = collapseWorkflowEdges(wf);
+  const nodes: TemplateViewNode[] = Object.values(wf.nodes).map((n) => {
+    const p = place.get(n.id);
+    return {
+      id: n.id,
+      label: n.label ?? n.id,
+      phase: n.phase ?? null,
+      ...(n.agentType ? { agentType: n.agentType } : {}),
+      model: n.model ?? n.tier ?? null,
+      provider: n.provider ?? null,
+      ...(p ? { stageIndex: p.stageIndex, lane: p.lane } : {}),
+    };
+  });
+  return { run: opts.run ?? wf.meta.name, source: wf.meta.name, stages, edges, nodes };
 }
