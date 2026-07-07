@@ -24,7 +24,8 @@ import { FileView, type FileTarget } from "./FileContent";
 import { CacheDonut } from "./CacheDonut";
 import { NodeHooks } from "./NodeGates";
 import { useSkill } from "./SkillContext";
-import { useIssues } from "./IssuesContext";
+import { IssueCountCluster, IssueRow, IssueContent } from "./IssueBits";
+import { loadNodeIssues, sortIssues, issueCounts, type IssueRecord } from "../data/nodeIssues";
 import { expandTransition, easing } from "../motion/transitions";
 import type { FlowNodeData } from "./WorkflowNode";
 import { formatMs, formatBytes, formatTokens, type RunViewNode, type ScopeKind, type Tone } from "../data/runView";
@@ -93,9 +94,11 @@ export interface NodeHudProps {
   onClose: () => void;
   reduce: boolean;
   dialogRef: Ref<HTMLDivElement>;
+  /** when the run-level issues card jumps here, the issue to open in issues-mode (node id + issue id). */
+  focusIssue?: { node: string; issueId: string } | null;
 }
 
-export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudProps) {
+export function NodeHud({ id, data, run, onClose, reduce, dialogRef, focusIssue }: NodeHudProps) {
   const rv = data.rv;
   const status = data.status ?? "idle";
   // the single CENTER state: a hovered region (sticky), a clicked file, or null (Overview)
@@ -103,6 +106,28 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
   const pin = (region: RegionKey) => setView({ kind: "region", region });
   const openFile = (f: FileTarget) => setView({ kind: "file", file: { path: f.path, displayPath: f.displayPath, preview: f.preview } });
   const reset = () => setView(null);
+
+  // (M8) issues-mode: the identity count-cluster toggles the HUD into an in-place issue browser — the LEFT
+  // column becomes this node's issue list, the CENTER renders the selected issue's content. Node-TYPE-scoped
+  // (the ledger is run-agnostic); this component is remounted per node (key=id) so the state starts fresh.
+  const focusHere = focusIssue?.node === id;
+  const [issues, setIssues] = useState<IssueRecord[] | null>(null);
+  const [issuesMode, setIssuesMode] = useState<boolean>(!!focusHere);
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(focusHere ? focusIssue!.issueId : null);
+  useEffect(() => {
+    let alive = true;
+    loadNodeIssues(run, id).then((r) => { if (alive) setIssues(r); }).catch(() => { if (alive) setIssues([]); });
+    return () => { alive = false; };
+  }, [run, id]);
+  // a run-level jump for the SAME already-open node (no remount) still opens issues-mode on that issue.
+  useEffect(() => {
+    if (focusHere) { setIssuesMode(true); setSelectedIssueId(focusIssue!.issueId); }
+  }, [focusHere, focusIssue]);
+  const sortedIssues = issues ? sortIssues(issues) : [];
+  const counts = issueCounts(issues ?? []);
+  const hasIssues = counts.open + counts.closed > 0;
+  const selectedIssue = sortedIssues.find((r) => r.issue.id === selectedIssueId) ?? sortedIssues[0] ?? null;
+  const enterIssues = () => { setIssuesMode(true); setSelectedIssueId((cur) => cur ?? sortedIssues[0]?.issue.id ?? null); };
 
   // apply the ?file=<idx> deep-link once (rv-dependent, so it can't be in the module-level initialView).
   useEffect(() => {
@@ -163,7 +188,12 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
       onClick={(e) => { if (e.target === e.currentTarget) reset(); }}
     >
       {/* ── TOP-LEFT: identity (morph target). TOP-RIGHT corner is left free for the floating MenuBar. ── */}
-      <Identity id={id} data={data} reduce={reduce} onClose={onClose} status={status} />
+      <Identity
+        id={id} data={data} reduce={reduce} onClose={onClose} status={status}
+        counts={counts}
+        issuesActive={issuesMode}
+        onToggleIssues={hasIssues ? () => (issuesMode ? setIssuesMode(false) : enterIssues()) : undefined}
+      />
 
       {/* ── TOP-CENTER: model/provider · tool-call telemetry ── */}
       <div className="ds-hud__meta">
@@ -192,31 +222,54 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
         </Region>
       </div>
 
-      {/* ── LEFT: input SOURCES (no wrapper) — click any file to read it in the CENTER ── */}
+      {/* ── LEFT: input SOURCES — OR, in issues-mode, this node's issue list (replaces the files). ── */}
       <div className="ds-hud__left" style={{ gridArea: "left" }}>
-        {sources.length === 0 && <div className="ds-hud-empty">no reads recorded</div>}
-        {sources.map((g) => (
-          <div key={g.kind} className="ds-source" data-scope={g.kind}>
-            <div className="ds-source__head">
-              <ScopeGlyph kind={g.kind} />
-              <span>{g.label}</span>
-              <span className="ds-source__count">{g.items.length}</span>
+        {issuesMode ? (
+          <div className="ds-hud-issues">
+            <div className="ds-hud-issues__head">
+              <span className="ds-hud-issues__title">Issues · {sortedIssues.length}</span>
+              <IssueCountCluster open={counts.open} closed={counts.closed} compact />
             </div>
-            <div className="ds-source__files">
-              {g.items.map(({ r }) => (
-                <button
-                  key={r.path}
-                  type="button"
-                  className={`ds-filebtn${openPath === r.path ? " is-sel" : ""}`}
-                  onClick={() => openFile(r)}
-                  title={r.path}
-                >
-                  {fileName(r.displayPath)}
-                </button>
+            {sortedIssues.length === 0 && <div className="ds-hud-empty">no issues recorded</div>}
+            <div className="ds-hud-issues__list">
+              {sortedIssues.map((rec) => (
+                <IssueRow
+                  key={rec.issue.id}
+                  record={rec}
+                  activeRun={run}
+                  selected={selectedIssue?.issue.id === rec.issue.id}
+                  onClick={() => setSelectedIssueId(rec.issue.id)}
+                />
               ))}
             </div>
           </div>
-        ))}
+        ) : (
+          <>
+            {sources.length === 0 && <div className="ds-hud-empty">no reads recorded</div>}
+            {sources.map((g) => (
+              <div key={g.kind} className="ds-source" data-scope={g.kind}>
+                <div className="ds-source__head">
+                  <ScopeGlyph kind={g.kind} />
+                  <span>{g.label}</span>
+                  <span className="ds-source__count">{g.items.length}</span>
+                </div>
+                <div className="ds-source__files">
+                  {g.items.map(({ r }) => (
+                    <button
+                      key={r.path}
+                      type="button"
+                      className={`ds-filebtn${openPath === r.path ? " is-sel" : ""}`}
+                      onClick={() => openFile(r)}
+                      title={r.path}
+                    >
+                      {fileName(r.displayPath)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* ── CENTER: one in-place surface — Overview at rest, REPLACED by a region detail (hover,
@@ -226,16 +279,28 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
         style={{ gridArea: "mid" }}
         onClick={(e) => { if (e.target === e.currentTarget) reset(); }}
       >
-        {view === null && <Overview rv={rv} data={data} status={status} expected={expected} elapsedMs={elapsedMs} onPinTools={() => pin("tools")} />}
-        {pinnedRegion && (
-          <CenterPanel key={`r-${pinnedRegion}`} title={DETAIL_TITLE[pinnedRegion]} onBack={reset} reduce={reduce}>
-            <Detail region={pinnedRegion} rv={rv} expected={expected} elapsedMs={elapsedMs} pct={pct} onOpenFile={openFile} />
-          </CenterPanel>
-        )}
-        {view?.kind === "file" && (
-          <CenterPanel key={`f-${view.file.path}`} title={view.file.displayPath} onBack={reset} reduce={reduce} wide>
-            <FileView run={run} file={view.file} />
-          </CenterPanel>
+        {issuesMode ? (
+          selectedIssue ? (
+            <CenterPanel key={`issue-${selectedIssue.issue.id}`} title={selectedIssue.issue.title} onBack={() => setIssuesMode(false)} reduce={reduce} wide>
+              <IssueContent record={selectedIssue} />
+            </CenterPanel>
+          ) : (
+            <div className="ds-hud-empty">No issues recorded for this node.</div>
+          )
+        ) : (
+          <>
+            {view === null && <Overview rv={rv} data={data} status={status} expected={expected} elapsedMs={elapsedMs} onPinTools={() => pin("tools")} />}
+            {pinnedRegion && (
+              <CenterPanel key={`r-${pinnedRegion}`} title={DETAIL_TITLE[pinnedRegion]} onBack={reset} reduce={reduce}>
+                <Detail region={pinnedRegion} rv={rv} expected={expected} elapsedMs={elapsedMs} pct={pct} onOpenFile={openFile} />
+              </CenterPanel>
+            )}
+            {view?.kind === "file" && (
+              <CenterPanel key={`f-${view.file.path}`} title={view.file.displayPath} onBack={reset} reduce={reduce} wide>
+                <FileView run={run} file={view.file} />
+              </CenterPanel>
+            )}
+          </>
         )}
       </div>
 
@@ -286,8 +351,10 @@ export function NodeHud({ id, data, run, onClose, reduce, dialogRef }: NodeHudPr
 }
 
 /* ── the identity card (morph target), now pinned TOP-LEFT — compact chrome ── */
-function Identity({ id, data, reduce, onClose, status }: { id: string; data: FlowNodeData; reduce: boolean; onClose: () => void; status: FlowNodeData["status"] }) {
-  const { openIssues } = useIssues();
+function Identity({ id, data, reduce, onClose, status, counts, issuesActive, onToggleIssues }: {
+  id: string; data: FlowNodeData; reduce: boolean; onClose: () => void; status: FlowNodeData["status"];
+  counts?: { open: number; closed: number }; issuesActive?: boolean; onToggleIssues?: () => void;
+}) {
   return (
     <motion.div
       layoutId={`node-${id}`}
@@ -302,10 +369,20 @@ function Identity({ id, data, reduce, onClose, status }: { id: string; data: Flo
             <h2 className="ds-hud__title">{data.title}</h2>
           </div>
           <StatusPill status={status ?? "idle"} />
-          {/* (M8) node-TYPE issue ledger — opens the right-dock IssuesPanel via IssuesContext. */}
-          <Button size="sm" variant="ghost" aria-label="View issue ledger" title="Issue ledger for this node type" onClick={() => openIssues(id)}>
-            Issues
-          </Button>
+          {/* (M8) node-TYPE issue counts — click to toggle the in-place issue browser (issues-mode). Only
+              shown when the node has issues; the ledger is run-agnostic (current status of all issues). */}
+          {onToggleIssues && counts && (
+            <button
+              type="button"
+              className={`ds-issue-countbtn${issuesActive ? " is-active" : ""}`}
+              aria-pressed={issuesActive}
+              aria-label={`Issues: ${counts.open} open, ${counts.closed} closed — toggle browser`}
+              title="Issues for this node — open the in-place browser"
+              onClick={onToggleIssues}
+            >
+              <IssueCountCluster open={counts.open} closed={counts.closed} compact />
+            </button>
+          )}
           <Button iconOnly size="sm" variant="ghost" aria-label="Close" onClick={onClose}>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
               <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />

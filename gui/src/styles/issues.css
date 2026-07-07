@@ -79,3 +79,12 @@ button.ds-issue-row:hover { background: var(--ds-bg-hover); }
 .ds-issue-attempt__reg { color: var(--ds-warning-fg); }
 
 .ds-issue-content__body { border-top: 1px solid var(--ds-border-hairline); padding-top: 10px; }
+
+/* ── in-HUD issues list (NodeHud issues-mode: LEFT column replaces the input files) ── */
+.ds-hud-issues { display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.ds-hud-issues__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 2px 5px; border-bottom: 1px solid var(--ds-border-hairline);
+}
+.ds-hud-issues__title { font-size: var(--ds-text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--ds-text-tertiary); }
+.ds-hud-issues__list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
