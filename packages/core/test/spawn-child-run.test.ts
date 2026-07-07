@@ -7,6 +7,7 @@ import { runFromTemplate } from '../src/runner/index.js';
 import { childRunName } from '../src/names/index.js';
 import type { Workflow, NodeSpec } from '../src/types.js';
 import { spawnChildRun, resolveChildWindow } from '../src/optimize/substrate/child-run.js';
+import { piSessionsDir } from '../src/runner/layout.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.resolve(HERE, 'fixtures', 'template-child-run');
@@ -88,7 +89,9 @@ describe('spawnChildRun — replay-from-node-start (M1.4)', () => {
     expect(await fs.readFile(path.join(parentDir, 'final.txt'), 'utf8')).toBe('publish');
 
     // Simulate a prior LOCAL run's warm sessions (spawnChildRun must clear ONLY the target node's).
-    const sessDir = path.join(parentDir, '.pi-sessions');
+    // Sessions live in the run's SELF-CONTAINED `.pi/sessions` dir (layout.ts:piSessionsDir), which the
+    // parent-bundle carries into the child.
+    const sessDir = piSessionsDir(parentDir);
     await fs.mkdir(sessDir, { recursive: true });
     await fs.writeFile(path.join(sessDir, '20260706120000_publish.jsonl'), '{"type":"session"}\n');
     await fs.writeFile(path.join(sessDir, '20260706120000_draft.jsonl'), '{"type":"session"}\n');
@@ -136,7 +139,7 @@ describe('spawnChildRun — replay-from-node-start (M1.4)', () => {
     expect(result.status.spawnedBy).toEqual({ by: 'substrate-fix', issue: 'soggy-crust', issueId: 'sha256:abc' });
 
     // (5) the target node's warm session was cleared (cold start); a DIFFERENT node's session survives.
-    const childSessions = await fs.readdir(path.join(childDir, '.pi-sessions')).catch(() => [] as string[]);
+    const childSessions = await fs.readdir(piSessionsDir(childDir)).catch(() => [] as string[]);
     expect(childSessions.some((f) => f.endsWith('_publish.jsonl'))).toBe(false);
     expect(childSessions.some((f) => f.endsWith('_draft.jsonl'))).toBe(true);
   });
