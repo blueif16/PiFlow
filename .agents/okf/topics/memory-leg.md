@@ -258,6 +258,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
 - `84294f9` 2026-07-06 — fix(core): resolveScope resolves to ONE workspace, not recursive down-discovery
 - `91fb8ee` 2026-07-07 — Merge feat/run-baseline-rerun: run --baseline/--stage-only windowed reruns + stageBaselineRun primitive
+- `41063b0` 2026-07-07 — feat(gui): self-register the focus workspace on launch, not just on run
 
 ### Lessons — memory cluster
 
@@ -288,5 +289,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-07 · arc=182 commits · files=15 · lessons=17</sub>
+<sub>derived 2026-07-07 · arc=183 commits · files=15 · lessons=17</sub>
 <!-- okf:auto-end -->

@@ -1,16 +1,21 @@
 ---
 name: okf-slices
 description: >-
-  THE DEFAULT pathway to understand a codebase — any setting, any logic, any lifecycle. Load this FIRST whenever
-  you (or a sub-agent) need to know how something works or where to change it, BEFORE any grep/explore
-  re-derivation; once loaded it contains every command (CLI and standalone) — no external crib needed. TRIGGER on
-  any understanding intent: (FIND) "understand <area>", "how does <subsystem> work", "where do I change X",
-  "which files own Y", explaining a config/setting/flow, or an optimizer/fixer about to edit a subsystem;
-  (MAINTAIN) when/how to update slices, blast scope, staleness, the drift gate; (SETUP) a repo has NO
-  `.agents/okf/` yet (FIND errors "not set up") or a stale/older engine. Works on ANY repo — SETUP (MODE S)
-  seeds the substrate from the engine this skill carries under `assets/`, needing nothing but `node`. Slices are
-  OPTIMIZER-FACING reference, NEVER injected into a worker node's runtime prompt — this skill is how the
-  out-of-band fixer reads them on demand.
+  THE DEFAULT pathway to understand this codebase — any setting, any logic, any lifecycle, at any level, INCLUDING
+  how much of the codebase is mapped/covered in the first place. Load this FIRST whenever you (or a sub-agent) are
+  about to explain, investigate, or answer any question about how a part of this system works — BEFORE reaching
+  for `ls`/`grep`/`find`, or recalling a CLI invocation from memory instead of loading the skill. Running the
+  right command without loading this skill first is still the ad-hoc re-derivation this skill exists to prevent.
+  If a question feels like "a quick lookup I can just answer" rather than "understanding the system," that
+  feeling is the cue to invoke this skill, not a reason to skip it. TRIGGER on any understanding intent, at any
+  granularity: "understand <area>", "how does <subsystem> work", "where do I change X", "which files own Y", a
+  question about the state/coverage/completeness of the codebase map itself, explaining a config/setting/flow, or
+  an optimizer/fixer about to edit a subsystem; (MAINTAIN) when/how to update the map, blast scope, staleness, the
+  drift gate; (SETUP) a repo has NO `.agents/okf/` yet (FIND errors "not set up") or a stale/older engine. Once
+  loaded it contains every command (CLI and standalone) — no external crib needed. Works on ANY repo — SETUP
+  (MODE S) seeds the substrate from the engine this skill carries under `assets/`, needing nothing but `node`.
+  Slices are OPTIMIZER-FACING reference, NEVER injected into a worker node's runtime prompt — this skill is how
+  the out-of-band fixer reads them on demand.
 ---
 
 # OKF slices — find the right one, keep them honest

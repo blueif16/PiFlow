@@ -17,6 +17,7 @@ import { runJsonFile, nodeIoFile } from '../runner/layout.js';
 import { artifactState } from '../runner/status.js';
 import type { NodeStatus, NodeStatusRecord, RunStatus } from '../runner/status.js';
 import { readMarker, readCheckpointJournal, checkpointViewFrom } from '../runner/checkpoint.js';
+import { isProcessAlive } from '../runner/liveness.js';
 import type { NodeIo } from '../types.js';
 import { resolveStructure } from './structure.js';
 import { makeDisplayPath } from './runView.js';
@@ -58,15 +59,35 @@ function declaredArtifacts(rec: NodeStatusRecord, io: NodeIo | null): string[] {
  * (G5) A node with a PENDING checkpoint marker on disk reads `awaiting-input` — verified-not-trusted in
  * spirit: the run-view shows it because the marker EXISTS on disk, not because a record claims it. A
  * resolved/absent marker doesn't change the derivation.
+ *
+ * `orphaned` (the RUN's controller process is confirmed dead, see `isRunOrphaned`) downgrades a `running`
+ * report to `error` — it will never finish. Applied AFTER the checkpoint check: a node genuinely parked
+ * at a human checkpoint stays `awaiting-input` even if the controller died (it was waiting, not executing).
  */
-export function deriveStatus(reported: NodeStatus, missing: string[], checkpoint?: CheckpointView | null): NodeStatus {
+export function deriveStatus(reported: NodeStatus, missing: string[], checkpoint?: CheckpointView | null, orphaned?: boolean): NodeStatus {
   if (checkpoint && checkpoint.status === 'pending') return 'awaiting-input';
+  if (orphaned && reported === 'running') return 'error';
   if (reported === 'error') return 'error';
   if (reported === 'pending' || reported === 'running' || reported === 'reused' || reported === 'dry') {
     return reported;
   }
   if (missing.length) return 'blocked';
   return reported;
+}
+
+/**
+ * A run is ORPHANED when it self-reports still running (`!done`) but the process that would ever finish
+ * it — `controllerPid`, stamped fresh by `runWorkflow` on every invocation including `--resume`/`--rerun`
+ * (runner.ts) — is confirmed dead. Excludes a `frozen` run (a deliberate P6 migration pause: `done:false`
+ * is intentional there, awaiting a target runner, not abandoned). No `controllerPid` recorded (an older
+ * run, or one that died before its first status write) ⇒ can't verify, so never flagged — it falls back to
+ * the existing staleMs/runningStalled heuristic (discover.ts) instead of a false positive.
+ */
+export function isRunOrphaned(status: Pick<RunStatus, 'done' | 'frozen' | 'controllerPid'>, isAlive: (pid: number) => boolean): boolean {
+  if (status.done || status.frozen) return false;
+  const pid = status.controllerPid;
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 0) return false;
+  return !isAlive(pid);
 }
 
 /**
@@ -77,6 +98,10 @@ export interface ReadRunModelOpts {
   /** the launched product root — makes reads/writes/edge paths under the workspace display WORKSPACE-relative,
    *  matching buildRunView(runDir, { workspaceRoot }). Omit ⇒ only the run root strips (today's behavior). */
   workspaceRoot?: string | null;
+  /** Liveness probe for a run's `controllerPid` (see `isRunOrphaned`). Default the real `isProcessAlive`
+   *  (packages/core/src/runner/liveness.ts, `process.kill(pid,0)`); tests inject a fake so no real
+   *  process is ever touched. */
+  isAlive?: (pid: number) => boolean;
 }
 
 export async function readRunModel(runDir: string, opts: ReadRunModelOpts = {}): Promise<RunModel> {
@@ -117,6 +142,11 @@ export async function readRunModel(runDir: string, opts: ReadRunModelOpts = {}):
   // node's marker so a resolved checkpoint shows `resolved` + `reply`, a pending one drives `awaiting-input`.
   const ckJournal = await readCheckpointJournal(runDir);
 
+  // Verified-not-trusted, one level up from per-node artifacts: a run claiming `!done` whose controller
+  // process is confirmed dead is ORPHANED — computed once, applied to every `running` node below and to
+  // the returned model's done/ok (see isRunOrphaned's doc for the frozen/no-pid exclusions).
+  const orphaned = isRunOrphaned(status, opts.isAlive ?? isProcessAlive);
+
   const nodes: NodeView[] = [];
   for (const rec of Object.values(status.nodes)) {
     const io = ioById[rec.id];
@@ -134,7 +164,7 @@ export async function readRunModel(runDir: string, opts: ReadRunModelOpts = {}):
       ...(rec.agentType ? { agentType: rec.agentType } : {}), // (G6) verbatim passthrough → GUI icon
       phase: io?.phase ?? null,
       reported: rec.status,
-      status: deriveStatus(rec.status, missing, checkpoint),
+      status: deriveStatus(rec.status, missing, checkpoint, orphaned),
       artifactsVerified: states.filter((s) => s.exists).length,
       artifactsTotal: declared.length,
       missing,
@@ -146,8 +176,10 @@ export async function readRunModel(runDir: string, opts: ReadRunModelOpts = {}):
   }
   return {
     run: status.run,
-    done: status.done,
-    ok: status.ok,
+    done: orphaned || status.done,
+    ok: orphaned ? false : status.ok,
+    // The controller-liveness verdict computed above — see isRunOrphaned. false on a normal/frozen run.
+    orphaned,
     // (P6) Surface the parked-for-migration flag so a `context migrate` freeze-wait can detect it uniformly
     // (this local reader AND the SSE snapshot/run-view both carry it). Absent on a normal run ⇒ false.
     frozen: status.frozen ?? false,

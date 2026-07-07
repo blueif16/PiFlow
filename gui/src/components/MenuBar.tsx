@@ -119,6 +119,7 @@ export function MenuBar({ activeRun, viewingTemplate = false, workspaceName, onO
               <span className="ds-menubar__live"> · {active.runningNode}{active.runningTool ? `:${active.runningTool}` : ""}</span>
             )}
             {active.state === "running" && active.runningStalled && <span className="ds-menubar__stalled"> · stalled</span>}
+            {active.state === "failed" && active.orphaned && <span> · killed</span>}
           </span>
         )}
 

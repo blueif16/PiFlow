@@ -35,8 +35,8 @@ change (clock excluded). The GUI renders the enriched `live.model` and computes 
 
 # Anchors
 RAW `.pi` → READ (lean snapshot)
-- `packages/core/src/observe/read.ts:82` — `readRunModel()` — folds run.json + io.json into RunModel (resolveStructure for stages/edges)
-- `packages/core/src/observe/read.ts:62` — `deriveStatus()` — verified-not-trusted status downgrade
+- `packages/core/src/observe/read.ts:107` — `readRunModel()` — folds run.json + io.json into RunModel (resolveStructure for stages/edges)
+- `packages/core/src/observe/read.ts:67` — `deriveStatus()` — verified-not-trusted status downgrade
 DISTILL (rich per-node reducer)
 - `packages/core/src/observe/distill.ts:198` — `createNodeAccumulator()` — the shared events.jsonl reducer (per-node tokens + cost + contextPeak)
 - `packages/core/src/observe/distill.ts:271` — `snapshot()` — the NON-DESTRUCTIVE live twin of `finalize()` (frozen copy, open spans read-only) — what the live fold consumes
@@ -178,6 +178,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `dfa3583` 2026-07-06 — feat(server): issues route serves the run-level aggregate when ?node is omitted
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
 - `59db2f6` 2026-07-06 — Merge remote-tracking branch 'origin/main' into feat/gui-issues-surface
+- `b3e9a0d` 2026-07-07 — feat(gui): pin the canonical template above run history in the switcher
 
 ### Lessons — memory cluster
 
@@ -256,5 +257,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `RunView` (packages/core/src/observe/runView.ts:135) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `RunView` (gui/src/data/runView.ts:153) — 8 callers in `gui/src/data/runView.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=89 commits · files=13 · lessons=65</sub>
+<sub>derived 2026-07-07 · arc=90 commits · files=13 · lessons=65</sub>
 <!-- okf:auto-end -->

@@ -28,6 +28,7 @@ function thread(run: string, over: Partial<IndexThread> = {}): IndexThread {
     runningTool: null,
     staleMs: null,
     runningStalled: false,
+    orphaned: false,
     nodesDone: 0,
     nodesTotal: 0,
     frac: 0,
@@ -235,6 +236,33 @@ describe("indexToTree — workspace-scoped root column (M5)", () => {
     ]);
     const { tree } = indexToTree(ix, "alpha");
     expect(tree[0].children?.[0]?.run).toEqual({ state: "running", ok: null, frac: 3 / 9, done: 3, total: 9 });
+  });
+
+  // A run whose controller process died reads `state:"failed"` (see discover.ts's orphaned override) —
+  // but the row must say WHY, not just "failed" like a genuine reported error, so `typeLabel` distinguishes
+  // it. Fails if `orphaned` is dropped on the floor the way `staleMs`/`runningStalled` used to be.
+  it("labels an orphaned run's leaf 'killed' instead of its raw state", () => {
+    const ix = index([
+      {
+        id: "alpha",
+        name: "alpha",
+        root: "/repos/alpha",
+        namespaces: [
+          {
+            id: "wf",
+            name: "wf",
+            threads: [
+              thread("r-orphaned", { state: "failed", orphaned: true }),
+              thread("r-genuine-fail", { state: "failed", orphaned: false }),
+            ],
+          },
+        ],
+      },
+    ]);
+    const { tree } = indexToTree(ix, "alpha");
+    const byName = new Map(tree[0].children?.map((c) => [c.name, c.typeLabel]));
+    expect(byName.get("r-orphaned")).toBe("killed");
+    expect(byName.get("r-genuine-fail")).toBe("failed");
   });
 
   it("orders leaves by the requested sort mode (name mode reorders what time mode built)", () => {

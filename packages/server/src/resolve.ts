@@ -79,40 +79,32 @@ export const readBodyBuffer = (req: IncomingMessage, cap = 256_000_000): Promise
   });
 
 /** Resolve a run id → its run dir + the owning product's workspace root + the sibling runs of the SAME
- *  workflow (the `historyDirs` baseline for expectedMs / slow-anomaly detection), from the LIVE index (so a
- *  run added since launch resolves). Shared by the stream/run-view/run-digest/file endpoints' lookups. */
+ *  workflow (the `historyDirs` baseline for expectedMs / slow-anomaly detection). Cheap PATH-ONLY directory-
+ *  shape discovery (`@piflow/core/observe`'s `resolveRunHome`) — it never folds a fleet-wide `summarizeRun`/
+ *  `buildRunView` telemetry distillation just to answer "where does this run live". Shared by the stream/
+ *  run-view/run-digest/file endpoints' lookups. */
 export async function resolveRunDir(run: string): Promise<{ runDir: string; workspaceRoot: string | null; historyDirs: string[] } | null> {
-  const lib = findLib("index-snapshot.mjs");
-  if (!lib) return null;
+  const core = findCore("observe/index.js");
+  if (!core) return null;
   try {
-    const { loadScopedRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
-    const ix = await buildSnapshot(loadScopedRegistry());
-    for (const p of ix.products ?? [])
-      for (const ns of p.namespaces ?? []) {
-        const hit = (ns.threads ?? []).find((t: { run?: string; runDir?: string }) => t.run === run && t.runDir);
-        if (hit) {
-          const historyDirs = (ns.threads ?? []).flatMap((t: { runDir?: string }) => (t.runDir ? [t.runDir] : []));
-          return { runDir: hit.runDir, workspaceRoot: p.root ?? null, historyDirs };
-        }
-      }
+    const { loadScopedRegistry, resolveRunHome } = await import(pathToFileURL(core).href);
+    const hit = resolveRunHome(loadScopedRegistry(), run);
+    return hit ? { runDir: hit.runDir, workspaceRoot: hit.workspaceRoot, historyDirs: hit.historyDirs } : null;
   } catch { /* fall through */ }
   return null;
 }
 
 /** Resolve a NAMESPACE's (workflow's) template dir directly by `{productId, nsId}` — no run involved, so it
- *  resolves even for a workflow with ZERO runs (the pinned-template surface's whole reason to exist). Shared
- *  by the `/__piflow/template-view` endpoint; mirrors `resolveRunDir`'s lookup shape but keys off the
- *  namespace's own `templatePath` (already carried on every snapshot namespace) rather than a run thread. */
+ *  resolves even for a workflow with ZERO runs (the pinned-template surface's whole reason to exist). Cheap
+ *  PATH-ONLY lookup (`@piflow/core/observe`'s `resolveNamespaceTemplate`) via `discoverNamespaces` alone, no
+ *  per-run fold. Shared by the `/__piflow/template-view` endpoint. */
 export async function resolveTemplateDir(productId: string, nsId: string): Promise<{ templateDir: string } | null> {
-  const lib = findLib("index-snapshot.mjs");
-  if (!lib) return null;
+  const core = findCore("observe/index.js");
+  if (!core) return null;
   try {
-    const { loadScopedRegistry, buildSnapshot } = await import(pathToFileURL(lib).href);
-    const ix = await buildSnapshot(loadScopedRegistry());
-    const product = (ix.products ?? []).find((p: { id?: string }) => p.id === productId);
-    const ns = (product?.namespaces ?? []).find((n: { id?: string }) => n.id === nsId);
-    if (!ns?.templatePath) return null;
-    return { templateDir: dirname(ns.templatePath as string) };
+    const { loadScopedRegistry, resolveNamespaceTemplate } = await import(pathToFileURL(core).href);
+    const hit = resolveNamespaceTemplate(loadScopedRegistry(), productId, nsId);
+    return hit ? { templateDir: hit.templateDir } : null;
   } catch { /* fall through */ }
   return null;
 }

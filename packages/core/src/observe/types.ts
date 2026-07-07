@@ -149,6 +149,12 @@ export interface RunModel {
    *  Surfaced so a `context migrate` freeze-wait detects it identically local (readRunModel) and remote
    *  (the SSE snapshot). Absent/false on a normal run. */
   frozen?: boolean;
+  /** The run claims `!done` but its `controllerPid` is CONFIRMED DEAD (verified-not-trusted, one level up
+   *  from per-node artifacts — see `isRunOrphaned`/`deriveStatus` in read.ts). When true, `done`/`ok` above
+   *  are already the OVERRIDDEN terminal values (`true`/`false`), not the raw self-report — a viewer that
+   *  wants to say "killed" instead of a generic failure checks this flag for a label only. Always a real
+   *  boolean (computed fresh on every read, never omitted). */
+  orphaned: boolean;
   /** (M1/M8 — child runs) The PARENT run's id, verbatim off `RunStatus.parent`, present only when this run
    *  was minted by `spawnChildRun` (optimize/substrate). Carried through so a fleet view (`summarizeRun`/
    *  `ThreadRow`) can nest child runs under their parent with ZERO extra I/O — the status is already parsed
