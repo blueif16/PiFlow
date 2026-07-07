@@ -1,0 +1,335 @@
+{
+  "meta": {
+    "name": "template-min",
+    "description": "Minimal valid piflow template fixture — one serial root + a 2-node parallel lane (disjoint owns)."
+  },
+  "nodes": {
+    "w0-classify": {
+      "id": "w0-classify",
+      "label": "w0-classify",
+      "phase": "classify",
+      "prompt": "Classify the request in {{RUN}}/spec/request.json into a physics-first archetype + core loop + scope-cut.\nWrite spec/classification.json. Load and follow the skill.\n\nDRIVER-ARTIFACTS: spec/classification.json\nDRIVER-OWNS: spec/classification.json\nDRIVER-READ-SCOPE: {{RUN}} {{WORKSPACE}}/packages/skills/classify\nDRIVER-CHECKS: W3sia2luZCI6Impzb24tcGFyc2VzIiwicGF0aCI6InNwZWMvY2xhc3NpZmljYXRpb24uanNvbiJ9LHsia2luZCI6ImZpZWxkLXByZXNlbnQiLCJwYXRoIjoic3BlYy9jbGFzc2lmaWNhdGlvbi5qc29uIiwicGFyYW0iOiJhcmNoZXR5cGUiLCJzZXZlcml0eSI6ImZhaWwifV0=\nDRIVER-POLICY: eyJmYWlsIjoiYmxvY2siLCJ3YXJuIjoid2FybiJ9\nDRIVER-OP: W3sid2hlbiI6InByZSIsInJlYWRzIjpbInt7UlVOfX0vc3BlYy9yZXF1ZXN0Lmpzb24iXX0seyJ3aGVuIjoicG9zdCIsInRyYW5zZm9ybSI6eyJraW5kIjoicHJvbW90ZSIsImZyb20iOiJzcGVjL2NsYXNzaWZpY2F0aW9uLmpzb246YXJjaGV0eXBlIiwidG8iOiJhcmNoZXR5cGUiLCJyZWR1Y2VyIjoic2V0In19LHsid2hlbiI6InBvc3QiLCJnYXRlIjp7ImtpbmQiOiJqc29uLXBhcnNlcyIsInBhdGgiOiJzcGVjL2NsYXNzaWZpY2F0aW9uLmpzb24ifSwib25GYWlsdXJlIjoiYmxvY2sifSx7IndoZW4iOiJwb3N0IiwiZ2F0ZSI6eyJraW5kIjoiZmllbGQtcHJlc2VudCIsInBhdGgiOiJzcGVjL2NsYXNzaWZpY2F0aW9uLmpzb24iLCJwYXJhbSI6ImFyY2hldHlwZSJ9LCJvbkZhaWx1cmUiOiJibG9jayJ9XQ==\nDRIVER-RETURN: optional\nDRIVER-INJECT: spec/request.json",
+      "skill": "{{WORKSPACE}}/packages/skills/classify/SKILL.md",
+      "sandbox": {
+        "provider": "inmemory",
+        "workspace": ".",
+        "read": [
+          "{{RUN}}",
+          "{{WORKSPACE}}/packages/skills/classify"
+        ],
+        "write": [
+          "spec/classification.json"
+        ],
+        "output": "out/w0-classify"
+      },
+      "tools": {
+        "allow": [
+          "read",
+          "write",
+          "submit_result"
+        ],
+        "deny": [
+          "bash"
+        ]
+      },
+      "io": {
+        "reads": [
+          "spec/request.json"
+        ],
+        "produces": [
+          "spec/classification.json"
+        ],
+        "externalInputs": [
+          "spec/request.json"
+        ],
+        "dependsOn": [],
+        "artifacts": [
+          {
+            "path": "spec/classification.json"
+          }
+        ],
+        "checks": [
+          {
+            "kind": "json-parses",
+            "path": "spec/classification.json"
+          },
+          {
+            "kind": "field-present",
+            "path": "spec/classification.json",
+            "param": "archetype",
+            "severity": "fail"
+          }
+        ],
+        "policy": {
+          "fail": "block",
+          "warn": "warn"
+        },
+        "returnMode": "optional"
+      },
+      "op": [
+        {
+          "when": "pre",
+          "reads": [
+            "{{RUN}}/spec/request.json"
+          ]
+        },
+        {
+          "when": "post",
+          "transform": {
+            "kind": "promote",
+            "from": "spec/classification.json:archetype",
+            "to": "archetype",
+            "reducer": "set"
+          }
+        },
+        {
+          "when": "post",
+          "gate": {
+            "kind": "json-parses",
+            "path": "spec/classification.json"
+          },
+          "onFailure": "block"
+        },
+        {
+          "when": "post",
+          "gate": {
+            "kind": "field-present",
+            "path": "spec/classification.json",
+            "param": "archetype"
+          },
+          "onFailure": "block"
+        }
+      ]
+    },
+    "w2a-levels": {
+      "id": "w2a-levels",
+      "label": "w2a-levels",
+      "phase": "build",
+      "prompt": "Design level-1 from the seeded skeleton for the {{state.archetype}} archetype.\nWrite src/levels/level-1.json. Load and follow the skill.\n\nDRIVER-ARTIFACTS: src/levels/level-1.json\nDRIVER-OWNS: src/levels/**\nDRIVER-READ-SCOPE: {{RUN}} {{WORKSPACE}}/packages/skills/levels {{WORKSPACE}}/templates/modules/{{state.archetype}}\nDRIVER-SCHEMA: src/levels/level-1.json <= {{WORKSPACE}}/packages/skills/levels/level.schema.json\nDRIVER-CHECKS: W3sia2luZCI6ImV4aXN0cyIsInBhdGgiOiJzcGVjL2xldmVsLXNrZWxldG9uLmpzb24ifSx7ImtpbmQiOiJqc29uLXBhcnNlcyIsInBhdGgiOiJzcmMvbGV2ZWxzL2xldmVsLTEuanNvbiJ9XQ==\nDRIVER-POLICY: eyJmYWlsIjoiYmxvY2sifQ==\nDRIVER-OP: W3sid2hlbiI6InByZSIsIndyaXRlcyI6WyJzcGVjL2xldmVsLXNrZWxldG9uLmpzb24iXSwidHJhbnNmb3JtIjp7ImtpbmQiOiJzZWVkIiwiZnJvbSI6Int7V09SS1NQQUNFfX0vdGVtcGxhdGVzL21vZHVsZXMve3tzdGF0ZS5hcmNoZXR5cGV9fS9sZXZlbC1za2VsZXRvbi5qc29uIn19LHsid2hlbiI6InByZSIsImdhdGUiOnsia2luZCI6ImV4aXN0cyIsInBhdGgiOiJzcGVjL2xldmVsLXNrZWxldG9uLmpzb24ifSwib25GYWlsdXJlIjoiYmxvY2sifSx7IndoZW4iOiJwb3N0IiwiZ2F0ZSI6eyJraW5kIjoianNvbi1wYXJzZXMiLCJwYXRoIjoic3JjL2xldmVscy9sZXZlbC0xLmpzb24ifSwib25GYWlsdXJlIjoiYmxvY2sifV0=\nDRIVER-RETURN: optional",
+      "skill": "{{WORKSPACE}}/packages/skills/levels/SKILL.md",
+      "sandbox": {
+        "provider": "inmemory",
+        "workspace": ".",
+        "read": [
+          "{{RUN}}",
+          "{{WORKSPACE}}/packages/skills/levels",
+          "{{WORKSPACE}}/templates/modules/{{state.archetype}}"
+        ],
+        "write": [
+          "src/levels/**"
+        ],
+        "output": "out/w2a-levels"
+      },
+      "tools": {
+        "allow": [
+          "read",
+          "write",
+          "edit",
+          "submit_result"
+        ],
+        "deny": []
+      },
+      "io": {
+        "reads": [],
+        "produces": [
+          "src/levels/level-1.json",
+          "spec/level-skeleton.json"
+        ],
+        "externalInputs": [],
+        "dependsOn": [
+          "w0-classify"
+        ],
+        "artifacts": [
+          {
+            "path": "src/levels/level-1.json",
+            "schema": "{{WORKSPACE}}/packages/skills/levels/level.schema.json"
+          }
+        ],
+        "checks": [
+          {
+            "kind": "exists",
+            "path": "spec/level-skeleton.json"
+          },
+          {
+            "kind": "json-parses",
+            "path": "src/levels/level-1.json"
+          }
+        ],
+        "policy": {
+          "fail": "block"
+        },
+        "returnMode": "optional"
+      },
+      "op": [
+        {
+          "when": "pre",
+          "writes": [
+            "spec/level-skeleton.json"
+          ],
+          "transform": {
+            "kind": "seed",
+            "from": "{{WORKSPACE}}/templates/modules/{{state.archetype}}/level-skeleton.json"
+          }
+        },
+        {
+          "when": "pre",
+          "gate": {
+            "kind": "exists",
+            "path": "spec/level-skeleton.json"
+          },
+          "onFailure": "block"
+        },
+        {
+          "when": "post",
+          "gate": {
+            "kind": "json-parses",
+            "path": "src/levels/level-1.json"
+          },
+          "onFailure": "block"
+        }
+      ]
+    },
+    "w2b-assets": {
+      "id": "w2b-assets",
+      "label": "w2b-assets",
+      "phase": "build",
+      "prompt": "Generate the asset manifest for the classified archetype.\nWrite public/assets/manifest.json. Load and follow the skill.\n\nDRIVER-ARTIFACTS: public/assets/manifest.json\nDRIVER-OWNS: public/assets/**\nDRIVER-READ-SCOPE: {{RUN}} {{WORKSPACE}}/packages/skills/assets\nDRIVER-CHECKS: W3sia2luZCI6ImNvdW50LWZsb29yIiwicGF0aCI6InB1YmxpYy9hc3NldHMvbWFuaWZlc3QuanNvbiIsInBhcmFtIjp7InBhdGgiOiJzbG90cyIsIm1pbiI6MX19XQ==\nDRIVER-POLICY: eyJmYWlsIjoiYmxvY2siLCJ3YXJuIjoid2FybiJ9\nDRIVER-OP: W3sid2hlbiI6InByZSIsInJlYWRzIjpbInt7UlVOfX0vc3BlYy9jbGFzc2lmaWNhdGlvbi5qc29uIl19LHsid2hlbiI6InBvc3QiLCJ3cml0ZXMiOlsicHVibGljL2Fzc2V0cy9tYW5pZmVzdC5qc29uIl0sInJlYWRzIjpbInNwZWMvY2xhc3NpZmljYXRpb24uanNvbiIsInB1YmxpYy9hc3NldHMiXSwidHJhbnNmb3JtIjp7ImtpbmQiOiJwcm9qZWN0IiwiZnJvbSI6WyJzcGVjL2NsYXNzaWZpY2F0aW9uLmpzb24iLCJwdWJsaWMvYXNzZXRzIl19fSx7IndoZW4iOiJwb3N0IiwiZ2F0ZSI6eyJraW5kIjoiY291bnQtZmxvb3IiLCJwYXRoIjoicHVibGljL2Fzc2V0cy9tYW5pZmVzdC5qc29uIiwicGFyYW0iOnsicGF0aCI6InNsb3RzIiwibWluIjoxfX0sIm9uRmFpbHVyZSI6ImJsb2NrIn1d\nDRIVER-RETURN-SCHEMA: eyJ0eXBlIjoib2JqZWN0IiwicmVxdWlyZWQiOlsiZ2VuZXJhdGVkIl0sInByb3BlcnRpZXMiOnsiZ2VuZXJhdGVkIjp7InR5cGUiOiJpbnRlZ2VyIn19fQ==\nDRIVER-INJECT: spec/classification.json",
+      "skill": "{{WORKSPACE}}/packages/skills/assets/SKILL.md",
+      "sandbox": {
+        "provider": "inmemory",
+        "workspace": ".",
+        "read": [
+          "{{RUN}}",
+          "{{WORKSPACE}}/packages/skills/assets"
+        ],
+        "write": [
+          "public/assets/**"
+        ],
+        "output": "out/w2b-assets"
+      },
+      "tools": {
+        "allow": [
+          "read",
+          "write",
+          "submit_result"
+        ],
+        "deny": []
+      },
+      "io": {
+        "reads": [
+          "spec/classification.json",
+          "public/assets"
+        ],
+        "produces": [
+          "public/assets/manifest.json"
+        ],
+        "externalInputs": [
+          "public/assets"
+        ],
+        "dependsOn": [
+          "w0-classify"
+        ],
+        "artifacts": [
+          {
+            "path": "public/assets/manifest.json"
+          }
+        ],
+        "checks": [
+          {
+            "kind": "count-floor",
+            "path": "public/assets/manifest.json",
+            "param": {
+              "path": "slots",
+              "min": 1
+            }
+          }
+        ],
+        "policy": {
+          "fail": "block",
+          "warn": "warn"
+        },
+        "returnSchema": {
+          "type": "object",
+          "required": [
+            "generated"
+          ],
+          "properties": {
+            "generated": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "op": [
+        {
+          "when": "pre",
+          "reads": [
+            "{{RUN}}/spec/classification.json"
+          ]
+        },
+        {
+          "when": "post",
+          "writes": [
+            "public/assets/manifest.json"
+          ],
+          "reads": [
+            "spec/classification.json",
+            "public/assets"
+          ],
+          "transform": {
+            "kind": "project",
+            "from": [
+              "spec/classification.json",
+              "public/assets"
+            ]
+          }
+        },
+        {
+          "when": "post",
+          "gate": {
+            "kind": "count-floor",
+            "path": "public/assets/manifest.json",
+            "param": {
+              "path": "slots",
+              "min": 1
+            }
+          },
+          "onFailure": "block"
+        }
+      ]
+    }
+  },
+  "stages": [
+    {
+      "index": 1,
+      "phase": null,
+      "parallel": false,
+      "nodeIds": [
+        "w0-classify"
+      ]
+    },
+    {
+      "index": 2,
+      "phase": null,
+      "parallel": true,
+      "nodeIds": [
+        "w2a-levels",
+        "w2b-assets"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "w0-classify",
+      "to": "w2a-levels",
+      "files": []
+    },
+    {
+      "from": "w0-classify",
+      "to": "w2b-assets",
+      "files": [
+        "spec/classification.json"
+      ]
+    }
+  ]
+}
