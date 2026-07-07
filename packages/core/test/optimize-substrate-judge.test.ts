@@ -24,7 +24,7 @@ import {
   DEFAULT_JUDGE_CAP,
 } from '../src/optimize/substrate/judge.js';
 import { computeIssueId, writeIssueFile, parseIssueFile, listIssues, type Issue } from '../src/optimize/substrate/issues.js';
-import type { RunSubstrateAgentResult } from '../src/optimize/substrate/agent.js';
+import type { RunSubstrateAgentOpts, RunSubstrateAgentResult } from '../src/optimize/substrate/agent.js';
 
 const tmpDirs: string[] = [];
 const scratch = async (prefix = 'piflow-judge-'): Promise<string> => {
@@ -344,5 +344,24 @@ describe('runSubstrateJudge — wires prompt→agent→post-process→marker, wi
 
     expect(seenReadScope).toEqual(expect.arrayContaining([runDir, templateDir, workspace]));
     expect(seenOwns).toEqual([issuesDir(templateDir, 'gameplay')]);
+  });
+});
+
+describe('runSubstrateJudge — stages the piflow-triage playbook for the judge spawn', () => {
+  it('passes skill:"piflow-triage" to runAgent so the runner stages the DEFAULT triage playbook (Ring 1)', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch();
+    const workspace = templateDir;
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+
+    let capturedSkill: string | undefined = 'UNSET';
+    const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
+      capturedSkill = o.skill; // undefined before the wiring → RED against 'piflow-triage'
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunSubstrateAgentResult['status'], text: '' };
+    };
+    await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: capturingRunAgent });
+
+    expect(capturedSkill).toBe('piflow-triage');
   });
 });

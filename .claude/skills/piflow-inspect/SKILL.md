@@ -9,8 +9,7 @@ description: >-
   is this node slow / expensive / looping / stalled", "where did the time/tokens go", "what did the model
   actually read / see / miss", "how many calls did it make", "dissect / profile / audit this run", "compare
   two runs of a node", "did this failure happen before", or any intent to open a `.pi/sessions/*.jsonl`,
-  `run.json`, or node log by hand. To RUN a workflow use piflow-start; to FIX what you find use
-  piflow-enhance; to judge/act mid-run use piflow-overlord.
+  `run.json`, or node log by hand. To RUN a workflow use piflow-start; to judge/act mid-run use piflow-overlord.
 ---
 
 # Pi Flow · INSPECT — instruments before parsing
@@ -20,7 +19,7 @@ The `.pi/` run layout is the canonical record, and **piflowctl verbs are the ONL
 it**. Hand-parsing session JSONL, grepping run internals, or writing an ad-hoc script is permitted ONLY
 after the routing table below has no verb for the question — and then the gap itself is a finding (a missing
 verb/flag to file or build), never a script that lives on. Inspection is READ-ONLY: never modify, re-run, or
-resume anything under a run dir just to "see"; observe first, act through piflow-start/enhance after.
+resume anything under a run dir just to "see"; observe first, act through piflow-start after.
 
 Run everything from the product repo. Runs live under `.piflow/<wf>/runs/<id>` (resolve foreign repos via
 `~/.piflow/index.json`). `<rundir>` below = that path; a bare run id also resolves for `trace`.
