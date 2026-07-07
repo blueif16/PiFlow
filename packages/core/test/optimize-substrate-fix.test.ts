@@ -432,11 +432,11 @@ describe('fixIssue — skip-proof path (prove off)', () => {
 });
 
 describe('fixIssue — stages the piflow-fixer playbook for the fixer spawn', () => {
-  it('passes skill:"piflow-fixer" to runAgent so the runner stages the DEFAULT fixer playbook (Ring 1)', async () => {
+  it('passes the EXACT piflow-fixer skill PATH (product-root .claude/skills) to runAgent — a path-like ref the runner uses DIRECTLY, no fragile ring-search from the candidate cwd', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
     let capturedSkill: string | undefined = 'UNSET';
     const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
-      capturedSkill = o.skill; // undefined before the wiring → RED against 'piflow-fixer'
+      capturedSkill = o.skill; // the bare id 'piflow-fixer' before the wiring → RED against the exact path
       await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); // a real edit → normal flow
       return agentResult();
     };
@@ -449,7 +449,74 @@ describe('fixIssue — stages the piflow-fixer playbook for the fixer spawn', ()
       spawnChild: async () => childResult('x', await scratch()),
       measure: async () => measureReport({}),
     });
-    expect(capturedSkill).toBe('piflow-fixer');
+    // A path-like ref (absolute path) → the runner uses it DIRECTLY, no ring-search against the fixer's
+    // candidate cwd. Before the wiring this was the bare id 'piflow-fixer' → searched the candidate → miss.
+    expect(capturedSkill).toBe(join(workspace, '.claude', 'skills', 'piflow-fixer'));
+  });
+});
+
+describe('fixIssue — a TRUE child of the base agent (the ONE shared inherited field surface)', () => {
+  it('forwards the base agent\'s inherited fields — dryRun INCLUDED — to runAgent (never a hand-copied subset)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    let captured: RunSubstrateAgentOpts | undefined;
+    const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
+      captured = o;
+      return agentResult();
+    };
+    await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      dryRun: true, // a BASE field the fixer's old hand-copied forward list silently dropped
+      timeoutMs: 45000,
+      runAgent: capturingRunAgent,
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    // RED before the shared surface: fix.ts's runAgent call enumerated its own subset with no `dryRun`,
+    // so the flag was silently lost between FixIssueOpts and the base agent.
+    expect(captured?.dryRun).toBe(true);
+    expect(captured?.timeoutMs).toBe(45000);
+  });
+});
+
+describe('fixIssue — dry-run (the inherited base-agent preview)', () => {
+  it('returns the composed fixer plan and mutates NOTHING — no issue transition, no candidate copy, no manifest, no events', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    const events: SubstrateEvent[] = [];
+    // NO runAgent injection: the REAL base agent short-circuits on dryRun (pure spec-building, spawns nothing).
+    const res = await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      dryRun: true,
+      onEvent: (e) => events.push(e),
+    });
+
+    const expectedCandidate = join(parentRunDir, 'optimize', 'substrate', 'staging', 'candidates', 'soggy-crust');
+    // the plan IS the composition the fixer WOULD get: the issue rides the prompt, the jail is the candidate
+    // copy path, the skill is the exact product-root playbook path, the sandbox declares `local`.
+    expect(res.dryRun?.prompt).toContain('The compose step burns long thinking spans'); // the issue body = the dispatch
+    expect(res.dryRun?.executor).toBe('claude-code');
+    expect(res.dryRun?.skill).toBe(join(workspace, '.claude', 'skills', 'piflow-fixer'));
+    expect(res.dryRun?.sandbox?.execCwd).toBe(expectedCandidate);
+    expect(res.dryRun?.sandbox?.read).toEqual([expectedCandidate]);
+    expect(res.dryRun?.sandbox?.write).toEqual([expectedCandidate]);
+    expect(res.dryRun?.sandbox?.provider).toBe('local');
+
+    // NOTHING mutated: the issue never left `open` (RED before: dryRun unthreaded → the full mutating flow
+    // transitioned it to `active` and prepared a candidate), the candidate dir was never created, no manifest
+    // was staged, and the event stream stayed silent.
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
+    await expect(fs.access(expectedCandidate)).rejects.toThrow();
+    expect((await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'))).records).toEqual([]);
+    expect(events).toEqual([]);
+    // the mutating-path fields are ABSENT — nothing was decided, gated, or staged.
+    expect(res.decision).toBeUndefined();
+    expect(res.verdict).toBeUndefined();
+    expect(res.manifestPath).toBeUndefined();
+    expect(res.editsApplied).toBe(0);
+    expect(res.childId).toBeNull();
   });
 });
 

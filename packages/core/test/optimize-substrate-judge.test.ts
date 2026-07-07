@@ -347,6 +347,27 @@ describe('runSubstrateJudge — wires prompt→agent→post-process→marker, wi
   });
 });
 
+describe('runSubstrateJudge — a TRUE child of the base agent (the ONE shared inherited field surface)', () => {
+  it('forwards timeoutMs to runAgent (a base field the judge\'s old hand-copied subset silently dropped)', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch();
+    const workspace = templateDir;
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+
+    let captured: RunSubstrateAgentOpts | undefined;
+    const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
+      captured = o;
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunSubstrateAgentResult['status'], text: '' };
+    };
+    await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, timeoutMs: 45000, runAgent: capturingRunAgent });
+
+    // RED before the shared surface: SubstrateJudgeOpts re-declared its own forward subset WITHOUT
+    // timeoutMs, so a judge turn could never be wall-clock capped — the silent-loss bug class.
+    expect(captured?.timeoutMs).toBe(45000);
+  });
+});
+
 describe('runSubstrateJudge — stages the piflow-triage playbook for the judge spawn', () => {
   it('passes skill:"piflow-triage" to runAgent so the runner stages the DEFAULT triage playbook (Ring 1)', async () => {
     const templateDir = await scratch();

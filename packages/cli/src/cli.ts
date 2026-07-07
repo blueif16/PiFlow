@@ -102,6 +102,7 @@ USAGE
   piflowctl optimize fix    --node <id> [--issue <name> | --status open,regressed] [--watch] [--cap N] [--no-prove]
                                             fix the node's issues (severity-desc): candidate copy → fixer → prove
                                             → strict-improvement gate → STAGE a manifest. --watch streams progress.
+                                            --dry-run prints the composed fixer spawn; mutates/spawns NOTHING.
                                             --node also takes a DOTTED <run>.<id> ref, ≡ --node <id> --run <run>.
   piflowctl optimize        --node <id> [--run <id> | --topk K]  the FULL loop = triage THEN fix (the default).
   piflowctl optimize adopt  --manifest <path> [--template <d>] [--backup-dir <d>]  LAND a staged substrate

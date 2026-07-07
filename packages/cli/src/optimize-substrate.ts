@@ -191,6 +191,9 @@ export interface SubstrateFixArgs {
   model?: string;
   tolerance?: number;
   stagingDir?: string;
+  /** `--dry-run`: compose the fixer spawn (prompt + jail + skill + config) and PRINT it — spawn/mutate NOTHING
+   *  (no issue transition, no candidate copy, no manifest). Inherited from the base agent's preview seam. */
+  dryRun?: boolean;
 }
 
 export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
@@ -211,6 +214,7 @@ export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
     else if (k === '--model') out.model = argv[++i];
     else if (k === '--tolerance') out.tolerance = Number(argv[++i]);
     else if (k === '--staging-dir') out.stagingDir = argv[++i];
+    else if (k === '--dry-run') out.dryRun = true;
     // unknown flags/tokens ignored (the full loop feeds this parser triage-only flags too).
   }
   return out;
@@ -363,7 +367,7 @@ export async function runSubstrateTriageCli(argv: string[], deps: SubstrateCliDe
       ...(a.dryRun ? { dryRun: true } : {}),
     });
     if (a.dryRun && r.dryRun) {
-      printJudgeDryRun(runDir, a.node, r.dryRun, print);
+      printSubstrateDryRun(`optimize triage[${path.basename(runDir)}] node=${a.node}`, r.dryRun, print);
       continue;
     }
     const capNote = r.capped.length ? ` (+${r.capped.length} capped)` : '';
@@ -371,25 +375,27 @@ export async function runSubstrateTriageCli(argv: string[], deps: SubstrateCliDe
   }
 }
 
-/** Print the DRY-RUN composition — the base agent's composed spec (`plan`): the resolved config header, then
- *  the exact `prompt` (the full ingested context) the judge agent WOULD receive. Nothing was spawned. */
-function printJudgeDryRun(
-  runDir: string,
-  node: string,
+/** Print a substrate DRY-RUN composition — the base agent's composed spec (`plan`): the resolved config
+ *  header, then the exact `prompt` (the full ingested context) the agent WOULD receive. Nothing was spawned.
+ *  The ONE printer every substrate preview shares (the judge's triage --dry-run AND the fixer's fix --dry-run);
+ *  `header` names the verb/target, the plan shape is the base agent's. */
+function printSubstrateDryRun(
+  header: string,
   plan: {
     executor?: string; skill?: string; tier?: string; model?: string; tools?: unknown; prompt?: string;
-    sandbox?: { read?: string[]; write?: string[]; execCwd?: string };
+    sandbox?: { provider?: string; read?: string[]; write?: string[]; execCwd?: string };
   },
   print: (s: string) => void,
 ): void {
   const sb = plan.sandbox ?? {};
-  print(`optimize triage[${path.basename(runDir)}] node=${node} — DRY RUN (base-agent preview; nothing spawned)`);
+  print(`${header} — DRY RUN (base-agent preview; nothing spawned)`);
   print(`  executor : ${plan.executor ?? '?'}    skill: ${plan.skill ?? '(none)'}    tier: ${plan.tier ?? '(substrate default)'}${plan.model ? `    model: ${plan.model}` : ''}`);
+  print(`  sandbox  : ${sb.provider ?? '(run default)'}`);
   print(`  cwd      : ${sb.execCwd ?? ''}`);
   print(`  readScope: ${(sb.read ?? []).join('  ·  ')}`);
   print(`  owns     : ${(sb.write ?? []).join('  ·  ')}`);
   print(`  tools    : ${JSON.stringify(plan.tools ?? {})}`);
-  print(`  ── ingested composition (the exact prompt the judge would receive) ──`);
+  print(`  ── ingested composition (the exact prompt the agent would receive) ──`);
   print(plan.prompt ?? '(no prompt built)');
 }
 
@@ -485,10 +491,16 @@ export async function runSubstrateFixCli(argv: string[], deps: SubstrateCliDeps 
       ...(a.stagingDir ? { stagingDir: path.resolve(deps.cwd ?? process.cwd(), a.stagingDir) } : {}),
       ...(a.tier ? { tier: a.tier } : {}),
       ...(a.model ? { model: a.model } : {}),
+      ...(a.dryRun ? { dryRun: true } : {}),
     });
+    if (a.dryRun && res.dryRun) {
+      printSubstrateDryRun(`optimize fix[${path.basename(parentRunDir)}] node=${a.node} issue=${rec.issue.name}`, res.dryRun, print);
+      continue;
+    }
     if (res.decision === 'staged') staged++;
     else discarded++;
   }
+  if (a.dryRun) return; // a preview processed/staged/discarded nothing — no tally to print.
   const left = total - records.length;
   const leftNote = left > 0 ? ` (${left} left by --cap ${a.cap})` : '';
   print(`optimize fix: node=${a.node} — ${records.length} issue(s) processed, ${staged} staged, ${discarded} discarded${leftNote}; adopt is a separate step.`);

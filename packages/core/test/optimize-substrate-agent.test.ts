@@ -21,6 +21,9 @@ import type { NodeSpec, ResolveResult } from '../src/types.js';
 import type { CommandContext } from '../src/runner/command.js';
 import type { ModelTiers } from '../src/runner/model-routing.js';
 import { runSubstrateAgent, SUBSTRATE_AGENT_DEFAULT_TIER } from '../src/optimize/substrate/agent.js';
+import { driverFits } from '../src/runner/drivers/driver-fits.js';
+import { builtinDrivers } from '../src/runner/drivers/table.js';
+import { readRunModel } from '../src/observe/read.js';
 
 /** A `buildCommand` stub that (a) records the resolved NodeSpec it was called with and (b) makes the fake
  *  "agent" emit `stdout` verbatim via a real shell `printf` (so the REAL exec path/parsing is exercised). */
@@ -121,6 +124,26 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
     expect(capture.node?.tools).toEqual({ allow: ['bash', 'read'] });
   });
 
+  it('declares sandbox provider "local" so the claude-code driver FITS (kills the spurious inmemory driver-fit warning)', async () => {
+    const capture: { node?: NodeSpec } = {};
+    await runSubstrateAgent({
+      prompt: 'judge this node',
+      cwd: '/repo/root',
+      readScope: ['/run/dir'],
+      owns: ['/tpl/dir/nodes/gameplay/issues'],
+      buildCommand: capturingBuilder(claudeStdout('ok'), capture),
+    });
+    // The COMPILED node must declare `local`, NOT the compile-time `inmemory` default (dag.ts `?? 'inmemory'`)
+    // that the claude-code driver (sandbox.providers === ['local']) cannot run on. Before the fix this is
+    // 'inmemory' and the runner emits `[driver-fit] … cannot run on sandbox provider "inmemory"`.
+    expect(capture.node?.sandbox.provider).toBe('local');
+    // …and driverFits agrees: the claude-code executor raises NO sandbox-provider problem (the exact warning
+    // the substrate judge/fixer spawn was emitting is gone). Asserted on the sandbox axis only so the tier
+    // axis can never mask it.
+    const fit = driverFits(capture.node!, builtinDrivers().get('claude-code')!);
+    expect(fit.problems.some((p) => p.includes('sandbox provider'))).toBe(false);
+  });
+
   it('tools defaults to {} (the SDK default claude-code builtin set) when omitted', async () => {
     const capture: { node?: NodeSpec } = {};
     await runSubstrateAgent({
@@ -160,6 +183,43 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
       else process.env.PIFLOW_HOME = prevHome;
       await fs.rm(emptyHome, { recursive: true, force: true });
     }
+  });
+});
+
+describe('runSubstrateAgent — the OBSERVE seam: a persisted run dir readable like any node\'s run', () => {
+  it('with `outDir` the spawn\'s run dir PERSISTS, is returned as `runDir`, and the observe reader resolves the agent node', async () => {
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-substrate-obs-'));
+    try {
+      const { status, runDir } = await runSubstrateAgent({
+        prompt: 'judge this node',
+        cwd: process.cwd(),
+        readScope: [],
+        owns: [],
+        outDir,
+        buildCommand: capturingBuilder(claudeStdout('observed'), {}),
+      });
+      expect(status?.status).toBe('ok');
+      // RED before: the ephemeral tmpdir was always used and rm'd in the finally — no `runDir` on the
+      // result and nothing left on disk for telemetry/status/trace to point at.
+      expect(runDir).toBe(outDir);
+      // the persisted dir IS a run dir the EXISTING observe instruments read — the same `.pi/run.json` +
+      // reader every workflow node's run dir goes through (readRunModel = the status/telemetry substrate).
+      const model = await readRunModel(runDir!);
+      expect(model.nodes.map((n) => n.id)).toContain('agent');
+    } finally {
+      await fs.rm(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it('without `outDir` the scratch run dir stays EPHEMERAL — no `runDir` on the result (nothing survives to read)', async () => {
+    const { runDir } = await runSubstrateAgent({
+      prompt: 'p',
+      cwd: process.cwd(),
+      readScope: [],
+      owns: [],
+      buildCommand: capturingBuilder(claudeStdout('ok'), {}),
+    });
+    expect(runDir).toBeUndefined();
   });
 });
 

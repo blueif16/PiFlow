@@ -21,16 +21,15 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { SandboxProvider } from '../../types.js';
-import type { CommandBuilder } from '../../runner/command.js';
-import type { ExecRunner } from '../../runner/exec-runner.js';
-import type { ModelTiers } from '../../runner/model-routing.js';
 import { resolveTokens } from '../../workflow/resolver.js';
 import {
   computeIssueId, listIssues, parseIssueFile, reopen, writeIssueFile,
   type Issue, type IssueRecord, type Severity,
 } from './issues.js';
-import { runSubstrateAgent, type RunSubstrateAgentOpts, type RunSubstrateAgentResult } from './agent.js';
+import {
+  inheritedAgentOpts, runSubstrateAgent,
+  type RunSubstrateAgentResult, type SubstrateAgentChildOpts,
+} from './agent.js';
 import { generateRunName } from '../../names/generator.js';
 
 /** Default cap on brand-new issues a single judge pass may land (the plan's documented default). Overridable
@@ -323,29 +322,18 @@ export async function postProcessJudgeDrafts(
 
 // ── (3) runSubstrateJudge — the full pass ───────────────────────────────────────────────────────────────
 
-export interface SubstrateJudgeOpts {
+/** The judge's opts = its OWN specialization (workspace/templateDir/cap) + the base agent's whole inherited
+ *  field surface + the `runAgent` test seam, EMBEDDED via `SubstrateAgentChildOpts` (agent.ts) — never a
+ *  re-declared subset (anything left off a copy is silently lost; `dryRun`, tier/model, timeoutMs, and every
+ *  future base field arrive here automatically). On `dryRun`, the pass returns the composed plan WITHOUT
+ *  spawning, post-processing, or stamping the marker. */
+export interface SubstrateJudgeOpts extends SubstrateAgentChildOpts {
   /** `{{WORKSPACE}}` — the product repo root. */
   workspace: string;
   /** The template dir (`nodes/<id>/{node.json,memory.md,issues/}`). */
   templateDir: string;
   /** Cap on brand-new issues landed this pass. Default `DEFAULT_JUDGE_CAP`. */
   cap?: number;
-  /** SDK tier alias for the judge turn. Default `substrate/agent.ts`'s own default ('balanced'). */
-  tier?: string;
-  /** An explicit model override — wins over `tier`. */
-  model?: string;
-  /** Test/offline seams — forwarded to `runSubstrateAgent` verbatim. */
-  provider?: SandboxProvider;
-  buildCommand?: CommandBuilder;
-  execRunner?: ExecRunner;
-  modelRouting?: { tiers: ModelTiers; modelsIndex: Map<string, string> };
-  /** Test seam — replaces the real agent spawn. Omit ⇒ the real `runSubstrateAgent` (never live-spawn in a
-   *  test; the M7 live demo is what proves real agent behavior). */
-  runAgent?: (opts: RunSubstrateAgentOpts) => Promise<RunSubstrateAgentResult>;
-  /** DRY-RUN: build the composition (the exact context that would be ingested) + the spawn config, then
-   *  RETURN it WITHOUT spawning the agent, post-processing, or stamping the marker. The shared preview seam —
-   *  the same one any substrate-agent operation exposes, so the composition can be inspected for free. */
-  dryRun?: boolean;
 }
 
 export interface SubstrateJudgeResult {
@@ -383,13 +371,9 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
     readScope,
     owns,
     skill: TRIAGE_SKILL, // stage the default triage playbook (Ring 1); a miss degrades to the promptless playbook.
-    tier: opts.tier,
-    model: opts.model,
-    provider: opts.provider,
-    buildCommand: opts.buildCommand,
-    execRunner: opts.execRunner,
-    modelRouting: opts.modelRouting,
-    dryRun: opts.dryRun, // inherit the base-agent preview: it returns the composed `plan` and spawns nothing.
+    // The base agent's WHOLE inherited surface (tier/model/timeoutMs/provider/seams/dryRun/…), forwarded as
+    // one projection — never a hand-enumerated subset (dryRun's preview short-circuit rides this too).
+    ...inheritedAgentOpts(opts),
   });
 
   // DRY-RUN: the base agent returned the composed plan (no spawn). Forward it and STOP — the judge's only job

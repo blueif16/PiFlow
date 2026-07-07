@@ -82,6 +82,10 @@ describe('parsers', () => {
     expect(parseSubstrateFixArgs(['--node', 'g', '--watch-json'])).toMatchObject({ watch: true, watchJson: true });
     expect(parseSubstrateFixArgs(['--node', 'g', '--no-prove']).prove).toBe(false);
   });
+  it('parseSubstrateFixArgs: --dry-run → dryRun (the inherited base-agent preview; off by default)', () => {
+    expect(parseSubstrateFixArgs(['--node', 'g', '--dry-run']).dryRun).toBe(true);
+    expect(parseSubstrateFixArgs(['--node', 'g']).dryRun).toBeUndefined();
+  });
   it('parseSubstrateAdoptArgs: manifest + template + backup-dir + watch', () => {
     expect(parseSubstrateAdoptArgs(['--manifest', 'm.json', '--template', 't', '--backup-dir', 'b'])).toMatchObject({ manifest: 'm.json', template: 't', backupDir: 'b' });
   });
@@ -264,6 +268,39 @@ describe('runSubstrateFixCli — selects issues severity-desc, caps, fixes seque
       print: (s) => linesJson.push(s),
     });
     expect(linesJson.some((l) => l.startsWith('{') && l.includes('"type":"gated"'))).toBe(true);
+  });
+
+  it('--dry-run threads dryRun to fixIssue and prints the composition via the shared substrate printer (no tally, nothing mutated)', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    const lines: string[] = [];
+    let seenDryRun: boolean | undefined;
+    await runSubstrateFixCli(['--node', 'gameplay', '--issue', 'a', '--dry-run'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      listIssues: async () => [issueRec('a', 'high', 'open', '260706-01')],
+      fixIssue: async (_p, opts): Promise<FixIssueResult> => {
+        seenDryRun = opts.dryRun;
+        return {
+          issue: 'a', node: 'gameplay', candidateRef: '/cand/a', editsApplied: 0, proved: false, childId: null, deltaSummary: {},
+          dryRun: {
+            label: 'agent', prompt: 'THE-INGESTED-FIXER-PROMPT', executor: 'claude-code',
+            skill: '/ws/.claude/skills/piflow-fixer', tier: 'balanced', tools: {},
+            io: { reads: [], produces: [], artifacts: [] },
+            sandbox: { provider: 'local', read: ['/cand/a'], write: ['/cand/a'], execCwd: '/cand/a' },
+          },
+        } as FixIssueResult;
+      },
+      print: (s) => lines.push(s),
+    });
+    // RED before: parseSubstrateFixArgs dropped --dry-run and the handler never forwarded/printed a preview.
+    expect(seenDryRun).toBe(true);
+    const out = lines.join('\n');
+    expect(out).toMatch(/DRY RUN/);
+    expect(out).toContain('/ws/.claude/skills/piflow-fixer'); // the resolved skill PATH
+    expect(out).toContain('local'); // the declared sandbox provider
+    expect(out).toContain('THE-INGESTED-FIXER-PROMPT'); // the full ingested composition
+    expect(out).not.toMatch(/staged/); // a preview never prints the processed/staged/discarded tally
   });
 
   it('no triaged run → exit 2 (must triage first)', async () => {

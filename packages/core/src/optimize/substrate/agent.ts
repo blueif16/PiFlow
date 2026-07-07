@@ -43,27 +43,18 @@ export const SUBSTRATE_AGENT_DEFAULT_TIER = 'balanced';
  *  surfaced to the caller, who only ever sees the returned status/text). */
 const AGENT_NODE_LABEL = 'agent';
 
-export interface RunSubstrateAgentOpts {
-  /** The FULL, already-assembled prompt text — the caller resolves every token/embed itself; agent.ts does
-   *  no token resolution of its own. */
-  prompt: string;
-  /** The exec cwd AND the sandbox `execCwd` (E10) — granted read and made the spawned process' cwd. */
-  cwd: string;
-  /** Extra read roots (beyond `cwd`) the agent may read — the node's `sandbox.read`. */
-  readScope: string[];
-  /** The write-authority globs/paths the agent may write — the node's `sandbox.write` (= `contract.owns`). */
-  owns: string[];
+/**
+ * The Base Agent's INHERITABLE field surface — declared ONCE, here. These are the fields every CHILD substrate
+ * agent (the judge, the fixer, any future one) forwards VERBATIM to `runSubstrateAgent` rather than
+ * re-declaring its own hand-copied subset (anything left off such a copy is silently lost — the bug class this
+ * type kills). A child's opts EXTEND `SubstrateAgentChildOpts` and spread `inheritedAgentOpts(opts)` into the
+ * `runAgent(...)` call, so a field added HERE (+ `INHERITED_KEYS`) reaches every child automatically.
+ */
+export interface SubstrateAgentInherited {
   /** SDK tier alias, resolved via `resolveClaudeModel`'s `claude` tier block. Default `'balanced'`. */
   tier?: string;
   /** An explicit model id/alias — WINS over `tier` (mirrors `resolveClaudeModel`'s own precedence). */
   model?: string;
-  /** Tool selection. Omitted/`{}` ⇒ the SDK's default claude-code builtin set. */
-  tools?: ToolSelection;
-  /** A bare Agent-Skill id to stage for this turn — set on the spawned node so the runner's existing
-   *  skill-staging path (`locateSkillStage` → `.pi/skills/<id>/` → `--skill`) fires. It ring-searches Ring 0
-   *  `<cwd>/.agents/skills/<id>` then Ring 1 `<piflowHome>/skills/<id>`. Omitted ⇒ no `--skill`. A declared
-   *  skill absent from every ring DEGRADES (advisory skill-missing; the node still runs) — never a hard fail. */
-  skill?: string;
   /** Hard wall-clock cap for the agent's turn. Omitted ⇒ the runner's own default (no cap). */
   timeoutMs?: number;
   /** Sandbox provider. Omit ⇒ a read-scope-jailed `LocalSandboxProvider` — the DEFAULT, because every
@@ -82,6 +73,61 @@ export interface RunSubstrateAgentOpts {
    *  WITHOUT spawning. The base-agent preview seam EVERY substrate agent (judge, fixer) inherits — a caller's
    *  additive config (prompt, skill, tools, sandbox) is exactly what the returned plan surfaces. */
   dryRun?: boolean;
+  /** OBSERVE seam: PERSIST the spawn's run dir here instead of the ephemeral tmpdir (which is deleted after
+   *  the turn). The dir then holds the SAME `.pi/run.json` + per-node records a workflow node's run dir does,
+   *  so the existing observe instruments (`piflowctl telemetry|status|trace <dir>`, `readRunModel`) read the
+   *  judge/fixer spawn exactly like a node. Returned as `runDir` on the result. Omit ⇒ ephemeral (deleted). */
+  outDir?: string;
+}
+
+export interface RunSubstrateAgentOpts extends SubstrateAgentInherited {
+  /** The FULL, already-assembled prompt text — the caller resolves every token/embed itself; agent.ts does
+   *  no token resolution of its own. */
+  prompt: string;
+  /** The exec cwd AND the sandbox `execCwd` (E10) — granted read and made the spawned process' cwd. */
+  cwd: string;
+  /** Extra read roots (beyond `cwd`) the agent may read — the node's `sandbox.read`. */
+  readScope: string[];
+  /** The write-authority globs/paths the agent may write — the node's `sandbox.write` (= `contract.owns`). */
+  owns: string[];
+  /** Tool selection. Omitted/`{}` ⇒ the SDK's default claude-code builtin set. */
+  tools?: ToolSelection;
+  /** A bare Agent-Skill id to stage for this turn — set on the spawned node so the runner's existing
+   *  skill-staging path (`locateSkillStage` → `.pi/skills/<id>/` → `--skill`) fires. It ring-searches Ring 0
+   *  `<cwd>/.agents/skills/<id>` then Ring 1 `<piflowHome>/skills/<id>`. Omitted ⇒ no `--skill`. A declared
+   *  skill absent from every ring DEGRADES (advisory skill-missing; the node still runs) — never a hard fail. */
+  skill?: string;
+}
+
+/** What a CHILD substrate agent's opts EMBED: the whole inherited base surface + the `runAgent` test seam
+ *  (replace the real spawn in a test — never live-spawn there; the live demo proves real agent behavior). */
+export interface SubstrateAgentChildOpts extends SubstrateAgentInherited {
+  runAgent?: (opts: RunSubstrateAgentOpts) => Promise<RunSubstrateAgentResult>;
+}
+
+/** The one enumerated key set behind `inheritedAgentOpts` — typed `Record<keyof SubstrateAgentInherited, true>`
+ *  so adding a field to the interface FAILS COMPILATION here until it is forwarded too (no silent loss). */
+const INHERITED_KEYS: Record<keyof SubstrateAgentInherited, true> = {
+  tier: true,
+  model: true,
+  timeoutMs: true,
+  provider: true,
+  buildCommand: true,
+  execRunner: true,
+  modelRouting: true,
+  dryRun: true,
+  outDir: true,
+};
+
+/** Project a child's opts DOWN to the base agent's inheritable surface — what every child spreads into its
+ *  `runAgent(...)` call. Never spread `...opts` raw: a child's OWN fields (seams, dirs, caps) must not leak
+ *  into the spawn opts. Undefined fields are omitted (exact-optional-safe). */
+export function inheritedAgentOpts(opts: SubstrateAgentInherited): SubstrateAgentInherited {
+  const out: Partial<Record<keyof SubstrateAgentInherited, unknown>> = {};
+  for (const k of Object.keys(INHERITED_KEYS) as (keyof SubstrateAgentInherited)[]) {
+    if (opts[k] !== undefined) out[k] = opts[k];
+  }
+  return out as SubstrateAgentInherited;
 }
 
 export interface RunSubstrateAgentResult {
@@ -92,6 +138,10 @@ export interface RunSubstrateAgentResult {
   /** Present ONLY on a dry-run: the composed one-node spec that WOULD have been spawned — `prompt` is the full
    *  ingested context, `sandbox` the read jail + write authority, `tier`/`model`/`tools`/`skill` the config. */
   plan?: WorkflowSpec['nodes'][number];
+  /** The spawn's PERSISTED run dir — present ONLY when the caller passed `outDir` (the observe seam). Point
+   *  the existing instruments at it (`piflowctl telemetry|status|trace <runDir>`). ABSENT on the ephemeral
+   *  default (already deleted) and on a dry-run (nothing ran). */
+  runDir?: string;
 }
 
 /**
@@ -118,6 +168,12 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
         tools: opts.tools ?? {},
         io: { reads: [], produces: [], artifacts: [] },
         sandbox: {
+          // DECLARE `local`: every substrate agent runs the claude-code driver, whose capability card lists
+          // `sandbox.providers: ['local']` ONLY. Left undefined, `compile()` (dag.ts) stamps the run-level
+          // `?? 'inmemory'` default, and the runner's `driverFits` precheck then warns `[driver-fit] … cannot
+          // run on sandbox provider "inmemory"` (the runtime provider below is already local, so the spawn
+          // itself still worked — but the declared kind must match what the driver can actually run on).
+          provider: 'local',
           read: opts.readScope,
           write: opts.owns,
           execCwd: opts.cwd,
@@ -141,7 +197,10 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
     return r;
   };
 
-  const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-substrate-agent-'));
+  // The OBSERVE seam: a caller-provided `outDir` PERSISTS the spawn's run dir (readable by the existing
+  // observe instruments like any node's run); the default stays an ephemeral tmpdir, removed after the turn.
+  const ephemeral = !opts.outDir;
+  const outDir = opts.outDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-substrate-agent-')));
   try {
     const result = await runFromConfig({
       workflowSpec: spec,
@@ -156,8 +215,10 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
     });
     const status = result.status.nodes[AGENT_NODE_LABEL];
     const text = parseClaudeResult(capturedStdout).text ?? '';
-    return { status, text };
+    // `result.outDir` is the runner's own resolved run dir — returned (not our input) so the pointer is
+    // exactly where the records landed.
+    return { status, text, ...(ephemeral ? {} : { runDir: result.outDir }) };
   } finally {
-    await fs.rm(outDir, { recursive: true, force: true });
+    if (ephemeral) await fs.rm(outDir, { recursive: true, force: true });
   }
 }

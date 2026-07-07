@@ -53,14 +53,13 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import type { DefectBucket } from '../types.js';
-import type { SandboxProvider } from '../../types.js';
-import type { CommandBuilder } from '../../runner/command.js';
-import type { ExecRunner } from '../../runner/exec-runner.js';
-import type { ModelTiers } from '../../runner/model-routing.js';
 import { evaluateGate, type GateVerdict, type LandPolicy } from '../gate.js';
 import { adoptFromManifest, type AdoptManifest } from '../land.js';
 import { parseIssueFile, stampAttempt, transitionIssue, type Issue } from './issues.js';
-import { runSubstrateAgent, type RunSubstrateAgentOpts, type RunSubstrateAgentResult } from './agent.js';
+import {
+  inheritedAgentOpts, runSubstrateAgent,
+  type RunSubstrateAgentOpts, type RunSubstrateAgentResult, type SubstrateAgentChildOpts,
+} from './agent.js';
 import { spawnChildRun, type SpawnChildRunOpts, type SpawnChildRunResult } from './child-run.js';
 import { runSubstrateMeasure, type RunSubstrateMeasureOpts, type MeasureReport } from './measure.js';
 import { safeEmit, type SubstrateEvent, type SubstrateEventSink } from './events.js';
@@ -413,7 +412,11 @@ export function buildFixerPrompt(issueFileText: string, node: string): string {
 
 // ── fixIssue — the per-issue orchestration ──────────────────────────────────────────────────────────────────
 
-export interface FixIssueOpts {
+/** The fixer's opts = its OWN specialization (dirs/prove/fold/staging/events + the child-run seams) + the
+ *  base agent's whole inherited field surface + the `runAgent` test seam, EMBEDDED via
+ *  `SubstrateAgentChildOpts` (agent.ts) — never a re-declared subset (anything left off a copy is silently
+ *  lost; `dryRun` and every future base field arrive here automatically). */
+export interface FixIssueOpts extends SubstrateAgentChildOpts {
   /** the parent run being optimized (`spawnChildRun` replays a node of it; measure reports live under it). */
   parentRunDir: string;
   /** the product template dir (`nodes/<id>/{node.json,issues/}`). */
@@ -430,16 +433,7 @@ export interface FixIssueOpts {
   stagingDir?: string;
   /** live progress sink (fire-and-forget). */
   onEvent?: SubstrateEventSink;
-  // ── fixer-agent forwards (identical to substrate/agent.ts) ──
-  tier?: string;
-  model?: string;
-  timeoutMs?: number;
-  provider?: SandboxProvider;
-  buildCommand?: CommandBuilder;
-  execRunner?: ExecRunner;
-  modelRouting?: { tiers: ModelTiers; modelsIndex: Map<string, string> };
-  // ── test/offline seams (default the real functions; never live-spawn in a test) ──
-  runAgent?: (opts: RunSubstrateAgentOpts) => Promise<RunSubstrateAgentResult>;
+  // ── test/offline seams for the CHILD prove-run (default the real functions; never live-spawn in a test) ──
   spawnChild?: (parentRunDir: string, nodeId: string, opts: SpawnChildRunOpts) => Promise<SpawnChildRunResult>;
   measure?: (runDir: string, nodeId: string, opts: RunSubstrateMeasureOpts) => Promise<MeasureReport>;
 }
@@ -453,11 +447,19 @@ export interface FixIssueResult {
   proved: boolean;
   /** the child run id that proved the fix, or null. */
   childId: string | null;
-  verdict: GateVerdict;
-  decision: 'staged' | 'discarded';
+  /** ABSENT on a dry-run — nothing was gated. */
+  verdict?: GateVerdict;
+  /** ABSENT on a dry-run — nothing was decided. */
+  decision?: 'staged' | 'discarded';
   deltaSummary: Record<string, number>;
-  manifestPath: string;
-  record: SubstrateManifestRecord;
+  /** ABSENT on a dry-run — no manifest was staged. */
+  manifestPath?: string;
+  /** ABSENT on a dry-run — no manifest was staged. */
+  record?: SubstrateManifestRecord;
+  /** Present ONLY on a dry-run: the BASE agent's composed spec (`plan`) the fixer WOULD have been spawned
+   *  with — the full issue-dispatch `prompt` + the resolved candidate jail/skill/tier/model/tools. Forwarded
+   *  verbatim from the base agent's preview seam. */
+  dryRun?: RunSubstrateAgentResult['plan'];
 }
 
 /** Read the parent run's already-persisted graded metrics (`.graded` of its measure report), or `{}` if the
@@ -492,6 +494,41 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   const stagingDir = opts.stagingDir ?? path.join(parentRunDir, 'optimize', 'substrate', 'staging');
   const candidateRef = path.join(stagingDir, 'candidates', issue.name);
 
+  // The ONE fixer spawn composition — shared VERBATIM by the dry-run preview and the live spawn (never two
+  // hand-copies that can drift apart).
+  const fixerSpawn = (issueFileText: string): RunSubstrateAgentOpts => ({
+    prompt: buildFixerPrompt(issueFileText, node),
+    cwd: candidateRef,
+    readScope: [candidateRef],
+    owns: [candidateRef],
+    // Pass the EXACT resolved skill path, NOT the bare id: the runner uses a path-like ref DIRECTLY (no ring
+    // search — skill-locate.ts), so it doesn't matter that the fixer's exec `cwd` is the isolated candidate copy
+    // (which carries no skills). The playbook lives in the LIVE product root's installed-skills ring
+    // (`<workspace>/.claude/skills`, where `piflowctl skills install` lands piflow-fixer + piflow-triage). A miss
+    // still degrades to the promptless playbook (advisory), never a hard fail.
+    skill: path.join(workspace, '.claude', 'skills', FIXER_SKILL),
+    // The base agent's WHOLE inherited surface (tier/model/timeoutMs/provider/seams/dryRun/…), forwarded as one
+    // projection — never a hand-enumerated subset (the old copy here silently dropped `dryRun`).
+    ...inheritedAgentOpts(opts),
+  });
+
+  // DRY-RUN — the inherited base-agent preview: compose the exact spawn the fixer WOULD get (the candidateRef
+  // paths are computed, never created) and return its `plan` WITHOUT mutating ANYTHING — no issue transition,
+  // no candidate copy, no spawn, no prove/gate/stage, no events. Read-only throughout.
+  if (opts.dryRun) {
+    const preview = await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
+    return {
+      issue: issue.name,
+      node,
+      candidateRef,
+      editsApplied: 0,
+      proved: false,
+      childId: null,
+      deltaSummary: {},
+      dryRun: preview.plan,
+    };
+  }
+
   // (a) activate — guarded by the status machine (open|regressed → active).
   await transitionIssue(issuePathAbs, 'active');
   emit({ type: 'issue-activated', issue: issue.name, node });
@@ -503,21 +540,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   // (c) fixer — edits the candidate; editsApplied = a before/after content-hash diff of the candidate dir.
   const before = await hashCandidateTree(candidateRef);
   emit({ type: 'fixer-started', issue: issue.name });
-  const issueFileText = await fs.readFile(issuePathAbs, 'utf8');
-  await runAgent({
-    prompt: buildFixerPrompt(issueFileText, node),
-    cwd: candidateRef,
-    readScope: [candidateRef],
-    owns: [candidateRef],
-    skill: FIXER_SKILL, // stage the default fixer playbook (Ring 1); a miss degrades to the promptless playbook.
-    tier: opts.tier,
-    model: opts.model,
-    timeoutMs: opts.timeoutMs,
-    provider: opts.provider,
-    buildCommand: opts.buildCommand,
-    execRunner: opts.execRunner,
-    modelRouting: opts.modelRouting,
-  });
+  await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
   const editsApplied = countChangedFiles(before, await hashCandidateTree(candidateRef));
   emit({ type: 'fixer-done', issue: issue.name, editsApplied });
   if (editsApplied >= 1) await transitionIssue(issuePathAbs, 'fix-landed'); // "candidate edit staged"
