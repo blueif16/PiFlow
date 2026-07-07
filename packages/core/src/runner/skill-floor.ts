@@ -28,16 +28,15 @@ import type { ResolveCtx } from '../workflow/resolver.js';
 import { locateSkillStage } from '../workflow/ops/skill-locate.js';
 import { parseSkillManifest } from '../workflow/ops/skill-manifest.js';
 
-/** The two logical roots the wire resolves a skill ref against, + the optional run args and a PIFLOW_HOME override (tests). */
+/** The two logical roots the wire resolves a skill ref against, + the optional run args. */
 export interface SkillFloorCtx {
   /** `{{RUN}}` — the per-thread run root (path-like skill refs resolve `{{RUN}}` against it). */
   run: string;
-  /** `{{WORKSPACE}}` — the tree a BARE skill id ring-searches (`<workspace>/.agents/skills/<id>`). */
+  /** `{{WORKSPACE}}` — the product root a BARE skill id ring-searches (`<workspace>/.agents/skills/<id>`
+   *  then `<workspace>/.claude/skills/<id>`). */
   workspace: string;
   /** The run-level `{{arg.*}}` values (forwarded so a path-like ref using `{{arg.*}}` resolves). */
   args?: Record<string, string>;
-  /** PIFLOW_HOME override for the installed-skill ring (test seam); default = `process.env.PIFLOW_HOME ?? ~/.piflow`. */
-  piflowHome?: string;
 }
 
 /**
@@ -57,7 +56,7 @@ export async function wireSkillFloors(spec: WorkflowSpec, ctx: SkillFloorCtx): P
     // channels, or any fs error) is left to node launch — never a run-start failure.
     let located;
     try {
-      located = await locateSkillStage(node.skill, resolveCtx, ctx.piflowHome);
+      located = await locateSkillStage(node.skill, resolveCtx);
     } catch {
       continue;
     }
