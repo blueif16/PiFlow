@@ -187,19 +187,33 @@ export function homeWorkspace(ix: GlobalIndex, roots: string[]): string | null {
 
 export interface SwitcherEntry { run: string; viewable: boolean; productId: string; nsId: string; }
 
-/** Sort a namespace's threads for the switcher: a `running` run always leads (newest `updatedAt` first
- *  among running ties); otherwise most-recently-updated first; a null `updatedAt` sorts last in either
- *  group. Pure — never mutates the input array. */
-function sortThreadsForSwitcher(threads: IndexThread[]): IndexThread[] {
-  return [...threads].sort((a, b) => {
-    const aRunning = a.state === "running" ? 1 : 0;
-    const bRunning = b.state === "running" ? 1 : 0;
-    if (aRunning !== bRunning) return bRunning - aRunning; // running first
-    if (a.updatedAt && b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0;
-    if (a.updatedAt) return -1; // a dated, b null → a first
-    if (b.updatedAt) return 1; // b dated, a null → b first
-    return 0;
-  });
+/** The switcher's run-leaf orderings. `time` is the default (what the panel opens on). */
+export type ThreadSortMode = "time" | "name" | "status";
+
+/** updatedAt DESC with null-updatedAt last — the recency tiebreaker shared by the non-name modes. */
+function byUpdatedDesc(a: IndexThread, b: IndexThread): number {
+  if (a.updatedAt && b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0;
+  if (a.updatedAt) return -1; // a dated, b null → a first
+  if (b.updatedAt) return 1; // b dated, a null → b first
+  return 0;
+}
+
+/**
+ * Sort a namespace's threads for the switcher — PURE (never mutates the input array):
+ *   - `time`   (default): a `running` run always leads (newest first among running ties), then
+ *                updatedAt desc, null updatedAt last.
+ *   - `name`   : plain A–Z by run id, ignoring state and dates.
+ *   - `status` : running → failed → done groups, newest first inside each group.
+ */
+export function sortThreads(threads: IndexThread[], mode: ThreadSortMode = "time"): IndexThread[] {
+  const arr = [...threads];
+  if (mode === "name") return arr.sort((a, b) => a.run.localeCompare(b.run));
+  if (mode === "status") {
+    const rank = (t: IndexThread) => (t.state === "running" ? 0 : t.state === "failed" ? 1 : 2);
+    return arr.sort((a, b) => rank(a) - rank(b) || byUpdatedDesc(a, b));
+  }
+  const runningFirst = (t: IndexThread) => (t.state === "running" ? 0 : 1);
+  return arr.sort((a, b) => runningFirst(a) - runningFirst(b) || byUpdatedDesc(a, b));
 }
 
 /**
@@ -208,12 +222,18 @@ function sortThreadsForSwitcher(threads: IndexThread[]): IndexThread[] {
  * a view scoped to a workspace shows ONLY that workspace's workflows). Falls back to EVERY product's
  * namespaces flattened to the root when `productId` is null/undefined or matches no registered workspace —
  * so the switcher is never empty just because a caller couldn't resolve a workspace. Each namespace's
- * threads are sorted (running-first, then newest-first, null `updatedAt` last — never the discovery order
+ * threads are ordered by `sortThreads(threads, sort)` (default `time` — never the discovery order
  * `buildSnapshot` returns) and, when a namespace's display name differs from its directory id (an author's
  * `meta.name` can collide across dirs — the id never can), the dir id rides along as `secondaryLabel` so
- * DirectoryPanel can render it as a disambiguating mono tag. Returns a resolver from a leaf id → the run.
+ * DirectoryPanel can render it as a disambiguating mono tag. Each run leaf also carries the thread's
+ * status fields VERBATIM (`run: { state, ok, frac, done, total }` — the GUI computes nothing) so the panel
+ * can render its progress cluster. Returns a resolver from a leaf id → the run.
  */
-export function indexToTree(ix: GlobalIndex, productId?: string | null): { tree: DirEntry[]; resolve: (id: string) => SwitcherEntry | undefined } {
+export function indexToTree(
+  ix: GlobalIndex,
+  productId?: string | null,
+  sort: ThreadSortMode = "time",
+): { tree: DirEntry[]; resolve: (id: string) => SwitcherEntry | undefined } {
   const map = new Map<string, SwitcherEntry>();
   const tree: DirEntry[] = [];
   const scoped = productId ? ix.products.filter((p) => p.id === productId) : [];
@@ -225,10 +245,16 @@ export function indexToTree(ix: GlobalIndex, productId?: string | null): { tree:
         name: ns.name,
         kind: "folder",
         secondaryLabel: ns.name !== ns.id ? ns.id : undefined,
-        children: sortThreadsForSwitcher(ns.threads).map((t) => {
+        children: sortThreads(ns.threads, sort).map((t) => {
           const id = `t:${p.id}/${ns.id}/${t.run}`;
           map.set(id, { run: t.run, viewable: t.viewable, productId: p.id, nsId: ns.id });
-          return { id, name: t.run, kind: "file" as const, typeLabel: t.state };
+          return {
+            id,
+            name: t.run,
+            kind: "file" as const,
+            typeLabel: t.state,
+            run: { state: t.state, ok: t.ok, frac: t.frac, done: t.nodesDone, total: t.nodesTotal },
+          };
         }),
       });
     }

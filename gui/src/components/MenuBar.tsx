@@ -17,7 +17,7 @@ import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { DirectoryPanel } from "./DirectoryPanel";
 import { useExpand } from "./ExpandContext";
-import { findThread, homeRoots, homeWorkspace, indexToTree, workspaceOfRun, type GlobalIndex } from "../data/runIndex";
+import { findThread, homeRoots, homeWorkspace, indexToTree, workspaceOfRun, type GlobalIndex, type ThreadSortMode } from "../data/runIndex";
 import { formatMs } from "../data/runView";
 import "../styles/menubar.css";
 import "../styles/startrun.css";
@@ -61,9 +61,13 @@ export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRu
   // when this resolves to null (nothing owns activeRun AND no home root matched), so the switcher is never
   // empty just because a workspace couldn't be pinned down.
   const activeWorkspace = ix ? (workspaceOfRun(ix, activeRun) ?? homeWorkspace(ix, homeRoots())) : null;
+  // Run-leaf ordering — the head control cycles time → name → status; the ORDER itself is the pure
+  // `sortThreads` selector inside indexToTree (the component only picks the mode).
+  const [sortMode, setSortMode] = useState<ThreadSortMode>("time");
+  const cycleSort = () => setSortMode((m) => (m === "time" ? "name" : m === "name" ? "status" : "time"));
   const { tree, resolve } = useMemo(
-    () => (ix ? indexToTree(ix, activeWorkspace) : { tree: [], resolve: () => undefined }),
-    [ix, activeWorkspace],
+    () => (ix ? indexToTree(ix, activeWorkspace, sortMode) : { tree: [], resolve: () => undefined }),
+    [ix, activeWorkspace, sortMode],
   );
 
   // hidden while a card is open (and not being peeked) — the open card hosts the menu handle instead.
@@ -149,6 +153,20 @@ export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRu
             tree={tree}
             title="Workspaces · runs"
             reverse
+            headExtra={
+              <button
+                type="button"
+                className="ds-dir__sort"
+                title="Cycle run order: time → name → status"
+                aria-label={`Sort runs by ${sortMode} — click to change`}
+                onClick={cycleSort}
+              >
+                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M5 3v10M5 13l-2.5-2.5M5 13l2.5-2.5M11 13V3M11 3L8.5 5.5M11 3l2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {sortMode}
+              </button>
+            }
             onOpenFile={(entry) => {
               const hit = resolve(entry.id);
               if (!hit) return;
