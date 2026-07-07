@@ -23,6 +23,8 @@ import {
   compile,
   seededRegistry,
   SUBMIT_RESULT_TOOL,
+  discoverScriptTools,
+  isScriptToolAddress,
   dispatchCommand,
   effectiveModel,
   loadModelTiers,
@@ -33,10 +35,15 @@ import {
   loadFusionConfig,
   nodePromptFile,
   generateDateSeqName,
+  templateLayout,
+  findProductRoot,
+  generateRunName,
   writeStatus,
   nowISO,
   type Workflow,
   type WorkflowSpec,
+  type ResolveCtx,
+  type ResolveResult,
   type RunStatus,
   type LoadConfigInput,
   type ResolvedRunOpts,
@@ -200,6 +207,11 @@ export interface ParsedRunArgs {
    * default advisory `console.warn`. A misfit node then HALTs with a loud error record. Omit ⇒ advisory.
    */
   strict?: boolean;
+  /**
+   * Targeted re-run — force-RUN exactly these node ids, force-REUSE all others (the `node --rerun`
+   * primitive). Spread through `runFromTemplate` to `runWorkflow`; wins over the journal.
+   */
+  rerunNodes?: ReadonlySet<string>;
   /** Active run PROFILE name → resolved against the template's declared `profiles` (elides nodes before compile). */
   profile?: string;
   args: Record<string, string>;
@@ -298,7 +310,7 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
 
 /** Options for `dryRunPlan`. `promptDir` is the in-sandbox dir the realized prompt is referenced from. */
 export interface DryRunPlanOpts {
-  /** Where the staged prompt lives (referenced as `@<file>`). Default a placeholder `_pi` dir. */
+  /** Where the staged prompt lives (referenced as `@<file>`). Default a placeholder `.pi/staged` dir. */
   promptDir?: string;
   /** Effective provider (`pi --provider`) — the resolved system default or an explicit override; undefined ⇒
    *  no `--provider`/`--model` stamped (pi's own default). No hardcoded name. */
@@ -313,6 +325,12 @@ export interface DryRunPlanOpts {
   executor?: 'pi' | 'claude-code';
   /** Per-node executor overrides (keyed by node id) — win over `executor`, mirroring the LIVE run. */
   executorOverride?: Record<string, 'pi' | 'claude-code'>;
+  /** `{{WORKSPACE}}` root for script-tool `tools.defs` token resolution (mirrors the LIVE resolveCtx). Default cwd. */
+  workspace?: string;
+  /** `{{RUN}}` root for script-tool `tools.defs` token resolution — the dry-run's materialized outDir. Default cwd. */
+  runDir?: string;
+  /** `{{arg.*}}` values for script-tool `tools.defs` token resolution (the `--arg k=v` set). Default none. */
+  args?: Record<string, string>;
 }
 
 /**
@@ -327,13 +345,22 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
   // `seededRegistry()` alone DROPS the first-party `submit_result` (catalog.ts:58), so re-add it — the SAME
   // superset `assembleRunTools` builds — else a node declaring `submit_result` falsely reads UNRESOLVED.
   const registry = seededRegistry([SUBMIT_RESULT_TOOL]);
-  const promptDir = opts.promptDir ?? '_pi';
+  const promptDir = opts.promptDir ?? '.pi/staged';
   // Undefined ⇒ neither `--provider` nor `--model` is stamped and pi uses its own settings.json default (the
   // preview mirrors the live command exactly — no hardcoded provider name).
   const provider = opts.provider;
   // G1 — resolve the SAME per-node effective model/provider the runner will (read-only global config).
   const tiers = loadModelTiers();
   const modelsIndex = loadModelsIndex();
+  // (script-tools) The preview-grade resolver ctx for `tools.defs` token resolution — the same vocabulary
+  // the live node-lifecycle resolveCtx carries ({{RUN}}/{{WORKSPACE}}/{{arg.*}}); RunState is empty at
+  // preview time, so a {{state.*}} defs path degrades to a per-tool WARN (never a crash).
+  const resolveCtx: ResolveCtx = {
+    run: opts.runDir ?? process.cwd(),
+    workspace: opts.workspace ?? process.cwd(),
+    state: {},
+    args: opts.args ?? {},
+  };
   const profileNote = opts.profile ? ` [profile: ${opts.profile}]` : '';
   const lines: string[] = [
     `dry-run plan for "${wf.meta.name}"${profileNote} — ${Object.keys(wf.nodes).length} nodes, ${wf.stages.length} stages (no model invoked)`,
@@ -344,14 +371,33 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
     for (const id of stage.nodeIds) {
       const node = wf.nodes[id];
       const promptFile = `${promptDir}/${id}/prompt.md`;
-      let resolved;
+      let resolved: ResolveResult;
       let note = '';
+      // (script-tools) DISCOVER + register this node's `tool:<name>` manifests — the SAME
+      // discoverScriptTools the live node-lifecycle preflight runs — so the preview binds them instead
+      // of collapsing the node's WHOLE tool list on "unknown tool address". Preview-grade: a tool with a
+      // resolution violation renders a per-tool WARN, an OPTIONAL tool absent for this run renders the
+      // "optional, not present" NOTE (the live preflight's console.warn, verbatim); either way the
+      // unbound address is dropped from the resolved selection (the node's other tools — builtins
+      // included — still render). The live run would BLOCK on a violation / skip an absent optional, so
+      // the preview must not claim either binds.
+      let sel = node.tools ?? {};
+      if ((sel.allow ?? []).some(isScriptToolAddress)) {
+        const found = discoverScriptTools(sel, resolveCtx);
+        for (const entry of found.entries) registry.register(entry);
+        if (found.issues.length || found.notes.length) {
+          const bound = new Set(found.entries.map((e) => e.address));
+          sel = { ...sel, allow: (sel.allow ?? []).filter((a) => !isScriptToolAddress(a) || bound.has(a)) };
+          note += found.issues.map((i) => `  # WARN: script tool — ${i}`).join('');
+          note += found.notes.map((n) => `  # NOTE: script tool — ${n}`).join('');
+        }
+      }
       try {
-        resolved = registry.resolve(node.tools ?? {});
+        resolved = registry.resolve(sel);
       } catch (e) {
         // unresolved tools (catalog miss) — render a minimal command + flag, never crash the preview.
         resolved = { piTools: [] as string[] };
-        note = `  # NOTE: tools unresolved at preview (${(e as Error).message})`;
+        note += `  # NOTE: tools unresolved at preview (${(e as Error).message})`;
       }
       // Run-start executor override (mirrors the LIVE resolveExecutor precedence: per-node → run-level →
       // authored) so the free preview shows the SAME agent binary the live run will spawn — never lie.
@@ -366,8 +412,12 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
       } catch (e) {
         note += `  # NOTE: model routing — ${(e as Error).message}`;
       }
+      // The generated `-e` tool extension: mirror the LIVE staging layout (`<stage>/<id>/tools.ts`,
+      // node-lifecycle's nodeStage) so the preview command shows the SAME `-e` the run will emit.
+      // Absent when the node resolved to builtins only (the live run stages nothing either).
+      const extensionFile = resolved.extension ? `${promptDir}/${id}/tools.ts` : undefined;
       // dispatchCommand routes pi vs claude-code off `eNode.executor` (the same seam the runner uses).
-      const cmd = dispatchCommand(eNode, resolved, { promptFile, provider: eff.provider ?? provider, model: eff.model }, { thinking: opts.thinking });
+      const cmd = dispatchCommand(eNode, resolved, { promptFile, provider: eff.provider ?? provider, model: eff.model, extensionFile }, { thinking: opts.thinking });
       lines.push(`    [${id}] ${cmd}${note}`);
     }
   }
@@ -509,13 +559,26 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   const { templateDir } = parsed;
   if (!templateDir) throw new Error('piflowctl run: a template directory is required (piflowctl run <templateDir>).');
 
-  const workspace = parsed.workspace ?? process.cwd();
   const tdir = path.resolve(templateDir);
+  // ROOT THE RUN AT THE PRODUCT, NEVER AT cwd. `{{WORKSPACE}}` (and the sandbox read-jail, threaded as
+  // `repoRoot` into runFromTemplate below) must anchor at the product the template belongs to — DERIVED
+  // from the template's OWN `.piflow/<wf>/template/` placement — so a run kicked off from ANY foreign cwd
+  // resolves identically. Precedence: an explicit `--workspace` wins; else the template layout's product
+  // root; else the nearest enclosing product (findProductRoot); else cwd with a LOUD warning (never a
+  // SILENT cwd footgun — the pre-migration default that anchored every token + the read-jail at wherever
+  // the run happened to be invoked).
+  let workspace = parsed.workspace ?? templateLayout(tdir)?.productRoot ?? findProductRoot(tdir) ?? undefined;
+  if (!workspace) {
+    workspace = process.cwd();
+    console.warn(
+      `piflowctl run: could not derive a product root from "${tdir}" — anchoring {{WORKSPACE}} + the read-jail at the current directory (${workspace}). Pass --workspace to set it explicitly.`,
+    );
+  }
   // The run's CANONICAL HOME is `.piflow/<wf>/runs/<id>` (sdk-canonical-build-plan §D9) — the single place
   // discovery + the global index read runs from. Derive the `runs/` parent from the template's own
   // `.piflow/<wf>/template/` layout so a bare `piflowctl run <templateDir>` lands under it; a template outside
   // that layout has no canonical home (falls back to `out/<id>`).
-  const runsHome = path.basename(tdir) === 'template' ? path.join(path.dirname(tdir), 'runs') : null;
+  const runsHome = templateLayout(tdir)?.runsHome ?? null;
   // The directory a sibling run lands in (and so the collision-check namespace): the canonical `runs/`
   // home, else the parent of an explicit `--out`, else the `out/` fallback. Auto-naming checks against
   // the run dirs ALREADY present there, so a fresh name never overwrites a prior run in EITHER layout.
@@ -598,7 +661,7 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     await writeStatus(outDir, dryStatus);
     // reference the actual realized prompt path the run materialized (engine-owned layout helper).
     const samplePromptDir = nodePromptFile(outDir, '<id>').replace(/\/<id>\/prompt\.md$/, '');
-    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: effProvider, model: effModel, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride }));
+    print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: effProvider, model: effModel, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride, workspace, runDir: outDir, args: parsed.args }));
     print(`piflowctl run: dry-run materialized a viewable plan at ${outDir} (open it: piflowctl gui / piflowctl status ${outDir}). Nodes are status "dry" — no model ran.`);
     return undefined;
   }
@@ -762,12 +825,18 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     name: runId,
     ...(promptId ? { promptId } : {}),
     workspace,
+    // ANCHOR THE SANDBOX READ-JAIL at the product too. `repoRoot` is what the runner roots each node's
+    // read-scope jail on; passing it = `workspace` (the derived product root) fixes the pre-migration
+    // footgun where it was NEVER passed and defaulted to cwd — jailing reads at wherever the run was
+    // launched on every run, not at the product the template belongs to.
+    repoRoot: workspace,
     args: parsed.args,
     from: parsed.from,
     until: parsed.until,
     ...(parsed.noResume ? { noResume: true } : {}),
     // (P4, §2.4) `--strict` flips the author-time driver-fit preflight from advisory-warn to blocking.
     ...(parsed.strict ? { strict: true } : {}),
+    ...(parsed.rerunNodes && parsed.rerunNodes.size ? { rerunNodes: parsed.rerunNodes } : {}),
     profile: parsed.profile,
     providerName: effProvider,
     thinking: parsed.thinking,

@@ -47,7 +47,7 @@ RUNVIEW (the contract + builder + the SHARED assembly)
 - `packages/core/src/observe/runView.ts:407` — `buildRunView()` — superset run-view (replays events, prefers workflow.json DAG, stamps deriveNode)
 - `packages/core/src/observe/runView.ts:282` — `nodeTokenSpine()` — the `rec.usage`-first-vs-event-replay token precedence (the AgentDriver seam — Thrust 3)
 - `packages/core/src/observe/runView.ts:343` — `assembleNode()` — the whole per-node build (reads/writes/tokens/spine), then `node.derived = deriveNode(node)` — SHARED by buildRunView + watchRun
-- `packages/core/src/observe/types.ts:139` — `RunModel` — the shared snapshot contract (stages+edges+nodes)
+- `packages/core/src/observe/types.ts:142` — `RunModel` — the shared snapshot contract (stages+edges+nodes)
 - `packages/core/src/observe/types.ts:177` — the `node-enriched` `RunUpdate` kind (the FULL node delta — must also be in cli/remote.ts RUN_UPDATE_KINDS)
 DERIVE (the display projection) + STRUCTURE (parity)
 - `packages/core/src/observe/derive.ts:78` — `deriveNode()` — cache/tool-error/dominance/context/time/retries zones + topTools + unified outputs (the ONE threshold oracle)
@@ -59,7 +59,7 @@ LIVE (the single enriched SSE source)
 - `packages/server/src/handlers.ts:35` — `piflowRunStream` — `GET /__piflow/stream/<run>` pipes the exact `watchRun` stream as SSE (feeds it the SAME historyDirs/workspaceRoot as /run-view)
 - `packages/server/src/handlers.ts:103` — `piflowRunView` — `GET /__piflow/run-view/<run>` = one-shot `buildRunView` (loads + the DR6 reconcile net)
 PROJECT + CONSUMED
-- `packages/core/src/observe/telemetry.ts:326` — `projectRunDigest()` — the agent-facing RunDigest lens over the view (NOT a second collector)
+- `packages/core/src/observe/telemetry.ts:329` — `projectRunDigest()` — the agent-facing RunDigest lens over the view (NOT a second collector)
 - `packages/cli/src/status.ts:35` — `renderStatus()` — CLI renders a `readRunModel` snapshot (thin renderer; `:87` reads it)
 - `gui/vite.config.ts:21` — the Vite dev middleware wires `@piflow/server` `createApiMiddleware` (the SSE + run-view handlers)
 
@@ -163,12 +163,16 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `b9c8fac` 2026-07-03 — refactor(server): agents.json + skill display roots ride core's enumeration seam
 - `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 - `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
+- `1419142` 2026-07-03 — feat(server): POST /__piflow/skill-install — one-click remote install
+- `4a19f22` 2026-07-06 — feat(observe): M8 — substrate exposure (lineage on the index, issues endpoint + side card)
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[agent-identity-surface]]
+- [[agentic-design-library]]
 - [[always-no-ff-merge-to-main]]
+- [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -178,7 +182,9 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[config-is-truth-gui-is-projection]]
+- [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
+- [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
@@ -193,12 +199,15 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
+- [[minimax-m3-framing]]
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-program]]
+- [[overthinking-is-the-defect-not-token-caps]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
@@ -218,6 +227,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -227,5 +237,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:282) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:114) — 8 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-03 · arc=74 commits · files=13 · lessons=51</sub>
+<sub>derived 2026-07-07 · arc=76 commits · files=13 · lessons=59</sub>
 <!-- okf:auto-end -->

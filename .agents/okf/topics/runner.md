@@ -28,7 +28,7 @@ TEMPLATE-RUN JOIN
 - `packages/core/src/runner/entry.ts:163` — `runFromTemplate` — load → instantiate → compile → run
 - `packages/core/src/workflow/template/instantiate.ts:98` — `instantiateRun` — materialize `${RUN}/.pi/nodes/<id>/`
 PER-NODE RUNNER EXEC
-- `packages/core/src/runner/runner.ts:373` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
+- `packages/core/src/runner/runner.ts:374` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
 - `packages/core/src/runner/node-lifecycle.ts:99` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
@@ -182,12 +182,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 - `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[claude-code-executor]]
 - [[cloud-sandbox-portability]]
+- [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
@@ -204,5 +206,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 8 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
 - `InstantiateRunOpts` (packages/core/src/workflow/template/instantiate.ts:40) — 4 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/template/instantiate.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=127 commits · files=7 · lessons=10</sub>
+<sub>derived 2026-07-07 · arc=128 commits · files=7 · lessons=11</sub>
 <!-- okf:auto-end -->

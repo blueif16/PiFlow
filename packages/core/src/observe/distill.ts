@@ -80,6 +80,14 @@ export interface RichNode {
   api: string | null;
   toolCalls: number;
   toolBreakdown: Record<string, number>;
+  /**
+   * ADDITIVE per-tool error tally — attempts on `toolBreakdown` that resolved `isError:true` on their
+   * `tool_execution_end` (the same read the timeline's `ok` flag already uses). `toolBreakdown` keeps
+   * counting every attempt exactly as before; this is a PARALLEL map so a rejected-only tool (e.g. "Tool
+   * bash not found") stops looking identical to a real execution in a ranking that reads only the count.
+   * A tool absent here had zero errors. Keyed identically to `toolBreakdown` (never a superset of its keys).
+   */
+  toolErrorCounts: Record<string, number>;
   timeline: TimelineSpan[];
   reads: RichRead[];
   lists: { path: string; via: string }[];
@@ -182,6 +190,7 @@ export function createNodeAccumulator(): NodeAccumulator {
   const writes = new Map<string, RichWrite>();
   const bash: BashCall[] = [];
   const toolBreakdown: Record<string, number> = {};
+  const toolErrorCounts: Record<string, number> = {};
   const open = new Map<string, { name: string; tStartMs: number | null; path: string | null }>();
   const timeline: TimelineSpan[] = [];
   let toolCalls = 0;
@@ -290,7 +299,10 @@ export function createNodeAccumulator(): NodeAccumulator {
           if (span) {
             const t = e._t as number | undefined;
             const durMs = (t != null && span.tStartMs != null) ? Math.max(0, t - span.tStartMs) : 0;
-            timeline.push({ name: span.name, tStartMs: span.tStartMs, durMs, ok: !(e.isError as boolean) });
+            const isError = !!(e.isError as boolean);
+            timeline.push({ name: span.name, tStartMs: span.tStartMs, durMs, ok: !isError });
+            // same isError read as the timeline's `ok` flag above — tallied per tool name, additively.
+            if (isError) toolErrorCounts[span.name] = (toolErrorCounts[span.name] || 0) + 1;
             if (span.path && reads.has(span.path) && !reads.get(span.path)!.preview) {
               const preview = resultText(e.result);
               if (preview) reads.get(span.path)!.preview = preview;
@@ -349,7 +361,7 @@ export function createNodeAccumulator(): NodeAccumulator {
 
     const rich: RichNode = {
       model, provider, api,
-      toolCalls, toolBreakdown: { ...toolBreakdown }, timeline: [...timelineOut],
+      toolCalls, toolBreakdown: { ...toolBreakdown }, toolErrorCounts: { ...toolErrorCounts }, timeline: [...timelineOut],
       reads: [...reads.values()].map((r) => ({ ...r })),
       lists: [...lists.values()].map((l) => ({ ...l })),
       writes: writeArr,

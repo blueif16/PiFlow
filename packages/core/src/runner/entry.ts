@@ -26,6 +26,8 @@ import { catalogForSpec } from '../catalog/client.js';
 import { runWorkflow, type RunOptions, type RunResult } from './runner.js';
 // Leaf import (NOT the observe barrel) — registry.js pulls no runner module, so there is no cycle.
 import { registerProductRoot } from '../observe/registry.js';
+// Leaf import — scope.js pulls only registry.js (no runner module), so there is no cycle.
+import { templateLayout } from '../observe/scope.js';
 
 /**
  * Resolve the run's `registry`/`mcpConfig` with the EXPLICIT-CALLER-WINS guard: if the caller already set
@@ -162,7 +164,11 @@ export interface RunFromTemplateOpts extends RunOptions {
  */
 export async function runFromTemplate(templateDir: string, opts: RunFromTemplateOpts): Promise<RunResult> {
   const { runDir, ...runOpts } = opts;
-  const workspace = opts.workspace ?? opts.repoRoot ?? process.cwd();
+  // Root the run at the product: an explicit workspace/repoRoot wins, else DERIVE the product root from the
+  // template's own `.piflow/<wf>/template/` placement (so a core consumer that passes neither still anchors
+  // {{WORKSPACE}} at the product, not cwd — the `piflowctl run` CLI always passes both, so this is the
+  // library-consumer safety net), else cwd as the last resort.
+  const workspace = opts.workspace ?? opts.repoRoot ?? templateLayout(templateDir)?.productRoot ?? process.cwd();
   // (0) SELF-REGISTER this repo into the global registry (`~/.piflow/products.json`) so EVERY observer (CLI
   // `status` · TUI fleet picker · GUI) is exposed to it with zero manual `--root` — the write-side analogue
   // of the pi runtime self-registering each run home into `~/.pi`. We register the WORKSPACE root (the

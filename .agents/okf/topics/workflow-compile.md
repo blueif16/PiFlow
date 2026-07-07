@@ -26,7 +26,7 @@ into extra intents BEFORE this compile (see `per-node-routing-and-fusion`).
 # Anchors
 AUTHORED TEMPLATE → LOAD
 - `packages/core/src/workflow/template/loader.ts:215` — `loadTemplate` — fail-closed scan+check → `WorkflowSpec`
-- `packages/core/src/workflow/template/loader.ts:96` — `toNodeIntent` — authored `TemplateNode` → runtime `NodeIntent`
+- `packages/core/src/workflow/template/loader.ts:97` — `toNodeIntent` — authored `TemplateNode` → runtime `NodeIntent`
 CONTRACT CODEC (DRIVER-* markers)
 - `packages/core/src/contract.ts:199` — `markersFromNode` — derive a node's contract markers from its `NodeSpec`/resolve
 - `packages/core/src/contract.ts:115` — `emitMarkers` — render markers into the prompt; `parseMarkers` (:139) is the inverse
@@ -36,7 +36,7 @@ WORKFLOWSPEC → DAG (topo-order)
 - `packages/core/src/dag.ts:206` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
 - `packages/core/src/dag.ts:76` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
 - `packages/core/src/dag.ts:112` — `stagesOf` — longest-path topological stages (parallel lanes per level)
-- `packages/core/src/types.ts:1026` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
+- `packages/core/src/types.ts:1028` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the compiled `Workflow`/`NodeSpec`/`Stage`/`Edge` shapes all live in `packages/core/src/types.ts` (1026/17/1011/1019), NOT in dag.ts — dag.ts only computes them. This card is the STATIC compile spine carved out of the former `runtime-core`; the DYNAMIC exec spine (DAG → one pi per node → artifacts) is the sibling `runner` slice, and they meet at the `Workflow` object. `loadTemplate` is async (returns a `Promise<WorkflowSpec>`).
@@ -125,11 +125,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `95d5ce1` 2026-07-02 — fix(core): node-level sandbox.output passthrough — N-breach output-path parity
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[agent-identity-surface]]
+- [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -137,7 +139,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[competitive-gaps-pdw]]
+- [[confirm-before-spawning-workflows]]
 - [[daytona-cloud-path]]
+- [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
@@ -175,5 +179,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:215) — 12 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/server/src/handlers.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/blueprint-goldens.test.ts`, `packages/core/test/load-template.test.ts`, `packages/core/test/sandbox-output-passthrough.test.ts`
 - `NodeSpec` (packages/core/src/types.ts:17) — 38 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/env-staging.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/command.ts` +4 more; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/driver-runtime.test.ts`, `packages/core/test/execcwd-staging.test.ts`, `packages/core/test/executor-override.test.ts` +4
 
-<sub>derived 2026-07-03 · arc=69 commits · files=5 · lessons=37</sub>
+<sub>derived 2026-07-07 · arc=70 commits · files=5 · lessons=40</sub>
 <!-- okf:auto-end -->

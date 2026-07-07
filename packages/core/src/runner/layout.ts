@@ -26,15 +26,16 @@ export const runJsonFile = (run: string): string => path.join(piDir(run), 'run.j
 /** `${run}/.pi/nodes/<id>` — a node's dedicated folder. */
 export const nodeDir = (run: string, id: string): string => path.join(piDir(run), 'nodes', id);
 
-// ── (warm-resume) per-run pi SESSION storage — a DEDICATED subdir, NEVER `.pi/`. ──────────────────
-// pi persists its own `<timestamp>_<uuid>.jsonl` session files under `--session-dir`. We co-locate them in
-// `${run}/.pi-sessions` — a SIBLING of `.pi/`, never inside it (dropping pi's session files into the engine
-// `.pi/` journal/state tree confuses the observe/journal readers; warm-resume-pi-surfaces.md §4d). Mirrors
-// the control-session host's `.pi-control` anti-collision discipline. Used as the `--session-dir` for a
+// ── (warm-resume) per-run pi SESSION storage — a DEDICATED subdir UNDER `.pi/`. ──────────────────
+// pi persists its own `<timestamp>_<uuid>.jsonl` session files under `--session-dir`. We keep them in
+// `${run}/.pi/sessions` — a DEDICATED subdir of the engine `.pi/` machinery dir, a SIBLING of the
+// journal/state files and `.pi/nodes` (never MIXED INTO them, so the observe/journal readers — which read
+// only the NAMED `.pi/` files — never see them; warm-resume-pi-surfaces.md §4d). Keeping them under `.pi/`
+// makes the run SELF-CONTAINED — no stray `.pi-sessions/` at the run root. Used as the `--session-dir` for a
 // per-node warm session (id = the node id); a future `node <run> <id> --resume` finds the session here.
 
-/** `${run}/.pi-sessions` — the per-run pi session-storage dir (sibling of `.pi/`, NEVER inside it). */
-export const piSessionsDir = (run: string): string => path.join(run, '.pi-sessions');
+/** `${run}/.pi/sessions` — the per-run pi session-storage dir (a dedicated subdir UNDER `.pi/`). */
+export const piSessionsDir = (run: string): string => path.join(piDir(run), 'sessions');
 
 /** `${run}/.pi/nodes/<id>/io.json` — the per-node I/O ledger record. */
 export const nodeIoFile = (run: string, id: string): string => path.join(nodeDir(run, id), 'io.json');

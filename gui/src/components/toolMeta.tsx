@@ -102,16 +102,25 @@ export function ToolGlyph({ name, size = 12 }: { name: string; size?: number }) 
  * ToolTag — the shared tool pill: an icon + the tool name label (+ an optional count). Tone-tinted via the
  * global `[data-tone]` vars. When `onClick` is given it renders as a real <button> (keyboard-reachable);
  * otherwise a static <span>. The label is the tool name; the icon carries the type at a glance.
+ *
+ * `errors` (optional, ADDITIVE) marks calls that were REJECTED rather than executed — a tool rejected on
+ * every attempt (errors === count) would otherwise render identically to a real execution. Rendered as a
+ * distinct "✗N" marker so a rejected-only tool is visibly not a real one (the wgt1 forensics case).
  */
 export function ToolTag({
-  name, count, onClick, title, className,
-}: { name: string; count?: number; onClick?: (e: ReactMouseEvent) => void; title?: string; className?: string }) {
+  name, count, errors, onClick, title, className,
+}: { name: string; count?: number; errors?: number; onClick?: (e: ReactMouseEvent) => void; title?: string; className?: string }) {
   const cls = `ds-tooltag${className ? ` ${className}` : ""}`;
   const inner = (
     <>
       <ToolGlyph name={name} />
       <span className="ds-tooltag__label">{name}</span>
       {count != null && count > 0 && <span className="ds-tooltag__count">{count}</span>}
+      {errors != null && errors > 0 && (
+        <span className="ds-tooltag__errors" title={`${errors} of ${count ?? errors} call${errors === 1 ? "" : "s"} rejected`}>
+          ✗{errors}
+        </span>
+      )}
     </>
   );
   if (onClick) {

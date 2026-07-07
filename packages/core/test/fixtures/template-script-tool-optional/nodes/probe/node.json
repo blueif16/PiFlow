@@ -1,0 +1,15 @@
+{
+  "id": "probe",
+  "phase": "run",
+  "deps": [],
+  "prompt": { "file": "prompt.md" },
+  "tools": {
+    "allow": ["read", "tool:ghost_probe"],
+    "defs": { "tool:ghost_probe": { "path": "{{WORKSPACE}}/shared-tools/ghost_probe", "optional": true } }
+  },
+  "contract": {
+    "artifacts": ["out.json"],
+    "owns": ["out.json"],
+    "readScope": ["{{RUN}}"]
+  }
+}

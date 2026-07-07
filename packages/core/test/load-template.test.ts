@@ -155,6 +155,19 @@ describe('loadTemplate — HAPPY PATH (the unmodified fixture LOADS)', () => {
     expect(wf.nodes['w2a-levels'].tier).toBeUndefined();
   });
 
+  // Operator-free over-think cap — the loader must CARRY node.json `thinking` onto the compiled NodeSpec so the
+  // command builder emits `pi --thinking <v>` for THIS node without an operator flag. Mirrors the routing carry.
+  it('carries per-node thinking onto the compiled NodeSpec (operator-free over-think cap)', async () => {
+    dir = await cloneFixture();
+    const n = await readJson(nodeJson(dir, 'w0-classify'));
+    n.thinking = 'minimal';
+    await writeJson(nodeJson(dir, 'w0-classify'), n);
+    const wf = compile(await loadTemplate(dir));
+    expect(wf.nodes['w0-classify'].thinking).toBe('minimal');
+    // additive: a node that declares none stays undefined (byte-identical to today).
+    expect(wf.nodes['w2a-levels'].thinking).toBeUndefined();
+  });
+
   // Phase 2 — the loader must CARRY the authored `fusion` block onto the loaded WorkflowSpec INTENT. Unlike
   // the routing fields, fusion is consumed by `expandFusion` BEFORE compile and never reaches the dense
   // NodeSpec, so the assertion is on `spec.nodes` (the intent), not `wf.nodes`. Mirrors the checkpoint carry.

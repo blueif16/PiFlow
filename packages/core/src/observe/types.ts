@@ -98,6 +98,8 @@ export interface NodeView {
   toolCalls?: number;
   /** per-tool call counts (the ranking + dominance source). */
   toolBreakdown?: Record<string, number>;
+  /** ADDITIVE per-tool error tally (name → rejected-call count) — see runView.ts's RunViewNode field. */
+  toolErrorCounts?: Record<string, number>;
   /** the per-tool execution timeline (spans with real durMs/ok once closed). */
   timeline?: TimelineSpan[];
   /** scope-bucketed reads (absolute path + display path + via + scope). */

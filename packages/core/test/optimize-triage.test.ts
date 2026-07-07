@@ -8,16 +8,25 @@
 
 import { describe, it, expect } from 'vitest';
 import { triage } from '../src/optimize/triage.js';
-import type { RunDigest, RootCause } from '../src/observe/telemetry.js';
+import type { RunDigest, RootCause, NodeDigest } from '../src/observe/telemetry.js';
 import type { NodeScore, Tier1Result, Tier1Check } from '../src/optimize/types.js';
 
 const cleanTier0 = { anomalies: [] as never[], disqualified: false };
 const t1 = (p: Partial<Tier1Result> & { checks: Tier1Check[] }): Tier1Result =>
   ({ milestoneId: 'M', marker: 'VALIDATION_FAILED', passed: false, abstained: false, scalar: 0, ...p });
-const digestWith = (rootCauses: RootCause[]): RunDigest =>
+const digestWith = (rootCauses: RootCause[], nodes: NodeDigest[] = []): RunDigest =>
   ({ run: 'gs01', done: true, ok: false, durationMs: 1,
     totals: { nodes: 0, ok: 0, failed: 0, inputTokens: 0, outputTokens: 0, cost: 0, contextPeak: 0, modelCalls: 0, toolCalls: 0 },
-    nodes: [], anomalies: [], rootCauses });
+    nodes, anomalies: [], rootCauses });
+
+/** A minimal NodeDigest carrying only `id` + `issues` (the fields the structural-signal reader needs). */
+const nodeDigest = (id: string, issues: string[]): NodeDigest => ({
+  id, label: id, phase: null, outcome: 'error', model: null, provider: null,
+  durationMs: null, expectedMs: null, slowRatio: null, inputTokens: 0, outputTokens: 0, cost: 0,
+  contextPeak: 0, contextWindow: null, contextPct: null, modelCalls: 0, toolCalls: 0, topTools: {},
+  maxToolRepeat: 0, repeatedTool: null, retries: 0, stopReason: null, truncated: false,
+  missing: [], issues, anomalies: ['failed'],
+});
 
 describe('triage — the four-way projector', () => {
   it('a clean node with a FAILING Tier-1 outcome is FUNCTIONALITY (not the LAPSE default) — the gs01 case', () => {
@@ -150,5 +159,61 @@ describe('triage — the four-way projector', () => {
     const [d] = triage(scores, digestWith([chain]));
     expect(d.bucket).toBe('ARCH');
     expect(d.evidence.join(' ')).toContain('upstream');
+  });
+
+  // ── STRUCTURAL COVERAGE — a self-originating failure whose OWN recorded issues name a code/contract-level
+  // cause (a skill-staging race, a schema breach, a skipped schema gate, a watchdog kill) must NOT collapse
+  // into the generic "no code-level signal" LAPSE default — it is a concrete, actionable signal the fixer can
+  // act on directly. Proven gap: this exact combination (status:error + a staging-failure issue) was previously
+  // invisible in the worklist (bucketed LAPSE with no trace of the actual cause).
+  it('a staging-race failure (status:error + a staging issue string) is FUNCTIONALITY, not the LAPSE default', () => {
+    const scores: NodeScore[] = [{
+      node: 'stage-skill', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    const digest = digestWith([], [nodeDigest('stage-skill', ['node failed: ENOENT staging skill dir — race with a concurrent stage'])]);
+    const [d] = triage(scores, digest);
+    expect(d.bucket).not.toBe('LAPSE');
+    expect(['FUNCTIONALITY', 'ARCH']).toContain(d.bucket);
+    expect(d.evidence.join('\n')).toContain('staging');
+    expect(d.needsSignal).toBeUndefined(); // a concrete signal is present — no mis-attribution deferral
+  });
+
+  it('a schema-contract breach issue is FUNCTIONALITY, not the LAPSE default', () => {
+    const scores: NodeScore[] = [{
+      node: 'bad-artifact', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    const digest = digestWith([], [nodeDigest('bad-artifact', ['contract breach — artifact(s) violate the declared schema: out.json [must be object]'])]);
+    const [d] = triage(scores, digest);
+    expect(d.bucket).toBe('FUNCTIONALITY');
+    expect(d.evidence.join('\n')).toContain('contract breach');
+  });
+
+  it('a watchdog-killed node (killedStall/killedTimeout issue text) is FUNCTIONALITY, not the LAPSE default', () => {
+    const scores: NodeScore[] = [{
+      node: 'stuck', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    const digest = digestWith([], [nodeDigest('stuck', ['killed: silent stall'])]);
+    const [d] = triage(scores, digest);
+    expect(d.bucket).toBe('FUNCTIONALITY');
+    expect(d.evidence.join('\n')).toContain('killed: silent stall');
+  });
+
+  it('a bare structural failure with NO recorded issue text still defaults to LAPSE (no regression)', () => {
+    // Same shape as the "defaults to LAPSE" test above, but now digest.nodes carries an entry with NO
+    // structural-signal text — proves the new reader does not over-fire on an unrelated/empty issues list.
+    const scores: NodeScore[] = [{
+      node: 'flaky', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    const digest = digestWith(
+      [{ failed: 'flaky', earliestUpstream: 'flaky', viaPath: '', chain: ['flaky'] }],
+      [nodeDigest('flaky', [])],
+    );
+    const [d] = triage(scores, digest);
+    expect(d.bucket).toBe('LAPSE');
+    expect(d.needsSignal).toBeTruthy();
   });
 });

@@ -168,7 +168,12 @@ function NodeSub(n, tail, fi = 0, filesFocused = false) {
   const preds = [...new Set((io.inputs || []).map((i) => i.fromLabel))];
   const succs = [...new Set((io.outputs || []).flatMap((o) => o.toLabels || []))];
   const brief = (a) => (a.length ? a.slice(0, 2).join(', ') + (a.length > 2 ? ` +${a.length - 2}` : '') : '·');
-  const tb = n.toolBreakdown ? Object.entries(n.toolBreakdown).map(([k, v]) => `${k}:${v}`).join('  ') : '';
+  // per-tool entries, marked when a tool's calls were REJECTED (its own error count, from toolErrorCounts)
+  // — errs===v means every attempt was rejected (a "real work" count of exactly 0), errs<v means partial.
+  const tb = n.toolBreakdown ? Object.entries(n.toolBreakdown).map(([k, v]) => {
+    const errs = n.toolErrorCounts?.[k] || 0;
+    return errs > 0 ? `${k}:${v}✗${errs}` : `${k}:${v}`;
+  }).join('  ') : '';
 
   // CONTEXT pressure: peak / pi-native window with a % — amber ≥70%, red ≥85% (the telemetry threshold).
   const ctxPeak = n.tokens?.contextPeak || 0;

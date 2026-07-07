@@ -536,8 +536,11 @@ describe('buildRunView — stamps node.derived (the shared display zones every v
     const tn = view.nodes.find((n) => n.id === 'tn')!;
     expect(tn.derived).toBeDefined();
     const d = tn.derived!;
-    // ranked tools + shares
-    expect(d.topTools).toEqual([{ name: 'read', count: 3, pct: 0.75 }, { name: 'bash', count: 1, pct: 0.25 }]);
+    // ranked tools + shares (+ the per-tool error tally: bash's one call was the isError one, read's weren't)
+    expect(d.topTools).toEqual([
+      { name: 'read', count: 3, pct: 0.75, errors: 0 },
+      { name: 'bash', count: 1, pct: 0.25, errors: 1 },
+    ]);
     // 1 failed span / 4 calls = 0.25 → high
     expect(d.toolError).toEqual({ errors: 1, rate: 0.25, tone: 'high' });
     // one tool at 75% but only 4 calls (needs >5) ⇒ not a stuck-loop flag

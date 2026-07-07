@@ -69,6 +69,9 @@ const contentOf = (message: unknown): ContentBlock[] => {
  */
 export function createClaudeAccumulator(): NodeAccumulator {
   const toolBreakdown: Record<string, number> = {};
+  // ADDITIVE per-tool error tally — mirrors distill.ts's toolErrorCounts, keyed off the SAME `is_error` read
+  // the timeline's `ok` flag already uses below (a tool_result with is_error:true).
+  const toolErrorCounts: Record<string, number> = {};
   // open tool-use span keyed by tool_use `id`; tStartMs stays null — the stream carries no per-tool start,
   // and one assistant line can batch many tool_use blocks (so never attribute the line's `_t`).
   const open = new Map<string, { name: string }>();
@@ -170,7 +173,9 @@ export function createClaudeAccumulator(): NodeAccumulator {
             if (typeof id !== 'string') continue;
             const span = open.get(id);
             if (!span) continue;
-            timeline.push({ name: span.name, tStartMs: null, durMs: 0, ok: block.is_error !== true });
+            const isError = block.is_error === true;
+            timeline.push({ name: span.name, tStartMs: null, durMs: 0, ok: !isError });
+            if (isError) toolErrorCounts[span.name] = (toolErrorCounts[span.name] || 0) + 1;
             open.delete(id);
           }
           break;
@@ -223,7 +228,7 @@ export function createClaudeAccumulator(): NodeAccumulator {
       // stay null/zeroed. model/tokens/modelCalls (Defect E2) are the FALLBACK accumulation nodeTokenSpine
       // reads via `{...rich.tokens}`/`rich.model` when a run carries no rec.usage (a legacy run).
       model, provider: null, api: null,
-      toolCalls, toolBreakdown: { ...toolBreakdown }, timeline: [...timelineOut],
+      toolCalls, toolBreakdown: { ...toolBreakdown }, toolErrorCounts: { ...toolErrorCounts }, timeline: [...timelineOut],
       reads: [], lists: [], writes: [], bash: [],
       tokens: { ...tok, billable: tok.input + tok.output },
       retries: 0, stopReason: null, truncated: false, thinkingChars: 0,

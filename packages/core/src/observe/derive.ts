@@ -21,8 +21,10 @@ import { DEFAULT_CONTEXT_WINDOW } from './models.js';
 /** An attention level, worst-first: `ok` < `warn` < `high`. A view maps it to its own colour vocabulary. */
 export type Tone = 'ok' | 'warn' | 'high';
 
-/** One tool in the ranked breakdown. `pct` is the tool's share of all calls (0–1). */
-export interface RankedTool { name: string; count: number; pct: number }
+/** One tool in the ranked breakdown. `pct` is the tool's share of all calls (0–1). `errors` is the
+ *  ADDITIVE per-tool rejected-call tally (from `toolErrorCounts`) — 0 for a clean tool; `errors === count`
+ *  marks a tool that never once succeeded (a rejected-only tool, not a real execution). */
+export interface RankedTool { name: string; count: number; pct: number; errors: number }
 
 /** One produced file in the unified output list. `path` is the display path; `ok` = on-disk verified. */
 export interface DerivedOutput { path: string; bytes?: number; ok: boolean }
@@ -59,6 +61,10 @@ export interface DeriveInput {
   expectedMs?: number | null;
   toolCalls: number;
   toolBreakdown: Record<string, number>;
+  /** ADDITIVE per-tool error tally (name → rejected-call count), from distill.ts's toolErrorCounts.
+   *  Optional so an existing caller that doesn't carry it (e.g. a stale fixture) still derives cleanly —
+   *  a name absent here reads 0 errors, same as before this field existed. */
+  toolErrorCounts?: Record<string, number>;
   timeline: { ok: boolean }[];
   retries: number;
   artifacts: { displayPath: string; bytes?: number; exists: boolean }[];
@@ -87,7 +93,8 @@ export function deriveNode(n: DeriveInput): NodeDerived {
   const entries = Object.entries(n.toolBreakdown);
   const total = entries.reduce((s, [, c]) => s + c, 0) || n.toolCalls || 1;
   const ranked = [...entries].sort((a, b) => b[1] - a[1]);
-  const topTools: RankedTool[] = ranked.map(([name, count]) => ({ name, count, pct: count / total }));
+  const errCounts = n.toolErrorCounts ?? {};
+  const topTools: RankedTool[] = ranked.map(([name, count]) => ({ name, count, pct: count / total, errors: errCounts[name] ?? 0 }));
   const top = ranked[0];
   const domRatio = top ? top[1] / total : 0;
   const dominance = { tool: top ? top[0] : null, ratio: domRatio, dominant: !!top && domRatio > 0.8 && n.toolCalls > 5 };

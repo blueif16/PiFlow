@@ -152,6 +152,20 @@ export { DefaultToolRegistry, BUILTIN_TOOLS, DEFAULT_TOOLS } from './tools/regis
 // (seeded into every DefaultToolRegistry) + its param schema + its inline-execute render for the `-e` ext.
 export { SUBMIT_RESULT_TOOL, SUBMIT_RESULT_PARAMETERS, SUBMIT_RESULT_ADDRESS, renderContractTool } from './tools/contract-tool.js';
 export type { ContractRenderable } from './tools/contract-tool.js';
+// The `script` tool source (docs/design script-tools): a `tool:<name>` DEFINE-path `tool.json` manifest,
+// resolved at node start (DISCOVER/RESOLVE) and preflighted loud BEFORE pi spawns, then rendered into the
+// generated `-e` extension with its own inline `execFile` execute (no bridge, no shell).
+export {
+  discoverScriptTools,
+  preflightScriptTools,
+  isScriptToolAddress,
+  scriptToolName,
+  TOOL_ADDRESS_PREFIX,
+  DEFAULT_SCRIPT_TIMEOUT_MS,
+} from './tools/script-discover.js';
+export type { ScriptToolManifest, ScriptToolExec, ScriptDiscoveryResult } from './tools/script-discover.js';
+export { renderScriptTool } from './tools/script-tool.js';
+export type { ScriptRenderable } from './tools/script-tool.js';
 // Ingestion: MCP tools/list → ToolEntry[] (the effortless catalog fill)
 export { mcpToolsToEntries } from './tools/ingest.js';
 export type { McpToolListing, McpIngestOpts } from './tools/ingest.js';
@@ -405,6 +419,16 @@ export type {
 // GUI build the SAME view from here (no view-local copy). Used by consumers that show cost/token panels.
 export { buildRunView } from './observe/index.js';
 export type { RunView, RunViewNode, RunViewStage, RunViewEdge, RunTokens } from './observe/index.js';
+// Context-composition — the ordered "element tree" (injected prompt + every agent read w/ range/coverage/
+// sha) + the advertised-vs-read blind-spot. A projection over events.jsonl + prompt.md + the reads-manifest.
+export { buildNodeContext } from './observe/index.js';
+export type { ContextOp, NodeComposition, NodeContext, ContextBuildCtx, ReadsManifest, ReadsManifestEntry } from './observe/index.js';
+// Turn-dissection — per-MODEL-TURN "reasoning-effort" timeline (thinking/text volume + the tool calls each
+// turn made) + the derived rollup (totalThinkChars, largestTurn, megaThinkTurns, derivationMarkerCount).
+// A projection over events.jsonl; feeds the `mega-think` telemetry anomaly + `piflowctl telemetry`'s
+// per-turn timeline table.
+export { buildNodeTurns, MEGA_THINK_CHARS, DERIVATION_MARKERS } from './observe/index.js';
+export type { TurnRecord, TurnToolCall, TurnSummary, MegaThinkTurn, TurnDissection } from './observe/index.js';
 // The falsifiable full-run rubric — the reusable "did this run actually succeed?" assessor (see §5 of
 // docs/design/full-run-simulation.md) that smoke drivers + E2E tiers call instead of substring checks.
 export { assessRunView } from './observe/index.js';
@@ -438,6 +462,7 @@ export {
   isProductRoot,
   findProductRoot,
   findProductRootsUnder,
+  templateLayout,
   resolveScope,
   registryFromRoots,
   loadScopedRegistry,

@@ -37,7 +37,7 @@ INTROSPECT
 - `packages/tool-bridge/src/index.ts:105` — `listServerTools()` — the real MCP `tools/list` client (the introspect default seam)
 BIND
 - `packages/core/src/catalog/client.ts:110` — `catalogForSpec()` — slice the cached rows + server configs a spec's `mcp.*` selects
-- `packages/core/src/runner/entry.ts:38` — `resolveRunTools()` — caller-wins seam: feed the slice into the run's registry + mcpConfig
+- `packages/core/src/runner/entry.ts:40` — `resolveRunTools()` — caller-wins seam: feed the slice into the run's registry + mcpConfig
 - `packages/core/src/runner/tool-config.ts:60` — `assembleRunTools()` — seed catalog+rows into the registry, union node `mcp.servers`
 - `packages/tool-bridge/src/index.ts:62` — `callTool()` — the generated `-e` call site that executes a bound `mcp.*`/`oc.*` tool
 SKILLS
@@ -96,11 +96,14 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 - `762c08f` 2026-07-03 — feat(core+cli): catalog introspect --as <alias> — bridge registry names to local bind names
+- `507b890` 2026-07-03 — feat(core): parseSkillDoc — manifest widened with description + body
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
 - [[agent-identity-surface]]
+- [[agentic-design-library]]
+- [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
 - [[claude-code-executor]]
@@ -110,8 +113,11 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[codegraph-best-practices]]
 - [[competitive-gaps-pdw]]
 - [[compose-gate-drag-audit]]
+- [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
+- [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
+- [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
@@ -124,10 +130,12 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
+- [[minimax-m3-framing]]
 - [[node-illustration-pipeline]]
 - [[okf-coverage-boundary]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-program]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
@@ -145,6 +153,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[use-understanding-system-first]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -154,5 +163,5 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/tool-config.test.ts`, `packages/core/test/catalog-introspect.test.ts`
 - `introspectMcpServer` (packages/core/src/catalog/introspect.ts:109) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
 
-<sub>derived 2026-07-03 · arc=30 commits · files=9 · lessons=45</sub>
+<sub>derived 2026-07-07 · arc=31 commits · files=9 · lessons=53</sub>
 <!-- okf:auto-end -->

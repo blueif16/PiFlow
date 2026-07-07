@@ -237,10 +237,20 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `c039c4d` 2026-07-03 — Merge feat/skill-marketplace-p2 — marketplace GUI + skills endpoint + remote search + enforced requires-floor
 - `cfd4c1a` 2026-07-03 — feat(core+cli): 5 new remote skill indexes + quality-first defaults + --source picker
 - `968b8f5` 2026-07-03 — feat(core+cli): bundled skill index — builder + pure BM25 ranker + staged fast path + skill index build verb
+- `507b890` 2026-07-03 — feat(core): parseSkillDoc — manifest widened with description + body
+- `746d448` 2026-07-03 — refactor(core+cli): hoist the skill install pipeline into @piflow/core
+- `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `43e77d3` 2026-07-06 — merge M1 — run identity: date-seq names, lineage fields, child runs
+- `4a19f22` 2026-07-06 — feat(observe): M8 — substrate exposure (lineage on the index, issues endpoint + side card)
+- `521d6c9` 2026-07-06 — feat(cli): M5 — substrate CLI (optimize triage|fix|adopt, issues + runs verbs)
+- `591004b` 2026-07-06 — merge M5 — substrate CLI (optimize triage|fix|adopt, issues + runs verbs) + verifying→open back-edge
+- `6a16eb2` 2026-07-06 — feat(cli): dotted --node <run>.<node> reference for the substrate verbs
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agentic-design-library]]
 - [[codebase-memory-mcp-analysis]]
 - [[expert-representations]]
 - [[game-omni-reference-product]]
@@ -263,5 +273,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-03 · arc=161 commits · files=15 · lessons=13</sub>
+<sub>derived 2026-07-07 · arc=170 commits · files=15 · lessons=14</sub>
 <!-- okf:auto-end -->

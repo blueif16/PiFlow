@@ -82,6 +82,27 @@ describe('template-format schemas — the fixture VALIDATES (accept the real sha
     expect(a.deps).toEqual(b.deps); // same deps …
     expect(a.contract.owns.some((o) => b.contract.owns.includes(o))).toBe(false); // … disjoint owns ⇒ a lane
   });
+
+  // (script-tools) `tools.defs` — the DEFINE-path override map for `tool:<name>` allow entries.
+  it('a `tools.defs` map ("tool:<name>" → a tool-dir path) validates', async () => {
+    const node = { ...((await readJson(nodePath('w0-classify'))) as Record<string, unknown>) };
+    node.tools = { allow: ['read', 'tool:demo_probe'], defs: { 'tool:demo_probe': '{{WORKSPACE}}/tools/demo_probe' } };
+    const r = validate(nodeSchema as object, node);
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  // (script-tools · optional) the OBJECT defs form `{ path, optional }` — presence-based tool offering.
+  it('a `tools.defs` OBJECT entry ({ path, optional: true }) validates', async () => {
+    const node = { ...((await readJson(nodePath('w0-classify'))) as Record<string, unknown>) };
+    node.tools = {
+      allow: ['read', 'tool:demo_probe'],
+      defs: { 'tool:demo_probe': { path: '{{WORKSPACE}}/tools/demo_probe', optional: true } },
+    };
+    const r = validate(nodeSchema as object, node);
+    expect(r.errors).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
 });
 
 describe('template-format schemas — MALFORMED node.json FAILS (the load-bearing assertions)', () => {
@@ -135,6 +156,39 @@ describe('template-format schemas — MALFORMED node.json FAILS (the load-bearin
     });
     expect(r.ok).toBe(false);
     expect(r.errors.join(' ')).toMatch(/to|required/);
+  });
+
+  // (script-tools) a `tools.defs` value that is not a string is rejected.
+  it('a `tools.defs` entry whose value is not a string is rejected', () => {
+    const r = rejects((n) => {
+      n.tools = { allow: ['tool:demo_probe'], defs: { 'tool:demo_probe': 42 } };
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  // (script-tools · optional) an OBJECT defs entry missing its required `path` is rejected.
+  it('a `tools.defs` OBJECT entry missing `path` is rejected', () => {
+    const r = rejects((n) => {
+      n.tools = { allow: ['tool:demo_probe'], defs: { 'tool:demo_probe': { optional: true } } };
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  // (script-tools · optional) an unknown key inside an OBJECT defs entry (a typo like `option`) is rejected.
+  it('a `tools.defs` OBJECT entry with an unknown key (a typo like `option`) is rejected', () => {
+    const r = rejects((n) => {
+      n.tools = { allow: ['tool:demo_probe'], defs: { 'tool:demo_probe': { path: 'x', option: true } } };
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  // an unknown key inside `tools` (a typo like `allows` for `allow`) is rejected — additionalProperties:false.
+  it('an unknown key inside `tools` (a typo like `allows`) is rejected', () => {
+    const r = rejects((n) => {
+      n.tools = { allows: ['read'] };
+    });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/additional|allows/i);
   });
 });
 

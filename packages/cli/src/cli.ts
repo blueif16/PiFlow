@@ -27,6 +27,7 @@ import { runNodeCli } from './node.js';
 import { runReplyCli } from './reply.js';
 import { runInspectCli } from './inspect.js';
 import { runTelemetryCli } from './telemetry.js';
+import { runTraceCli } from './trace.js';
 import { runOptimizeCli } from './optimize.js';
 import { runOptimizeFixCli } from './optimize-fix.js';
 import { runOptimizeAdoptCli } from './optimize-adopt.js';
@@ -67,7 +68,7 @@ USAGE
                                             find a node's standing lessons + recurrence · check lesson
                                             freshness · compact (retire graduated/code-shifted/over-cap lessons)
   piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
-  piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--stop too)
+  piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--rerun cold re-exec, --stop too)
   piflowctl reply   <run> <checkpointId> <value> [--by <who>]  answer a PARKED human-checkpoint (HITL) node —
                                             writes the reply file the runner is polling for so the run resumes
   piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
@@ -78,6 +79,10 @@ USAGE
   piflowctl telemetry <rundir> [nodeId] [--watch] [--verbose] [--json]  agent-facing digest:
                                             verdicts · cost spine · loop signals · anomaly worklist ·
                                             failure-onset root cause. --watch = live stream then record.
+  piflowctl trace   <rundir> [nodeId] [--json]  the "element tree": EXACTLY what reached the model —
+                                            the force-injected prompt + every read/grep, ordered, each
+                                            with range · coverage · sha · via — plus the advertised vs.
+                                            advertisedUnread BLIND-SPOT roll-up per node.
   piflowctl optimize <rundir> [--json] [--archetype <n>]  out-of-band Score + Triage of a FINISHED run:
                                             folds Tier-0 (telemetry) × Tier-1 (verify outcome) → the
                                             four-way (LAPSE/SKILL/FUNCTIONALITY/ARCH) worklist. Read-only.
@@ -184,6 +189,11 @@ NODE
   -m / --message "<msg>"  send one headless message into the resumed session; omit for a LIVE session.
                 A node with no recorded session (cold inmemory/cloud, or never ran --sandbox local) errors,
                 naming the resumable nodes.
+  --rerun       COLD single-node re-execution IN THE EXISTING run dir: force this node to RUN (bypassing the
+                journal's reuse/skip even when it is already ok), reusing every frozen upstream artifact
+                (stat-preflighted — a missing pinned one hard-errors), then agent → merge ops → contract gate
+                + checks → record, exactly as a normal run. Honors --sandbox/--thinking/--provider/--workspace.
+                (This is run's --from <id> --until <id> --no-resume, as the one-node ergonomics the overlord uses.)
   --stop        STOP the run by signalling its controlling process GROUP (SIGTERM→SIGKILL grace). This is a
                 per-RUN stop, not just one node: the runner records the run controller's pid in .pi/run.json
                 and spawns each node detached in that group. A run with no recorded pid (older run) errors.
@@ -356,13 +366,17 @@ async function main(): Promise<void> {
     case 'telemetry':
       await runTelemetryCli(rest);
       break;
+    case 'trace':
+      await runTraceCli(rest);
+      break;
     case 'optimize': {
       // TWO optimization systems share the `optimize` verb (docs/specs/optimize-substrate-plan.md §M5.1). The
       // per-node SUBSTRATE subverbs win FIRST, each GATED on `--node`/`--manifest` so a classic run literally
       // NAMED `triage`/`fix` never misroutes: `triage`/`fix` = measure→judge / fix→gate→stage a node's issues;
-      // `adopt --manifest` = land a staged substrate manifest. Then the CLASSIC routing loop, byte-UNCHANGED:
-      // `--rounds` = the multi-round overlord; `--adopt` = the explicit out-of-loop land; `--fix` = the single-
-      // shot FIX→GATE→LAND driver. Then the bare-`--node` full loop (triage THEN fix). Else classic read-only
+      // `adopt --manifest` = land a staged substrate manifest. Then the CLASSIC routing loop, byte-UNCHANGED
+      // (`--rounds` = the multi-round overlord — autonomous-propose, N>1 needs a binding that exports `run`;
+      // `--adopt` = the explicit out-of-loop land, the ONLY writer of live files; `--fix` = the single-shot
+      // FIX→GATE→LAND driver). Then the bare-`--node` full loop (triage THEN fix). Else classic read-only
       // `optimize <rundir>`. `routeOptimize` is the pure, unit-tested decision (optimize-substrate.ts).
       switch (routeOptimize(rest)) {
         case 'substrate-triage': await runSubstrateTriageCli(rest.slice(1)); break;

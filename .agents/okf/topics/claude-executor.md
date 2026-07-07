@@ -107,6 +107,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 - `e1cf599` 2026-07-02 — feat(core+gui): agent identity on the live path + the hover card leads with what DEFINES the agent
 - `7cf9fe8` 2026-07-03 — feat(core): unified skill locator — bare-id ring search, loud miss, ring/preset enumeration
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 
 ### Lessons — memory cluster
 
@@ -128,6 +129,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[omniscience-piflow-setup]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-program]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
@@ -150,5 +152,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 6 callers in `packages/core/src/runner/drivers/claude-code.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 
-<sub>derived 2026-07-03 · arc=34 commits · files=5 · lessons=30</sub>
+<sub>derived 2026-07-07 · arc=35 commits · files=5 · lessons=31</sub>
 <!-- okf:auto-end -->

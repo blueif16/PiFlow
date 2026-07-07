@@ -80,6 +80,31 @@ export const nodeSchema = {
       properties: {
         allow: { type: 'array', items: { type: 'string', minLength: 1 } },
         deny: { type: 'array', items: { type: 'string', minLength: 1 } },
+        defs: {
+          // (script-tools) DEFINE-path overrides for `tool:<name>` allow entries: "tool:<name>" → the
+          // token-resolvable tool DIR containing tool.json. A `tool:<name>` allow entry with NO entry here
+          // resolves to the template's own tools root (<templateDir>/tools/<name>/, filled by loadTemplate).
+          // A value is a plain string (REQUIRED) or the object form `{ path, optional: true }` (PRESENCE-
+          // BASED: the tool is offered only when the resolved dir exists for this run; a PRESENT tool gets
+          // full validation — optional forgives ABSENCE only).
+          type: 'object',
+          additionalProperties: {
+            oneOf: [
+              { type: 'string', minLength: 1 },
+              {
+                type: 'object',
+                additionalProperties: false,
+                required: ['path'],
+                properties: {
+                  path: { type: 'string', minLength: 1, description: 'Token-resolvable tool DIR (containing tool.json).' },
+                  optional: { type: 'boolean', description: 'true ⇒ presence-based: skip (with a note) when the dir is absent for this run.' },
+                },
+              },
+            ],
+          },
+          description:
+            'DEFINE-path overrides: "tool:<name>" → the token-resolvable tool DIR (containing tool.json), or { path, optional } for presence-based offering. Omitted for a tool:<name> ⇒ <templateDir>/tools/<name>/.',
+        },
       },
     },
     mcp: {
@@ -127,6 +152,14 @@ export const nodeSchema = {
       type: 'string',
       minLength: 1,
       description: 'Per-node tier alias → ~/.piflow/model-tiers.json (free-data names). Omitted ⇒ none.',
+    },
+    thinking: {
+      // PER-NODE reasoning cap → `pi --thinking` (and claude `--effort`). OVERRIDES the run-level --thinking.
+      // The operator-free fix for producer over-think: a node that must COMMIT a write (not reason forever)
+      // pins its own cap in node.json instead of relying on an operator flag. The 6 levels pi --thinking takes.
+      type: 'string',
+      enum: ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+      description: 'Per-node reasoning cap → pi --thinking / claude --effort. Overrides run-level. Omitted ⇒ inherit run.',
     },
     inject: {
       // KIND 1 — FORCED reads (§6a): small · always-needed · stable files auto-injected into the prompt.

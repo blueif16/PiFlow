@@ -76,6 +76,45 @@ describe('projectRunDigest — anomaly detection', () => {
     const slow = projectRunDigest(rview([vnode({ id: 'a', durationMs: 9000, expectedMs: 3000, priorSamples: 4 })]));
     expect(slow.nodes[0].anomalies).toEqual(['slow']); // 3× the 3-sample mean
   });
+
+  it('mega-think fires when the node carries a megaThinkTurn, and the digest surfaces the summary numbers', () => {
+    const d = projectRunDigest(
+      rview([
+        vnode({
+          id: 'thinker',
+          turnSummary: {
+            totalThinkChars: 60_170,
+            largestTurn: { turnIndex: 23, thinkChars: 50_170, durMs: 188_876 },
+            megaThinkTurns: [{ turnIndex: 23, thinkChars: 50_170, durMs: 188_876, quote: 'Let me derive the discriminant…' }],
+            derivationMarkerCount: 2,
+          },
+        }),
+      ]),
+    );
+    const n = d.nodes[0];
+    expect(n.anomalies).toEqual(['mega-think']);
+    expect(n.totalThinkChars).toBe(60_170);
+    expect(n.largestTurn).toEqual({ turnIndex: 23, thinkChars: 50_170, durMs: 188_876 });
+    expect(n.megaThinkTurns).toHaveLength(1);
+    expect(n.derivationMarkerCount).toBe(2);
+    const anomaly = d.anomalies.find((a) => a.kind === 'mega-think')!;
+    expect(anomaly.detail).toMatch(/turn 23/);
+    expect(anomaly.detail).toMatch(/50170 thinking chars/);
+  });
+
+  it('a node with a big turn that ALSO used a tool is NOT mega-think (no megaThinkTurns entry ⇒ no anomaly)', () => {
+    // Guards the wiring, not the reducer's own math (that's turn-dissection.test.ts's job): even a node
+    // with real turn data and a big totalThinkChars stays clean if turnDissection didn't flag any turn.
+    const d = projectRunDigest(
+      rview([
+        vnode({
+          id: 'productive',
+          turnSummary: { totalThinkChars: 50_170, largestTurn: { turnIndex: 5, thinkChars: 50_170, durMs: 100_000 }, megaThinkTurns: [], derivationMarkerCount: 0 },
+        }),
+      ]),
+    );
+    expect(d.nodes[0].anomalies).toEqual([]);
+  });
 });
 
 describe('projectRunDigest — rollup + context %', () => {
@@ -98,6 +137,25 @@ describe('projectRunDigest — rollup + context %', () => {
   it('computes contextPct = peak / window', () => {
     const d = projectRunDigest(rview([vnode({ id: 'a', contextWindow: 200_000, tokens: tok({ contextPeak: 50_000 }) })]));
     expect(d.nodes[0].contextPct).toBeCloseTo(0.25, 10);
+  });
+});
+
+// The bug this pins: topTools (a straight copy of toolBreakdown's attempt counts) can't tell a tool
+// REJECTED on every call from a real execution — an agent reading the digest sees "bash: 2" either way.
+// topToolErrors is the ADDITIVE parallel surface (from RunViewNode.toolErrorCounts) that lets the agent
+// tell them apart without re-deriving anything itself.
+describe('projectRunDigest — topToolErrors (per-tool error tally alongside topTools)', () => {
+  it('carries toolErrorCounts through as topToolErrors, leaving topTools (attempts) unchanged', () => {
+    const d = projectRunDigest(rview([
+      vnode({ id: 'a', toolBreakdown: { bash: 2, read: 1 }, toolErrorCounts: { bash: 2 } }),
+    ]));
+    expect(d.nodes[0].topTools).toEqual({ bash: 2, read: 1 }); // attempts: unchanged
+    expect(d.nodes[0].topToolErrors).toEqual({ bash: 2 }); // every bash attempt was rejected
+  });
+
+  it('defaults to {} when the view node carries no toolErrorCounts (an older/hand-built RunViewNode)', () => {
+    const d = projectRunDigest(rview([vnode({ id: 'a', toolBreakdown: { read: 1 } })]));
+    expect(d.nodes[0].topToolErrors).toEqual({});
   });
 });
 

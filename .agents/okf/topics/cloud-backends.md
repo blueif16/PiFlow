@@ -38,7 +38,7 @@ EXECUTE
 - `packages/core/src/runner/env-staging.ts:23` — `CLOUD_KINDS` — `{daytona,e2b}`: the no-host-trust gate
 - `packages/core/src/runner/env-staging.ts:50` — `effectiveSandboxLocation` — per-node workdir/output by kind (isolated for cloud)
 SECRETS
-- `packages/core/src/types.ts:680` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
+- `packages/core/src/types.ts:682` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
 - `packages/core/src/runner/env-staging.ts:146` — `cloudCredEnvAdditions` — resolve the DECLARED cred allowlist into the VM (cloud-only)
 
 # Freshness (anti-drift)
@@ -151,6 +151,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 
 ### Lessons — memory cluster
 
@@ -176,10 +177,12 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[harden-write-forcing-experiment]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
+- [[minimax-m3-framing]]
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[omniscience-piflow-setup]]
+- [[optimize-substrate-program]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
@@ -195,6 +198,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[sdk-data-boundaries]]
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
+- [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -204,5 +208,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-03 · arc=89 commits · files=8 · lessons=40</sub>
+<sub>derived 2026-07-07 · arc=90 commits · files=8 · lessons=43</sub>
 <!-- okf:auto-end -->

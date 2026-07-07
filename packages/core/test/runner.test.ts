@@ -37,6 +37,13 @@ async function tmpOut(): Promise<string> {
 }
 
 /**
+ * THE per-node STAGED input path the runner writes under (`.pi/staged/<id>/<file>` — prompt.md, tools.ts,
+ * mcp.json). ONE shared constant so the staged-layout literal is never hand-duplicated across assertions
+ * (mirrors node-lifecycle's `nodeStage = path.posix.join('.pi', 'staged', node.id)`).
+ */
+const stagedPath = (id: string, file: string): string => path.posix.join('.pi', 'staged', id, file);
+
+/**
  * THE STUB COMMAND BUILDER — the offline injection point. Instead of spawning `pi`, it returns a
  * shell command that writes each of the node's declared artifacts into its sandbox OUTPUT dir at
  * `<output>/<artifactPath>` (the path convention downloadDir flattens onto the host run dir), plus a
@@ -806,10 +813,10 @@ describe('runWorkflow — tool binding (the per-node pre-check + the generated -
     expect(status.nodes.issue.status).toBe('ok');
     // the allowlist carries the builtin AND the prefixed MCP bare name; -e points at the staged file.
     expect(captured).toContain('--tools write,github_create_issue');
-    expect(captured).toContain("-e '_pi/issue/tools.ts'");
+    expect(captured).toContain(`-e '${stagedPath('issue', 'tools.ts')}'`);
     // the generated extension was actually staged (at the node's per-node staging dir), and it BINDS the
     // declared tool (registerTool + bridge).
-    const ext = writes.find((w) => w.path === '_pi/issue/tools.ts');
+    const ext = writes.find((w) => w.path === stagedPath('issue', 'tools.ts'));
     expect(ext).toBeTruthy();
     expect(ext!.data).toContain('name: "github_create_issue"');
     // the staged extension is now the self-contained BUNDLE (the bundle seam): the @piflow/tool-bridge
@@ -823,11 +830,11 @@ describe('runWorkflow — tool binding (the per-node pre-check + the generated -
   });
 });
 
-// ── per-node staging isolation: _pi/<id>/* (parallel nodes never clobber the staged prompt/ext) ───
+// ── per-node staging isolation: .pi/staged/<id>/* (parallel nodes never clobber the staged prompt/ext) ───
 
-describe('runWorkflow — per-node staging isolation (parallel nodes never clobber _pi/*)', () => {
-  it('stages each node prompt at a per-node path _pi/<id>/prompt.md (distinct across a parallel stage)', async () => {
-    // A and B have no deps → ONE parallel stage. With a FIXED _pi/prompt.md, two nodes sharing an
+describe('runWorkflow — per-node staging isolation (parallel nodes never clobber .pi/staged/*)', () => {
+  it('stages each node prompt at a per-node path .pi/staged/<id>/prompt.md (distinct across a parallel stage)', async () => {
+    // A and B have no deps → ONE parallel stage. With a FIXED prompt.md, two nodes sharing an
     // in-place workspace clobber each other's prompt (the OPEN-1 bug). Per-node namespacing prevents it.
     const g = compile(wf([n('A', [], ['a.txt']), n('B', [], ['b.txt'])]));
     const outDir = await tmpOut();
@@ -850,12 +857,12 @@ describe('runWorkflow — per-node staging isolation (parallel nodes never clobb
     const { status } = await runWorkflow(g, { run: 'stage-iso', outDir, provider: recording, buildCommand: stubBuilder() });
     expect(status.ok).toBe(true);
 
-    // distinct, node-id-namespaced — NOT a shared '_pi/prompt.md' (the clobber the fix prevents).
+    // distinct, node-id-namespaced — NOT a shared 'prompt.md' (the clobber the fix prevents).
     const promptPaths = writes.filter((w) => w.path.endsWith('prompt.md')).map((w) => w.path).sort();
-    expect(promptPaths).toEqual(['_pi/a/prompt.md', '_pi/b/prompt.md']);
+    expect(promptPaths).toEqual([stagedPath('a', 'prompt.md'), stagedPath('b', 'prompt.md')]);
     // …and each prompt kept ITS node's content (proves they did not overwrite one another).
-    expect(writes.find((w) => w.path === '_pi/a/prompt.md')!.data).toContain('do A');
-    expect(writes.find((w) => w.path === '_pi/b/prompt.md')!.data).toContain('do B');
+    expect(writes.find((w) => w.path === stagedPath('a', 'prompt.md'))!.data).toContain('do A');
+    expect(writes.find((w) => w.path === stagedPath('b', 'prompt.md'))!.data).toContain('do B');
 
     await fs.rm(outDir, { recursive: true, force: true });
   });
@@ -904,7 +911,7 @@ describe('runWorkflow — prompt token resolution at node launch (S1)', () => {
     });
     expect(status.nodes.classify.status).toBe('ok');
 
-    const staged = writes.find((w) => w.path === '_pi/classify/prompt.md')!;
+    const staged = writes.find((w) => w.path === stagedPath('classify', 'prompt.md'))!;
     expect(staged).toBeTruthy();
     // The tokens are PHYSICAL on disk — not the verbatim {{…}} the pre-S1 runner staged.
     expect(staged.data).toContain('Build: a fast platformer');
@@ -937,7 +944,7 @@ describe('runWorkflow — prompt token resolution at node launch (S1)', () => {
     const outDir = await tmpOut();
     const { provider, writes } = recorder();
     await runWorkflow(compile(wf([n('Plain', [], ['p.txt'])])), { run: 'plain-res', outDir, provider, buildCommand: stubBuilder() });
-    const staged = writes.find((w) => w.path === '_pi/plain/prompt.md')!;
+    const staged = writes.find((w) => w.path === stagedPath('plain', 'prompt.md'))!;
     // 'do Plain' prose survives intact (the markers tail still appends, as before).
     expect(staged.data).toContain('do Plain');
     await fs.rm(outDir, { recursive: true, force: true });
@@ -1081,7 +1088,7 @@ describe('runWorkflow — promote + barrier-merge + state I/O (S3)', () => {
     expect(state.archetype).toBe('platformer');
 
     // (2) the downstream prompt resolved {{state.archetype}} to the promoted value (physical on disk).
-    const buildPrompt = writes.find((x) => x.path === '_pi/build/prompt.md')!;
+    const buildPrompt = writes.find((x) => x.path === stagedPath('build', 'prompt.md'))!;
     expect(buildPrompt.data).toContain('build for platformer');
     expect(buildPrompt.data).not.toContain('{{state.archetype}}');
 
@@ -1168,7 +1175,7 @@ describe('runWorkflow — promote + barrier-merge + state I/O (S3)', () => {
     })();
     const { status } = await runWorkflow(compile(wf([node])), { run: 'preload', outDir, provider, buildCommand: stubBuilder() });
     expect(status.nodes.use.status).toBe('ok');
-    expect(writes.find((x) => x.path === '_pi/use/prompt.md')!.data).toContain('use voxel');
+    expect(writes.find((x) => x.path === stagedPath('use', 'prompt.md'))!.data).toContain('use voxel');
     await fs.rm(outDir, { recursive: true, force: true });
   });
 });
@@ -1325,12 +1332,12 @@ describe('runWorkflow — run scope (the openRun lifecycle for worktree/cloud pr
   });
 });
 
-// ── MCP config staging: _pi/mcp.json + PIFLOW_MCP_CONFIG (absolute) + referenced-secret env injection ─
-// The runner writes the node's MCP server map (with $VAR refs, never literals) to _pi/mcp.json and sets
+// ── MCP config staging: .pi/staged/<id>/mcp.json + PIFLOW_MCP_CONFIG (absolute) + referenced-secret env injection ─
+// The runner writes the node's MCP server map (with $VAR refs, never literals) to .pi/staged/<id>/mcp.json and sets
 // PIFLOW_MCP_CONFIG to its ABSOLUTE in-sandbox path, plus the referenced secret env vars. On CLOUD
 // providers (daytona/e2b) it forwards ONLY the referenced (allowlisted) vars — never the whole host env.
 
-describe('runWorkflow — MCP config staging (_pi/mcp.json + PIFLOW_MCP_CONFIG + referenced-secret env)', () => {
+describe('runWorkflow — MCP config staging (.pi/staged/<id>/mcp.json + PIFLOW_MCP_CONFIG + referenced-secret env)', () => {
   /**
    * A recording provider: captures the env handed to create() and every writeFile path+data, so a test
    * can prove what was staged and what env crossed into the sandbox. `kind` is parameterized so the same
@@ -1379,7 +1386,7 @@ describe('runWorkflow — MCP config staging (_pi/mcp.json + PIFLOW_MCP_CONFIG +
     },
   };
 
-  it('stages _pi/mcp.json and injects PIFLOW_MCP_CONFIG (absolute) + the referenced secret into the node env (local)', async () => {
+  it('stages .pi/staged/<id>/mcp.json and injects PIFLOW_MCP_CONFIG (absolute) + the referenced secret into the node env (local)', async () => {
     const registry = mcpRegistry('github', 'create_issue');
     const g = compile(wf([n('Issue', [], ['out.txt'], { tools: { allow: ['fs:write', 'mcp.github:create_issue'] } })]));
     const outDir = await tmpOut();
@@ -1399,16 +1406,16 @@ describe('runWorkflow — MCP config staging (_pi/mcp.json + PIFLOW_MCP_CONFIG +
 
       expect(status.nodes.issue.status).toBe('ok');
 
-      // (1) the MCP config was staged VERBATIM at the node's per-node staging dir (_pi/<id>/mcp.json).
-      const cfg = writes.find((w) => w.path === '_pi/issue/mcp.json');
+      // (1) the MCP config was staged VERBATIM at the node's per-node staging dir (.pi/staged/<id>/mcp.json).
+      const cfg = writes.find((w) => w.path === stagedPath('issue', 'mcp.json'));
       expect(cfg).toBeTruthy();
       expect(JSON.parse(cfg!.data)).toEqual(mcpConfig);
 
-      // (2) PIFLOW_MCP_CONFIG is set to an ABSOLUTE path ending in the node's _pi/<id>/mcp.json, plus the secret.
+      // (2) PIFLOW_MCP_CONFIG is set to an ABSOLUTE path ending in the node's .pi/staged/<id>/mcp.json, plus the secret.
       const env = createEnvs.find((e) => e && 'PIFLOW_MCP_CONFIG' in e);
       expect(env).toBeTruthy();
       expect(path.isAbsolute(env!.PIFLOW_MCP_CONFIG)).toBe(true);
-      expect(env!.PIFLOW_MCP_CONFIG.endsWith('_pi/issue/mcp.json') || env!.PIFLOW_MCP_CONFIG.endsWith(path.join('_pi', 'issue', 'mcp.json'))).toBe(true);
+      expect(env!.PIFLOW_MCP_CONFIG.endsWith(stagedPath('issue', 'mcp.json')) || env!.PIFLOW_MCP_CONFIG.endsWith(path.join('.pi', 'staged', 'issue', 'mcp.json'))).toBe(true);
       expect(env!.GH_TOKEN).toBe('ghp_runner_secret');
     } finally {
       delete process.env.GH_TOKEN;
@@ -1416,7 +1423,7 @@ describe('runWorkflow — MCP config staging (_pi/mcp.json + PIFLOW_MCP_CONFIG +
     }
   });
 
-  it('does NOT write _pi/mcp.json for a node that selected NO mcp tools', async () => {
+  it('does NOT write .pi/staged/<id>/mcp.json for a node that selected NO mcp tools', async () => {
     // Builtin-only node: no extension, no mcp address → nothing MCP to stage even though mcpConfig is present.
     const g = compile(wf([n('Plain', [], ['out.txt'], { tools: { allow: ['fs:write'] } })]));
     const outDir = await tmpOut();
@@ -1452,7 +1459,7 @@ describe('runWorkflow — MCP config staging (_pi/mcp.json + PIFLOW_MCP_CONFIG +
       });
 
       expect(status.nodes.issue.status).toBe('ok');
-      expect(writes.find((w) => w.path === '_pi/issue/mcp.json')).toBeTruthy();
+      expect(writes.find((w) => w.path === stagedPath('issue', 'mcp.json'))).toBeTruthy();
 
       const env = createEnvs.find((e) => e && 'PIFLOW_MCP_CONFIG' in e)!;
       expect(env).toBeTruthy();
@@ -1470,7 +1477,7 @@ describe('runWorkflow — MCP config staging (_pi/mcp.json + PIFLOW_MCP_CONFIG +
     }
   });
 
-  it('stages _pi/mcp.json for an oc.* node (the OpenClaw gateway lane triggers staging just like mcp.)', async () => {
+  it('stages .pi/staged/<id>/mcp.json for an oc.* node (the OpenClaw gateway lane triggers staging just like mcp.)', async () => {
     // A node that selected ONLY an oc.* tool must stage the config (so the `openclaw` server reaches the
     // bridge in-child). Before the runner predicate accepted `oc.`, this node staged NOTHING and the
     // gateway was never configured → callTool would fail not-configured. This is the regression guard.
@@ -1489,7 +1496,7 @@ describe('runWorkflow — MCP config staging (_pi/mcp.json + PIFLOW_MCP_CONFIG +
 
       expect(status.nodes.recall.status).toBe('ok');
       // the config was staged VERBATIM at the node's per-node staging dir (carries the openclaw server $VAR ref).
-      const cfg = writes.find((w) => w.path === '_pi/recall/mcp.json');
+      const cfg = writes.find((w) => w.path === stagedPath('recall', 'mcp.json'));
       expect(cfg).toBeTruthy();
       expect(JSON.parse(cfg!.data)).toEqual(ocMcpConfig);
       // PIFLOW_MCP_CONFIG + the referenced secret were injected into the node env.
@@ -2359,7 +2366,7 @@ describe('runWorkflow — io/sandbox/checks token resolution at node launch (U7-
     expect(JSON.stringify(status.nodes.pedagogy.artifacts)).not.toContain('{{');
 
     // (2) THE DRIVER-* MARKERS are physical (markersFromNode rendered RESOLVED io/sandbox paths).
-    const staged = writes.find((w) => w.path === '_pi/pedagogy/prompt.md')!;
+    const staged = writes.find((w) => w.path === stagedPath('pedagogy', 'prompt.md'))!;
     expect(staged).toBeTruthy();
     expect(staged.data).toContain('DRIVER-ARTIFACTS: data/kp4/out.md');
     expect(staged.data).toContain('DRIVER-OWNS: /tmp/ws/data/kp4');
@@ -2400,7 +2407,7 @@ describe('runWorkflow — io/sandbox/checks token resolution at node launch (U7-
     const { status } = await runWorkflow(compile(wf([n('Plain', [], ['p.txt'])])), { run: 'iores-plain', outDir, provider, buildCommand: stubBuilder() });
     expect(status.nodes.plain.status).toBe('ok');
     expect(status.nodes.plain.artifacts).toEqual([{ path: 'p.txt', exists: true, bytes: 'plain'.length }]);
-    const staged = writes.find((w) => w.path === '_pi/plain/prompt.md')!;
+    const staged = writes.find((w) => w.path === stagedPath('plain', 'prompt.md'))!;
     expect(staged.data).toContain('DRIVER-ARTIFACTS: p.txt');
     expect(createOpts[0].readScope).toEqual([]); // no read-scope declared ⇒ empty, unchanged
     await fs.rm(outDir, { recursive: true, force: true });

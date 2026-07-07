@@ -94,6 +94,8 @@
 .ds-tooltag .ds-toolicon { color: var(--tone, var(--ds-neutral-500)); flex: 0 0 auto; }
 .ds-tooltag__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ds-tooltag__count { color: var(--ds-text-primary); font-variant-numeric: tabular-nums; }
+/* a rejected-call tally on the tag — distinct from --tone so a rejected-only tool never reads as clean */
+.ds-tooltag__errors { color: var(--ds-error-fg); font-variant-numeric: tabular-nums; }
 .ds-tooltag--btn { border: none; border-left: 2px solid var(--tone, var(--ds-neutral-400)); cursor: pointer; transition: background var(--ds-dur-fast) var(--ds-ease-standard), color var(--ds-dur-fast); }
 .ds-tooltag--btn:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
 .ds-tooltag--btn:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 1px; }

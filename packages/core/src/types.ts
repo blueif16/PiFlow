@@ -43,6 +43,13 @@ export interface NodeSpec {
   /** Per-node tier ALIAS resolved to a model via `~/.piflow/model-tiers.json` (when active). Undefined ⇒ none. */
   tier?: string;
   /**
+   * Per-node reasoning-depth cap → `pi --thinking` (and claude `--effort`). One of
+   * off|minimal|low|medium|high|xhigh. OVERRIDES the run-level `--thinking`; undefined ⇒ inherit it. Lets a
+   * producer that must COMMIT a write (not reason forever) pin its own cap WITHOUT an operator flag — the
+   * operator-free fix for the compose-in-thinking over-think stall. Emitted in `runner/command.ts`.
+   */
+  thinking?: string;
+  /**
    * Which agent binary runs this node — an OPEN executor id resolved against the per-run `DriverTable`
    * (P3). Absent/`'pi'` → the pi coding agent (today's path, BYTE-IDENTICAL). `'claude-code'` → a headless
    * `claude -p` session on the LOCAL logged-in subscription (builtins only, for read/write/fix/debug); it
@@ -274,7 +281,25 @@ export interface ToolSelection {
   allow?: string[];
   /** Denied tool addresses (applied after allow). */
   deny?: string[];
+  /**
+   * DEFINE-path overrides for `tool:<name>` addresses in `allow` (the SCRIPT tool source): a map
+   * `"tool:<name>" → <token-resolvable path to the tool DIR containing tool.json>`. `loadTemplate` fills a
+   * `tool:<name>` allow entry with NO override to the template's own tools root
+   * (`<templateDir>/tools/<name>/`) — the ONLY two locations `discoverScriptTools` ever searches, no
+   * convention scanning. A hand-built (non-template) `WorkflowSpec` has no template dir to default
+   * against, so it must declare `defs` explicitly for every `tool:<name>` it selects.
+   *
+   * A value is EITHER a plain string path (REQUIRED — the tool must resolve, else the node blocks) OR the
+   * object form `{ path, optional: true }` (PRESENCE-BASED offering): if the resolved dir exists, the tool
+   * behaves exactly like a required one (full validation — presence activates the whole contract); if it
+   * does not exist for THIS run's variant, the tool is skipped with a note and simply not offered (not on
+   * `--tools`, not in the generated extension). Optional forgives ABSENCE only.
+   */
+  defs?: Record<string, ScriptToolDef>;
 }
+
+/** One `tools.defs` value: a plain REQUIRED dir path, or `{ path, optional }` (presence-based offering). */
+export type ScriptToolDef = string | { path: string; optional?: boolean };
 
 // 4 ── CONTRACT / DATA-FLOW (edges are inferred from this) ─────────────────────
 
@@ -720,9 +745,12 @@ export const defaultEscalator: Escalator = (notice) => {
  * third-party tools bound through a generated `-e` extension (execute routes to a plugin/the bridge).
  * `contract` is a FIRST-PARTY SDK tool with its OWN inline execute (e.g. `submit_result`, the typed
  * terminating return tool) — bound by bare name like a builtin, but NOT pi-native, so it ships in the
- * generated `-e` extension with its real execute baked in (no bridge, no external plugin).
+ * generated `-e` extension with its real execute baked in (no bridge, no external plugin). `script` is a
+ * PRODUCT-DEFINED tool (a `tool:<name>` DEFINE-path `tool.json` manifest naming a `cmd`/`argv`): the
+ * generated `-e` extension spawns it via `child_process.execFile` (no bridge, no shell) — see
+ * `tools/script-tool.ts` (render) and `tools/script-discover.ts` (DISCOVER/RESOLVE + preflight).
  */
-export type ToolSource = 'builtin' | 'sdk' | 'mcp' | 'contract';
+export type ToolSource = 'builtin' | 'sdk' | 'mcp' | 'contract' | 'script';
 
 /** One catalog entry. `address` is SDK-facing (`ns:name`); `piName` is the bare name pi sees. */
 export interface ToolEntry {
@@ -739,6 +767,12 @@ export interface ToolEntry {
   parameters?: unknown;
   /** Provenance for the borrow story (native pi / OpenClaw plugin / MCP server). */
   origin?: { kind: 'native' | 'openclaw-plugin' | 'mcp-server'; ref?: string };
+  /**
+   * script-only: the exec contract DISCOVERED from the tool's `tool.json` manifest at node start —
+   * `argv` already has every `{{toolDir}}` substituted with the tool dir's absolute path. Undefined for
+   * every other source.
+   */
+  exec?: { cmd: string; argv: string[]; timeoutMs: number };
 }
 
 /** The result of resolving a node's ToolSelection against the registry. */
@@ -929,7 +963,7 @@ export interface SubworkflowSpec {
  * metadata (a display label, §5) carried through so a PROFILE predicate can select nodes by it — it
  * NEVER drives ordering/parallelism (deps + owns do).
  */
-export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentType' | 'tools' | 'model' | 'provider' | 'tier' | 'executor'> & {
+export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentType' | 'tools' | 'model' | 'provider' | 'tier' | 'thinking' | 'executor'> & {
   io: NodeIO;
   /** Generic phase label (display metadata; the elision predicate may select by it). Optional/additive. */
   phase?: string;

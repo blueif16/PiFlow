@@ -7,12 +7,18 @@
 // default best-effort-loads ajv-2020 and, if it does not resolve, the gate WARNS + SKIPS (non-blocking)
 // — so @piflow/core carries no hard ajv dependency and a missing optional dep never bricks a run.
 
-import { promises as fs } from 'node:fs';
+import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ArtifactReq } from '../types.js';
 
-/** Validate parsed `data` against a parsed JSON-Schema. Pure given the two objects (the runner does fs). */
-export type SchemaValidator = (schema: object, data: unknown) => { ok: boolean; errors: string[] };
+/**
+ * Validate parsed `data` against a parsed JSON-Schema. Pure given the two objects PLUS the optional
+ * `schemaDir` — the directory `schema` was read from, consulted ONLY to resolve a relative-FILE `$ref`
+ * (a split base+overlay schema pair). Additive: an injected `RunOptions.validateSchema` that ignores the
+ * third arg (today's every consumer) stays source-compatible; a single self-contained schema never looks
+ * at it, so behavior is byte-identical when `schemaDir` is absent.
+ */
+export type SchemaValidator = (schema: object, data: unknown, schemaDir?: string) => { ok: boolean; errors: string[] };
 
 /** The gate's outcome. `skipped` set (invalid empty) when off; `invalid` lists present-but-bad artifacts. */
 export interface SchemaCheckResult {
@@ -33,6 +39,7 @@ export async function defaultSchemaValidator(): Promise<SchemaValidator | null> 
     const mod = (await import('ajv/dist/2020.js')) as unknown as Record<string, unknown>;
     const Ajv2020 = (mod.Ajv2020 ?? mod.default ?? mod) as unknown as new (o: object) => {
       compile: (s: object) => ((d: unknown) => boolean) & { errors?: { instancePath?: string; message?: string }[] | null };
+      addSchema: (s: object) => void;
     };
     if (typeof Ajv2020 !== 'function') {
       _default = null;
@@ -44,9 +51,42 @@ export async function defaultSchemaValidator(): Promise<SchemaValidator | null> 
     } catch {
       /* formats are optional */
     }
-    _default = (schema, data) => {
+    _default = (schema, data, schemaDir) => {
       const ajv = new Ajv2020({ allErrors: true, strict: false });
       if (addFormats) try { addFormats(ajv); } catch { /* non-fatal */ }
+      // Multi-file $ref support (a faithful port of the pi-runner hook engine's loadSchemaValidatorFactory):
+      // load every relative-FILE $ref (e.g. a per-branch overlay schema $ref-ing a shared base) and
+      // addSchema it, so a split schema set compiles instead of ajv.compile() throwing MissingRefError.
+      // Each ref schema is addSchema'd under its own declared $id and we recurse for transitive refs.
+      // Generic — no project paths baked in; a single self-contained schema (no external $ref, or no
+      // schemaDir) never enters this block, so behavior there is byte-identical to before.
+      if (schemaDir) {
+        const seen = new Set<string>();
+        const addRefs = (sch: unknown, dir: string): void => {
+          const refs: string[] = [];
+          JSON.stringify(sch, (k, v) => {
+            if (k === '$ref' && typeof v === 'string' && !v.startsWith('#')) refs.push(v);
+            return v;
+          });
+          for (const ref of refs) {
+            if (seen.has(ref)) continue;
+            seen.add(ref);
+            try {
+              const refAbs = path.resolve(dir, ref.split('#')[0]);
+              const refSchema = JSON.parse(readFileSync(refAbs, 'utf8'));
+              ajv.addSchema(refSchema);
+              addRefs(refSchema, path.dirname(refAbs));
+            } catch {
+              /* leave unresolved — ajv errors honestly at compile */
+            }
+          }
+        };
+        try {
+          addRefs(schema, schemaDir);
+        } catch {
+          /* non-fatal */
+        }
+      }
       const v = ajv.compile(schema);
       const ok = !!v(data);
       const errors = (v.errors ?? []).slice(0, 8).map((e) => `${e.instancePath || '/'} ${e.message ?? ''}`.trim());
@@ -102,7 +142,8 @@ export async function validateArtifactSchemas(
   let checked = 0;
   let skipped: string | null = null;
   for (const a of withSchema) {
-    const schemaObj = await readJson(await resolveUnder(a.schema as string, opts.roots));
+    const schemaAbs = await resolveUnder(a.schema as string, opts.roots);
+    const schemaObj = await readJson(schemaAbs);
     if (schemaObj == null || typeof schemaObj !== 'object') {
       skipped = `schema unreadable/uncompilable (${path.basename(a.schema as string)})`;
       continue;
@@ -122,8 +163,16 @@ export async function validateArtifactSchemas(
       invalid.push({ path: a.path, errors: [`not valid JSON: ${(e as Error).message}`] });
       continue;
     }
-    const r = opts.validate(schemaObj as object, data);
-    if (!r.ok) invalid.push({ path: a.path, errors: r.errors });
+    // The compile step inside `validate` can throw (an unresolved $ref, a strict-mode clash, …) — a SCHEMA
+    // config problem, never a false artifact breach. Degrade exactly like an unreadable schema file above
+    // (skip + warn, never crash the run — run.mjs schemaCheck's degrade-don't-brick contract).
+    try {
+      const r = opts.validate(schemaObj as object, data, path.dirname(schemaAbs));
+      if (!r.ok) invalid.push({ path: a.path, errors: r.errors });
+    } catch (e) {
+      checked--; // this artifact's schema never actually compiled — it was not really "checked"
+      skipped = `schema unreadable/uncompilable (${path.basename(a.schema as string)}): ${(e as Error).message}`;
+    }
   }
   return { invalid, checked, skipped };
 }

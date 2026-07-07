@@ -51,13 +51,36 @@ describe('overlayRichTelemetry carries the KEY health + gate signals onto the vi
     expect(a.contextWindow).toBe(1000000);
     expect(a.checkpoint?.prompt).toBe('Approve?');
   });
+
+  // The bug this pins: toolBreakdown alone can't tell a tool REJECTED on every call (e.g. "Tool bash not
+  // found") from a real execution — both show the same count. toolErrorCounts is the ADDITIVE per-tool
+  // tally (from the rich RunViewNode) that must reach the view node the same way toolBreakdown does.
+  it('copies toolErrorCounts alongside toolBreakdown, leaving toolBreakdown (attempts) unchanged', () => {
+    const lean = {
+      run: 't', done: true, ok: true, provider: 'mmgw', model: null,
+      nodes: [{ id: 'a', label: 'A', status: 'ok', stageIndex: 1, lane: 0, artifactsVerified: 0, artifactsTotal: 0, missing: [] }],
+      stages: [{ index: 1, phase: null, parallel: false, nodeIds: ['a'] }], edges: [],
+    };
+    const view = adaptModel(lean, 't');
+    expect(view.nodes['a'].toolErrorCounts).toBe(null); // inert default before the overlay
+
+    const rich = {
+      stages: [], edges: [], nodes: [{
+        id: 'a', status: 'ok', toolBreakdown: { bash: 2, read: 1 }, toolErrorCounts: { bash: 2 },
+      }],
+    };
+    overlayRichTelemetry(view, rich);
+    const a = view.nodes['a'];
+    expect(a.toolBreakdown).toEqual({ bash: 2, read: 1 }); // attempts: unchanged
+    expect(a.toolErrorCounts).toEqual({ bash: 2 }); // every bash attempt was rejected
+  });
 });
 
 // ── render half: a synthetic model exercising each KEY signal, drawn through the real DetailCol/NodeSub ──
 const mkNode = (id, status, over = {}) => ({
   id, label: id, phase: null, agentType: null, hasSchema: false, stageIndex: 1, lane: 0,
   status, reported: status, durationMs: 1000, startMs: null, endMs: null,
-  tokens: null, contextWindow: null, toolCalls: 0, toolBreakdown: null, thinking: null, eventCount: 0,
+  tokens: null, contextWindow: null, toolCalls: 0, toolBreakdown: null, toolErrorCounts: null, thinking: null, eventCount: 0,
   retries: 0, stopReason: null, truncated: false, modelCalls: 0, maxToolRepeat: 0, repeatedTool: null,
   expectedMs: null, priorSamples: null, checkpoint: null,
   artifactsVerified: 0, artifactsTotal: 0, missing: [], issues: [], summary: null, pipelineFindings: [],
@@ -114,5 +137,21 @@ describe('DetailCol/NodeSub render the KEY status signals', () => {
     const out = await frameFor(model, 0);
     expect(out).toMatch(/missing/);
     expect(out).toContain('spec/x.json');
+  });
+
+  // A rejected-only tool (bash: 2 attempts, both errored) must NOT read identically to a real 2-call
+  // execution on screen — the wgt1 forensics case (misread as a sandbox leak until disproved by hand).
+  it('marks a tool whose calls were all rejected, distinguishing it from a real execution', async () => {
+    const model = modelWith([mkNode('errtool', 'ok', {
+      toolBreakdown: { bash: 2, read: 3 }, toolErrorCounts: { bash: 2 },
+    })]);
+    const out = await frameFor(model, 0);
+    expect(out).toContain('bash:2');
+    expect(out).toContain('read:3');
+    // the rejected tool carries a visible error marker distinct from the clean tool's entry.
+    const bashEntry = out.match(/bash:2\S*/)?.[0] ?? '';
+    const readEntry = out.match(/read:3\S*/)?.[0] ?? '';
+    expect(bashEntry).not.toBe('bash:2'); // must carry SOMETHING beyond the bare count
+    expect(readEntry).toBe('read:3'); // the clean tool stays the plain, unmarked form
   });
 });

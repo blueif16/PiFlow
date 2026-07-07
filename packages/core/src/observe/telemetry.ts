@@ -19,6 +19,7 @@ import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.
 import { builtinDrivers } from '../runner/drivers/table.js';
 import type { AgentDriver } from '../runner/drivers/types.js';
 import type { PiEvent } from '../runner/events.js';
+import type { TurnRecord, MegaThinkTurn } from './turnDissection.js';
 
 // ── thresholds — the tail-sampling triggers (research: keep errors + anomalies, not keep-all) ──────────
 export interface TelemetryThresholds {
@@ -37,7 +38,7 @@ export interface TelemetryThresholds {
 }
 export const DEFAULT_THRESHOLDS: TelemetryThresholds = { contextPct: 0.85, toolRepeat: 3, slowRatio: 2, retries: 2, costSpikeRatio: 2, loopRepeat: 3 };
 
-export type AnomalyKind = 'failed' | 'truncated' | 'context-pressure' | 'tool-loop' | 'slow' | 'retries' | 'cost-spike' | 'loop-score';
+export type AnomalyKind = 'failed' | 'truncated' | 'context-pressure' | 'tool-loop' | 'slow' | 'retries' | 'cost-spike' | 'loop-score' | 'mega-think';
 
 /** One reason a node is worth the agent's attention — the worklist item, with the value/bar it crossed. */
 export interface Anomaly {
@@ -76,6 +77,9 @@ export interface NodeDigest {
   modelCalls: number;
   toolCalls: number;
   topTools: Record<string, number>;
+  /** ADDITIVE per-tool error tally (name → rejected-call count) alongside topTools' attempts — a tool
+   *  rejected on every call (topTools[name] === topToolErrors[name]) never succeeded once. {} when unknown. */
+  topToolErrors: Record<string, number>;
   maxToolRepeat: number;
   repeatedTool: string | null;
   retries: number;
@@ -86,6 +90,18 @@ export interface NodeDigest {
   issues: string[];
   /** which thresholds this node tripped (the per-node anomaly kinds). */
   anomalies: AnomalyKind[];
+  // (turn-dissection) reasoning-effort — RECORD-mode-only (a projection over events.jsonl on disk); absent
+  // in the live STREAM digest, same as `slow`/`cost-spike` needing cross-run history.
+  /** the per-MODEL-TURN timeline — thinking/text volume + the tool calls each turn made. */
+  turns?: TurnRecord[];
+  /** total `thinking_delta` chars summed across every turn. */
+  totalThinkChars?: number;
+  /** the turn with the most thinking chars. */
+  largestTurn?: { turnIndex: number; thinkChars: number; durMs: number } | null;
+  /** turns that burned ≥ MEGA_THINK_CHARS of thinking with ZERO tool calls — pure deliberation, no action. */
+  megaThinkTurns?: MegaThinkTurn[];
+  /** occurrences of the derivation-vocabulary markers (sqrt(/discriminant/quadratic by default) in thinking. */
+  derivationMarkerCount?: number;
 }
 
 /** Failure-onset localization: the earliest decisive upstream node for a failure, via the file-flow DAG. */
@@ -152,6 +168,8 @@ interface NodeMetrics {
   modelCalls: number;
   toolCalls: number;
   toolBreakdown: Record<string, number>;
+  /** ADDITIVE per-tool error tally, from RunViewNode.toolErrorCounts (see NodeDigest.topToolErrors). */
+  toolErrorCounts: Record<string, number>;
   maxToolRepeat: number;
   repeatedTool: string | null;
   /** (P6) longest consecutive back-to-back identical-fingerprint tool run — the loop-score signal. */
@@ -161,6 +179,12 @@ interface NodeMetrics {
   truncated: boolean;
   missing: string[];
   issues: string[];
+  // (turn-dissection) RECORD-mode-only — see NodeDigest. Absent/undefined ⇒ no turn data (never anomalous).
+  turns?: TurnRecord[];
+  totalThinkChars?: number;
+  largestTurn?: { turnIndex: number; thinkChars: number; durMs: number } | null;
+  megaThinkTurns?: MegaThinkTurn[];
+  derivationMarkerCount?: number;
 }
 
 const isFailed = (status: string): boolean => status === 'blocked' || status === 'error';
@@ -206,6 +230,16 @@ function detectAnomalies(m: NodeMetrics, th: TelemetryThresholds): Anomaly[] {
   if (m.loopScore >= th.loopRepeat) {
     out.push({ kind: 'loop-score', nodeId: m.id, detail: `${m.loopScore} consecutive near-identical tool calls`, value: m.loopScore, threshold: th.loopRepeat });
   }
+  // (turn-dissection) mega-think — ANY turn that burned ≥ MEGA_THINK_CHARS of thinking with zero tool
+  // calls is worth a look (no threshold to tune: the char floor already lives in turnDissection.ts). Like
+  // `truncated`, this just checks presence — RECORD-mode-only (m.megaThinkTurns is undefined/empty live).
+  if (m.megaThinkTurns && m.megaThinkTurns.length > 0) {
+    const top = m.megaThinkTurns[0];
+    const detail = m.megaThinkTurns.length === 1
+      ? `turn ${top.turnIndex}: ${top.thinkChars} thinking chars over ${(top.durMs / 1000).toFixed(1)}s, no tool calls`
+      : `${m.megaThinkTurns.length} mega-think turns — largest: turn ${top.turnIndex} (${top.thinkChars} chars/${(top.durMs / 1000).toFixed(1)}s)`;
+    out.push({ kind: 'mega-think', nodeId: m.id, detail, value: m.megaThinkTurns.length, threshold: 1 });
+  }
   return out;
 }
 
@@ -234,6 +268,7 @@ function projectNode(m: NodeMetrics, th: TelemetryThresholds): { digest: NodeDig
     modelCalls: m.modelCalls,
     toolCalls: m.toolCalls,
     topTools: m.toolBreakdown,
+    topToolErrors: m.toolErrorCounts,
     maxToolRepeat: m.maxToolRepeat,
     repeatedTool: m.repeatedTool,
     retries: m.retries,
@@ -242,6 +277,11 @@ function projectNode(m: NodeMetrics, th: TelemetryThresholds): { digest: NodeDig
     missing: m.missing,
     issues: m.issues,
     anomalies: anomalies.map((a) => a.kind),
+    ...(m.turns ? { turns: m.turns } : {}),
+    ...(m.totalThinkChars != null ? { totalThinkChars: m.totalThinkChars } : {}),
+    ...(m.largestTurn !== undefined ? { largestTurn: m.largestTurn } : {}),
+    ...(m.megaThinkTurns ? { megaThinkTurns: m.megaThinkTurns } : {}),
+    ...(m.derivationMarkerCount != null ? { derivationMarkerCount: m.derivationMarkerCount } : {}),
   };
   return { digest, anomalies };
 }
@@ -270,6 +310,7 @@ function metricsFromView(n: RunViewNode): NodeMetrics {
     modelCalls: n.modelCalls ?? 0,
     toolCalls: n.toolCalls ?? 0,
     toolBreakdown: n.toolBreakdown ?? {},
+    toolErrorCounts: n.toolErrorCounts ?? {},
     maxToolRepeat: n.maxToolRepeat ?? 0,
     repeatedTool: n.repeatedTool ?? null,
     loopScore: n.loopScore ?? 0,
@@ -278,6 +319,13 @@ function metricsFromView(n: RunViewNode): NodeMetrics {
     truncated: !!n.truncated,
     missing: [], // a RunViewNode that ran clean carries no missing list; failure surface comes via status
     issues: n.issues ?? [],
+    ...(n.turns ? { turns: n.turns } : {}),
+    ...(n.turnSummary ? {
+      totalThinkChars: n.turnSummary.totalThinkChars,
+      largestTurn: n.turnSummary.largestTurn,
+      megaThinkTurns: n.turnSummary.megaThinkTurns,
+      derivationMarkerCount: n.turnSummary.derivationMarkerCount,
+    } : {}),
   };
 }
 
@@ -362,8 +410,8 @@ export function projectRunDigest(view: RunView, opts: { thresholds?: Partial<Tel
   };
 }
 
-/** Order the worklist: failures first, then truncation, loops, context pressure, slow, retries. */
-const ANOMALY_RANK: Record<AnomalyKind, number> = { failed: 0, truncated: 1, 'tool-loop': 2, 'loop-score': 2.5, 'context-pressure': 3, slow: 4, 'cost-spike': 4.5, retries: 5 };
+/** Order the worklist: failures first, then truncation, loops, context pressure, mega-think, slow, retries. */
+const ANOMALY_RANK: Record<AnomalyKind, number> = { failed: 0, truncated: 1, 'tool-loop': 2, 'loop-score': 2.5, 'context-pressure': 3, 'mega-think': 3.5, slow: 4, 'cost-spike': 4.5, retries: 5 };
 function rankAnomalies(a: Anomaly[]): Anomaly[] {
   return [...a].sort((x, y) => ANOMALY_RANK[x.kind] - ANOMALY_RANK[y.kind]);
 }
@@ -487,6 +535,7 @@ export async function* telemetryStream(updates: AsyncIterable<RunUpdate>, opts: 
       modelCalls: lm.modelCalls,
       toolCalls: lm.toolCalls,
       toolBreakdown: {}, // not needed for live anomaly checks; the record digest carries the breakdown
+      toolErrorCounts: {}, // ditto — the record digest (topToolErrors) carries the per-tool error tally
       maxToolRepeat: lm.maxToolRepeat,
       repeatedTool: lm.repeatedTool,
       loopScore: lm.loopScore,

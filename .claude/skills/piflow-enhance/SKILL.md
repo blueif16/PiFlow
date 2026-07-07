@@ -6,7 +6,9 @@ description: >-
   approve→commit, never a one-off hack. Owns the criteria fixture (the per-node quality bar) and Companion-Mode
   judging. Use to "improve a wave/node", "fix a recurring failure in the pipeline", "the generated output is
   wrong — fix the system not the case", "edit the skill vs edit the chain", "score / triage / fix a finished
-  run", "run the optimize loop", "auto-improve a node from its trace". To CREATE a workflow use piflow-init;
+  run", "run the optimize loop", "auto-improve a node from its trace". Also owns the METHOD-LIBRARY sync
+  (Leg C, ~/Desktop/best-designs-for-agentic-system): consult the matching card before any edit, write the
+  outcome back to its Applications after any land. To CREATE a workflow use piflow-init;
   to RUN one use piflow-start. The canonical capture→route→edit method is the hermes-skill-system skill; this
   COMPOSES it and pins the piflow-specific precedence + the autonomous SCORE→TRIAGE→FIX→GATE→LAND loop.
 ---
@@ -44,6 +46,32 @@ The piflow-specific precedence rules (the part hermes doesn't know):
   signal) — it is a JUDGING reference only.
 - `<repo>/.agents/skill-system-map.md` (composition) + `<repo>/.agents/skill-system-io-map.md` (the
   producer→consumer ledger) — keep these CURRENT; a stale map is the real failure mode.
+
+## The method library (Leg C) — consult before edit, write back after land
+Cross-product METHOD knowledge lives OUTSIDE this repo in the design library
+(`~/Desktop/best-designs-for-agentic-system`, local): problem-indexed cards (Trigger → Practice →
+Evidence → Applications track record), navigated via its `MEMORY.md` hints or ranked FIND. This skill
+owns the SYNC between that library and BOTH improvement loops. Two laws:
+- **CONSULT before any edit (both loops).** At the route step — after the bucket/owner is named,
+  before authoring the fix — find the matching card:
+  `cd ~/Desktop/best-designs-for-agentic-system/cards && node _generate.mjs --find "<symptom>"`.
+  Author the edit per the card's Practice; an edit that contradicts a `proven` card needs the reason
+  stated in the commit body. A lookup MISS is a signal, not a dead end: note it, and after the fix
+  lands, research + distill the missing card (the library grows at its failure points).
+- **WRITE BACK after any land (the library's food).** When a fix that applied a card lands (manifest
+  ACCEPT + adopt, or a hermes commit), append ONE dated line to that card's Applications —
+  improvement OR under-delivery — and commit it `card(<key>): applied — <outcome>`. An unrecorded
+  outcome is a lesson lost; an under-delivery flips the card's `status` and queues the CARD as the
+  next fix target.
+Cards are OPTIMIZER-PLANE reference (fixer / judge / overlord / designer read them). **NEVER inject a
+card into a worker node's runtime prompt** — same law as the criteria fixture and memory.md.
+Seam status: the by-hand consult + write-back above is THIS skill's contract, effective now. The
+autonomous seam is TO-BUILD at the CLI seam only (core stays library-blind): resolve the matched
+card into the fixer's `DefectScope` beside the Leg-A recurrence and Leg-B code-map (the same
+pointer + resolve-at-read law as `enrichCodeMap`, `packages/cli/src/optimize-fix.ts`), a
+`[[card:<key>]]` backref in MEMORIZE lesson blocks, and the Applications write-back at the
+`optimize --adopt` step. Until that ships, the overlord/session agent performs consult + write-back
+by hand around `piflowctl optimize --fix`.
 
 ## Companion Mode is the dev-time face of enhance
 When you're babysitting a run, the orchestrator + human ARE the verifier: judge every stage's artifact vs the

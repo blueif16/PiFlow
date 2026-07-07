@@ -56,6 +56,9 @@ export function adaptModel(model, run) {
       contextWindow: null,
       toolCalls: 0,
       toolBreakdown: null,
+      // ADDITIVE per-tool error tally (name → rejected-call count) — filled by overlayRichTelemetry from
+      // the rich RunViewNode's toolErrorCounts, same shape/timing as toolBreakdown above.
+      toolErrorCounts: null,
       thinking: null,
       eventCount: 0,
       // HEALTH signals — the GUI's anomaly lens; null/0 here, filled by overlayRichTelemetry when the rich
@@ -154,6 +157,7 @@ export function overlayRichTelemetry(view, rich) {
     if (rn.provider != null) row.provider = rn.provider;
     if (rn.toolCalls) row.toolCalls = rn.toolCalls;
     if (rn.toolBreakdown && Object.keys(rn.toolBreakdown).length) row.toolBreakdown = rn.toolBreakdown;
+    if (rn.toolErrorCounts && Object.keys(rn.toolErrorCounts).length) row.toolErrorCounts = rn.toolErrorCounts;
     if (rn.thinkingChars) row.thinking = { chars: rn.thinkingChars }; // the live fold (foldLiveIntoModel) wins for the running node
     // HEALTH / ANOMALY signals — the GUI's anomaly lens, surfaced verbatim so the inspector can WARN:
     // rate-limit retries, a token-capped (truncated) stop, a tool/model loop, and slow-vs-baseline timing.

@@ -1,0 +1,15 @@
+{
+  "name": "demo_probe",
+  "description": "Echo the given message back (fixture demo tool).",
+  "parameters": {
+    "type": "object",
+    "properties": { "message": { "type": "string" } },
+    "required": ["message"]
+  },
+  "exec": {
+    "cmd": "node",
+    "argv": ["{{toolDir}}/probe.mjs"],
+    "input": "flags",
+    "timeoutMs": 5000
+  }
+}

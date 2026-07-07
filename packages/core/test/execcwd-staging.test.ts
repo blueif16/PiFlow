@@ -71,6 +71,6 @@ describe('execCwd prompt staging — the ref resolves from the exec cwd (E10 bug
     });
 
     // No execCwd ⇒ cwd IS the workdir, so the ref stays the relative staged path (unchanged behavior).
-    expect(sink.promptFile).toBe(path.posix.join('_pi', nodeId, 'prompt.md'));
+    expect(sink.promptFile).toBe(path.posix.join('.pi', 'staged', nodeId, 'prompt.md'));
   });
 });

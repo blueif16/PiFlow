@@ -129,15 +129,18 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 
 ### Lessons — memory cluster
 
 **Alias matches** (review — may include false positives):
+- [[agentic-design-library]]
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[competitive-gaps-pdw]]
 - [[compose-gate-drag-audit]]
+- [[context-composition-telemetry]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
 - [[expert-representations]]
@@ -152,6 +155,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[observe-single-data-path]]
+- [[optimize-substrate-program]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-memory-system-v1]]
@@ -171,5 +175,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-03 · arc=43 commits · files=3 · lessons=29</sub>
+<sub>derived 2026-07-07 · arc=44 commits · files=3 · lessons=32</sub>
 <!-- okf:auto-end -->
