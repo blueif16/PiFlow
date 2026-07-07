@@ -49,13 +49,27 @@ vi.mock("../src/resolve.js", async () => {
 
 const { piflowFile } = await import("../src/handlers.js");
 
+// HERMETIC (M3 — the confirmed offender): this suite drives a REAL `runFromTemplate` without ever setting
+// PIFLOW_HOME, so every run self-registered its `piflow-l2-*` scratch dir into the REAL
+// `~/.piflow/products.json` (~290 such corpses accumulated over time). `registerProductRoot` now also
+// no-ops for any root under `os.tmpdir()` (belt), but pointing PIFLOW_HOME at its own scratch dir here
+// (suspenders) keeps this suite fully hermetic against the REAL global home for anything else it might read
+// or write there (model-tiers, catalog, skills).
 let scratch: string;
+let piflowHome: string;
+let savedPiflowHome: string | undefined;
 beforeEach(async () => {
   scratch = await fs.mkdtemp(join(tmpdir(), "piflow-l2-"));
+  piflowHome = await fs.mkdtemp(join(tmpdir(), "piflow-home-l2-"));
+  savedPiflowHome = process.env.PIFLOW_HOME;
+  process.env.PIFLOW_HOME = piflowHome;
   runDirStub = null;
 });
 afterEach(async () => {
+  if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+  else process.env.PIFLOW_HOME = savedPiflowHome;
   await fs.rm(scratch, { recursive: true, force: true });
+  await fs.rm(piflowHome, { recursive: true, force: true });
 });
 
 /** Copy the known-good template into `scratch/template` so its workflow.json lock can be (re)written freely. */
