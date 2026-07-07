@@ -36,7 +36,7 @@ DECLARE (the overlay file shape)
 - `packages/core/src/workflow/profile-overlay.ts:32` — `ProfileOverlay` — the parsed-overlay interface (`nodes` = per-node gate additions)
 LOAD + MERGE (additive — the LIVE model)
 - `packages/core/src/workflow/profile-overlay.ts:45` — `loadProfileOverlay` — read+validate `profiles/<name>.json`; `null` when absent (fall-through)
-- `packages/core/src/workflow/profile-overlay.ts:71` — `mergeProfileOverlay` — APPEND each `nodes[<id>]` to that node's `gates[]` (append at :79); unknown id ⇒ loud `ProfileOverlayError`
+- `packages/core/src/workflow/profile-overlay.ts:82` — `mergeProfileOverlay` — APPEND each `nodes[<id>]` to that node's `gates[]` (append at :79); unknown id ⇒ loud `ProfileOverlayError`
 WIRE (loader)
 - `packages/core/src/workflow/template/loader.ts:338` — `loadProfileOverlay` + `mergeProfileOverlay` when `opts.profile` — merges the overlay BEFORE the per-node fan-out ([[gate-composition]])
 - `packages/core/src/workflow/template/loader.ts:325` — the `if (m.profiles …)` guard firing the elidePhases deprecation `console.warn`
@@ -95,7 +95,7 @@ contract is pinned here. Design: `docs/design/gate-list-and-additive-profiles.md
 
 - `UnknownProfileError` (packages/core/src/workflow/profile.ts:21) — 3 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/profile.ts`; tests: `packages/core/test/profile.test.ts`
 - `applyProfileByName` (packages/core/src/workflow/profile.ts:133) — 7 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/profile.test.ts`
-- `loadProfileOverlay` (packages/core/src/workflow/profile-overlay.ts:45) — 3 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `loadProfileOverlay` (packages/core/src/workflow/profile-overlay.ts:56) — 3 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `ProfileOverlayError` (packages/core/src/workflow/profile-overlay.ts:24) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/template/loader.ts`, `packages/core/src/workflow/profile-overlay.ts`; ⚠ no covering tests found
 - `applyProfile` (packages/core/src/workflow/profile.ts:95) — 3 callers in `packages/core/src/workflow/profile.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/profile.test.ts`
 

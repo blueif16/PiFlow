@@ -216,10 +216,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 3 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/cli/src/agents.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; ⚠ no covering tests found
-- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:730) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 7 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 14 callers in `packages/cli/src/agents.ts`, `packages/core/src/workflow/fusion/presets.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/workflow/agent-preset.ts`, `packages/core/src/workflow/template/render.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
+- `toFlowGraph` (gui/src/data/runView.ts:730) — 4 callers in `gui/src/components/WorkflowCanvas.tsx`; tests: `gui/src/data/liveModelToRunView.test.ts`, `gui/src/data/runView.test.ts`
 
 <sub>derived 2026-07-07 · arc=134 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

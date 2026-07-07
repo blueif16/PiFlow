@@ -137,7 +137,10 @@ export function materializeJudgeNodes(spec: WorkflowSpec): WorkflowSpec {
       nodes: out.nodes.map((n) => {
         if (n.label !== producerLabel) return n;
         const { judgeGate: _drop, ...rest } = n;
-        return attachRerouteLoop(rest as NodeIntent, producerLabel, retryMax);
+        // Thread the judge's VERDICT artifact as the reroute EVIDENCE: on a judge-fail re-entry the producer
+        // reads `_judge/<producer>/verdict.json` to learn WHAT failed (mirrors the hand-authored verify nodes'
+        // `evidence:[…report…]`). Without it the re-entered producer is blind to the judge's critique.
+        return attachRerouteLoop(rest as NodeIntent, producerLabel, retryMax, [verdictPath(producerLabel)]);
       }),
     };
 

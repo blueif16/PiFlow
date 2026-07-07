@@ -236,6 +236,69 @@ describe('runFromTemplate — the template-run join (U8, §10)', () => {
   });
 });
 
+// ── ADDITIVE PROFILE OVERLAY on the RUN PATH — the `--profile <name>` overlay must MERGE through the ──
+// runFromTemplate join (loadTemplate → … → runWorkflow), so a profile that adds an `agentic` gate
+// materializes its `<producer>__judge` node and it actually RUNS. The bug: runFromTemplate called
+// loadTemplate(dir) with NO opts, so the overlay never merged and no judge ever materialized on the live
+// path (dead flag). This drives the REAL runFromTemplate (stub executor, no model) and asserts the judge
+// node appears in the terminal run — the direct witness that the profile threaded into loadTemplate.
+describe('runFromTemplate — an additive profile overlay materializes + runs its judge on the run path', () => {
+  let piflowHome: string;
+  let savedPiflowHome: string | undefined;
+  beforeEach(async () => {
+    piflowHome = await tmpOut();
+    savedPiflowHome = process.env.PIFLOW_HOME;
+    process.env.PIFLOW_HOME = piflowHome;
+  });
+  afterEach(async () => {
+    if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+    else process.env.PIFLOW_HOME = savedPiflowHome;
+    await fs.rm(piflowHome, { recursive: true, force: true });
+  });
+
+  // Clone the runnable single-node ARG fixture (loadTemplate rewrites its workflow.json lock, so clone) and
+  // drop in an OVERLAY-ONLY profile that appends an `agentic` gate to `greet` (judge tier `deep` differs from
+  // the producer's undefined tier — a valid judge). No meta.json.profiles declaration ⇒ this also exercises
+  // the overlay-only reconciliation (applyProfileByName must NOT throw UnknownProfileError for it).
+  async function cloneArgWithOverlay(): Promise<string> {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-entry-profile-'));
+    await fs.cp(ARG_TEMPLATE, dir, { recursive: true });
+    const pdir = path.join(dir, 'profiles');
+    await fs.mkdir(pdir, { recursive: true });
+    await fs.writeFile(
+      path.join(pdir, 'production.json'),
+      JSON.stringify(
+        { description: 'adds a judge', nodes: { greet: [{ type: 'agentic', judgeTier: 'deep', rubric: 'The greeting must be warm.' }] } },
+        null,
+        2,
+      ),
+    );
+    return dir;
+  }
+
+  const hasJudge = (nodes: Record<string, unknown>): boolean => Object.keys(nodes).some((k) => k.includes('judge'));
+
+  it('--profile <overlay> materializes the greet__judge node into the terminal run; a bare run does NOT', async () => {
+    const tpl = await cloneArgWithOverlay();
+    const bareDir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-entry-bare-'));
+    const profDir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-entry-prof-'));
+
+    // BARE run (no profile): the overlay is inert → NO judge (the additive-off control).
+    const bare = await runFromTemplate(tpl, { run: 'bare', runDir: bareDir, buildCommand: stubBuilder(), args: { greeting: 'hi' } });
+    expect(hasJudge(bare.status.nodes), 'no --profile ⇒ the overlay is inert, no judge').toBe(false);
+
+    // PROFILED run: the overlay MERGES through the run path → the judge materializes AND runs (stub → ok).
+    // Drop the `{ profile }` threading into loadTemplate (the bug) ⇒ no judge key ⇒ this goes red.
+    const prof = await runFromTemplate(tpl, { run: 'prof', runDir: profDir, buildCommand: stubBuilder(), profile: 'production', args: { greeting: 'hi' } });
+    const judgeId = Object.keys(prof.status.nodes).find((k) => k.includes('judge'));
+    // The load-bearing witness: the judge node is in the terminal run's node set ⇒ the overlay merged through
+    // loadTemplate on the run path. (Its stub-exec status is incidental to what this proves.)
+    expect(judgeId, '--profile production ⇒ the overlay judge materializes on the run path').toBeDefined();
+
+    for (const d of [tpl, bareDir, profDir]) await fs.rm(d, { recursive: true, force: true });
+  });
+});
+
 // ── F1: the skill `requires` FLOOR is wired into the live run path at entry (before catalogForSpec) ──
 // A node bound to a skill whose manifest declares `requires` gets those tool addresses unioned into its
 // effective `tools.allow` at run start — so an UNPROVISIONED `mcp.*` floor fails FAST at the node's

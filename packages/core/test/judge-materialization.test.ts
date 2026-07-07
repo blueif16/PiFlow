@@ -109,6 +109,21 @@ describe('loadTemplate — judge gate materializes a REAL judge node into the DA
     expect((reroute!.action as any).max).toBe(2); // the authored retryMax
   });
 
+  it('the reroute carries an EVIDENCE pointer to the judge verdict (the re-entered producer reads what failed)', async () => {
+    dir = await cloneFixture();
+    await authorJudgeOn(dir);
+    const spec = await loadTemplate(dir);
+    const producer = spec.nodes.find((n) => n.label === 'w0-classify')!;
+    const judge = spec.nodes.find((n) => n.label === 'w0-classify__judge')!;
+    const reroute = (producer.op ?? []).find((o) => (o.action as any)?.kind === 'rerouteTo')!;
+    // The judge-fail loop must tell the re-entered producer WHAT failed: the reroute evidence points at the
+    // judge's verdict artifact (mirrors the hand-authored verify nodes' `evidence:[…report…]`). Omitting it
+    // (attachRerouteLoop's 4th arg dropped) leaves the re-entry blind — this asserts the pointer is threaded.
+    expect((reroute.action as any).evidence, 'the reroute must carry the judge verdict as evidence').toEqual([
+      judge.io.produces[0],
+    ]);
+  });
+
   it('re-points the producer\'s downstream CONSUMERS to depend on the judge (the judge gates the hand-off)', async () => {
     dir = await cloneFixture();
     await authorJudgeOn(dir);

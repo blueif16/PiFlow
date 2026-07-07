@@ -18,6 +18,7 @@ import {
   instantiateRun as coreInstantiateRun,
   runFromTemplate as coreRunFromTemplate,
   applyProfileByName,
+  profileOverlayFileExists,
   LocalSandboxProvider,
   defaultSecretResolver,
   compile,
@@ -55,6 +56,7 @@ import {
   type RunFromTemplateOpts,
   type SandboxProvider,
   type RunResult,
+  type LoadTemplateOpts,
 } from '@piflow/core';
 import path from 'node:path';
 import os from 'node:os';
@@ -91,7 +93,7 @@ export function listExistingRunNames(runsHome: string): string[] {
 /** The injectable seam — defaults are the real core calls; a test passes spies + an in-memory spec. */
 export interface RunDeps {
   loadConfig?: (input: LoadConfigInput) => ResolvedRunOpts;
-  loadTemplate?: (dir: string) => Promise<WorkflowSpec>;
+  loadTemplate?: (dir: string, opts?: LoadTemplateOpts) => Promise<WorkflowSpec>;
   instantiateRun?: (
     templateDir: string,
     runDir: string,
@@ -688,10 +690,17 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
 
   // ── DRY-RUN: build + materialize + print, but invoke NO model. ──
   if (parsed.dryRun) {
-    const loaded = await loadTemplate(templateDir);
-    // Apply the active profile (elide nodes by the declared predicate) so the dry-run plan reflects the
-    // SAME reduced DAG the live run would execute — an unknown name errors loudly here too.
-    let spec = applyProfileByName(loaded, parsed.profile);
+    // Thread the active `--profile` so an ADDITIVE overlay (`template/profiles/<name>.json`) MERGES its gates
+    // in loadTemplate — the dry-run plan then shows the materialized `<producer>__judge`, the SAME judge the
+    // live run executes (gate-list §c). Without this the overlay was inert and the preview LIED (no judge).
+    const loaded = await loadTemplate(templateDir, { profile: parsed.profile });
+    // Apply the active profile so the dry-run plan reflects the SAME reduced DAG the live run would execute.
+    // (gate-list §c precedence) The overlay already merged above; apply the LEGACY elidePhases model only for a
+    // DECLARED meta.json profile. An OVERLAY-ONLY name (file present, not declared) must NOT reach
+    // applyProfileByName (it would throw UnknownProfileError) — skip it. A name that is NEITHER an overlay file
+    // NOR a declared profile still errors loudly here (the typo guard); one that is BOTH applies overlay + elision.
+    const overlayOnly = !!parsed.profile && profileOverlayFileExists(templateDir, parsed.profile) && !loaded.profiles?.[parsed.profile];
+    let spec = overlayOnly ? loaded : applyProfileByName(loaded, parsed.profile);
     // (G9) Inline subworkflow-activated nodes as sub-DAGs — AFTER profile, BEFORE fusion + compile —
     // mirroring core's runFromTemplate (entry.ts) so the dry-run preview shows the SAME expanded DAG the
     // live run executes (the child template loads through the same fail-closed §8 gate). Never lie.

@@ -322,7 +322,7 @@ export async function loadTemplate(dir: string, opts: LoadTemplateOpts = {}): Pr
   // (gate-list §c) The legacy meta.json `profiles` (elidePhases) model is DEPRECATED on the additive path —
   // warn LOUDLY, do NOT silently break: the legacy node-elision still functions (applyProfileByName) this
   // release. The migration is to additive overlays at template/profiles/<name>.json.
-  if (m.profiles && Object.keys(m.profiles).length) {
+  if (m.profiles && Object.values(m.profiles).some((p) => p?.elidePhases?.length)) {
     console.warn(
       `[piflow] template "${m.id ?? m.name}": meta.json \`profiles.elidePhases\` is DEPRECATED — migrate to ` +
         `additive overlays at template/profiles/<name>.json (docs/design/gate-list-and-additive-profiles.md). ` +

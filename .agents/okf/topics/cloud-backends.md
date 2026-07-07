@@ -27,7 +27,7 @@ host mint a scoped token) and crosses EXACTLY that set in via `CreateOpts.env`; 
 
 # Anchors
 SELECT
-- `packages/cli/src/run.ts:266` — `parseRunArgs` (`--sandbox`) — parse the backend choice (typo errors loudly)
+- `packages/cli/src/run.ts:338` — `parseRunArgs` (`--sandbox`) — parse the backend choice (typo errors loudly)
 - `packages/cli/src/run.ts:363` — `makeDaytonaProvider` — dynamic `import('@piflow/daytona')` → `createDaytonaProvider`
 - `packages/cli/src/run.ts:377` — `makeE2bProvider` — dynamic `import('@piflow/e2b')` → `createE2bProvider`
 INSTALL
@@ -210,16 +210,17 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[skill-marketplace-gui-design]]
+- [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-legibility-tracks]]
 - [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `createE2bProvider` (packages/e2b/src/e2b-sdk.ts:217) — 2 callers in `packages/e2b/src/index.ts`; tests: `packages/e2b/test/control-plane-full-run.live.test.ts`
-- `E2bSandboxProvider` (packages/e2b/src/e2b.ts:436) — 6 callers in `packages/e2b/src/e2b-sdk.ts`, `packages/e2b/src/index.ts`; tests: `packages/e2b/test/sandbox-e2b-parity.test.ts`, `packages/e2b/test/n127-negative-twin.test.ts`, `packages/e2b/test/nbreach-parity.test.ts`
+- `E2bSandboxProvider` (packages/e2b/src/e2b.ts:436) — 6 callers in `packages/e2b/src/e2b-sdk.ts`, `packages/e2b/src/index.ts`; tests: `packages/e2b/test/n127-negative-twin.test.ts`, `packages/e2b/test/nbreach-parity.test.ts`, `packages/e2b/test/sandbox-e2b-parity.test.ts`
 - `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
-- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
+- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=100 commits · files=8 · lessons=46</sub>
+<sub>derived 2026-07-07 · arc=100 commits · files=8 · lessons=47</sub>
 <!-- okf:auto-end -->

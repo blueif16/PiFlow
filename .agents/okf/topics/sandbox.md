@@ -202,6 +202,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
+- [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[verify-nodes-never-in-dev-arms]]
@@ -209,10 +210,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
-- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 4 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 - `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
-- `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
+- `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 5 callers in `deploy/e2b/bwrap-proof-driver.mjs`, `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-07 · arc=87 commits · files=8 · lessons=45</sub>
+<sub>derived 2026-07-07 · arc=87 commits · files=8 · lessons=46</sub>
 <!-- okf:auto-end -->

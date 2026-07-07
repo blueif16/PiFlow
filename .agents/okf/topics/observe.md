@@ -240,6 +240,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[skill-marketplace-gui-design]]
+- [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
@@ -250,10 +251,10 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 ### Code anchors / blast radius (codegraph)
 
 - `deriveNode` (packages/core/src/observe/derive.ts:84) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/index.ts`; tests: `packages/core/test/derive.test.ts`
-- `assembleNode` (packages/core/src/observe/runView.ts:374) — 4 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/watch.ts`; tests: `packages/core/test/claude-accumulator.test.ts`
+- `assembleNode` (packages/core/src/observe/runView.ts:374) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/watch.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `NodeTokenSpine` (packages/core/src/observe/runView.ts:294) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
-- `nodeTokenSpine` (packages/core/src/observe/runView.ts:313) — 2 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`
-- `RunView` (packages/core/src/observe/runView.ts:135) — 9 callers in `packages/core/src/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
+- `nodeTokenSpine` (packages/core/src/observe/runView.ts:313) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
+- `RunView` (packages/core/src/observe/runView.ts:135) — 15 callers in `packages/core/src/observe/assess.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/assess-probe.test.ts`, `packages/core/test/observe-assess.test.ts`, `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-07 · arc=89 commits · files=13 · lessons=64</sub>
+<sub>derived 2026-07-07 · arc=89 commits · files=13 · lessons=65</sub>
 <!-- okf:auto-end -->

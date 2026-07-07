@@ -156,6 +156,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[roadmap-bookkeeping-linear]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[skill-marketplace-gui-design]]
+- [[skill-trigger-generalize-not-keyword-match]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
@@ -164,11 +165,11 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 
 ### Code anchors / blast radius (codegraph)
 
-- `resolveRunTools` (packages/core/src/runner/entry.ts:42) — 2 callers in `packages/core/src/runner/entry.ts`; ⚠ no covering tests found
+- `resolveRunTools` (packages/core/src/runner/entry.ts:43) — 2 callers in `packages/core/src/runner/entry.ts`; ⚠ no covering tests found
 - `listServerTools` (packages/tool-bridge/src/index.ts:105) — 2 callers in `packages/core/src/catalog/introspect.ts`; tests: `packages/tool-bridge/test/list-server-tools.test.ts`
 - `seededRegistry` (packages/core/src/tools/catalog.ts:58) — 8 callers in `packages/cli/src/inspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog.test.ts`
-- `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/tool-config.test.ts`, `packages/core/test/catalog-introspect.test.ts`
+- `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/tool-config.test.ts`
 - `introspectMcpServer` (packages/core/src/catalog/introspect.ts:109) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
 
-<sub>derived 2026-07-07 · arc=34 commits · files=9 · lessons=57</sub>
+<sub>derived 2026-07-07 · arc=34 commits · files=9 · lessons=58</sub>
 <!-- okf:auto-end -->

@@ -13,7 +13,7 @@
 //
 // FILE FENCE: additive. Consumes the profile schema + `LoadedNode`. Does NOT touch the runner or the CLI.
 
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { SchemaValidator } from '../runner/schema.js';
 import { profileSchema } from './template/schema/index.js';
@@ -34,6 +34,17 @@ export interface ProfileOverlay {
   description?: string;
   /** Per-node gate ADDITIONS — appended to each named node's `gates[]`. */
   nodes: Record<string, GateEntry[]>;
+}
+
+/**
+ * True iff the additive overlay file `<templateDir>/profiles/<name>.json` EXISTS. The run-path precedence
+ * guard (`run.ts`/`entry.ts`) needs this to distinguish an OVERLAY-ONLY profile (already merged inside
+ * `loadTemplate` — legacy `applyProfileByName` must be SKIPPED, it would throw `UnknownProfileError`) from a
+ * genuine typo (no overlay file, undeclared name — the loud unknown-profile error must still fire). Mirrors
+ * `loadProfileOverlay`'s path resolution exactly.
+ */
+export function profileOverlayFileExists(templateDir: string, name: string): boolean {
+  return existsSync(path.join(templateDir, 'profiles', `${name}.json`));
 }
 
 /**
