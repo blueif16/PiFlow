@@ -158,6 +158,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `80aafdb` 2026-07-02 — test(P6): failing tests + stubs for cost-spike + loopScore (RED)
 - `24bf09f` 2026-07-02 — feat(P6): cost-spike (tokens-first) + loopScore (consecutive) cross-run metrics (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `bcc7657` 2026-07-02 — fix(core): consolidate run staging + sessions under one .pi/
+- `152925f` 2026-07-02 — feat(core): per-node `thinking` — operator-free reasoning cap in node.json
+- `5d1ef87` 2026-07-02 — fix(core): skill staging — collision-free naming for `.../SKILL.md` refs
 - `9ad30e3` 2026-07-02 — fix(observe): honest telemetry for unstamped-legacy and reused nodes (E+F)
 - `3dcf5df` 2026-07-02 — feat(gui): render tokens/cost in the HUD; honor core's time-tone verdict; one token formatter
 - `dcc6f14` 2026-07-02 — feat(gui+server): base-agent identity rides the catalog — agentType/agentPreset on FlowNodeData, prompt/skills/tools on agents.json rows
@@ -173,9 +176,23 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `bf94d4d` 2026-07-03 — feat(gui): skill marketplace panel — search, ring filter, drag a skill onto a node
 - `a7a227a` 2026-07-03 — feat(server+gui): online lane in the skill marketplace — GET /__piflow/skill-search + panel ring
 - `350ffe1` 2026-07-03 — feat(gui): remote-skill detail fetch + installRemoteSkill client
+- `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `71076e6` 2026-07-05 — feat(observe): per-turn reasoning-effort dissection — the raw signal
+- `0e2023f` 2026-07-05 — feat(core): add the script ToolSource + tools.defs to types and schema
+- `f11afd6` 2026-07-05 — feat(core): loadTemplate default-fills tool:<name> defs to the template's tools root
+- `6a45c20` 2026-07-05 — feat(core): wire script-tool preflight into node-lifecycle before the bind check
+- `e4d5c2e` 2026-07-05 — feat(core): optional tools.defs entries — presence-based tool offering
+- `980fe02` 2026-07-05 — fix(core): resolve contract.schema through the SAME token map as path
+- `5001a58` 2026-07-05 — fix(core/observe): flow toolErrorCounts through runView/watch + the claude reducer
+- `ea5c576` 2026-07-05 — fix(gui): mark a rejected-only tool across the HUD + run-digest panel
+- `0fc29a4` 2026-07-05 — Merge fix/telemetry-tool-error-counts — rejected tool calls no longer read as executions
 - `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `43e77d3` 2026-07-06 — merge M1 — run identity: date-seq names, lineage fields, child runs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
+- `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 
 ### Lessons — memory cluster
 
@@ -198,10 +215,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
-- `PresetMergeable` (packages/core/src/workflow/agent-preset.ts:37) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
+- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 3 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/cli/src/agents.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; ⚠ no covering tests found
-- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 2 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:730) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=116 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-07 · arc=133 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->
