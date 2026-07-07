@@ -61,6 +61,32 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
     expect(status.model).toBe('claude-balanced-model');
   });
 
+  it('dryRun returns the composed plan and spawns NOTHING (buildCommand never invoked, no status/text)', async () => {
+    const capture: { node?: NodeSpec } = {};
+    const result = await runSubstrateAgent({
+      prompt: 'JUDGE PROMPT — the exact ingested context',
+      cwd: '/tmp/ws',
+      readScope: ['/tmp/ws', '/tmp/run'],
+      owns: ['/tmp/ws/issues'],
+      skill: 'piflow-triage',
+      tier: 'balanced',
+      dryRun: true,
+      // if the dry-run branch ever failed to short-circuit, this builder WOULD run → capture.node set.
+      buildCommand: capturingBuilder(claudeStdout('SHOULD NEVER RUN'), capture),
+    });
+    // NOTHING spawned: the command builder was never called; no status/text produced.
+    expect(capture.node).toBeUndefined();
+    expect(result.status).toBeUndefined();
+    expect(result.text).toBeUndefined();
+    // the composed plan surfaces the exact ingested context + the resolved base-agent config.
+    expect(result.plan?.prompt).toBe('JUDGE PROMPT — the exact ingested context');
+    expect(result.plan?.executor).toBe('claude-code');
+    expect(result.plan?.skill).toBe('piflow-triage');
+    expect(result.plan?.tier).toBe('balanced');
+    expect(result.plan?.sandbox?.read).toEqual(['/tmp/ws', '/tmp/run']);
+    expect(result.plan?.sandbox?.write).toEqual(['/tmp/ws/issues']);
+  });
+
   it('an explicit `model` WINS over `tier` (same precedence every claude-code node uses)', async () => {
     const capture: { node?: NodeSpec } = {};
     const { status } = await runSubstrateAgent({

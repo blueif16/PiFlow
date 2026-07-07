@@ -33,6 +33,7 @@ import { runFromConfig } from '../../runner/entry.js';
 import type { NodeStatusRecord } from '../../runner/status.js';
 import type { ModelTiers } from '../../runner/model-routing.js';
 import { parseClaudeResult } from '../../runner/claude-result.js';
+import { LocalSandboxProvider } from '../../sandbox/local.js';
 
 /** The default substrate-agent tier — NEVER `'deep'` (memory: optimize-fixer-tier-finding — the deep tier
  *  over-deliberates and won't commit edits). Overridable per call, like every other tier reference. */
@@ -65,8 +66,9 @@ export interface RunSubstrateAgentOpts {
   skill?: string;
   /** Hard wall-clock cap for the agent's turn. Omitted ⇒ the runner's own default (no cap). */
   timeoutMs?: number;
-  /** Test/offline seam — forwarded to `runFromConfig` verbatim. Omit ⇒ the real production default
-   *  (`InMemorySandboxProvider`, the SAME default every bare `runFromConfig` caller gets). */
+  /** Sandbox provider. Omit ⇒ a read-scope-jailed `LocalSandboxProvider` — the DEFAULT, because every
+   *  substrate agent runs on the `claude-code` driver, which CANNOT run on the `inmemory` provider (it
+   *  supports `local` only). A test injects its own (e.g. `InMemorySandboxProvider`) to stay offline. */
   provider?: SandboxProvider;
   /** Test/offline seam — forwarded to `runFromConfig` verbatim (fakes the spawned shell command; never
    *  a live `claude` spawn in a test). */
@@ -76,15 +78,20 @@ export interface RunSubstrateAgentOpts {
   /** Test seam — injects the tier/model-index resolution `runFromConfig` would otherwise read off
    *  `~/.piflow/model-tiers.json` (the SAME `RunOptions.modelRouting` seam `runner.ts` exposes). */
   modelRouting?: { tiers: ModelTiers; modelsIndex: Map<string, string> };
+  /** DRY-RUN: build the one-node spec (the full composition + resolved config) and RETURN it as `plan`
+   *  WITHOUT spawning. The base-agent preview seam EVERY substrate agent (judge, fixer) inherits — a caller's
+   *  additive config (prompt, skill, tools, sandbox) is exactly what the returned plan surfaces. */
+  dryRun?: boolean;
 }
 
 export interface RunSubstrateAgentResult {
-  /** The one node's full status record — usage/telemetry/checks/issues, everything a claude-code node reports. */
-  status: NodeStatusRecord;
-  /** The agent's parsed final text (Claude's `result` event `.result` field, via `parseClaudeResult`). `''`
-   *  when unavailable (the node produced no result event — it errored before exec, or the stdout carried
-   *  none). Never fabricated. */
-  text: string;
+  /** The one node's full status record — everything a claude-code node reports. ABSENT on a dry-run (nothing ran). */
+  status?: NodeStatusRecord;
+  /** The agent's parsed final text (via `parseClaudeResult`); `''` when unavailable. ABSENT on a dry-run. */
+  text?: string;
+  /** Present ONLY on a dry-run: the composed one-node spec that WOULD have been spawned — `prompt` is the full
+   *  ingested context, `sandbox` the read jail + write authority, `tier`/`model`/`tools`/`skill` the config. */
+  plan?: WorkflowSpec['nodes'][number];
 }
 
 /**
@@ -120,6 +127,10 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
     ],
   };
 
+  // DRY-RUN: the spec IS the composition (prompt + tools + sandbox + skill + tier/model). Return it and STOP —
+  // no tmpdir, no runFromConfig, no spawn. Every substrate agent inherits this preview through this ONE seam.
+  if (opts.dryRun) return { plan: spec.nodes[0] };
+
   // Capture the ONE node's raw stdout by wrapping whichever execRunner would actually run — a pure
   // pass-through (same args in, same result out) that only stashes `result.stdout` into a closure var.
   let capturedStdout = '';
@@ -138,7 +149,8 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
       outDir,
       workspace: opts.cwd,
       execRunner: captureExecRunner,
-      ...(opts.provider ? { provider: opts.provider } : {}),
+      // DEFAULT to a read-scope-jailed local sandbox: the claude-code driver can't run on `inmemory`.
+      provider: opts.provider ?? new LocalSandboxProvider({ enforceReadScope: true }),
       ...(opts.buildCommand ? { buildCommand: opts.buildCommand } : {}),
       ...(opts.modelRouting ? { modelRouting: opts.modelRouting } : {}),
     });

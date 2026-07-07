@@ -150,6 +150,9 @@ export interface SubstrateTriageArgs {
   tier?: string;
   model?: string;
   cap?: number;
+  /** `--dry-run`: measure, then build the judge composition + resolved config and PRINT it — spawn NOTHING.
+   *  Inherited from the base agent's preview seam; the same shape any substrate agent would ingest. */
+  dryRun?: boolean;
 }
 
 export function parseSubstrateTriageArgs(argv: string[]): SubstrateTriageArgs {
@@ -164,6 +167,7 @@ export function parseSubstrateTriageArgs(argv: string[]): SubstrateTriageArgs {
     else if (k === '--tier') out.tier = argv[++i];
     else if (k === '--model') out.model = argv[++i];
     else if (k === '--cap') out.cap = Number(argv[++i]);
+    else if (k === '--dry-run') out.dryRun = true;
     // unknown flags/tokens are ignored (the full loop feeds this parser fix-only flags too).
   }
   return out;
@@ -356,10 +360,37 @@ export async function runSubstrateTriageCli(argv: string[], deps: SubstrateCliDe
       ...(a.cap !== undefined ? { cap: a.cap } : {}),
       ...(a.tier ? { tier: a.tier } : {}),
       ...(a.model ? { model: a.model } : {}),
+      ...(a.dryRun ? { dryRun: true } : {}),
     });
+    if (a.dryRun && r.dryRun) {
+      printJudgeDryRun(runDir, a.node, r.dryRun, print);
+      continue;
+    }
     const capNote = r.capped.length ? ` (+${r.capped.length} capped)` : '';
     print(`optimize triage[${path.basename(runDir)}] node=${a.node}: ${r.issues.length} issue(s) touched${capNote}`);
   }
+}
+
+/** Print the DRY-RUN composition — the base agent's composed spec (`plan`): the resolved config header, then
+ *  the exact `prompt` (the full ingested context) the judge agent WOULD receive. Nothing was spawned. */
+function printJudgeDryRun(
+  runDir: string,
+  node: string,
+  plan: {
+    executor?: string; skill?: string; tier?: string; model?: string; tools?: unknown; prompt?: string;
+    sandbox?: { read?: string[]; write?: string[]; execCwd?: string };
+  },
+  print: (s: string) => void,
+): void {
+  const sb = plan.sandbox ?? {};
+  print(`optimize triage[${path.basename(runDir)}] node=${node} — DRY RUN (base-agent preview; nothing spawned)`);
+  print(`  executor : ${plan.executor ?? '?'}    skill: ${plan.skill ?? '(none)'}    tier: ${plan.tier ?? '(substrate default)'}${plan.model ? `    model: ${plan.model}` : ''}`);
+  print(`  cwd      : ${sb.execCwd ?? ''}`);
+  print(`  readScope: ${(sb.read ?? []).join('  ·  ')}`);
+  print(`  owns     : ${(sb.write ?? []).join('  ·  ')}`);
+  print(`  tools    : ${JSON.stringify(plan.tools ?? {})}`);
+  print(`  ── ingested composition (the exact prompt the judge would receive) ──`);
+  print(plan.prompt ?? '(no prompt built)');
 }
 
 // ── fix (select issues → per-issue fixIssue → stage; adopt is separate) ──────────────────────────────────────

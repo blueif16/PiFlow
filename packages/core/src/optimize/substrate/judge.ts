@@ -342,19 +342,26 @@ export interface SubstrateJudgeOpts {
   /** Test seam — replaces the real agent spawn. Omit ⇒ the real `runSubstrateAgent` (never live-spawn in a
    *  test; the M7 live demo is what proves real agent behavior). */
   runAgent?: (opts: RunSubstrateAgentOpts) => Promise<RunSubstrateAgentResult>;
+  /** DRY-RUN: build the composition (the exact context that would be ingested) + the spawn config, then
+   *  RETURN it WITHOUT spawning the agent, post-processing, or stamping the marker. The shared preview seam —
+   *  the same one any substrate-agent operation exposes, so the composition can be inspected for free. */
+  dryRun?: boolean;
 }
 
 export interface SubstrateJudgeResult {
   /** ISO timestamp this pass completed (mirrors the written marker). */
   when: string;
-  /** Names of every issue touched this pass (new + reopened + re-seen). */
+  /** Names of every issue touched this pass (new + reopened + re-seen). Empty on a dry-run. */
   issues: string[];
-  /** Basenames of draft files left unlanded by the cap this pass. */
+  /** Basenames of draft files left unlanded by the cap this pass. Empty on a dry-run. */
   capped: string[];
-  /** The judge agent's parsed final text (debugging/telemetry — never re-parsed for control flow). */
-  agentText: string;
-  /** The judge agent's full node status record. */
-  agentStatus: RunSubstrateAgentResult['status'];
+  /** The judge agent's parsed final text (debugging/telemetry — never re-parsed for control flow). Absent on a dry-run. */
+  agentText?: string;
+  /** The judge agent's full node status record. Absent on a dry-run. */
+  agentStatus?: RunSubstrateAgentResult['status'];
+  /** Present ONLY on a dry-run: the BASE agent's composed spec (`plan`) that WOULD have been spawned — the
+   *  full ingested `prompt` + resolved sandbox/tier/model/tools/skill. Forwarded verbatim from the base agent. */
+  dryRun?: RunSubstrateAgentResult['plan'];
 }
 
 /**
@@ -366,13 +373,15 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
   const { workspace, templateDir } = opts;
   const prompt = await buildJudgePrompt(nodeId, { runDir, workspace, templateDir });
   const issuesDirPath = path.join(templateDir, 'nodes', nodeId, 'issues');
+  const readScope = [runDir, templateDir, workspace];
+  const owns = [issuesDirPath];
   const runAgent = opts.runAgent ?? runSubstrateAgent;
 
   const agentResult = await runAgent({
     prompt,
     cwd: workspace,
-    readScope: [runDir, templateDir, workspace],
-    owns: [issuesDirPath],
+    readScope,
+    owns,
     skill: TRIAGE_SKILL, // stage the default triage playbook (Ring 1); a miss degrades to the promptless playbook.
     tier: opts.tier,
     model: opts.model,
@@ -380,7 +389,14 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
     buildCommand: opts.buildCommand,
     execRunner: opts.execRunner,
     modelRouting: opts.modelRouting,
+    dryRun: opts.dryRun, // inherit the base-agent preview: it returns the composed `plan` and spawns nothing.
   });
+
+  // DRY-RUN: the base agent returned the composed plan (no spawn). Forward it and STOP — the judge's only job
+  // here was to ASSEMBLE the config (the additive layer); it does not post-process drafts or stamp a marker.
+  if (opts.dryRun) {
+    return { when: new Date().toISOString(), issues: [], capped: [], dryRun: agentResult.plan };
+  }
 
   const run = path.basename(path.resolve(runDir));
   const { landed, capped } = await postProcessJudgeDrafts(templateDir, nodeId, run, { cap: opts.cap });
