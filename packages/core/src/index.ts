@@ -258,9 +258,9 @@ export type { GateSummary, GateSummaryEntry, NodeConfig } from './runner/status.
 export {
   acquireLease, readLease, LeaseHeldError, lockFile,
   requestFreeze, clearFreeze, freezeFile, defaultFreezeSignal,
-  packRunDir, unpackRunDir, BUNDLE_EXCLUDE,
+  packRunDir, unpackRunDir, BUNDLE_EXCLUDE, stageBaselineRun, BASELINE_SEED_EXCLUDE,
 } from './runner/index.js';
-export type { Lease, LeaseInfo, AcquireOpts, PackOpts } from './runner/index.js';
+export type { Lease, LeaseInfo, AcquireOpts, PackOpts, UnpackOpts, StageBaselineOpts } from './runner/index.js';
 // (op⊖ops) derivesFromOp / gatesFromOp / runOpsFromOp — reconstruct the per-family executor inputs from a
 // node's canonical `op[]` (the SOLE derive rep; the legacy `node.ops` was retired in U6). The runner reads
 // derives/gates/run ops through these three adapters (one home), and consumers (inspector) render via them.

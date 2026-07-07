@@ -38,6 +38,8 @@ import {
   templateLayout,
   findProductRoot,
   generateRunName,
+  stageBaselineRun,
+  runJsonFile,
   writeStatus,
   nowISO,
   type Workflow,
@@ -56,7 +58,7 @@ import {
 } from '@piflow/core';
 import path from 'node:path';
 import os from 'node:os';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { resolveRemote, startRemoteRun, streamUrlFor, type StartRemoteResult, type RemoteOpts } from './remote.js';
 import { pushTemplate, type PushResult } from './template-push.js';
@@ -146,7 +148,62 @@ export interface RunDeps {
   generateName?: (existing: string[]) => string;
   /** List the run-name basenames already present under a runs home (default: read the dir; '' if absent). */
   listExistingRuns?: (runsHome: string) => string[];
+  /**
+   * Resolve a `--baseline` (a run id under the runs home, or an explicit path) → an existing, COMPLETED
+   * baseline run dir; throws LOUDLY (naming what's missing) on a missing/incomplete baseline. Default the
+   * real `resolveBaselineDir`; a test injects a stub.
+   */
+  resolveBaseline?: (baseline: string, ctx: ResolveBaselineCtx) => string;
+  /**
+   * SEED the new run dir from a baseline run dir (fork frozen upstream artifacts + `.pi/state.json`, minus
+   * the journal). Default core `stageBaselineRun`; a test spies it. Returns the written relative paths.
+   */
+  stageBaseline?: (baselineDir: string, destDir: string) => Promise<string[]>;
   print?: (line: string) => void;
+}
+
+/** The runs-home context `resolveBaselineDir` searches a bare run id under. */
+export interface ResolveBaselineCtx {
+  /** The template's canonical `.piflow/<wf>/runs/` home (where a sibling baseline run lives). Null off-layout. */
+  runsHome: string | null;
+  /** The fallback landing home (the `out/` parent) — searched when there is no canonical runs home. */
+  landingHome: string;
+  /** Where to anchor an explicit relative path (default `process.cwd()`). */
+  cwd?: string;
+}
+
+/**
+ * Resolve `--baseline` → an existing, COMPLETED baseline run dir. A value that LOOKS like a path (absolute,
+ * or containing a separator) resolves against `cwd`; otherwise it is a run ID searched under the canonical
+ * `runsHome` then the `landingHome`. The resolved dir must (a) EXIST as a directory and (b) hold a recorded
+ * `.pi/run.json` — an absent dir or a half-created one (no run.json) is a LOUD, specific error naming what
+ * was missing and where we looked, NEVER a silent partial seed (Required #4). PURE (the search roots are
+ * injected) so it is unit-tested without touching a real runs home.
+ */
+export function resolveBaselineDir(baseline: string, ctx: ResolveBaselineCtx): string {
+  const cwd = ctx.cwd ?? process.cwd();
+  const looksLikePath = path.isAbsolute(baseline) || baseline.includes('/') || baseline.includes(path.sep);
+  const candidates: string[] = [];
+  if (looksLikePath) {
+    candidates.push(path.resolve(cwd, baseline));
+  } else {
+    if (ctx.runsHome) candidates.push(path.join(ctx.runsHome, baseline));
+    if (ctx.landingHome && ctx.landingHome !== ctx.runsHome) candidates.push(path.join(ctx.landingHome, baseline));
+  }
+  const found = candidates.find((d) => existsSync(d) && statSync(d).isDirectory());
+  if (!found) {
+    throw new Error(
+      `piflowctl run: --baseline "${baseline}" not found — looked for ${candidates.map((c) => `"${c}"`).join(', ') || '(no search root — pass an explicit path)'}. Pass a run id under the template's canonical runs home, or an explicit path to a run dir.`,
+    );
+  }
+  // A COMPLETED, recorded run has a `.pi/run.json`. A half-created dir (no run.json) is refused loudly — its
+  // upstream artifacts may not be on disk, so seeding it would build a silently-incomplete verification arm.
+  if (!existsSync(runJsonFile(found))) {
+    throw new Error(
+      `piflowctl run: --baseline "${baseline}" (${found}) is not a recorded run — no ${path.join('.pi', 'run.json')}. A baseline must be a completed run whose upstream artifacts are frozen on disk.`,
+    );
+  }
+  return found;
 }
 
 /**
@@ -260,6 +317,19 @@ export interface ParsedRunArgs {
    * the run there; the CLI prints the returned run id + stream URL (observe it via the same remote context).
    */
   context?: string;
+  /**
+   * SEED this run from a BASELINE run — a sibling run id under the template's canonical `runs/` home, OR an
+   * explicit path to a run dir. Its frozen upstream artifacts + `.pi/state.json` (minus the journal) fork
+   * into the new run dir, so a windowed `--from` re-run executes ONLY the node(s) under test on frozen
+   * upstream (every upstream node reports `reused`). Omit ⇒ no seeding (byte-identical to a normal run).
+   */
+  baseline?: string;
+  /**
+   * Valid ONLY with `--baseline`: SEED the run dir and STOP — no model run, no in-memory run — so a caller
+   * can pin/place a file (e.g. `spec/hook-menu.json`) into the staged run dir and THEN launch the live
+   * windowed run with a normal `run --run <id> --from <node> …` (the pin survives the seed staging).
+   */
+  stageOnly?: boolean;
 }
 
 /** Parse the flat `run` argv → `ParsedRunArgs`. First positional = the template dir. */
@@ -296,6 +366,8 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
     }
     else if (k === '--max-concurrent') out.maxConcurrent = Number(argv[++i]);
     else if (k === '--context') out.context = argv[++i];
+    else if (k === '--baseline') out.baseline = argv[++i];
+    else if (k === '--stage-only') out.stageOnly = true;
     else if (k === '--detach' || k === '--unattended') out.detach = true;
     else if (k === '--arg') {
       const kv = argv[++i] ?? '';
@@ -558,6 +630,10 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
 
   const { templateDir } = parsed;
   if (!templateDir) throw new Error('piflowctl run: a template directory is required (piflowctl run <templateDir>).');
+  // `--stage-only` is meaningless without a baseline to seed from — reject it loudly (never a silent no-op run).
+  if (parsed.stageOnly && !parsed.baseline) {
+    throw new Error('piflowctl run: --stage-only is valid only with --baseline (it seeds the run dir from a baseline and stops).');
+  }
 
   const tdir = path.resolve(templateDir);
   // ROOT THE RUN AT THE PRODUCT, NEVER AT cwd. `{{WORKSPACE}}` (and the sandbox read-jail, threaded as
@@ -664,6 +740,28 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     print(dryRunPlan(wf, { promptDir: samplePromptDir, provider: effProvider, model: effModel, thinking: parsed.thinking, profile: parsed.profile, executor: parsed.executor, executorOverride: parsed.executorOverride, workspace, runDir: outDir, args: parsed.args }));
     print(`piflowctl run: dry-run materialized a viewable plan at ${outDir} (open it: piflowctl gui / piflowctl status ${outDir}). Nodes are status "dry" — no model ran.`);
     return undefined;
+  }
+
+  // ── BASELINE SEED: fork a completed baseline run's frozen upstream into THIS run dir. ──
+  // A windowed `--from` re-run then executes ONLY the node(s) under test on frozen upstream (every upstream
+  // node `reused`). The journal is dropped by the seed so the window re-runs; the `--from` pin + the resume
+  // preflight (a missing frozen artifact HALTs loudly) freeze + verify the prefix. `--stage-only` stops here
+  // so a caller can pin a file into the staged dir before launching the live window. Absent ⇒ this whole block
+  // is skipped (Required #5 — a run with no --baseline is byte-identical to before).
+  if (parsed.baseline) {
+    const resolveBaseline = deps.resolveBaseline ?? resolveBaselineDir;
+    const stageBaseline = deps.stageBaseline ?? ((src: string, dst: string) => stageBaselineRun(src, dst));
+    const baselineDir = resolveBaseline(parsed.baseline, { runsHome, landingHome, cwd: process.cwd() });
+    const written = await stageBaseline(baselineDir, outDir);
+    print(
+      `piflowctl run: seeded run "${runId}" from baseline ${baselineDir} → ${outDir} (${written.length} files; journal dropped so a --from window re-runs, upstream frozen + preflighted).`,
+    );
+    if (parsed.stageOnly) {
+      print(
+        `piflowctl run: --stage-only — staged only, NO model ran. Pin/place any file into ${outDir}, then launch the window: piflowctl run ${templateDir} --run ${runId} --from <node> --until <node> …`,
+      );
+      return undefined;
+    }
   }
 
   // ── LIVE: route through the core template-run join, threading every collected option. ──

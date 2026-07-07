@@ -179,6 +179,12 @@ RUN
                    ALWAYS uses its canonical .piflow/<wf>/runs/<run>/ home and IGNORES --out (a
                    canonical run is never relocated). Default: canonical home, else out/<run>.
   --from / --until <substr>  resume / truncate the stage window.
+  --baseline <id|path>  SEED this run from a completed baseline run (a sibling run id under the template's
+                   canonical runs home, or a path to a run dir): fork its frozen upstream artifacts +
+                   .pi/state.json (minus the journal) into the new run dir, so a windowed --from re-run
+                   executes ONLY the node(s) under test on frozen upstream (every upstream node reused).
+  --stage-only     (with --baseline) SEED the run dir and STOP — no model — so you can pin/place a file
+                   into the staged dir, then launch the window with a normal run --run <id> --from <node>.
 
 NODE
   <run>         a run id (resolved under .piflow/<wf>/runs/<id>) OR a direct path to a run dir.

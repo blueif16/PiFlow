@@ -27,7 +27,7 @@ import { selectWindow } from '../../runner/window.js';
 import { resolveNodeWriteScope } from '../../runner/node-lifecycle.js';
 import type { ResolveCtx } from '../../workflow/resolver.js';
 import { loadState } from '../../workflow/state.js';
-import { packRunDir, unpackRunDir } from '../../runner/migrate.js';
+import { stageBaselineRun } from '../../runner/migrate.js';
 import { runJsonFile, piSessionsDir } from '../../runner/layout.js';
 import { childRunName } from '../../names/child.js';
 
@@ -158,11 +158,11 @@ export async function spawnChildRun(
   if (!node) throw new Error(`spawnChildRun: unknown node "${nodeId}" in template ${opts.templateDir}`);
   resolveChildWindow(wf, nodeId); // throws on ambiguity; the SAME (from,until)=(nodeId,nodeId) pair is passed below
 
-  // (3) CONSTRUCT the replay: bundle the parent's `.pi` tree (minus its journal — journal.ts:219-221 then
-  // makes the target node unconditionally run; the skipped upstream prefix is force-`reused`, runner.ts) into
-  // the fresh child dir.
-  const bundle = await packRunDir(parentDir, { exclude: ['.pi/journal.json'] });
-  await unpackRunDir(bundle, childDir);
+  // (3) CONSTRUCT the replay via the SHARED baseline-seed primitive: fork the parent's `.pi` tree (minus its
+  // journal — journal.ts:219-221 then makes the target node unconditionally run; the skipped upstream prefix
+  // is force-`reused`, runner.ts) into the fresh child dir. The `run --baseline` CLI path uses the SAME seed.
+  // childDir is a freshly-minted (collision-checked) sibling, so the skip-filled default has nothing to skip.
+  await stageBaselineRun(parentDir, childDir);
 
   // (4) RESET the node's resolved WRITE SCOPE in the copy (contract.owns, token-resolved) — so the node's
   // seed re-stages it from scratch (seed.ts's destFilled===false path) instead of the run seeing the
