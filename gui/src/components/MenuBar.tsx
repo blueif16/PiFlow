@@ -17,7 +17,7 @@ import { createPortal } from "react-dom";
 import { GlassSurface } from "./GlassSurface";
 import { DirectoryPanel } from "./DirectoryPanel";
 import { useExpand } from "./ExpandContext";
-import { findThread, indexToTree, type GlobalIndex } from "../data/runIndex";
+import { findThread, homeRoots, homeWorkspace, indexToTree, workspaceOfRun, type GlobalIndex } from "../data/runIndex";
 import { formatMs } from "../data/runView";
 import "../styles/menubar.css";
 import "../styles/startrun.css";
@@ -56,7 +56,15 @@ export function MenuBar({ activeRun, workspaceName, onOpenWorkspaces, onSelectRu
   }, [peeking, onDismissMenu]);
 
   const active = ix ? findThread(ix, activeRun) : null;
-  const { tree, resolve } = useMemo(() => (ix ? indexToTree(ix) : { tree: [], resolve: () => undefined }), [ix]);
+  // Scope the switcher to the ACTIVE workspace: the workspace that owns the active run, else the launched
+  // ("home") folder — never the whole global registry. indexToTree itself falls back to every workspace
+  // when this resolves to null (nothing owns activeRun AND no home root matched), so the switcher is never
+  // empty just because a workspace couldn't be pinned down.
+  const activeWorkspace = ix ? (workspaceOfRun(ix, activeRun) ?? homeWorkspace(ix, homeRoots())) : null;
+  const { tree, resolve } = useMemo(
+    () => (ix ? indexToTree(ix, activeWorkspace) : { tree: [], resolve: () => undefined }),
+    [ix, activeWorkspace],
+  );
 
   // hidden while a card is open (and not being peeked) — the open card hosts the menu handle instead.
   if (hidden) return null;

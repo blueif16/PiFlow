@@ -187,22 +187,45 @@ export function homeWorkspace(ix: GlobalIndex, roots: string[]): string | null {
 
 export interface SwitcherEntry { run: string; viewable: boolean; productId: string; nsId: string; }
 
+/** Sort a namespace's threads for the switcher: a `running` run always leads (newest `updatedAt` first
+ *  among running ties); otherwise most-recently-updated first; a null `updatedAt` sorts last in either
+ *  group. Pure — never mutates the input array. */
+function sortThreadsForSwitcher(threads: IndexThread[]): IndexThread[] {
+  return [...threads].sort((a, b) => {
+    const aRunning = a.state === "running" ? 1 : 0;
+    const bRunning = b.state === "running" ? 1 : 0;
+    if (aRunning !== bRunning) return bRunning - aRunning; // running first
+    if (a.updatedAt && b.updatedAt) return a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0;
+    if (a.updatedAt) return -1; // a dated, b null → a first
+    if (b.updatedAt) return 1; // b dated, a null → b first
+    return 0;
+  });
+}
+
 /**
- * Project the global index into the Miller-column tree the DirectoryPanel renders.
- * Root level = WORKSPACES (namespaces) directly — the product (e.g. "piflow") is
- * NOT a column; workspaces from every product are flattened to the root, then each
- * opens its run leaves. Returns a resolver from a leaf id → the run.
+ * Project the global index into the Miller-column tree the DirectoryPanel renders, SCOPED to one workspace
+ * (`productId`) — the root column is ONLY that workspace's namespaces, never another workspace's (THE LAW:
+ * a view scoped to a workspace shows ONLY that workspace's workflows). Falls back to EVERY product's
+ * namespaces flattened to the root when `productId` is null/undefined or matches no registered workspace —
+ * so the switcher is never empty just because a caller couldn't resolve a workspace. Each namespace's
+ * threads are sorted (running-first, then newest-first, null `updatedAt` last — never the discovery order
+ * `buildSnapshot` returns) and, when a namespace's display name differs from its directory id (an author's
+ * `meta.name` can collide across dirs — the id never can), the dir id rides along as `secondaryLabel` so
+ * DirectoryPanel can render it as a disambiguating mono tag. Returns a resolver from a leaf id → the run.
  */
-export function indexToTree(ix: GlobalIndex): { tree: DirEntry[]; resolve: (id: string) => SwitcherEntry | undefined } {
+export function indexToTree(ix: GlobalIndex, productId?: string | null): { tree: DirEntry[]; resolve: (id: string) => SwitcherEntry | undefined } {
   const map = new Map<string, SwitcherEntry>();
   const tree: DirEntry[] = [];
-  for (const p of ix.products) {
+  const scoped = productId ? ix.products.filter((p) => p.id === productId) : [];
+  const products = scoped.length ? scoped : ix.products;
+  for (const p of products) {
     for (const ns of p.namespaces) {
       tree.push({
         id: `n:${p.id}/${ns.id}`,
         name: ns.name,
         kind: "folder",
-        children: ns.threads.map((t) => {
+        secondaryLabel: ns.name !== ns.id ? ns.id : undefined,
+        children: sortThreadsForSwitcher(ns.threads).map((t) => {
           const id = `t:${p.id}/${ns.id}/${t.run}`;
           map.set(id, { run: t.run, viewable: t.viewable, productId: p.id, nsId: ns.id });
           return { id, name: t.run, kind: "file" as const, typeLabel: t.state };

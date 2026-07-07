@@ -27,6 +27,10 @@ export interface DirEntry {
   kind: "folder" | "file";
   /** mono tag for files (tsx, css, …) */
   typeLabel?: string;
+  /** mono tag for a FOLDER whose display name alone doesn't disambiguate it (e.g. a workspace switcher
+   *  namespace row: the workflow's directory id, shown when it differs from the display name authors can
+   *  collide across dirs) */
+  secondaryLabel?: string;
   children?: DirEntry[];
 }
 
@@ -149,7 +153,10 @@ export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = fa
                       </span>
                       <span className="ds-dir__name">{entry.name}</span>
                       {entry.kind === "folder" ? (
-                        <span className="ds-dir__chev"><Chevron /></span>
+                        <>
+                          {entry.secondaryLabel && <span className="ds-dir__type">{entry.secondaryLabel}</span>}
+                          <span className="ds-dir__chev"><Chevron /></span>
+                        </>
                       ) : (
                         entry.typeLabel && <span className="ds-dir__type">{entry.typeLabel}</span>
                       )}
