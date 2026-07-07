@@ -37,6 +37,11 @@ import { generateRunName } from '../../names/generator.js';
  *  per call — "config-with-defaults everywhere", never hardcoded past this one constant. */
 export const DEFAULT_JUDGE_CAP = 5;
 
+/** The DEFAULT triage playbook skill — staged for EVERY judge spawn (fixed id, no per-node knob in v1),
+ *  mirroring the fixer's `FIXER_SKILL`. The runner resolves it via `locateSkillStage` (Ring 1
+ *  `<piflowHome>/skills/piflow-triage`); a miss is advisory. */
+export const TRIAGE_SKILL = 'piflow-triage';
+
 // ── (1) buildJudgePrompt — prompt assembly ──────────────────────────────────────────────────────────────
 
 export interface BuildJudgePromptOpts {
@@ -368,6 +373,7 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
     cwd: workspace,
     readScope: [runDir, templateDir, workspace],
     owns: [issuesDirPath],
+    skill: TRIAGE_SKILL, // stage the default triage playbook (Ring 1); a miss degrades to the promptless playbook.
     tier: opts.tier,
     model: opts.model,
     provider: opts.provider,
