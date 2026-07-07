@@ -31,6 +31,8 @@ import {
 } from './checks.js';
 import { buildWorkflowJson, writeWorkflowJson } from './workflow-json.js';
 import { materializeJudgeNodes, JudgeConfigError } from '../judge/materialize.js';
+import { fanoutGates, GateListError } from '../gate-list.js';
+import { loadProfileOverlay, mergeProfileOverlay, ProfileOverlayError } from '../profile-overlay.js';
 import { isScriptToolAddress, scriptToolName } from '../../tools/script-discover.js';
 
 /** Thrown when the template does not compile. Carries EVERY §8 violation (like `WorkflowError`). */
@@ -45,6 +47,13 @@ export class TemplateError extends Error {
 export interface LoadTemplateOpts {
   /** Override the schema validator (default: `defaultSchemaValidator()` — the package's single ajv). */
   validate?: SchemaValidator | null;
+  /**
+   * (gate-list-and-additive-profiles.md §b/§c) The ADDITIVE profile name → `<dir>/profiles/<name>.json`,
+   * an overlay that APPENDS gates to the nodes it declares. Absent ⇒ a pure-template compile. A named
+   * overlay whose file is missing is left to the legacy `meta.json` elidePhases path / an unknown-profile
+   * error (resolved outside this loader); a malformed overlay file is a loud `TemplateError`.
+   */
+  profile?: string;
 }
 
 const readJson = async (p: string): Promise<unknown> => JSON.parse(await fs.readFile(p, 'utf8'));
@@ -123,7 +132,12 @@ function toNodeIntent(n: LoadedNode, templateDir: string): NodeIntent {
   // AT THE LOADER ONLY — the dense NodeSpec gains exactly this one field; the runtime checks/policy carried
   // below stay byte-identical so the runner's existing dispatch is unchanged (additive). `op[]` is now the
   // SOLE derive rep — the legacy `node.ops` (and its back-fill) was retired in U6.
-  const op = lowerToOps(n.def);
+  const baseOp = lowerToOps(n.def);
+  // (gate-list-and-additive-profiles.md §a) FAN OUT the additive gate LIST onto the existing carriers BEFORE
+  // action lowering, so a fanned execution op's retry/reroute lowers uniformly and its post `Check` joins
+  // `io.checks`. A node with no `gates[]` yields `undefined` here → `op`/`checks` are byte-identical to today.
+  const fan = n.def.gates?.length ? fanoutGates(n.def.gates, n.def.id) : undefined;
+  const op = fan?.ops.length ? [...(baseOp ?? []), ...fan.ops] : baseOp;
   // (M5 · G13) The CONTROL action ops lower to the canonical M3/M4 primitives (reroute/retry/escalate).
   const actions = lowerActions(op);
   // (M5 · #10/#16) The node's declared reads = injected forced-reads ∪ every op's `reads` (RUN-relative).
@@ -155,7 +169,9 @@ function toNodeIntent(n: LoadedNode, templateDir: string): NodeIntent {
       externalInputs: [],
       dependsOn: n.def.deps.slice(),
       artifacts: c.artifacts.map((p) => (c.schema ? { path: p, schema: c.schema } : { path: p })),
-      checks: collectChecks(n.def),
+      // (gate-list §a) The authored checks ∪ the execution gates' post predicates (the two-layer post engine).
+      // Byte-identical to `collectChecks(n.def)` when the node authors no `gates[]`.
+      checks: fan?.checks.length ? [...(collectChecks(n.def) ?? []), ...fan.checks] : collectChecks(n.def),
       policy: toPolicy(n.def.policy),
       returnMode: c.returnMode as ReturnMode | undefined,
       // Carry the AUTHORED structured-return JSON-Schema (node.json top-level `return`, §3) onto the
@@ -210,9 +226,15 @@ function toNodeIntent(n: LoadedNode, templateDir: string): NodeIntent {
   if (n.def.tier) intent.tier = n.def.tier;
   // Per-node reasoning cap → NodeSpec.thinking → `pi --thinking` (command.ts). Operator-free over-think guard.
   if (n.def.thinking) intent.thinking = n.def.thinking;
-  // (G5) Carry a HUMAN CHECKPOINT block verbatim onto the spec (the runtime CheckpointSpec) when authored —
-  // additive, the same way `op` is carried. A node with no checkpoint behaves exactly as before.
-  if (n.def.checkpoint) intent.checkpoint = n.def.checkpoint;
+  // (G5 / gate-list §a) Carry the HUMAN CHECKPOINT: a fanned `hitl` gate OR a directly-authored `checkpoint`.
+  // A node has ONE checkpoint slot — both at once is a LOUD conflict (never a silent last-wins drop).
+  if (fan?.checkpoint && n.def.checkpoint) {
+    throw new GateListError(
+      `node "${n.def.id}": a hitl gate conflicts with a directly-authored checkpoint — a node has ONE checkpoint slot`,
+    );
+  }
+  const checkpoint = fan?.checkpoint ?? n.def.checkpoint;
+  if (checkpoint) intent.checkpoint = checkpoint;
   // (PROGRAMMATIC NODE) Carry the no-pi marker verbatim onto the intent → the dense NodeSpec (the runner
   // dispatches it to the declarative-ops lane). Additive: a node with none spawns `pi` exactly as before.
   if (n.def.programmatic) intent.programmatic = true;
@@ -230,10 +252,17 @@ function toNodeIntent(n: LoadedNode, templateDir: string): NodeIntent {
   // (G9) Carry a SUBWORKFLOW activation block verbatim onto the intent when authored — `expandSubworkflow`
   // consumes it before fusion + compile (the node is replaced by the referenced sub-template). Additive.
   if (n.def.subworkflow) intent.subworkflow = n.def.subworkflow;
-  // (expert-representations · "Judge expansion") Carry a JUDGE GATE block verbatim onto the intent when
-  // authored — `materializeJudgeNodes` consumes it at LOAD time (below), inserting a real `<id>__judge`
-  // node + the producer-side reroute loop. Twin of the `fusion`/`subworkflow` carries. Additive: no block ⇒ no change.
-  if (n.def.judgeGate) intent.judgeGate = n.def.judgeGate;
+  // (expert-representations / gate-list §a) Carry the JUDGE GATE: a fanned `agentic` gate OR a directly-
+  // authored `judgeGate`. `materializeJudgeNodes` consumes it at LOAD time (below), inserting a real
+  // `<id>__judge` node + the producer-side reroute loop. A node has ONE judge slot — both at once is a LOUD
+  // conflict. Additive: no gate ⇒ no change.
+  if (fan?.judgeGate && n.def.judgeGate) {
+    throw new GateListError(
+      `node "${n.def.id}": an agentic gate conflicts with a directly-authored judgeGate — a node has ONE judge slot`,
+    );
+  }
+  const judgeGate = fan?.judgeGate ?? n.def.judgeGate;
+  if (judgeGate) intent.judgeGate = judgeGate;
   return intent;
 }
 
@@ -284,24 +313,44 @@ export async function loadTemplate(dir: string, opts: LoadTemplateOpts = {}): Pr
 
   if (errors.length) throw new TemplateError(errors);
 
-  // (4) (re)write the generated workflow.json lock — always synced from the node set.
+  // (4) (re)write the generated workflow.json lock — synced from the PRISTINE node set. A profile overlay
+  // is additive + run-scoped, so it must NOT churn the committed lock (merge happens AFTER this write).
   await writeWorkflowJson(dir, buildWorkflowJson(meta as TemplateMeta, loaded));
 
   // (5) build the in-memory WorkflowSpec (deterministic node order = id-sorted from scan).
   const m = meta as TemplateMeta;
-  const authoredNodes = loaded.map((n) => toNodeIntent(n, dir));
-  // (expert-representations · "Judge expansion") MATERIALIZE every authored `judgeGate` into a real
-  // `<producer>__judge` pi node + the producer-side reroute loop + the downstream-consumer rewiring. A
-  // PURE intent→intent transform (the `expandReroute`/`expandFusion` precedent) — runs BEFORE the
-  // externalInputs join below so the judge's new reads/produces participate in the edge inference. A spec
-  // with no judge gate is returned referentially unchanged. Throws `JudgeConfigError` on a same-tier judge.
+  // (gate-list §c) The legacy meta.json `profiles` (elidePhases) model is DEPRECATED on the additive path —
+  // warn LOUDLY, do NOT silently break: the legacy node-elision still functions (applyProfileByName) this
+  // release. The migration is to additive overlays at template/profiles/<name>.json.
+  if (m.profiles && Object.keys(m.profiles).length) {
+    console.warn(
+      `[piflow] template "${m.id ?? m.name}": meta.json \`profiles.elidePhases\` is DEPRECATED — migrate to ` +
+        `additive overlays at template/profiles/<name>.json (docs/design/gate-list-and-additive-profiles.md). ` +
+        `Legacy node-elision still runs this release.`,
+    );
+  }
   let nodes: NodeIntent[];
   try {
+    // (gate-list §b) Apply the ADDITIVE profile overlay (when named AND its file is present): APPEND its
+    // per-node gates to the loaded defs BEFORE the fan-out, so a profile-added agentic gate materializes its
+    // judge on the SAME path an authored one does. An unknown named node is a loud `ProfileOverlayError`; a
+    // MISSING overlay file returns null (left to the caller's legacy-profile / unknown-profile resolution).
+    if (opts.profile) {
+      const overlay = await loadProfileOverlay(dir, opts.profile, validate);
+      if (overlay) mergeProfileOverlay(loaded, overlay);
+    }
+    const authoredNodes = loaded.map((n) => toNodeIntent(n, dir));
+    // (expert-representations · "Judge expansion") MATERIALIZE every `judgeGate` — authored OR fanned from an
+    // agentic gate — into a real `<producer>__judge` pi node + the producer-side reroute loop + the
+    // downstream-consumer rewiring. Runs BEFORE the externalInputs join below so the judge's reads/produces
+    // participate in edge inference. A spec with no judge gate is returned referentially unchanged.
     nodes = materializeJudgeNodes({ meta: { name: m.name, description: m.description }, nodes: authoredNodes }).nodes;
   } catch (e) {
-    // The judge invariant (judgeTier != producer tier) is a TEMPLATE buildability failure — surface it
-    // through the SAME fail-closed `TemplateError` envelope the §8 checks use (the single compile gate).
-    if (e instanceof JudgeConfigError) throw new TemplateError([e.message]);
+    // A gate-list conflict, an overlay error, or the judge same-tier invariant are all TEMPLATE buildability
+    // failures — surface them through the SAME fail-closed `TemplateError` envelope the §8 checks use.
+    if (e instanceof GateListError || e instanceof ProfileOverlayError || e instanceof JudgeConfigError) {
+      throw new TemplateError([e.message]);
+    }
     throw e;
   }
   // (M5 · #10/#16) Now that `io.reads` folds the op/injected reads (no longer the `reads:[]` hardcode),
