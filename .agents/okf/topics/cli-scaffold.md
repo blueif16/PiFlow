@@ -211,6 +211,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `6a16eb2` 2026-07-06 — feat(cli): dotted --node <run>.<node> reference for the substrate verbs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
+- `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
 
 ### Lessons — memory cluster
 
@@ -300,5 +301,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-07 · arc=151 commits · files=8 · lessons=76</sub>
+<sub>derived 2026-07-07 · arc=152 commits · files=8 · lessons=76</sub>
 <!-- okf:auto-end -->

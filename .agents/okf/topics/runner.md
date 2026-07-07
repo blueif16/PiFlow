@@ -195,6 +195,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `980fe02` 2026-07-05 — fix(core): resolve contract.schema through the SAME token map as path
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
 
 ### Lessons — memory cluster
 
@@ -220,5 +221,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 16 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts` +1 more; ⚠ no covering tests found
 - `InstantiateRunOpts` (packages/core/src/workflow/template/instantiate.ts:40) — 4 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/template/instantiate.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=140 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-07 · arc=141 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

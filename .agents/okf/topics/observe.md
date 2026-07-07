@@ -176,6 +176,8 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `4a19f22` 2026-07-06 — feat(observe): M8 — substrate exposure (lineage on the index, issues endpoint + side card)
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `dfa3583` 2026-07-06 — feat(server): issues route serves the run-level aggregate when ?node is omitted
+- `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
+- `59db2f6` 2026-07-06 — Merge remote-tracking branch 'origin/main' into feat/gui-issues-surface
 
 ### Lessons — memory cluster
 
@@ -251,7 +253,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `assembleNode` (packages/core/src/observe/runView.ts:374) — 4 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/watch.ts`; tests: `packages/core/test/claude-accumulator.test.ts`
 - `NodeTokenSpine` (packages/core/src/observe/runView.ts:294) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:313) — 2 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`
-- `RunView` (packages/core/src/observe/runView.ts:135) — 9 callers in `packages/core/src/index.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
+- `RunView` (packages/core/src/observe/runView.ts:135) — 9 callers in `packages/core/src/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/runView.ts`; tests: `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-07 · arc=87 commits · files=13 · lessons=64</sub>
+<sub>derived 2026-07-07 · arc=89 commits · files=13 · lessons=64</sub>
 <!-- okf:auto-end -->

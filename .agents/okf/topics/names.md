@@ -104,6 +104,7 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `22a4ccc` 2026-07-05 — fix(cli): dry-run preview renders the "optional, not present" note
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
 
 ### Lessons — memory cluster
 
@@ -127,5 +128,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-07 · arc=45 commits · files=7 · lessons=10</sub>
+<sub>derived 2026-07-07 · arc=46 commits · files=7 · lessons=10</sub>
 <!-- okf:auto-end -->

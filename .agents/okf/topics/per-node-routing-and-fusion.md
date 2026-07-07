@@ -181,7 +181,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `judgePresetId` (packages/core/src/workflow/fusion/presets.ts:43) — 3 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `expandNode` (packages/core/src/workflow/fusion/expand.ts:69) — 1 caller in `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/server/src/handlers.ts`, `packages/core/src/runner/runner.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
+- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/runner/runner.ts`, `packages/server/src/handlers.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
 <sub>derived 2026-07-07 · arc=50 commits · files=10 · lessons=48</sub>

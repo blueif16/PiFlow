@@ -151,6 +151,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `980fe02` 2026-07-05 — fix(core): resolve contract.schema through the SAME token map as path
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
 
 ### Lessons — memory cluster
 
@@ -236,5 +237,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 3 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-07 · arc=88 commits · files=8 · lessons=73</sub>
+<sub>derived 2026-07-07 · arc=89 commits · files=8 · lessons=73</sub>
 <!-- okf:auto-end -->
