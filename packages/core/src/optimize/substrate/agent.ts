@@ -58,6 +58,11 @@ export interface RunSubstrateAgentOpts {
   model?: string;
   /** Tool selection. Omitted/`{}` ⇒ the SDK's default claude-code builtin set. */
   tools?: ToolSelection;
+  /** A bare Agent-Skill id to stage for this turn — set on the spawned node so the runner's existing
+   *  skill-staging path (`locateSkillStage` → `.pi/skills/<id>/` → `--skill`) fires. It ring-searches Ring 0
+   *  `<cwd>/.agents/skills/<id>` then Ring 1 `<piflowHome>/skills/<id>`. Omitted ⇒ no `--skill`. A declared
+   *  skill absent from every ring DEGRADES (advisory skill-missing; the node still runs) — never a hard fail. */
+  skill?: string;
   /** Hard wall-clock cap for the agent's turn. Omitted ⇒ the runner's own default (no cap). */
   timeoutMs?: number;
   /** Test/offline seam — forwarded to `runFromConfig` verbatim. Omit ⇒ the real production default
@@ -100,6 +105,9 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
         // do the deciding.
         tier: opts.tier ?? SUBSTRATE_AGENT_DEFAULT_TIER,
         model: opts.model,
+        // A bare skill id rides onto the node so the runner's skill-staging path stages it (`--skill`); a
+        // miss is advisory, so `undefined` here is a no-op (no skill declared), like every non-skill node.
+        skill: opts.skill,
         tools: opts.tools ?? {},
         io: { reads: [], produces: [], artifacts: [] },
         sandbox: {
