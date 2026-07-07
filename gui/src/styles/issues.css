@@ -88,3 +88,21 @@ button.ds-issue-row:hover { background: var(--ds-bg-hover); }
 }
 .ds-hud-issues__title { font-size: var(--ds-text-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--ds-text-tertiary); }
 .ds-hud-issues__list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+
+/* ── run-level card: filter-by-node chip row + per-node groups ── */
+.ds-issue-filter { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.ds-issue-filter__chip {
+  font-size: var(--ds-text-xs); padding: 3px 9px; border-radius: var(--ds-radius-full);
+  border: 1px solid var(--ds-border-hairline); background: var(--ds-bg-surface);
+  color: var(--ds-text-secondary); cursor: pointer; transition: background 120ms, border-color 120ms, color 120ms;
+}
+.ds-issue-filter__chip:hover { background: var(--ds-bg-hover); }
+.ds-issue-filter__chip.is-active { border-color: var(--ds-violet-600); color: var(--ds-text-primary); background: var(--ds-bg-hover); }
+
+.ds-issue-group { margin-top: 10px; }
+.ds-issue-group__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 0 2px 4px; border-bottom: 1px solid var(--ds-border-hairline);
+}
+.ds-issue-group__node { font-size: var(--ds-text-sm); font-weight: 600; color: var(--ds-text-primary); }
+.ds-issue-group__list { display: flex; flex-direction: column; gap: 2px; padding-top: 3px; }

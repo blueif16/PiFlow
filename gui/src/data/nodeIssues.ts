@@ -51,6 +51,14 @@ export async function loadNodeIssues(run: string, node: string): Promise<IssueRe
   return (await res.json()) as IssueRecord[];
 }
 
+/** Fetch the run-LEVEL aggregate — every node's ledger (the `?node`-omitted route → `allIssuesProjection`).
+ *  Viewer-tolerant server-side (one unreadable node ledger can't blank the whole card). Used by the run card. */
+export async function loadAllIssues(run: string): Promise<IssueRecord[]> {
+  const res = await apiFetch(`/__piflow/issues/${encodeURIComponent(run)}`);
+  if (!res.ok) throw new Error(`Failed to load run-level issues (run "${run}"): ${res.status} ${res.statusText}`);
+  return (await res.json()) as IssueRecord[];
+}
+
 // ── pure sort/badge logic (extracted so it's testable without a DOM — test-discipline) ────────────────────
 
 const SEVERITY_RANK: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1 };

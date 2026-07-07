@@ -13,7 +13,7 @@ import { MarkdownReader } from "./MarkdownReader";
 import { isClosed, isCurrentRun, type IssueRecord, type Issue, type Severity, type Status } from "../data/nodeIssues";
 import "../styles/issues.css";
 
-// severity → the shared tone vocabulary (matches IssuesPanel/digest: block=red · warn=amber · muted=gray).
+// severity → the shared tone vocabulary (matches the digest idiom: block=red · warn=amber · muted=gray).
 const SEVERITY_TONE: Record<Severity, string> = { critical: "block", high: "block", medium: "warn", low: "muted" };
 
 type IconKind = "open" | "closed" | "reopened";
