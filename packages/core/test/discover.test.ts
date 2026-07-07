@@ -81,6 +81,130 @@ describe('buildSnapshot', () => {
   });
 });
 
+// ── M1-REVISED — meta.id IS the workflow's identity; filing stays PATH-derived ─────────────────────────
+// THE LAW (user-corrected): `meta.id` is the workflow's identity (fallback: the dir name when meta.json is
+// absent/unparseable or id empty). Several sibling dirs under one product's `.piflow/` sharing a meta.id
+// (game-omni's cObl/gLG/gmB/gmC/gmD/game-omni — variant/experiment HOMES of the ONE workflow) MERGE into
+// ONE namespace emitted EXACTLY ONCE, whose threads are the UNION of every home's runs. The original ×6 bug
+// was only the duplicate emission (the un-deduped ordered-ns list), never the merging. A run still files by
+// its PATH — the meta.id of the wf dir it physically lives in — NEVER by parsing `run.json.source`, never
+// cross-product, never an 'unfiled' bucket.
+describe('buildSnapshot — meta.id identity with merged homes (M1-REVISED)', () => {
+  it('MERGES sibling dirs sharing one meta.id into ONE namespace, emitted once, threads = the union', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    // Two variant HOMES of the one workflow — both declare id "game-omni" (the exact game-omni shape).
+    for (const wf of ['gmA', 'gmB']) {
+      const tpl = path.join(repo, '.piflow', wf, 'template', 'meta.json');
+      mkdirSync(path.dirname(tpl), { recursive: true });
+      writeFileSync(tpl, JSON.stringify({ id: 'game-omni', name: 'Game Omni' }));
+    }
+    writeRun(repo, 'gmA', 'a1', runStatus('a1', 'irrelevant-never-parsed'));
+    writeRun(repo, 'gmA', 'a2', runStatus('a2', 'irrelevant-never-parsed'));
+    writeRun(repo, 'gmB', 'b1', runStatus('b1', 'irrelevant-never-parsed'));
+
+    const registry: Registry = { products: [{ id: 'game-omni-repo', name: 'game-omni-repo', root: repo }] };
+    const snap = await buildSnapshot(registry);
+
+    expect(snap.products).toHaveLength(1);
+    const namespaces = snap.products[0].namespaces;
+    // ONE namespace, emitted EXACTLY ONCE — this fails BOTH regressions: restoring the duplicate emission
+    // (the ns appearing twice) AND keying by dir name (two namespaces gmA/gmB instead of one game-omni).
+    expect(namespaces.map((n) => n.id)).toEqual(['game-omni']);
+    const ns = namespaces[0];
+    expect(ns.name).toBe('Game Omni');
+    // threads = the UNION of every home's runs (filed by each run's own path, never run.json.source).
+    expect(ns.threads.map((t) => t.run).sort()).toEqual(['a1', 'a2', 'b1']);
+  });
+
+  it('canonical templatePath prefers the MAIN home (the dir whose NAME equals the meta.id)', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    // Discovery order is readdir order — 'aVariant' sorts BEFORE 'game-omni', so first-discovered would be
+    // the variant; the main home must still win because its dir name equals the id (StartRunPanel launches
+    // off ns.templatePath, so this must be the canonical template, not whichever variant readdir hit first).
+    for (const wf of ['aVariant', 'game-omni', 'zVariant']) {
+      const tpl = path.join(repo, '.piflow', wf, 'template', 'meta.json');
+      mkdirSync(path.dirname(tpl), { recursive: true });
+      writeFileSync(tpl, JSON.stringify({ id: 'game-omni', name: 'Game Omni' }));
+    }
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const snap = await buildSnapshot(registry);
+    const ns = snap.products[0].namespaces.find((n) => n.id === 'game-omni')!;
+    expect(ns.templatePath).toBe(path.join(repo, '.piflow', 'game-omni', 'template', 'meta.json'));
+  });
+
+  it('falls back to the FIRST-discovered home when no dir name equals the meta.id', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    for (const wf of ['homeA', 'homeB']) {
+      const tpl = path.join(repo, '.piflow', wf, 'template', 'meta.json');
+      mkdirSync(path.dirname(tpl), { recursive: true });
+      writeFileSync(tpl, JSON.stringify({ id: 'shared-wf' }));
+    }
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const snap = await buildSnapshot(registry);
+    const ns = snap.products[0].namespaces.find((n) => n.id === 'shared-wf')!;
+    expect(ns.templatePath).toBe(path.join(repo, '.piflow', 'homeA', 'template', 'meta.json'));
+  });
+
+  it('keeps DISTINCT meta.ids distinct, with display name = meta.name || id', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    const t1 = path.join(repo, '.piflow', 'dirX', 'template', 'meta.json');
+    mkdirSync(path.dirname(t1), { recursive: true });
+    writeFileSync(t1, JSON.stringify({ id: 'wf-one', name: 'Workflow One' }));
+    const t2 = path.join(repo, '.piflow', 'dirY', 'template', 'meta.json');
+    mkdirSync(path.dirname(t2), { recursive: true });
+    writeFileSync(t2, JSON.stringify({ id: 'wf-two' })); // no name → display = the id
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const snap = await buildSnapshot(registry);
+    const ids = snap.products[0].namespaces.map((n) => n.id).sort();
+    expect(ids).toEqual(['wf-one', 'wf-two']);
+    expect(snap.products[0].namespaces.find((n) => n.id === 'wf-one')!.name).toBe('Workflow One');
+    expect(snap.products[0].namespaces.find((n) => n.id === 'wf-two')!.name).toBe('wf-two');
+  });
+
+  it('falls back to the dir name as identity when meta.json declares no id', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    const tpl = path.join(repo, '.piflow', 'bare-wf', 'template', 'meta.json');
+    mkdirSync(path.dirname(tpl), { recursive: true });
+    writeFileSync(tpl, JSON.stringify({ name: 'Bare' })); // no id → identity = the dir name
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const snap = await buildSnapshot(registry);
+    const ns = snap.products[0].namespaces.find((n) => n.id === 'bare-wf');
+    expect(ns, 'no declared id ⇒ the dir name is the identity').toBeTruthy();
+    expect(ns!.name).toBe('Bare');
+  });
+
+  it('files a run in a template-less wf dir under that dir name — no "unfiled" bucket', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    // 'orphan-wf' has NO template/meta.json — no meta.id exists, so the dir name is its identity; its run
+    // must surface there, never in a catch-all "unfiled" bucket.
+    writeRun(repo, 'orphan-wf', 'o1', runStatus('o1', 'whatever'));
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const snap = await buildSnapshot(registry);
+    const ids = snap.products[0].namespaces.map((n) => n.id);
+    expect(ids).toContain('orphan-wf');
+    expect(ids).not.toContain('unfiled');
+    const ns = snap.products[0].namespaces.find((n) => n.id === 'orphan-wf')!;
+    expect(ns.threads.map((t) => t.run)).toEqual(['o1']);
+  });
+
+  it('a run in a VARIANT home files under the merged namespace via ITS OWN dir meta.id, not source text', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    // One main home + one variant home; the run lives ONLY in the variant. Its run.json.source names a
+    // string that matches NOTHING — filing must come from the variant dir's meta.id alone.
+    for (const wf of ['game-omni', 'gmVariant']) {
+      const tpl = path.join(repo, '.piflow', wf, 'template', 'meta.json');
+      mkdirSync(path.dirname(tpl), { recursive: true });
+      writeFileSync(tpl, JSON.stringify({ id: 'game-omni' }));
+    }
+    writeRun(repo, 'gmVariant', 'v1', runStatus('v1', 'totally-unrelated-source'));
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const snap = await buildSnapshot(registry);
+    const namespaces = snap.products[0].namespaces;
+    expect(namespaces.map((n) => n.id)).toEqual(['game-omni']); // one merged namespace, once
+    expect(namespaces[0].threads.map((t) => t.run)).toEqual(['v1']);
+  });
+});
+
 // ── summarizeRun LIVE fields ────────────────────────────────────────────────────────────────────────
 // The thread row the fleet pickers (CLI/TUI/GUI) render must carry the LIVE running-thread signals — the
 // previous stubs (phase/updatedAt/staleMs = null, runningStalled = false, runningTool = null) left the

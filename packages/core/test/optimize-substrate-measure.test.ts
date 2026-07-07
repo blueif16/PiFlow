@@ -37,8 +37,17 @@ describe('runSubstrateMeasure — op[] execution + report shape + determinism', 
   let tmpRoot: string;
   let templateDir: string;
   let runDir: string;
+  // HERMETIC (M3): `runFromTemplate` self-registers `workspace` — `templateDir` here doesn't satisfy the
+  // `.piflow/<wf>/template` shape `templateLayout` requires, so it falls back to `process.cwd()` (a REAL
+  // repo path) — into `~/.piflow/products.json`. Point PIFLOW_HOME at a scratch dir for this suite.
+  let piflowHome: string;
+  let savedPiflowHome: string | undefined;
 
   beforeAll(async () => {
+    piflowHome = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-home-substrate-measure-'));
+    savedPiflowHome = process.env.PIFLOW_HOME;
+    process.env.PIFLOW_HOME = piflowHome;
+
     // `runSubstrateMeasure` derives templateDir from runDir the SAME way optimize-fix.ts's `templateDirFor`
     // does (`<runDir>/../../template`, the canonical `.piflow/<wf>/runs/<id>` layout) — so the fixture must
     // sit in that exact relative shape: `<tmpRoot>/template` (a copy of the fixture) + `<tmpRoot>/runs/run-1`.
@@ -51,6 +60,9 @@ describe('runSubstrateMeasure — op[] execution + report shape + determinism', 
     expect(await fs.readFile(path.join(runDir, 'out.txt'), 'utf8')).toBe('build');
   });
   afterAll(async () => {
+    if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+    else process.env.PIFLOW_HOME = savedPiflowHome;
+    await fs.rm(piflowHome, { recursive: true, force: true });
     await fs.rm(tmpRoot, { recursive: true, force: true });
   });
 

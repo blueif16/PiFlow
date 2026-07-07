@@ -178,7 +178,8 @@ export async function discoverFleet() {
   const out = [];
   for (const product of snapshot.products || []) {
     for (const ns of product.namespaces || []) {
-      // Disambiguate same-named namespaces across products in the picker (e.g. two repos with `unfiled`).
+      // Disambiguate same-named namespaces across products in the picker (namespace ids are now per-product
+      // directory names, so two DIFFERENT repos can still legitimately share one, e.g. two `game-omni` dirs).
       const multi = (snapshot.products || []).length > 1;
       out.push({
         name: multi ? `${product.name}/${ns.name}` : ns.name,

@@ -138,6 +138,22 @@ describe('runFromConfig — fusion expansion is wired into the run path', () => 
 // ── S5: runFromTemplate — the TEMPLATE-run join (loadTemplate → instantiateRun → compile → runWorkflow) ──
 
 describe('runFromTemplate — the template-run join (U8, §10)', () => {
+  // HERMETIC (M3): `runFromTemplate` self-registers `workspace` (derived here to `process.cwd()`, since
+  // ARG_TEMPLATE isn't `.piflow/<wf>/template`-shaped and no explicit workspace/repoRoot is passed) into
+  // `~/.piflow/products.json` — point PIFLOW_HOME at a scratch dir for this suite and restore it after.
+  let piflowHome: string;
+  let savedPiflowHome: string | undefined;
+  beforeEach(async () => {
+    piflowHome = await tmpOut();
+    savedPiflowHome = process.env.PIFLOW_HOME;
+    process.env.PIFLOW_HOME = piflowHome;
+  });
+  afterEach(async () => {
+    if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+    else process.env.PIFLOW_HOME = savedPiflowHome;
+    await fs.rm(piflowHome, { recursive: true, force: true });
+  });
+
   // A provider that records every staged write (so the test can capture the RESOLVED prompt on disk).
   function recorder(): { provider: SandboxProvider; writes: { path: string; data: string }[] } {
     const writes: { path: string; data: string }[] = [];

@@ -7,7 +7,7 @@
 // A companion DIRECT test (no runNode) proves the two literal integration claims: the compiled extension
 // source contains the registered tool, and the registry's resolved `--tools` (piTools) list contains it.
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -73,6 +73,22 @@ describe('script tool — compiled extension source + planned --tools list (dire
 // ── FULL pipeline proof: runFromTemplate (bind→discover→preflight→stage→exec-stub→collect→verify) ───
 
 describe('script tool — runFromTemplate end-to-end (offline stub, no real pi)', () => {
+  // HERMETIC (M3): `runFromTemplate` self-registers `workspace` (here `FIXTURES`, a REAL repo path) into
+  // `~/.piflow/products.json` — point PIFLOW_HOME at a scratch dir for this suite so it never writes into
+  // the real global registry, and restore it afterward.
+  let piflowHome: string;
+  let savedPiflowHome: string | undefined;
+  beforeAll(async () => {
+    piflowHome = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-home-script-tool-'));
+    savedPiflowHome = process.env.PIFLOW_HOME;
+    process.env.PIFLOW_HOME = piflowHome;
+  });
+  afterAll(async () => {
+    if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+    else process.env.PIFLOW_HOME = savedPiflowHome;
+    await fs.rm(piflowHome, { recursive: true, force: true });
+  });
+
   it('a node selecting tool:demo_probe (valid manifest + real script) BINDS and reaches ok', async () => {
     const runDir = await tmpRunDir();
     const result = await runFromTemplate(TPL_GOOD, {

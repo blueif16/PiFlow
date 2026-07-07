@@ -16,10 +16,21 @@
 // This file only AUTHORS the config; no browser is installed or launched in the authoring step.
 
 import { defineConfig, devices } from "@playwright/test";
+import { mkdtempSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// HERMETIC (M3): journey.spec.ts / compose.spec.ts drive a REAL `runFromTemplate` against `PRODUCT_ROOT`
+// (a repo-relative fixture dir below, not a tmp path), which self-registers it into the REAL
+// `~/.piflow/products.json` unless PIFLOW_HOME points elsewhere. Set it ONCE, at config load, to a fresh
+// scratch dir — the spawned `serve` webServer inherits `process.env` too, so neither process ever touches
+// the real global registry (or reads/writes the real model-tiers/catalog/skills state).
+if (!process.env.PIFLOW_HOME) {
+  process.env.PIFLOW_HOME = mkdtempSync(path.join(os.tmpdir(), "piflow-home-e2e-"));
+}
 
 // A deterministic, non-secret token seeded into BOTH the serve (`--token`) and every browser/probe request
 // (`?token=` / `Authorization: Bearer`). Overridable so a live run can inject its own.

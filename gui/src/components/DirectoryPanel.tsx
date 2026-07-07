@@ -15,10 +15,12 @@
  * the perf budget allows blur on. Float it over the canvas with React Flow's
  * <Panel> (see WorkflowCanvas). Honors prefers-reduced-motion (no slide).
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, useReducedMotion } from "motion/react";
 import * as motion from "motion/react-client";
 import { GlassSurface } from "./GlassSurface";
+import { ProgressBar } from "./ProgressBar";
+import { runRowStatus } from "./status";
 import "../styles/panels.css";
 
 export interface DirEntry {
@@ -27,6 +29,14 @@ export interface DirEntry {
   kind: "folder" | "file";
   /** mono tag for files (tsx, css, …) */
   typeLabel?: string;
+  /** mono tag for a FOLDER whose display name alone doesn't disambiguate it (e.g. a workspace switcher
+   *  namespace row: the workflow's directory id, shown when it differs from the display name authors can
+   *  collide across dirs) */
+  secondaryLabel?: string;
+  /** RUN-LEAF status cluster (the workspace switcher's rows): the index thread's fields VERBATIM — the
+   *  GUI computes nothing. Present ⇒ the row renders a slim status-colored progress bar + a done/total
+   *  count in place of `typeLabel`; absent (the canvas file navigator) ⇒ today's rendering, unchanged. */
+  run?: { state: string; ok: boolean | null; frac: number; done: number; total: number };
   children?: DirEntry[];
 }
 
@@ -41,6 +51,8 @@ export interface DirectoryPanelProps {
   initialPath?: DirEntry[];
   /** mark this file leaf id (`f:<displayPath>`) selected on mount */
   initialFileId?: string | null;
+  /** extra head control (e.g. the run switcher's sort toggle), rendered after the title */
+  headExtra?: ReactNode;
 }
 
 function FolderGlyph() {
@@ -66,7 +78,7 @@ function Chevron() {
   );
 }
 
-export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = false, initialPath, initialFileId }: DirectoryPanelProps) {
+export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = false, initialPath, initialFileId, headExtra }: DirectoryPanelProps) {
   const reduce = useReducedMotion() ?? false;
   // columns slide in FROM the side they grow toward (left for default, right for reverse)
   const enterX = reverse ? 10 : -10;
@@ -114,6 +126,7 @@ export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = fa
       <div className="ds-dir__head">
         <span className="ds-dir__icon"><FolderGlyph /></span>
         <span className="ds-dir__title">{title}</span>
+        {headExtra}
         {crumb && <span className="ds-dir__crumb" title={crumb}>{crumb}</span>}
       </div>
 
@@ -134,6 +147,8 @@ export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = fa
               >
                 {col.entries.map((entry) => {
                   const current = entry.kind === "folder" ? entry.id === selectedId : entry.id === fileId;
+                  // run-leaf tone (index fields only — runRowStatus is the pure state+ok → tone law)
+                  const runTone = entry.run ? runRowStatus(entry.run.state, entry.run.ok) : null;
                   return (
                     <button
                       key={entry.id}
@@ -149,7 +164,20 @@ export function DirectoryPanel({ tree, title = "Files", onOpenFile, reverse = fa
                       </span>
                       <span className="ds-dir__name">{entry.name}</span>
                       {entry.kind === "folder" ? (
-                        <span className="ds-dir__chev"><Chevron /></span>
+                        <>
+                          {entry.secondaryLabel && <span className="ds-dir__type">{entry.secondaryLabel}</span>}
+                          <span className="ds-dir__chev"><Chevron /></span>
+                        </>
+                      ) : entry.run && runTone ? (
+                        // run leaf: the status cluster — nodesDone/nodesTotal + the established slim
+                        // charge bar (ProgressBar --node: square-ended, data-status recolored), both
+                        // toned by the same runRowStatus mapping. Replaces the redundant state text.
+                        <span className="ds-dir__run" data-status={runTone}>
+                          <span className="ds-dir__run-count">{entry.run.done}/{entry.run.total}</span>
+                          <span className="ds-dir__run-track">
+                            <ProgressBar size="node" status={runTone} value={entry.run.frac} aria-label={`${entry.name} progress`} />
+                          </span>
+                        </span>
                       ) : (
                         entry.typeLabel && <span className="ds-dir__type">{entry.typeLabel}</span>
                       )}

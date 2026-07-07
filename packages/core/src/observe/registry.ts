@@ -87,6 +87,27 @@ export function loadRegistry(): Registry {
   return registry;
 }
 
+/**
+ * True when `root` resolves — by REALPATH — under the OS temp dir: a test's `mkdtemp` scratch dir, a
+ * throwaway sandbox workdir, or any other transient location no repo actually lives at. Compared via
+ * `realpathSync` (falling back to the raw resolved path when a side doesn't exist) because on macOS
+ * `os.tmpdir()` is ITSELF a `/var` symlink to `/private/var` — a raw prefix compare on the two raw paths
+ * would silently never match, which is exactly how a test suite that ran a workflow without setting
+ * `PIFLOW_HOME` (e.g. `packages/server/test/http-replay-e2e.test.ts`) leaked ~290 temp-dir corpses into the
+ * REAL `~/.piflow/products.json` over time — this is the guard that stops that leak at the source.
+ */
+function isUnderTmpdir(root: string): boolean {
+  const real = (p: string): string => {
+    try {
+      return fssync.realpathSync(p);
+    } catch {
+      return path.resolve(p);
+    }
+  };
+  const rel = path.relative(real(os.tmpdir()), real(root));
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 /** Idempotent upsert of a repo root (matched by abs root OR basename id; refreshes a moved/renamed dir). */
 export function upsertRoot(registry: Registry, root: string): Registry {
   const abs = path.resolve(root);
@@ -103,10 +124,18 @@ export function upsertRoot(registry: Registry, root: string): Registry {
   return registry;
 }
 
-/** Persist the registry to `~/.piflow/products.json` (mkdir -p the home first; pretty-printed). */
+/**
+ * Persist the registry to `~/.piflow/products.json` (mkdir -p the home first; pretty-printed).
+ *
+ * SELF-HEALING: before writing, drops any entry whose `root` no longer exists on disk (a deleted or moved
+ * repo). Nothing ever pruned the registry file before, so a dead entry was a permanent corpse — this makes
+ * every save an opportunity to quietly heal it, never resurrecting the ~290-corpse problem a leaky test
+ * suite once caused (see `isUnderTmpdir` — the write-side guard that stops the leak at the source).
+ */
 export async function saveRegistry(registry: Registry): Promise<void> {
   await fs.mkdir(globalDir(), { recursive: true });
-  await fs.writeFile(productsFile(), JSON.stringify(registry, null, 2) + '\n');
+  const pruned: Registry = { products: registry.products.filter((p) => fssync.existsSync(p.root)) };
+  await fs.writeFile(productsFile(), JSON.stringify(pruned, null, 2) + '\n');
 }
 
 /**
@@ -115,9 +144,16 @@ export async function saveRegistry(registry: Registry): Promise<void> {
  * TUI / GUI) with zero manual `--root`. The write-side analogue of the pi runtime self-registering each run
  * home into `~/.pi`. Returns the saved registry. The caller wraps this so index bookkeeping can never fail
  * a run.
+ *
+ * NO-OP for a root under `os.tmpdir()` (returns the loaded registry UNCHANGED, no upsert, no write) — a
+ * test suite that runs a workflow without pointing `PIFLOW_HOME` at a scratch dir must never self-register
+ * its temp workdir into the REAL global registry (the confirmed leak: packages/server/test/
+ * http-replay-e2e.test.ts, ~290 entries over time).
  */
 export async function registerProductRoot(root: string): Promise<Registry> {
-  const registry = upsertRoot(loadRegistry(), root);
-  await saveRegistry(registry);
-  return registry;
+  const registry = loadRegistry();
+  if (isUnderTmpdir(root)) return registry;
+  const updated = upsertRoot(registry, root);
+  await saveRegistry(updated);
+  return updated;
 }
