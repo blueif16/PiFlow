@@ -10,7 +10,7 @@ description: >-
   "monitor / follow / poll a run", "diagnose a stalled / never-wrote / blocked node", or the words
   "piflow" / "pi-runner" / "pi fleet" / "pi run" appearing at all. The run is ALWAYS: pull the next prompt
   from the bank → dry-run (free) → live background → poll. To CREATE or PORT the template first use
-  piflow-init; to IMPROVE a node/the chain use piflow-enhance.
+  piflow-init.
 ---
 
 # Pi Flow · START — run & monitor a workflow on the pi fleet
@@ -93,7 +93,7 @@ views; a `sleep` loop burns turns, misses the terminal event, and re-improvises 
 - **The optimize loop streams too:** `piflowctl optimize --fix <rundir> --binding <module> --watch` emits the
   FIX→GATE→LAND events in order — **`triaged → candidate-prepared → fixer-started → fixer-trace* → fixer-done
   → scored → gated → landed → stopped`** (`fixer-trace*` repeats per fixer step; `--watch-json` = JSONL). Use
-  this to follow an autonomous fix round; the loop itself lives in **piflow-enhance**.
+  this to follow an autonomous fix round.
 
 Confirm liveness by the artifact on disk + the VCS/file evidence, never a self-report. (Deep status/event
 contract: piflow-init's `reference/observability.md`.)
@@ -119,7 +119,7 @@ whole job, and it is short:
 3. Done — the profile compiles the reduced, gateless DAG; `--from`/`--until` still window WITHIN it.
 
 When a profile elides the verify gates, **the orchestrator IS the verifier** — judge each node's artifact
-against the criteria fixture as it lands (piflow-enhance / hermes-skill-system's node-validation loop).
+against the criteria fixture as it lands (hermes-skill-system's node-validation loop).
 (Obsolete: hand-windowing gates out with `--until <last producer>` — use `--profile`; it rewires deps so a
 `--from` resume never blocks on an elided gate's missing artifact, the failure that motivated this.)
 
@@ -137,7 +137,7 @@ against the criteria fixture as it lands (piflow-enhance / hermes-skill-system's
 ## Scope fence
 - CREATE / PORT a template, or it's missing/incomplete → **piflow-init** (the LLM constructs the full
   run-ready template: prompts+DAG + hooks/policy/returnMode/state/vocab). Do NOT hand-author a template here.
-- A node produced a BAD artifact / a recurring flaw → **piflow-enhance** / **hermes-skill-system** (fix the
+- A node produced a BAD artifact / a recurring flaw → **hermes-skill-system** (fix the
   SKILL or the chain; the human is the eye). Do NOT patch a prompt mid-run.
 - The deep specs (the run-status/event contract, the `RunOptions` knobs, headless invariants) live in
   piflow-init's `reference/observability.md` + `reference/provider-and-headless.md` — read them when a run

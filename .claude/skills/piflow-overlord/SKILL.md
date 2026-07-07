@@ -15,7 +15,14 @@ description: >-
   critical path (a candidate / control node). It is an event-WOKEN SENTINEL with NO event loop — a declarative
   wake-policy over the one stream decides when a fold event is owed human-grade judgment, then it wakes,
   adjudicates a one-shot digest, acts at a seam, and sleeps. piflow-start is its actuator for running & monitoring;
-  piflow-enhance for improving a node; this skill is the decider ABOVE them.
+  piflow-inspect is its telemetry/instrument source (status · telemetry · trace · logs); piflow-triage +
+  piflow-fixer are the two agents it spawns and supervises over an optimize round (name the defect, then solve
+  it) — this skill is the decider ABOVE all four. THIS IS THE DEFAULT SEAT WHILE ANY RUN, OPTIMIZE PASS, OR
+  ROUND IS LIVE: load it whenever you are monitoring, supervising, or babysitting a pi-flow run or fix loop —
+  not only on an explicit "act as control plane" ask. LOAD THIS ALSO when you are running triage/fix and must
+  decide continue/abort/rerun/escalate/land; when "doing a round" or "monitoring an optimize pass" comes up; or
+  when "supervise / babysit this run", "monitor this optimize round", "should I kill / rerun / escalate this",
+  or "insert a control plane" come up.
 ---
 
 # Pi Flow · OVERLORD — the control-plane agent
@@ -30,6 +37,20 @@ shipped workflow-management plane) and an **agent** (you). This skill is the age
 that *whoever occupies the seat gets the job right*, whether that is you in this session, a cheap supervisor
 agent, or an agent in a cloud control-sandbox. Everything below the seat stays the same when the occupant
 changes; that invariance is the whole point.
+
+## Starting — the first commands (the on-ramp)
+Two entry points, by what you're taking the seat over:
+- **A live run** — snapshot, then arm your wake source: `piflowctl status <rundir>` (one-shot per-node table:
+  which node/stage) → `piflowctl telemetry <rundir> --watch` (streams the run fold live, then prints the
+  record) — this IS your run WAKE SOURCE (§"The invariant you sit on"). To dig into one node,
+  **piflow-inspect** owns the full routing table (`telemetry <rundir> <nodeId>`, `trace`, `logs`).
+- **An optimize round** — `piflowctl optimize triage --node <id>` (spawns **piflow-triage**: measures then
+  judges the node's finished run(s) → issue files) THEN `piflowctl optimize fix --node <id>` (spawns
+  **piflow-fixer**: candidate copy → fix → gate → STAGE a manifest) — or the bare `piflowctl optimize --node
+  <id>` for both phases in one call (the default full loop). Once a manifest gates ACCEPT, land it yourself
+  with `piflowctl optimize adopt --manifest <path>` — a separate, explicit step, never a side effect of `fix`.
+  `--node` also takes a dotted `<run>.<id>` ref to pin one run.
+Either way you are now on the ONE stream (§"The invariant you sit on") — proceed to the reconcile loop below.
 
 ## Your posture — a SENTINEL, not a streamer (you have NO event loop)
 There is exactly ONE agent posture and it is **event-woken, never streaming.** You do NOT sit in a `for await`
@@ -270,9 +291,13 @@ as a claim to be checked.
 
 ## Your actuator — the piflowctl surface (defer the exact invocation to the sibling skills)
 You act ONLY through the SDK CLI + skills, never ad-hoc bash. Run & monitor → **piflow-start** (`piflowctl run …
---from/--until`, `watch`, `status`, `logs`). Optimize/fix → `piflowctl optimize --fix --binding … --node …
---watch` with `--edit-budget`/`--token-budget` and the watchdog env knobs (`GAME_OMNI_FIXER_*`). Improve a node
-or the chain → **piflow-enhance**. You DECIDE which to invoke and when; those skills hold the canonical command.
+--from/--until`, `watch`, `status`, `logs`). Optimize/fix (the classic binding-driven loop) → `piflowctl
+optimize --fix --binding … --node … --watch` with `--edit-budget`/`--token-budget` and the watchdog env knobs
+(`GAME_OMNI_FIXER_*`). Name + solve a node's issue (the per-node substrate loop) → **piflow-triage**
+(`piflowctl optimize triage --node <id>`) then **piflow-fixer** (`piflowctl optimize fix --node <id>`; bare
+`piflowctl optimize --node <id>` runs both phases) — land a gated manifest with `piflowctl optimize adopt
+--manifest <path>`, a separate, explicit step never a side effect of `fix`. You DECIDE which loop and when;
+those skills hold the canonical command.
 Your WAKE sources are `telemetry --watch` (run fold) and `optimize --fix --watch` (optimize stream), armed with
 a `--wake-on` policy (§"The declarative wake-seam"); `watch --notify` is a terminal liveness ping only — never
 your decision surface.
