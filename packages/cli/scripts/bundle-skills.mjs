@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PREPACK build step — copy the workflow-authoring TRIO from the canonical repo-root `.claude/skills/` into
+// PREPACK build step — copy the DEFAULT skill set from the canonical repo-root `.claude/skills/` into
 // this package's `skills/` so the npm tarball carries them. THE NO-DRIFT DESIGN: the canonical source is
 // repo-root `.claude/skills/` (the ONE editable copy); `packages/cli/skills/` is a GENERATED ARTIFACT —
 // gitignored, never hand-edited, regenerated here before every pack — exactly like a generated workflow.json.
@@ -14,14 +14,15 @@ const repoRoot = path.join(pkgRoot, '..', '..'); // repo root
 const canonical = path.join(repoRoot, '.claude', 'skills');
 const dest = path.join(pkgRoot, 'skills');
 
-// The workflow-authoring trio travels to a consumer repo BY DEFAULT — EXCLUDES piflow-release (SDK
-// publishing) and piflow-web-design (marketing-site only).
-const TRIO = ['piflow-init', 'piflow-start', 'piflow-enhance'];
+// The DEFAULT skill set travels to a consumer repo BY DEFAULT — the workflow-authoring trio plus piflow-fixer
+// (the fixer playbook). EXCLUDES piflow-release (SDK publishing) and piflow-web-design (marketing-site only).
+// MIRROR DEFAULT_SKILLS in src/skills.ts (this plain .mjs can't import the TS catalog).
+const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer'];
 // Plus the opt-in ADD-ON skills so `skills install --with/--all` can reach them from the tarball. MIRROR
 // SKILL_ADDONS in src/skills.ts (this plain .mjs can't import the TS catalog) — understand → okf-slices,
 // memory → memory-slices.
 const ADDON_SKILLS = ['okf-slices', 'memory-slices'];
-const BUNDLED = [...TRIO, ...ADDON_SKILLS];
+const BUNDLED = [...DEFAULT_SKILLS, ...ADDON_SKILLS];
 
 rmSync(dest, { recursive: true, force: true }); // regenerate from scratch — never accrete stale skills
 mkdirSync(dest, { recursive: true });
