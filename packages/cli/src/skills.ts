@@ -1,5 +1,5 @@
-// `piflowctl skills install [targetDir] [--force]` — ship piflow's OPERATING skills (the authoring trio
-// piflow-init / piflow-start / piflow-enhance + the piflow-fixer playbook + the piflow-inspect router) into ANY target repo's
+// `piflowctl skills install [targetDir] [--force]` — ship piflow's OPERATING skills (the authoring pair
+// piflow-init / piflow-start + the piflow-inspect router + the piflow-triage/piflow-fixer/piflow-overlord optimize agents) into ANY target repo's
 // `.claude/skills/`, so a fresh Claude Code agent there is equipped to compose, run, and debug workflows
 // against the SDK. The skills ARE the SDK's operating brain; this is how they travel out of this repo.
 //
@@ -17,13 +17,15 @@ import { fileURLToPath } from 'node:url';
 import type { PromptIO } from './init/types.js';
 import { createPromptIO } from './init/prompt.js';
 
-// The DEFAULT skill set — the skills that ship to a consumer repo BY DEFAULT: the workflow-authoring trio
-// (`piflow-init`/`start`/`enhance`) PLUS `piflow-fixer` (the fixer's playbook — also a human-facing fix
-// protocol) and `piflow-inspect` (the run-inspection instrument router). EXCLUDES `piflow-release`
-// (publishing the SDK itself) and `piflow-web-design` (marketing-site only). The prepack script copies
+// The DEFAULT skill set — the skills that ship to a consumer repo BY DEFAULT: the authoring pair
+// (`piflow-init`/`start`) + `piflow-inspect` (the run-inspection instrument router) + the three optimize-loop
+// agents `piflow-triage` (names a defect → records the issue), `piflow-fixer` (solves one issue open→closed;
+// also the human-facing fix protocol), and `piflow-overlord` (the control plane that supervises them).
+// EXCLUDES `piflow-release` (publishing the SDK itself), `piflow-web-design` (marketing-site only), and
+// `piflow-enhance` (RETIRED — its improve loop is being split into `piflow-triage` + `piflow-fixer`). The prepack script copies
 // exactly these into the packaged dir; the dev fallback applies the same allowlist so dev ≡ packaged. A bare
 // install with no manifest installs EXACTLY this set — nothing more.
-export const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect'] as const;
+export const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-overlord'] as const;
 
 /** Optional, OPT-IN skill add-ons: id → the skill dir(s) it installs + a one-line wizard description.
  *  MIRROR the skill-name list in scripts/bundle-skills.mjs (the same dual-copy discipline as DEFAULT_SKILLS). */
