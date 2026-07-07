@@ -62,6 +62,14 @@ export type {
   JudgeMaterializedNode,
 } from './workflow/gate-authoring.js';
 
+// (gate-list-and-additive-profiles.md) The additive typed gate LIST + its load-time fan-out onto the
+// existing carriers, and the sparse additive PROFILE overlay (`template/profiles/<name>.json`) loader/merge.
+export { fanoutGates, GateListError } from './workflow/gate-list.js';
+export type { GateEntry, GateFanout, FanoutJudgeGate, FanoutCheckpoint } from './workflow/gate-list.js';
+export { loadProfileOverlay, mergeProfileOverlay, ProfileOverlayError } from './workflow/profile-overlay.js';
+export type { ProfileOverlay } from './workflow/profile-overlay.js';
+export { profileSchema, gateEntrySchema } from './workflow/template/schema/index.js';
+
 // (Phase 2) Fusion nodes: the pre-compile siblings+judge expansion + its built-in fusion PRESET AGENTS
 // (the judge/obligations roles). `expandFusion` runs before `compile`; the presets brand the generated
 // nodes via `agentType`. The verbatim Appendix-A prompt bodies + token fillers live in `fusion/prompts`.

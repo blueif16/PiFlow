@@ -131,6 +131,13 @@ export interface TemplateNode {
     verify?: boolean;
   };
   /**
+   * (gate-list-and-additive-profiles.md §a) The UNIFIED additive gate LIST — the owner-decided node gating
+   * surface. Typed entries (`execution`/`agentic`/`hitl`) the loader FANS OUT at load onto the existing
+   * carriers (`op[]`/`io.checks`, `judgeGate` → `materializeJudgeNodes`, `checkpoint`). A profile overlay
+   * APPENDS to this same list. Empty/omitted ⇒ no gates. See `workflow/gate-list.ts` for the shape + fan-out.
+   */
+  gates?: import('../gate-list.js').GateEntry[];
+  /**
    * (expert-representations · "Judge expansion") A JUDGE GATE authored on this producer node → the loader
    * MATERIALIZES a real `<id>__judge` pi node into the spec at load time (`lowerGates` + `materializeJudgeNodes`)
    * and attaches the producer-side `rerouteTo` judge-fail loop. The `JudgeGate` shape MINUS its `kind`

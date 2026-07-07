@@ -6,3 +6,5 @@
 export { nodeSchema } from './node.schema.js';
 export { metaSchema } from './meta.schema.js';
 export { workflowSchema } from './workflow.schema.js';
+export { profileSchema } from './profile.schema.js';
+export { gateEntrySchema } from './gate-entry.schema.js';
