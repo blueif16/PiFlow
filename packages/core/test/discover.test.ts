@@ -81,6 +81,75 @@ describe('buildSnapshot', () => {
   });
 });
 
+// ── M1 — path-derived namespace identity ────────────────────────────────────────────────────────────
+// THE LAW: a workflow's identity is its DIRECTORY under `.piflow/`, never the free-text `meta.json.id` an
+// author can (and, in game-omni, DOES) copy-paste identically across several dirs. A run files under the
+// wf dir it PHYSICALLY lives in (`<root>/.piflow/<wf>/runs/<id>`), never by parsing `run.json.source`. These
+// tests reproduce the diagnosed bug exactly: 6 dirs (here, 2) sharing one declared meta.id must still
+// surface as that many DISTINCT namespaces with DISJOINT runs — not one namespace object repeated N× with
+// every run unioned together.
+describe('buildSnapshot — path-derived namespace identity (M1)', () => {
+  it('keys namespaces by DIRECTORY name, not by a shared meta.id, and files runs by their own dir', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    // Two workflow DIRS that both declare the SAME meta.id — the exact game-omni shape (cObl/game-omni/gLG/…
+    // all declare id "game-omni"). Display name may collide; identity (namespace.id) must not.
+    for (const wf of ['gmA', 'gmB']) {
+      const tpl = path.join(repo, '.piflow', wf, 'template', 'meta.json');
+      mkdirSync(path.dirname(tpl), { recursive: true });
+      writeFileSync(tpl, JSON.stringify({ id: 'game-omni', name: 'Game Omni' }));
+    }
+    writeRun(repo, 'gmA', 'a1', runStatus('a1', 'irrelevant-never-parsed'));
+    writeRun(repo, 'gmA', 'a2', runStatus('a2', 'irrelevant-never-parsed'));
+    writeRun(repo, 'gmB', 'b1', runStatus('b1', 'irrelevant-never-parsed'));
+
+    const registry: Registry = { products: [{ id: 'game-omni-repo', name: 'game-omni-repo', root: repo }] };
+    const snap = await buildSnapshot(registry);
+
+    expect(snap.products).toHaveLength(1);
+    const namespaces = snap.products[0].namespaces;
+    const ids = namespaces.map((n) => n.id).sort();
+    // ONE namespace PER DIR (2 dirs → 2 namespaces) — the pre-fix code collapsed nsById on the shared
+    // "game-omni" key but still emitted the SAME object once per raw `namespaces` entry (6× on game-omni's
+    // real fixture); asserting the id set AND its uniqueness catches both the collapse and the repeat-emit.
+    expect(ids).toEqual(['gmA', 'gmB']);
+    expect(new Set(namespaces.map((n) => n.id)).size).toBe(namespaces.length); // no namespace repeated
+
+    const gmA = namespaces.find((n) => n.id === 'gmA')!;
+    const gmB = namespaces.find((n) => n.id === 'gmB')!;
+    expect(gmA.threads.map((t) => t.run).sort()).toEqual(['a1', 'a2']); // disjoint — never gmB's run
+    expect(gmB.threads.map((t) => t.run).sort()).toEqual(['b1']);       // disjoint — never gmA's runs
+    // display name still reads meta.name (a DISPLAY collision is fine; only identity must never collide)
+    expect(gmA.name).toBe('Game Omni');
+    expect(gmB.name).toBe('Game Omni');
+  });
+
+  it('falls back to the dir name as display name when meta.json carries no name', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    const tpl = path.join(repo, '.piflow', 'bare-wf', 'template', 'meta.json');
+    mkdirSync(path.dirname(tpl), { recursive: true });
+    writeFileSync(tpl, JSON.stringify({ id: 'some-other-id' })); // no `name` — and an id that ISN'T the dir
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const snap = await buildSnapshot(registry);
+    const ns = snap.products[0].namespaces.find((n) => n.id === 'bare-wf');
+    expect(ns, 'namespace id is the DIRECTORY name, ignoring meta.id entirely').toBeTruthy();
+    expect(ns!.name).toBe('bare-wf');
+  });
+
+  it('files a run under its own template-less wf dir (runs/ with no template) — no "unfiled" bucket', async () => {
+    const repo = mkdtempSync(path.join(tmpdir(), 'piflow-repo-'));
+    // 'orphan-wf' has NO template/meta.json — discoverNamespaces never lists it — yet its run must still
+    // surface under a namespace keyed by ITS OWN dir name, never a catch-all "unfiled" bucket.
+    writeRun(repo, 'orphan-wf', 'o1', runStatus('o1', 'whatever'));
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const snap = await buildSnapshot(registry);
+    const ids = snap.products[0].namespaces.map((n) => n.id);
+    expect(ids).toContain('orphan-wf');
+    expect(ids).not.toContain('unfiled');
+    const ns = snap.products[0].namespaces.find((n) => n.id === 'orphan-wf')!;
+    expect(ns.threads.map((t) => t.run)).toEqual(['o1']);
+  });
+});
+
 // ── summarizeRun LIVE fields ────────────────────────────────────────────────────────────────────────
 // The thread row the fleet pickers (CLI/TUI/GUI) render must carry the LIVE running-thread signals — the
 // previous stubs (phase/updatedAt/staleMs = null, runningStalled = false, runningTool = null) left the
