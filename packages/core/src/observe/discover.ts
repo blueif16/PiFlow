@@ -82,8 +82,12 @@ export type NamespaceMeta = {
 export interface NamespaceDesc {
   id: string;
   name: string;
+  /** the CANONICAL home's `template/meta.json` (the dir NAMED like the id when present, else the first
+   *  discovered) — what a launcher (StartRunPanel) starts runs from. */
   templatePath: string;
   meta: NamespaceMeta;
+  /** every `.piflow/` dir that is a home of this workflow (variant/experiment dirs sharing one meta.id). */
+  dirs: string[];
 }
 
 /** One run summarized into the shared thread-row shape every view (CLI/TUI/GUI) iterates. */
@@ -120,7 +124,7 @@ export interface ThreadRow {
   spawnedBy?: RunStatus['spawnedBy'];
 }
 
-/** One namespace in a snapshot — a workflow (keyed by its `.piflow/` DIRECTORY name) with its run threads. */
+/** One namespace in a snapshot — a workflow (keyed by its `meta.id`, fallback dir name) with its run threads. */
 export interface SnapshotNamespace {
   id: string;
   name: string;
@@ -146,16 +150,19 @@ export interface Snapshot {
 /**
  * Workflows (namespaces) authored under `<root>/.piflow/<wf>/template/meta.json` (§D9 canonical home).
  *
- * IDENTITY LAW: `id` is the workflow's DIRECTORY name (`entry.name`) — NEVER the free-text `meta.json.id`.
- * An author is free to copy-paste `meta.id` identically across many dirs (game-omni's cObl/game-omni/gLG/
- * gmB/gmC/gmD all declare `id: "game-omni"`); keying on that string collapsed 6 distinct workflows into one
- * namespace whose runs then got unioned. The directory IS the workflow's identity (a run's canonical home is
- * literally `<root>/.piflow/<wf>/runs/<id>`), so two dirs can never collide. `meta.json` still rides along
- * for DISPLAY (`name`) and any other author-declared field — collisions there are cosmetic, not structural.
+ * IDENTITY LAW: `meta.id` IS the workflow's identity (fallback: the dir name when meta.json declares no
+ * id). Several sibling dirs under one product's `.piflow/` may share one meta.id — game-omni's cObl/gLG/
+ * gmB/gmC/gmD/game-omni are variant/experiment HOMES of the ONE workflow — and they MERGE into ONE
+ * namespace, returned exactly once (`dirs` lists every home). The canonical `templatePath`/`meta` come
+ * from the MAIN home — the dir whose NAME equals the meta.id — when present, else the first discovered
+ * (this matters: a launcher starts runs off `templatePath`, so it must be the canonical template, not
+ * whichever variant readdir happened to hit first). A dir whose meta.json is unparseable is skipped here
+ * (nothing launchable to describe); its runs still surface in `buildSnapshot` under the dir name.
  */
 export function discoverNamespaces(root: string): NamespaceDesc[] {
   const wfRoot = path.join(root, '.piflow');
   const out: NamespaceDesc[] = [];
+  const byId = new Map<string, NamespaceDesc>();
   if (!fssync.existsSync(wfRoot)) return out;
   for (const entry of fssync.readdirSync(wfRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
@@ -167,7 +174,21 @@ export function discoverNamespaces(root: string): NamespaceDesc[] {
     } catch {
       continue;
     }
-    out.push({ id: entry.name, name: meta.name || entry.name, templatePath, meta });
+    const id = typeof meta.id === 'string' && meta.id ? meta.id : entry.name;
+    const existing = byId.get(id);
+    if (existing) {
+      existing.dirs.push(entry.name);
+      if (entry.name === id) {
+        // the MAIN home (dir named like the id) — its template/meta become the namespace's canonical ones
+        existing.templatePath = templatePath;
+        existing.meta = meta;
+        existing.name = meta.name || id;
+      }
+    } else {
+      const desc: NamespaceDesc = { id, name: meta.name || id, templatePath, meta, dirs: [entry.name] };
+      byId.set(id, desc);
+      out.push(desc);
+    }
   }
   return out;
 }
@@ -322,11 +343,13 @@ export function groupByParent(threads: ThreadRow[]): ThreadNode[] {
  * Build the unified fleet snapshot from a registry — `{ generatedAt, products:[{ id,name,root,namespaces }] }`.
  * PURE (no writes, no `process.exit`). Per THE LAW (one product workspace = one `.piflow/`, scanned only at
  * that product's own root): every namespace and every run are discovered and filed WITHIN their own product's
- * `root` only — never across products, and never by parsing `run.json.source` (a run's namespace is its
- * PATH, derived by `wfOfRunDir`, never free text a run happened to carry). A wf dir that holds runs but no
- * `template/meta.json` (so `discoverNamespaces` never lists it) still gets its OWN namespace here, keyed by
- * its dir name — there is no `unfiled` catch-all, because a discovered run always has a parent wf dir by
- * construction. Per-run reads are a few stats, so recomputing this per request (the live GUI) is cheap.
+ * `root` only — never across products, and never by parsing `run.json.source`. A run's namespace comes from
+ * its PATH: the meta.id of the wf dir it physically lives in (`wfOfRunDir` → the dir's merged namespace),
+ * falling back to the dir name for a template-less/unparseable home — there is no `unfiled` catch-all,
+ * because a discovered run always has a parent wf dir by construction. Each namespace is emitted EXACTLY
+ * ONCE: `discoverNamespaces` already merges every home of a shared meta.id into one NamespaceDesc, so
+ * sibling variant dirs contribute their runs to the ONE workflow they belong to instead of repeating it.
+ * Per-run reads are a few stats, so recomputing this per request (the live GUI) is cheap.
  */
 export async function buildSnapshot(registry: Registry): Promise<Snapshot> {
   const products: SnapshotProduct[] = [];
@@ -337,18 +360,22 @@ export async function buildSnapshot(registry: Registry): Promise<Snapshot> {
     const nsById = new Map<string, SnapshotNamespace>(
       namespaces.map((ns) => [ns.id, { id: ns.id, name: ns.name, templatePath: ns.templatePath, meta: ns.meta, threads: [] }]),
     );
+    // dir → namespace id: how a run's PATH resolves to its (possibly merged) workflow identity.
+    const nsIdOfDir = new Map<string, string>();
+    for (const ns of namespaces) for (const d of ns.dirs) nsIdOfDir.set(d, ns.id);
 
     for (const runDir of runDirs) {
       const thread = await summarizeRun(runDir);
       if (!thread) continue;
       const wf = wfOfRunDir(root, runDir);
       if (!wf) continue; // defensive only: discoverRunDirs never emits a path outside the canonical shape
-      if (!nsById.has(wf)) nsById.set(wf, { id: wf, name: wf, templatePath: null, meta: null, threads: [] });
-      nsById.get(wf)!.threads.push(thread);
+      const nsId = nsIdOfDir.get(wf) ?? wf; // template-less/unparseable home → the dir name is the identity
+      if (!nsById.has(nsId)) nsById.set(nsId, { id: nsId, name: nsId, templatePath: null, meta: null, threads: [] });
+      nsById.get(nsId)!.threads.push(thread);
     }
 
-    // `namespaces` ids are directory names (unique by construction — readdir never repeats an entry), so
-    // this ordering never needs a dedup pass; any wf discovered ONLY via its runs/ (template-less) is
+    // `namespaces` ids are unique by construction (discoverNamespaces merges shared meta.ids into one
+    // entry), so each namespace is emitted once; any wf discovered ONLY via its runs/ (template-less) is
     // appended after the templated ones.
     const orderedNs = namespaces.map((ns) => ns.id);
     for (const id of nsById.keys()) if (!orderedNs.includes(id)) orderedNs.push(id);
