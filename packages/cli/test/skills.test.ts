@@ -92,7 +92,7 @@ describe('installSkills — pure copy of each skill subdir into <target>/.claude
     // transform/duplicate. Compare raw bytes (Buffer.equals), the strongest no-drift guard.
     installSkills(REPO_SKILLS, TARGET, { force: false });
 
-    for (const name of ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect']) {
+    for (const name of ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-overlord']) {
       const canonical = await fs.readFile(path.join(REPO_SKILLS, name, 'SKILL.md'));
       const installed = await fs.readFile(
         path.join(TARGET, '.claude', 'skills', name, 'SKILL.md'),
@@ -109,19 +109,19 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
     const skillsRoot = path.join(TARGET, '.claude', 'skills');
     // The default set landed (proving srcDir resolved to the repo-root via the dev fallback — the packaged
     // skills/ dir is absent in a source checkout).
-    for (const name of ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect']) {
+    for (const name of ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-overlord']) {
       await expect(fs.access(path.join(skillsRoot, name, 'SKILL.md'))).resolves.toBeUndefined();
     }
     // The dev fallback must install ONLY the default set — not piflow-release (SDK publishing) or
     // piflow-web-design (marketing-site only), even though both sit in repo-root .claude/skills. This keeps the
     // dev fallback byte-equivalent to the prepack-filtered packaged dir, so `skills install` never leaks a
     // non-consumer skill.
-    for (const excluded of ['piflow-release', 'piflow-web-design']) {
+    for (const excluded of ['piflow-release', 'piflow-web-design', 'piflow-enhance']) {
       await expect(fs.access(path.join(skillsRoot, excluded))).rejects.toThrow();
     }
     // And nothing OUTSIDE the default set at all (e.g. unrelated repo skills like premium-saas-stack).
     const landed = await fs.readdir(skillsRoot);
-    expect(landed.sort()).toEqual(['piflow-enhance', 'piflow-fixer', 'piflow-init', 'piflow-inspect', 'piflow-start']);
+    expect(landed.sort()).toEqual(['piflow-fixer', 'piflow-init', 'piflow-inspect', 'piflow-overlord', 'piflow-start', 'piflow-triage']);
   });
 });
 
@@ -133,7 +133,7 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
 describe('runSkillsCli — understand add-on (--with / --all / --wizard / manifest)', () => {
   const skillsRootOf = (t: string) => path.join(t, '.claude', 'skills');
   const manifestOf = (t: string) => path.join(t, '.piflow', 'skills.json');
-  const DEFAULT_SKILL_NAMES = ['piflow-init', 'piflow-start', 'piflow-enhance', 'piflow-fixer', 'piflow-inspect'];
+  const DEFAULT_SKILL_NAMES = ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-overlord'];
 
   const assertDefaultsPresent = async (): Promise<void> => {
     for (const name of DEFAULT_SKILL_NAMES) {
