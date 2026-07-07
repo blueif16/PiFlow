@@ -29,14 +29,14 @@ BIN
 - `packages/cli/src/cli.ts:166` — `main()` switch — the flat-argv subcommand dispatcher (new/add-node/memory/run/…)
 - `packages/core/src/cli.ts:38` — second bin — a SEPARATE `@piflow/core` entry that handles only `logs` (re-exported into the one `piflowctl` bin)
 NEW
-- `packages/cli/src/scaffold.ts:702` — `runNewCli` — parses argv, calls `scaffoldNew`
-- `packages/cli/src/scaffold.ts:396` — `scaffoldNew` — writes meta.json (via `buildMeta`) + seeds system `memory.md`
+- `packages/cli/src/scaffold.ts:715` — `runNewCli` — parses argv, calls `scaffoldNew`
+- `packages/cli/src/scaffold.ts:409` — `scaffoldNew` — writes meta.json (via `buildMeta`) + seeds system `memory.md`
 ADD-NODE
-- `packages/cli/src/scaffold.ts:722` — `runAddNodeCli` — parses the repeatable flags, calls `scaffoldAddNode`
-- `packages/cli/src/scaffold.ts:201` — `buildNode` — PURE: id/phase/deps/contract + optional blocks + derives folded into `op[]`
+- `packages/cli/src/scaffold.ts:735` — `runAddNodeCli` — parses the repeatable flags, calls `scaffoldAddNode`
+- `packages/cli/src/scaffold.ts:206` — `buildNode` — PURE: id/phase/deps/contract + optional blocks + derives folded into `op[]`
 - `packages/cli/src/scaffold.ts:236` — `seedNodeMemory`/`seedNodeCodeMap` — seed memory.md + code-map.md create-if-absent (never clobbers prompt.md)
 RUN
-- `packages/cli/src/run.ts:451` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
+- `packages/cli/src/run.ts:504` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
 - `packages/core/src/runner/entry.ts:163` — `runFromTemplate` — the core template-run join the CLI delegates to
 
 # Freshness (anti-drift)
@@ -185,21 +185,32 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `9db5099` 2026-07-02 — fix(cli,core,server): anchor a run at its product, not process.cwd()
+- `152925f` 2026-07-02 — feat(core): per-node `thinking` — operator-free reasoning cap in node.json
 - `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `20e9eae` 2026-07-02 — feat(core,cli): node --rerun — targeted rerun-set, not a noResume stage window
 - `e0b6106` 2026-07-03 — feat(cli): marketplace P0 verbs — agents list · catalog sync|introspect · skill list|search|add
 - `9f50daa` 2026-07-03 — feat(cli): skill search --remote — online marketplace discovery
 - `f99854b` 2026-07-03 — feat(cli): piflowctl reply — answer a parked HITL checkpoint from the CLI
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 - `c039c4d` 2026-07-03 — Merge feat/skill-marketplace-p2 — marketplace GUI + skills endpoint + remote search + enforced requires-floor
+- `3c2330e` 2026-07-03 — feat(observe): context-composition telemetry — the per-node "element tree"
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `f11afd6` 2026-07-05 — feat(core): loadTemplate default-fills tool:<name> defs to the template's tools root
+- `7a072d0` 2026-07-05 — fix(cli): dry-run plan discovers script tools — the preview must not lie
+- `e4d5c2e` 2026-07-05 — feat(core): optional tools.defs entries — presence-based tool offering
+- `22a4ccc` 2026-07-05 — fix(cli): dry-run preview renders the "optional, not present" note
 - `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `43e77d3` 2026-07-06 — merge M1 — run identity: date-seq names, lineage fields, child runs
 - `521d6c9` 2026-07-06 — feat(cli): M5 — substrate CLI (optimize triage|fix|adopt, issues + runs verbs)
 - `6a16eb2` 2026-07-06 — feat(cli): dotted --node <run>.<node> reference for the substrate verbs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 
 ### Lessons — memory cluster
 
@@ -223,6 +234,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
+- [[fixer-two-half-law]]
+- [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
@@ -233,7 +246,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[harden-node-completes-run-to-completion]]
 - [[harden-write-forcing-experiment]]
 - [[hooks-give-info-never-autofix]]
+- [[issue-lifecycle-gate-redesign]]
 - [[local-docker-sandbox-mode]]
+- [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
@@ -254,6 +269,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
+- [[piflow-issue-interface]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
@@ -272,16 +288,17 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[two-front-reporting]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `buildNode` (packages/cli/src/scaffold.ts:201) — 2 callers in `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
+- `buildNode` (packages/cli/src/scaffold.ts:206) — 1 caller in `packages/cli/src/scaffold.ts`; ⚠ no covering tests found
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
 - `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `runNewCli` (packages/cli/src/scaffold.ts:702) — 3 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
-- `scaffoldNew` (packages/cli/src/scaffold.ts:396) — 4 callers in `packages/cli/src/blueprint-stamp.ts`, `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; ⚠ no covering tests found
+- `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
+- `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-07 · arc=140 commits · files=8 · lessons=70</sub>
+<sub>derived 2026-07-07 · arc=151 commits · files=8 · lessons=76</sub>
 <!-- okf:auto-end -->

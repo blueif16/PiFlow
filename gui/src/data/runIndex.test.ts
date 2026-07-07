@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   deriveWorkspaces,
   homeWorkspace,
+  indexToTree,
   pickCurrentRun,
   pickRunForWorkspace,
+  sortThreads,
   workspaceOfRun,
   type GlobalIndex,
   type IndexThread,
@@ -137,5 +139,155 @@ describe("homeWorkspace — biases initial focus to the launched folder", () => 
   it("returns null when no root matches or none is given (raw dev)", () => {
     expect(homeWorkspace(ix, ["/repos/other"])).toBeNull();
     expect(homeWorkspace(ix, [])).toBeNull();
+  });
+});
+
+// A hand-built index (not the generic `product()`/`thread()` factories) so a namespace's id/name and each
+// thread's state/updatedAt are fully explicit — the exact shape indexToTree's scoping + sort read.
+function treeIndex(): GlobalIndex {
+  return index([
+    {
+      id: "alpha",
+      name: "alpha",
+      root: "/repos/alpha",
+      namespaces: [
+        {
+          id: "gmA",
+          name: "Game Omni", // display name DIFFERS from the dir id
+          threads: [
+            thread("r-done-old", { state: "done", updatedAt: "2026-07-01T00:00:00Z" }),
+            thread("r-null", { state: "done", updatedAt: null }),
+            thread("r-running", { state: "running", updatedAt: "2026-07-02T00:00:00Z" }), // older than r-done-new
+            thread("r-done-new", { state: "done", updatedAt: "2026-07-03T00:00:00Z" }),
+          ],
+        },
+      ],
+    },
+    {
+      id: "beta",
+      name: "beta",
+      root: "/repos/beta",
+      namespaces: [{ id: "beta-ns", name: "beta-ns", threads: [thread("b1")] }], // display name === dir id
+    },
+  ]);
+}
+
+describe("indexToTree — workspace-scoped root column (M5)", () => {
+  it("scopes the root column to ONLY the given workspace's namespaces", () => {
+    const { tree } = indexToTree(treeIndex(), "alpha");
+    expect(tree).toHaveLength(1);
+    expect(tree[0].id).toBe("n:alpha/gmA");
+  });
+
+  it("never leaks another workspace's namespace into the scoped tree", () => {
+    const { tree } = indexToTree(treeIndex(), "alpha");
+    expect(tree.some((n) => n.id.startsWith("n:beta/"))).toBe(false);
+  });
+
+  it("falls back to ALL products when productId is null (never an empty switcher)", () => {
+    const { tree } = indexToTree(treeIndex(), null);
+    expect(tree.map((n) => n.id).sort()).toEqual(["n:alpha/gmA", "n:beta/beta-ns"]);
+  });
+
+  it("falls back to ALL products when productId matches no registered workspace", () => {
+    const { tree } = indexToTree(treeIndex(), "no-such-workspace");
+    expect(tree.map((n) => n.id).sort()).toEqual(["n:alpha/gmA", "n:beta/beta-ns"]);
+  });
+
+  it("sorts threads: running first, then updatedAt desc, null updatedAt last", () => {
+    const { tree } = indexToTree(treeIndex(), "alpha");
+    expect(tree[0].children?.map((c) => c.name)).toEqual(["r-running", "r-done-new", "r-done-old", "r-null"]);
+  });
+
+  it("passes the dir id through as a secondary label ONLY when it differs from the display name", () => {
+    const { tree } = indexToTree(treeIndex(), null);
+    const alphaNs = tree.find((n) => n.id === "n:alpha/gmA")!;
+    const betaNs = tree.find((n) => n.id === "n:beta/beta-ns")!;
+    expect(alphaNs.name).toBe("Game Omni");
+    expect(alphaNs.secondaryLabel).toBe("gmA"); // name ("Game Omni") !== dir id ("gmA")
+    expect(betaNs.secondaryLabel).toBeUndefined(); // name === dir id — nothing extra to disambiguate
+  });
+
+  it("resolve() still maps a leaf id back to its run + owning product/namespace", () => {
+    const { tree, resolve } = indexToTree(treeIndex(), "alpha");
+    const leafId = tree[0].children?.[0]?.id;
+    expect(leafId).toBeTruthy();
+    expect(resolve(leafId!)).toEqual({ run: "r-running", viewable: true, productId: "alpha", nsId: "gmA" });
+  });
+
+  // T1 — every run leaf carries the index thread fields VERBATIM (the GUI computes nothing) so the
+  // DirectoryPanel can render the progress cluster from them alone. Fails if any field is dropped,
+  // renamed, or re-derived.
+  it("fills each run leaf's `run` field verbatim from the thread (state · ok · frac · nodesDone/nodesTotal)", () => {
+    const ix = index([
+      {
+        id: "alpha",
+        name: "alpha",
+        root: "/repos/alpha",
+        namespaces: [
+          {
+            id: "wf",
+            name: "wf",
+            threads: [thread("r1", { state: "running", ok: null, frac: 3 / 9, nodesDone: 3, nodesTotal: 9 })],
+          },
+        ],
+      },
+    ]);
+    const { tree } = indexToTree(ix, "alpha");
+    expect(tree[0].children?.[0]?.run).toEqual({ state: "running", ok: null, frac: 3 / 9, done: 3, total: 9 });
+  });
+
+  it("orders leaves by the requested sort mode (name mode reorders what time mode built)", () => {
+    const byName = indexToTree(treeIndex(), "alpha", "name");
+    expect(byName.tree[0].children?.map((c) => c.name)).toEqual(["r-done-new", "r-done-old", "r-null", "r-running"]);
+  });
+});
+
+// T2 — the PURE thread-order selector behind the switcher's sort control. One test per mode, each
+// pinned so reverting that mode's comparator (or collapsing modes into one) fails it.
+describe("sortThreads — the switcher's sort modes", () => {
+  const threads = () => [
+    thread("m-done-old", { state: "done", updatedAt: "2026-07-01T00:00:00Z" }),
+    thread("a-null", { state: "done", updatedAt: null }),
+    thread("z-running", { state: "running", updatedAt: "2026-07-02T00:00:00Z" }),
+    thread("b-failed", { state: "failed", ok: false, updatedAt: "2026-06-01T00:00:00Z" }),
+    thread("k-done-new", { state: "done", updatedAt: "2026-07-03T00:00:00Z" }),
+  ];
+
+  it("time (default): running first, then updatedAt desc, null updatedAt last", () => {
+    expect(sortThreads(threads(), "time").map((t) => t.run)).toEqual([
+      "z-running", // running always leads
+      "k-done-new", // 07-03
+      "m-done-old", // 07-01
+      "b-failed", // 06-01
+      "a-null", // no date → last
+    ]);
+  });
+
+  it("name: plain A–Z by run id, ignoring state and dates entirely", () => {
+    expect(sortThreads(threads(), "name").map((t) => t.run)).toEqual([
+      "a-null",
+      "b-failed",
+      "k-done-new",
+      "m-done-old",
+      "z-running",
+    ]);
+  });
+
+  it("status: running → failed → done (newest first inside each group)", () => {
+    expect(sortThreads(threads(), "status").map((t) => t.run)).toEqual([
+      "z-running", // group 1: running
+      "b-failed", // group 2: failed
+      "k-done-new", // group 3: done, newest first…
+      "m-done-old",
+      "a-null", // …null date last
+    ]);
+  });
+
+  it("never mutates the input array", () => {
+    const input = threads();
+    const before = input.map((t) => t.run);
+    sortThreads(input, "name");
+    expect(input.map((t) => t.run)).toEqual(before);
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { promises as fs, existsSync, readFileSync } from 'node:fs';
 import os from 'node:os';
@@ -6,6 +6,23 @@ import path from 'node:path';
 
 import { runFromTemplate } from '../src/runner/index.js';
 import { nodeEventsFile } from '../src/runner/layout.js';
+
+// HERMETIC (M3): both describe blocks below run `TEMPLATE_CALC_DIR` (a REAL repo fixture path, not
+// `.piflow/<wf>/template`-shaped) through `runFromTemplate` with no explicit workspace/repoRoot, so it
+// self-registers `process.cwd()` into `~/.piflow/products.json`. A file-level PIFLOW_HOME scratch dir
+// covers every test in this file (including the gated live case) and is restored afterward.
+let piflowHome: string;
+let savedPiflowHome: string | undefined;
+beforeAll(async () => {
+  piflowHome = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-home-calc-tool-'));
+  savedPiflowHome = process.env.PIFLOW_HOME;
+  process.env.PIFLOW_HOME = piflowHome;
+});
+afterAll(async () => {
+  if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+  else process.env.PIFLOW_HOME = savedPiflowHome;
+  await fs.rm(piflowHome, { recursive: true, force: true });
+});
 
 // ── M0 — Live-pi E2E gate: the RED BAR for the G11 tool-wiring blocker (#1/#8). ──────────────────────
 //

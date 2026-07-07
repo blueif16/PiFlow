@@ -27,7 +27,7 @@ host mint a scoped token) and crosses EXACTLY that set in via `CreateOpts.env`; 
 
 # Anchors
 SELECT
-- `packages/cli/src/run.ts:251` — `parseRunArgs` (`--sandbox`) — parse the backend choice (typo errors loudly)
+- `packages/cli/src/run.ts:266` — `parseRunArgs` (`--sandbox`) — parse the backend choice (typo errors loudly)
 - `packages/cli/src/run.ts:363` — `makeDaytonaProvider` — dynamic `import('@piflow/daytona')` → `createDaytonaProvider`
 - `packages/cli/src/run.ts:377` — `makeE2bProvider` — dynamic `import('@piflow/e2b')` → `createE2bProvider`
 INSTALL
@@ -38,7 +38,7 @@ EXECUTE
 - `packages/core/src/runner/env-staging.ts:23` — `CLOUD_KINDS` — `{daytona,e2b}`: the no-host-trust gate
 - `packages/core/src/runner/env-staging.ts:50` — `effectiveSandboxLocation` — per-node workdir/output by kind (isolated for cloud)
 SECRETS
-- `packages/core/src/types.ts:682` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
+- `packages/core/src/types.ts:707` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
 - `packages/core/src/runner/env-staging.ts:146` — `cloudCredEnvAdditions` — resolve the DECLARED cred allowlist into the VM (cloud-only)
 
 # Freshness (anti-drift)
@@ -146,12 +146,21 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `9db5099` 2026-07-02 — fix(cli,core,server): anchor a run at its product, not process.cwd()
+- `152925f` 2026-07-02 — feat(core): per-node `thinking` — operator-free reasoning cap in node.json
 - `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `20e9eae` 2026-07-02 — feat(core,cli): node --rerun — targeted rerun-set, not a noResume stage window
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `0e2023f` 2026-07-05 — feat(core): add the script ToolSource + tools.defs to types and schema
+- `7a072d0` 2026-07-05 — fix(cli): dry-run plan discovers script tools — the preview must not lie
+- `e4d5c2e` 2026-07-05 — feat(core): optional tools.defs entries — presence-based tool offering
+- `22a4ccc` 2026-07-05 — fix(cli): dry-run preview renders the "optional, not present" note
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 
 ### Lessons — memory cluster
 
@@ -168,6 +177,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[daytona-cloud-path]]
 - [[design-at-init-architecture]]
 - [[expert-representations]]
+- [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
@@ -175,7 +185,9 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
 - [[harden-write-forcing-experiment]]
+- [[issue-lifecycle-gate-redesign]]
 - [[local-docker-sandbox-mode]]
+- [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
 - [[minimax-m3-framing]]
 - [[model-provider-single-default-fixture]]
@@ -206,7 +218,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `E2bSandboxProvider` (packages/e2b/src/e2b.ts:436) — 6 callers in `packages/e2b/src/e2b-sdk.ts`, `packages/e2b/src/index.ts`; tests: `packages/e2b/test/sandbox-e2b-parity.test.ts`, `packages/e2b/test/n127-negative-twin.test.ts`, `packages/e2b/test/nbreach-parity.test.ts`
 - `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
-- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=90 commits · files=8 · lessons=43</sub>
+<sub>derived 2026-07-07 · arc=99 commits · files=8 · lessons=46</sub>
 <!-- okf:auto-end -->

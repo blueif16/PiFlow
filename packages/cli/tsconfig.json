@@ -4,6 +4,12 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "references": [{ "path": "../core" }, { "path": "../server" }, { "path": "../daytona" }, { "path": "../e2b" }],
+  "references": [
+    { "path": "../core" },
+    { "path": "../server" },
+    { "path": "../daytona" },
+    { "path": "../e2b" },
+    { "path": "../docker" }
+  ],
   "include": ["src/**/*.ts"]
 }

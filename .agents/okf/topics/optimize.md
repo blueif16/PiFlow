@@ -44,7 +44,7 @@ SCORE
 - `packages/core/src/optimize/score.ts:93` — `scoreRun` — impure shell: read run dir + recorded verify reports, then fold
 - `packages/core/src/optimize/tier1.ts:38` — `readVerifyReport` — project a verify-milestone report → Tier1Result (abstain re-tag)
 TRIAGE
-- `packages/core/src/optimize/triage.ts:40` — `triage` — four-way LAPSE/SKILL/FUNCTIONALITY/ARCH projector → Defect[]
+- `packages/core/src/optimize/triage.ts:58` — `triage` — four-way LAPSE/SKILL/FUNCTIONALITY/ARCH projector → Defect[]
 - `packages/core/src/optimize/types.ts:110` — `DefectScope` — the two-leg scope-context a SKILL fixer reads (recurrence + root/prevention + the linked [[okf-slice]] KEY)
 - `packages/core/src/optimize/render.ts:33` — `renderRouting` — Defect[] → the proven HERMES-ROUTING.md worklist
 GATE
@@ -133,6 +133,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `89036c4` 2026-07-01 — feat(cli): piflowctl memory compact — the out-of-band cap/retire pass
 - `3ffbdc6` 2026-07-02 — feat(cli): understand --reconcile/--owns + phrase-fallback ranker + fixer FIND wire
 - `f8fc81c` 2026-07-02 — feat(okf): CLI reader + fixer wire source ranking from the engine — M1b
+- `7a4374c` 2026-07-02 — fix(optimize): persist the worklist + surface structural defects
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
 
 ### Lessons — memory cluster
 
@@ -146,13 +148,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[config-is-truth-gui-is-projection]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
+- [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
+- [[fixer-two-half-law]]
+- [[frozen-input-reruns]]
 - [[game-omni-reference-product]]
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
 - [[harden-write-forcing-experiment]]
 - [[hooks-give-info-never-autofix]]
+- [[issue-lifecycle-gate-redesign]]
 - [[local-docker-sandbox-mode]]
+- [[loop-prevention-laws]]
 - [[memory-legs-coordination]]
 - [[minimax-thinking-cap-noop]]
 - [[node-illustration-pipeline]]
@@ -161,12 +168,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
 - [[optimize-substrate-program]]
+- [[piflow-issue-interface]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[playbook-skills-depth-over-budget]]
 - [[roadmap-bookkeeping-linear]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
@@ -175,11 +184,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `scoreRun` (packages/core/src/optimize/score.ts:93) — 4 callers in `packages/cli/src/optimize.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `scoreRun` (packages/core/src/optimize/score.ts:93) — 2 callers in `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `CheckableTask` (packages/core/src/optimize/replay.ts:34) — 10 callers in `packages/core/src/optimize/mine.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/replay.ts`; tests: `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-root-exports.test.ts`
 - `makeReplayStages` (packages/core/src/optimize/replay.ts:87) — 7 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-mine.test.ts`, `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-root-exports.test.ts`
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-07 · arc=26 commits · files=19 · lessons=35</sub>
+<sub>derived 2026-07-07 · arc=28 commits · files=19 · lessons=42</sub>
 <!-- okf:auto-end -->

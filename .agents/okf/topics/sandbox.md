@@ -137,14 +137,24 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `5702dcb` 2026-07-02 — feat(P3): collapse the runtime fork onto ctx.drivers; open the executor type; stamp driver+version (GREEN)
 - `0a00c73` 2026-07-02 — feat(P4): driverFits (2 axes) + schema --json agent + drivers catalog on /__piflow/agents.json (GREEN)
 - `cb65b8d` 2026-07-02 — Merge feat/agent-driver-registry: AgentDriver registry (Thrust 3) — open DriverTable, pi/claude-code/fork drivers, driverFits, Claude stream-json on SSE, cost-spike + loopScore metrics
+- `9db5099` 2026-07-02 — fix(cli,core,server): anchor a run at its product, not process.cwd()
+- `152925f` 2026-07-02 — feat(core): per-node `thinking` — operator-free reasoning cap in node.json
 - `80a727b` 2026-07-02 — feat(cli): cloud push + auto-push-on-run + migrate push-before-adopt
 - `abdb3ab` 2026-07-02 — refactor(core): kill the hardcoded 'cp' provider default — single system default = pi settings.json
 - `4221b3a` 2026-07-02 — fix(cli): cloud sandbox stages the EFFECTIVE (system-default) provider gateway, not the raw flag
 - `e400373` 2026-07-02 — fix(cli): honest sandbox-staging signal — a literal-key gateway is NOT "unresolved"
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
+- `20e9eae` 2026-07-02 — feat(core,cli): node --rerun — targeted rerun-set, not a noResume stage window
+- `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `0e2023f` 2026-07-05 — feat(core): add the script ToolSource + tools.defs to types and schema
+- `7a072d0` 2026-07-05 — fix(cli): dry-run plan discovers script tools — the preview must not lie
+- `e4d5c2e` 2026-07-05 — feat(core): optional tools.defs entries — presence-based tool offering
+- `22a4ccc` 2026-07-05 — fix(cli): dry-run preview renders the "optional, not present" note
 - `3b78f45` 2026-07-06 — feat(optimize): M0 — optimize block on node.json
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `43e77d3` 2026-07-06 — merge M1 — run identity: date-seq names, lineage fields, child runs
+- `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 
 ### Lessons — memory cluster
 
@@ -187,6 +197,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[playbook-skills-depth-over-budget]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
@@ -196,11 +207,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 - `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
+- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 - `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
-- `SeatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:202) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
+- `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-07 · arc=76 commits · files=8 · lessons=44</sub>
+<sub>derived 2026-07-07 · arc=86 commits · files=8 · lessons=45</sub>
 <!-- okf:auto-end -->

@@ -1,11 +1,12 @@
 // `piflowctl gui` — launch the run viewer (the monorepo `gui/` Vite app) from ANYWHERE on PATH.
 //
-// The viewer opens FOCUSED on the launched project but can SWITCH across workspaces (the in-app launcher).
-// So it SERVES every registered folder (the global registry, pruned to those still on disk) UNION the launched
-// project(s), while the launched project stays the initial FOCUS. Flow:
+// The viewer opens FOCUSED on ONE workspace (one product workspace = one `.piflow/`, scanned only at that
+// product's own root — never a nested/sibling product) but can SWITCH to another registered workspace (the
+// in-app launcher). So it SERVES every registered folder (the global registry, pruned to those still on
+// disk) UNION the launched workspace, while the launched workspace stays the initial FOCUS. Flow:
 //   (1) locate `gui/` relative to this CLI (so a globally-linked `piflowctl` still finds it),
-//   (2) resolve the FOCUS via the shared `resolveScope` (@piflow/core): the enclosing project (walk up to the
-//       nearest real `.piflow/`) OR, if launched outside a project, cwd; then every product AT/UNDER it,
+//   (2) resolve the FOCUS via the shared `resolveScope` (@piflow/core): the SINGLE enclosing product (walk up
+//       to the nearest real `.piflow/` and stop there) OR, if launched outside any project, none,
 //   (3) start the GUI server, passing the SERVED set via `PIFLOW_SCOPE_ROOTS` (focus ∪ pruned global registry)
 //       so the Vite middleware builds its snapshot from those roots (gui/vite.config.ts → core's
 //       `loadScopedRegistry`) — WITHOUT writing to the global ~/.piflow registry — and the FOCUS via
@@ -66,9 +67,10 @@ export async function runGuiCli(argv: string[]): Promise<void> {
     return;
   }
 
-  // 1) resolve the FOCUS (launched project + nested products) and widen the SERVED set to every registered
-  //    folder so the in-app "switch workspace" launcher has somewhere to switch to. The global registry is
-  //    pruned to roots that still exist AND are real product roots (drops dead / non-product junk entries).
+  // 1) resolve the FOCUS — the ONE enclosing workspace (never a nested/sibling product; `roots` is empty
+  //    or a single-element array) — and widen the SERVED set to every registered folder so the in-app
+  //    "switch workspace" launcher has somewhere to switch to. The global registry is pruned to roots that
+  //    still exist AND are real product roots (drops dead / non-product junk entries).
   //    PIFLOW_SCOPE_ROOTS = focus ∪ pruned-global (what the middleware serves, no global-registry write);
   //    VITE_PIFLOW_HOME_ROOTS = focus (the client biases initial focus here even after widening).
   const { scopeRoot, roots } = resolveScope(process.cwd());
@@ -82,7 +84,7 @@ export async function runGuiCli(argv: string[]): Promise<void> {
   }
   if (roots.length) {
     env.VITE_PIFLOW_HOME_ROOTS = roots.join('\n'); // newline-joined: safe across OS path delimiters
-    process.stdout.write(`piflowctl gui: focus = ${roots.length} project(s) under ${scopeRoot}; serving ${served.length} workspace(s) (switchable):\n`);
+    process.stdout.write(`piflowctl gui: focus = ${scopeRoot}; serving ${served.length} workspace(s) (switchable):\n`);
     for (const r of served) process.stdout.write(`  ${roots.includes(r) ? '▸' : '·'} ${r}\n`);
   } else {
     delete env.VITE_PIFLOW_HOME_ROOTS;

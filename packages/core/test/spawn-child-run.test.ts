@@ -79,8 +79,17 @@ describe('resolveChildWindow — the ambiguous --from/--until substring-match gu
 describe('spawnChildRun — replay-from-node-start (M1.4)', () => {
   let runsHome: string;
   let parentDir: string;
+  // HERMETIC (M3): `runFromTemplate`/`spawnChildRun` self-register `workspace` (derived here to `FIXTURE`,
+  // a REAL repo path, since neither call passes an explicit workspace/repoRoot) into
+  // `~/.piflow/products.json` — point PIFLOW_HOME at a scratch dir for this suite and restore it after.
+  let piflowHome: string;
+  let savedPiflowHome: string | undefined;
 
   beforeAll(async () => {
+    piflowHome = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-home-child-run-'));
+    savedPiflowHome = process.env.PIFLOW_HOME;
+    process.env.PIFLOW_HOME = piflowHome;
+
     runsHome = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-child-run-'));
     parentDir = path.join(runsHome, 'parent-1');
     const res = await runFromTemplate(FIXTURE, { run: 'parent-1', runDir: parentDir, buildCommand: stubBuilder() });
@@ -97,6 +106,9 @@ describe('spawnChildRun — replay-from-node-start (M1.4)', () => {
     await fs.writeFile(path.join(sessDir, '20260706120000_draft.jsonl'), '{"type":"session"}\n');
   });
   afterAll(async () => {
+    if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+    else process.env.PIFLOW_HOME = savedPiflowHome;
+    await fs.rm(piflowHome, { recursive: true, force: true });
     await fs.rm(runsHome, { recursive: true, force: true });
   });
 

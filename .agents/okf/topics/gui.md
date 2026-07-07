@@ -152,6 +152,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `ea5c576` 2026-07-05 — fix(gui): mark a rejected-only tool across the HUD + run-digest panel
 - `4a19f22` 2026-07-06 — feat(observe): M8 — substrate exposure (lineage on the index, issues endpoint + side card)
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
+- `b0e276d` 2026-07-06 — feat(gui): run-level issues card (I key) — grouped by node, filter, jump-to-node
 
 ### Lessons — memory cluster
 
@@ -180,6 +181,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[harden-node-completes-run-to-completion]]
 - [[harden-write-forcing-experiment]]
 - [[hooks-give-info-never-autofix]]
+- [[loop-prevention-laws]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
 - [[minimax-m3-framing]]
@@ -192,6 +194,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-init-scaffolder]]
+- [[piflow-issue-interface]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
@@ -214,10 +217,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `loadIndex` (gui/src/data/runIndex.ts:61) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+- `NodeHud` (gui/src/components/NodeHud.tsx:101) — 1 caller in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:730) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `loadRunView` (gui/src/data/runView.ts:176) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `watchRun` (packages/cli/src/watch.ts:61) — 13 callers in `packages/cli/src/watch.ts`, `packages/cli/src/telemetry.ts`, `packages/server/src/handlers.ts`, `packages/cli/src/index.ts` +2 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/watch.test.ts` +1
+- `watchRun` (packages/cli/src/watch.ts:61) — 15 callers in `packages/cli/src/watch.ts`, `packages/cli/src/telemetry.ts`, `packages/server/src/handlers.ts`, `tui/model.mjs` +3 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/watch.test.ts` +1
 
-<sub>derived 2026-07-07 · arc=91 commits · files=8 · lessons=55</sub>
+<sub>derived 2026-07-07 · arc=92 commits · files=8 · lessons=57</sub>
 <!-- okf:auto-end -->

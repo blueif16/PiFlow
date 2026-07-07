@@ -150,6 +150,8 @@ export interface NodeStatusRecord {
   /** Set when a watchdog killed the node (classifies the `error`). */
   killedTimeout?: boolean;
   killedStall?: boolean;
+  /** Set when the deterministic tool-loop breaker killed the node (one tool run with identical args past the limit). */
+  killedToolLoop?: boolean;
   exitCode?: number;
   command?: string;
   /** G1 — the EFFECTIVE model this node ran on (after the routing precedence). Null/absent ⇒ pi's provider default. */

@@ -113,6 +113,50 @@
   flex: 0 0 auto;
 }
 
+/* RUN-LEAF status cluster (switcher rows whose DirEntry carries `run`): the nodesDone/nodesTotal count +
+   the established slim charge bar (.ds-progress--node, glass.css). Status color rides the SAME canonical
+   tokens the rest of the status language uses (accent/blue = running · success/green · error/red): the
+   bar recolors itself via its own data-status, the count via the cluster's. */
+.ds-dir__run {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex: 0 0 auto;
+}
+.ds-dir__run-count {
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  letter-spacing: var(--ds-tracking-label);
+  color: var(--ds-text-tertiary);
+}
+.ds-dir__run[data-status="running"] .ds-dir__run-count { color: var(--ds-text-accent); }
+.ds-dir__run[data-status="success"] .ds-dir__run-count { color: var(--ds-success-fg); }
+.ds-dir__run[data-status="error"]   .ds-dir__run-count { color: var(--ds-error-fg); }
+.ds-dir__run-track { width: 36px; flex: 0 0 auto; display: inline-flex; }
+
+/* the run switcher's SORT control (DirectoryPanel headExtra): a mono tag-button cycling
+   time → name → status. Same mono/uppercase head vocabulary as .ds-dir__title/.ds-dir__type. */
+.ds-dir__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px var(--ds-space-2);
+  border: 1px solid var(--ds-border-hairline);
+  border-radius: var(--ds-radius-sm);
+  background: transparent;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ds-tracking-label);
+  color: var(--ds-text-tertiary);
+  cursor: pointer;
+  transition: background var(--ds-dur-fast) var(--ds-ease-standard),
+              color var(--ds-dur-fast) var(--ds-ease-standard);
+}
+.ds-dir__sort:hover { background: var(--ds-bg-hover); color: var(--ds-text-primary); }
+.ds-dir__sort:focus-visible { outline: none; box-shadow: 0 0 0 2px var(--ds-accent-ring); }
+
 /* ---------------------------------------------------------------------------
    2. FIELD BLOCKS — the overlay's per-node config, laid out as a grid of
    rectangular cards that tile cleanly beside/below the "middle card" content.
