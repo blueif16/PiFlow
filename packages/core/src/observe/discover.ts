@@ -15,8 +15,9 @@
 import fssync from 'node:fs';
 import path from 'node:path';
 import { readRunModel } from './read.js';
+import type { ReadRunModelOpts } from './read.js';
 import { buildRunView } from './runView.js';
-import { nodeEventsFile } from '../runner/layout.js';
+import { nodeEventsFile, runJsonFile } from '../runner/layout.js';
 import type { Registry } from './registry.js';
 import type { RunStatus } from '../runner/status.js';
 
@@ -114,6 +115,10 @@ export interface ThreadRow {
   model: string | null;
   updatedAt: string | null;
   staleMs: number | null;
+  /** The run's controller process is CONFIRMED DEAD (see `isRunOrphaned`, read.ts) — `state` is already
+   *  `'failed'` in this case; a viewer that wants to say "killed" rather than a generic failure checks
+   *  this flag for a label only. */
+  orphaned: boolean;
   errorNode: string | null;
   /** (M8 — child runs) The PARENT run's id, verbatim off `RunModel.parent` (itself verbatim off
    *  `RunStatus.parent`) — present only when this run was minted by `spawnChildRun` (optimize/substrate).
@@ -229,21 +234,62 @@ export function discoverRunDirs(root: string): { runDirs: string[]; searchRoots:
 }
 
 /**
- * Summarize an OPAQUE run dir → the shared thread row (the ONE row shape every view renders). Structure /
- * status come from the lean `readRunModel`; the billable-tokens + cost rollup from the rich `buildRunView`
- * (0 when no events exist). Returns null when there is no readable run (no `.pi/run.json`).
+ * Cheap PATH-ONLY resolution of a run id → its dir + owning product root + the sibling run dirs of the
+ * SAME workflow (the `historyDirs` baseline for expectedMs / slow-anomaly detection) — via directory-shape
+ * discovery alone (`discoverRunDirs`, which only checks `.pi/run.json` EXISTENCE), never a per-run
+ * `summarizeRun`/`buildRunView` fold. A caller that just needs "where does this run live" (the run-view/
+ * stream/file/tree/preview/skill/control-session endpoints) must not pay for a fleet-wide telemetry
+ * distillation to answer a path question — that was the actual perf bug (a single run-view fetch, or its
+ * 3s live-run re-poll, recomputed EVERY run's token/cost rollup just to resolve one path). A side effect:
+ * this resolves even a run whose `.pi/run.json` is corrupted/unparseable (summarizeRun would drop it
+ * entirely, making it invisible to every path-based endpoint before this fix).
  */
-export async function summarizeRun(runDir: string): Promise<ThreadRow | null> {
-  let m;
-  try {
-    m = await readRunModel(runDir);
-  } catch {
-    return null;
+export function resolveRunHome(registry: Registry, run: string): { runDir: string; workspaceRoot: string; historyDirs: string[] } | null {
+  for (const product of registry.products) {
+    const { runDirs } = discoverRunDirs(product.root);
+    const hit = runDirs.find((d) => path.basename(d) === run);
+    if (!hit) continue;
+    const wf = wfOfRunDir(product.root, hit);
+    const historyDirs = wf ? runDirs.filter((d) => wfOfRunDir(product.root, d) === wf) : [hit];
+    return { runDir: hit, workspaceRoot: product.root, historyDirs };
   }
-  const nodes = m.nodes;
-  const nodesDone = nodes.filter((n) => TERMINAL_OK.has(n.status)).length;
-  const running = nodes.find((n) => n.status === 'running');
-  const errored = nodes.find((n) => n.status === 'error' || n.status === 'blocked');
+  return null;
+}
+
+/**
+ * Cheap PATH-ONLY resolution of a namespace's authored template dir by `{productId, nsId}` — no run
+ * involved, so it resolves even for a workflow with ZERO runs (the pinned-template surface's whole reason
+ * to exist). Uses `discoverNamespaces` alone (already O(workflow dirs), never a per-run fold).
+ */
+export function resolveNamespaceTemplate(registry: Registry, productId: string, nsId: string): { templateDir: string } | null {
+  const product = registry.products.find((p) => p.id === productId);
+  if (!product) return null;
+  const ns = discoverNamespaces(product.root).find((n) => n.id === nsId);
+  if (!ns) return null;
+  return { templateDir: path.dirname(ns.templatePath) };
+}
+
+/**
+ * Cache of a DONE run's expensive `tokenTotal` rollup (buildRunView's billable/cost), keyed by the run
+ * dir + its `.pi/run.json` mtime — a done run's `.pi/` never changes again in the ordinary path, so
+ * re-running buildRunView's full events.jsonl replay on every fleet-listing poll (the GUI re-polls
+ * `/__piflow/index.json` every 4s) is pure waste. A RUNNING run is never cached (its tokens are still
+ * moving). Module-level: this only helps the long-lived `piflowctl serve`/Vite dev process re-polling the
+ * SAME runs repeatedly — a one-shot CLI invocation gets no benefit and pays no penalty either.
+ */
+const tokenCache = new Map<string, { mtimeMs: number; tokensBillable: number; cost: number }>();
+
+function cachedTokenTotal(runDir: string, done: boolean): { tokensBillable: number; cost: number } {
+  let mtimeMs = 0;
+  try {
+    mtimeMs = fssync.statSync(runJsonFile(runDir)).mtimeMs;
+  } catch {
+    /* no run.json — fall through to a fresh (zeroed) compute below */
+  }
+  if (done) {
+    const cached = tokenCache.get(runDir);
+    if (cached && cached.mtimeMs === mtimeMs) return cached;
+  }
   let tokensBillable = 0;
   let cost = 0;
   try {
@@ -255,6 +301,29 @@ export async function summarizeRun(runDir: string): Promise<ThreadRow | null> {
   } catch {
     /* no rich view (run carries no events) — tokens/cost null-render as 0 */
   }
+  const entry = { mtimeMs, tokensBillable, cost };
+  if (done) tokenCache.set(runDir, entry);
+  return entry;
+}
+
+/**
+ * Summarize an OPAQUE run dir → the shared thread row (the ONE row shape every view renders). Structure /
+ * status come from the lean `readRunModel`; the billable-tokens + cost rollup from the rich `buildRunView`
+ * (0 when no events exist), cached once a run is DONE. Returns null when there is no readable run (no
+ * `.pi/run.json`).
+ */
+export async function summarizeRun(runDir: string, opts: ReadRunModelOpts = {}): Promise<ThreadRow | null> {
+  let m;
+  try {
+    m = await readRunModel(runDir, opts);
+  } catch {
+    return null;
+  }
+  const nodes = m.nodes;
+  const nodesDone = nodes.filter((n) => TERMINAL_OK.has(n.status)).length;
+  const running = nodes.find((n) => n.status === 'running');
+  const errored = nodes.find((n) => n.status === 'error' || n.status === 'blocked');
+  const { tokensBillable, cost } = cachedTokenTotal(runDir, m.done);
 
   // ── live, running-only fields (mirroring the `!m.done && …` gating of elapsedMs above) ──────────────
   // staleMs: how long since the run last wrote `.pi/run.json` (now − updatedAt) for a RUNNING run, when
@@ -299,6 +368,7 @@ export async function summarizeRun(runDir: string): Promise<ThreadRow | null> {
     model: m.model ?? null,
     updatedAt: m.updatedAt ?? null,
     staleMs,
+    orphaned: m.orphaned,
     errorNode: errored?.id ?? null,
     // (M8 — child runs) verbatim off the ALREADY-PARSED RunModel above — zero new I/O.
     parent: m.parent,
@@ -349,7 +419,11 @@ export function groupByParent(threads: ThreadRow[]): ThreadNode[] {
  * because a discovered run always has a parent wf dir by construction. Each namespace is emitted EXACTLY
  * ONCE: `discoverNamespaces` already merges every home of a shared meta.id into one NamespaceDesc, so
  * sibling variant dirs contribute their runs to the ONE workflow they belong to instead of repeating it.
- * Per-run reads are a few stats, so recomputing this per request (the live GUI) is cheap.
+ * Per-run summarization (buildRunView's events.jsonl replay) is the expensive part, NOT "a few stats" —
+ * every run in every product is summarized in PARALLEL (Promise.all) rather than one-await-at-a-time, and
+ * `summarizeRun`'s own token/cost rollup is cached once a run is DONE (see `cachedTokenTotal`), so a
+ * repeat poll of the same registry (the live GUI re-polls every 4s) only pays full cost for runs that are
+ * still running or newly discovered.
  */
 export async function buildSnapshot(registry: Registry): Promise<Snapshot> {
   const products: SnapshotProduct[] = [];
@@ -364,9 +438,13 @@ export async function buildSnapshot(registry: Registry): Promise<Snapshot> {
     const nsIdOfDir = new Map<string, string>();
     for (const ns of namespaces) for (const d of ns.dirs) nsIdOfDir.set(d, ns.id);
 
-    for (const runDir of runDirs) {
-      const thread = await summarizeRun(runDir);
+    // Summarize every run CONCURRENTLY — these are independent, I/O-bound reads; Promise.all preserves
+    // `runDirs`' order in the results array regardless of settle order, so filing below stays deterministic.
+    const threads = await Promise.all(runDirs.map((runDir) => summarizeRun(runDir)));
+    for (let i = 0; i < runDirs.length; i++) {
+      const thread = threads[i];
       if (!thread) continue;
+      const runDir = runDirs[i];
       const wf = wfOfRunDir(root, runDir);
       if (!wf) continue; // defensive only: discoverRunDirs never emits a path outside the canonical shape
       const nsId = nsIdOfDir.get(wf) ?? wf; // template-less/unparseable home → the dir name is the identity

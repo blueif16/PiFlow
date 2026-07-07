@@ -471,6 +471,7 @@ export {
   findProductRoot,
   templateLayout,
   resolveScope,
+  resolveAndRegisterScope,
   registryFromRoots,
   loadScopedRegistry,
 } from './observe/index.js';

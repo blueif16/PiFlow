@@ -23,6 +23,9 @@ export interface IndexThread {
   staleMs: number | null;
   /** true when a running run has been silent past the shared stale threshold (staleMs > ~90s). */
   runningStalled: boolean;
+  /** the run's controller process is CONFIRMED DEAD (state is already "failed" in this case) — a viewer
+   *  labels this distinctly from a genuine reported failure. */
+  orphaned: boolean;
   nodesDone: number;
   nodesTotal: number;
   frac: number;
@@ -260,7 +263,7 @@ export function indexToTree(
           id,
           name: t.run,
           kind: "file",
-          typeLabel: t.state,
+          typeLabel: t.orphaned ? "killed" : t.state,
           run: { state: t.state, ok: t.ok, frac: t.frac, done: t.nodesDone, total: t.nodesTotal },
         });
       }

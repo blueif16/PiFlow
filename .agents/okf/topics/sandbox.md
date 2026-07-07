@@ -202,6 +202,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[sandbox-readscope-default-on]]
+- [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[verify-nodes-never-in-dev-arms]]
@@ -214,5 +215,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-07 · arc=87 commits · files=8 · lessons=45</sub>
+<sub>derived 2026-07-07 · arc=87 commits · files=8 · lessons=46</sub>
 <!-- okf:auto-end -->

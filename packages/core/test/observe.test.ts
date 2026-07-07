@@ -12,7 +12,7 @@ import {
 import type { RunStatus, NodeStatusRecord } from '../src/runner/status.js';
 import type { NodeIo } from '../src/types.js';
 import type { PiEvent } from '../src/runner/events.js';
-import { readRunModel } from '../src/observe/read.js';
+import { readRunModel, deriveStatus } from '../src/observe/read.js';
 import { buildRunView } from '../src/observe/runView.js';
 import { DEFAULT_CONTEXT_WINDOW } from '../src/observe/models.js';
 import { watchRun } from '../src/observe/watch.js';
@@ -206,6 +206,87 @@ describe('readRunModel — the shared one-shot snapshot over a .pi/ run dir', ()
   it('throws a clear error when the run dir has no readable .pi/run.json', async () => {
     const runDir = mkRunDir();
     await expect(readRunModel(runDir)).rejects.toThrow(/run\.json/);
+  });
+});
+
+describe('deriveStatus — the `orphaned` param (a controller confirmed dead)', () => {
+  it('downgrades a `running` report to `error` when orphaned', () => {
+    expect(deriveStatus('running', [], null, true)).toBe('error');
+  });
+
+  it('leaves a `running` report untouched when NOT orphaned', () => {
+    expect(deriveStatus('running', [], null, false)).toBe('running');
+  });
+
+  it('leaves an already-terminal report (e.g. `ok`) untouched even when orphaned', () => {
+    expect(deriveStatus('ok', [], null, true)).toBe('ok');
+  });
+
+  it('a pending human checkpoint still wins over orphaned (the node was parked, not executing)', () => {
+    const checkpoint = { status: 'pending' as const, kind: 'confirm' as const, prompt: 'ok?', hash: 'h1' };
+    expect(deriveStatus('running', [], checkpoint, true)).toBe('awaiting-input');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// (2b) ORPHANED-RUN DETECTION — a run whose CONTROLLER process died before writing a terminal status
+// must stop reading as perpetually "running". `readRunModel` verifies `done:false` against the
+// `controllerPid` recorded in run.json (the "verified, not trusted" rule applied one level up from
+// per-node artifact verification). `isAlive` is injected so no test ever touches a real process.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+describe('readRunModel — orphaned run detection (dead controller)', () => {
+  it('downgrades a run to done:true/ok:false/orphaned:true when its controllerPid is confirmed dead', async () => {
+    const runDir = mkRunDir();
+    const { status, nodes } = baseFixture();
+    status.controllerPid = 4242;
+    await writeFixture(runDir, status, nodes);
+
+    const model = await readRunModel(runDir, { isAlive: () => false });
+
+    expect(model.done).toBe(true);
+    expect(model.ok).toBe(false);
+    expect(model.orphaned).toBe(true);
+    // b2 was `running` in the fixture — its controller is gone, so it can never finish: `error`.
+    expect(model.nodes.find((n) => n.id === 'b2')?.status).toBe('error');
+  });
+
+  it('leaves a run untouched when its controllerPid is still alive', async () => {
+    const runDir = mkRunDir();
+    const { status, nodes } = baseFixture();
+    status.controllerPid = 4242;
+    await writeFixture(runDir, status, nodes);
+
+    const model = await readRunModel(runDir, { isAlive: () => true });
+
+    expect(model.done).toBe(false);
+    expect(model.ok).toBeNull();
+    expect(model.orphaned).toBe(false);
+    expect(model.nodes.find((n) => n.id === 'b2')?.status).toBe('running');
+  });
+
+  it('never flags a FROZEN run (a deliberate P6 migration pause) as orphaned, even with a dead controllerPid', async () => {
+    const runDir = mkRunDir();
+    const { status, nodes } = baseFixture();
+    status.controllerPid = 4242;
+    status.frozen = true;
+    await writeFixture(runDir, status, nodes);
+
+    const model = await readRunModel(runDir, { isAlive: () => false });
+
+    expect(model.orphaned).toBe(false);
+    expect(model.done).toBe(false); // still parked, awaiting a target runner to resume it
+    expect(model.nodes.find((n) => n.id === 'b2')?.status).toBe('running');
+  });
+
+  it('never flags a run with no recorded controllerPid as orphaned (an older run predating the field)', async () => {
+    const runDir = mkRunDir();
+    const { status, nodes } = baseFixture(); // no controllerPid set
+    await writeFixture(runDir, status, nodes);
+
+    const model = await readRunModel(runDir, { isAlive: () => false });
+
+    expect(model.orphaned).toBe(false);
+    expect(model.done).toBe(false);
   });
 });
 

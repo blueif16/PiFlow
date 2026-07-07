@@ -6,12 +6,13 @@
 //   • a run dir WITHOUT `.pi/run.json` is SKIPPED — the exact contract that explains why an aborted/dry run
 //     never shows in the GUI/TUI (it has a `.pi/` but no RunStatus).
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, utimesSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { runJsonFile, nodeIoFile, nodeEventsFile } from '../src/runner/layout.js';
 import {
   buildSnapshot, discoverRunDirs, summarizeRun, groupByParent, STALE_MS_THRESHOLD,
+  resolveRunHome, resolveNamespaceTemplate,
   type Registry, type ThreadRow,
 } from '../src/observe/discover.js';
 
@@ -214,13 +215,14 @@ describe('buildSnapshot — meta.id identity with merged homes (M1-REVISED)', ()
 /** Materialize a RUNNING run dir: a running node with a `phase` (via io.json) + an IN-FLIGHT tool in its
  *  events.jsonl (a `tool_execution_start` with no matching `_end`). `updatedAt`/`startedAt` are caller-set
  *  so a test can place the last write recently (live) or long ago (stalled). Returns the run dir. */
-function writeRunningRun(opts: { updatedAt: string; startedAt?: string; phase?: string; openTool?: string }): string {
+function writeRunningRun(opts: { updatedAt: string; startedAt?: string; phase?: string; openTool?: string; controllerPid?: number }): string {
   const runDir = mkdtempSync(path.join(tmpdir(), 'piflow-run-'));
   const status = {
     run: 'live-1',
     source: 'lesson-build',
     done: false,
     ok: null,
+    ...(opts.controllerPid ? { controllerPid: opts.controllerPid } : {}),
     startedAt: opts.startedAt ?? opts.updatedAt,
     updatedAt: opts.updatedAt,
     durationMs: null,
@@ -298,6 +300,30 @@ describe('summarizeRun live fields', () => {
   });
 });
 
+// ── summarizeRun — orphaned-run propagation ─────────────────────────────────────────────────────────
+// A run whose controller process died is not just a `readRunModel` concern — the FLEET row (what the GUI
+// switcher actually renders) must stop reading `state: 'running'` too. `summarizeRun` threads an injectable
+// `isAlive` through to `readRunModel` so this is provable without touching a real process.
+describe('summarizeRun — orphaned run propagation (dead controller)', () => {
+  it('reports state:"failed" + orphaned:true for a run whose controllerPid is confirmed dead', async () => {
+    const updatedAt = new Date(Date.now() - 5_000).toISOString(); // recently written — NOT merely stale
+    const runDir = writeRunningRun({ updatedAt, controllerPid: 4242 });
+
+    const t = await summarizeRun(runDir, { isAlive: () => false });
+    expect(t!.state).toBe('failed');
+    expect(t!.orphaned).toBe(true);
+  });
+
+  it('leaves state:"running" + orphaned:false when the controllerPid is alive', async () => {
+    const updatedAt = new Date(Date.now() - 5_000).toISOString();
+    const runDir = writeRunningRun({ updatedAt, controllerPid: 4242 });
+
+    const t = await summarizeRun(runDir, { isAlive: () => true });
+    expect(t!.state).toBe('running');
+    expect(t!.orphaned).toBe(false);
+  });
+});
+
 // ── M8.1 — lineage rides the index: ThreadRow widening ─────────────────────────────────────────────────
 // `RunStatus.parent`/`spawnedBy` (M1) are read by `readRunModel` today and dropped before reaching a
 // `ThreadRow` — these tests target exactly that: they FAIL while `summarizeRun` stubs the fields (or never
@@ -369,5 +395,106 @@ describe('groupByParent', () => {
 
     expect(forest).toHaveLength(1);
     expect(forest[0].children.map((n) => n.thread.run)).toEqual(['260706-02.b', '260706-02.a']);
+  });
+});
+
+// ── resolveRunHome / resolveNamespaceTemplate — cheap PATH-ONLY resolution ─────────────────────────────
+// The perf bug these exist to fix: every "where does run X live" / "where is namespace Y's template"
+// lookup (the server's resolveRunDir/resolveTemplateDir, used by run-view/stream/file/tree/preview/skill/
+// template-view) used to call the FULL `buildSnapshot` — which folds `summarizeRun` (a full `buildRunView`
+// replay of every node's events.jsonl) over EVERY run in EVERY namespace in EVERY registered product just
+// to resolve one path. These resolve PURELY from directory shape (discoverRunDirs/discoverNamespaces —
+// existence checks only), so they must keep working even when a run's `.pi/run.json` is garbage
+// (summarizeRun would choke on it and drop the run from buildSnapshot entirely — the exact case that made
+// a corrupted run invisible to every endpoint before this fix).
+describe('resolveRunHome', () => {
+  it('resolves a run dir straight from directory shape, ignoring unparseable run.json content', () => {
+    const repo = fixtureRepo('lesson-build');
+    const garbledDir = path.join(repo, '.piflow', 'lesson-build', 'runs', 'garbled');
+    mkdirSync(path.dirname(runJsonFile(garbledDir)), { recursive: true });
+    writeFileSync(runJsonFile(garbledDir), '{not json'); // summarizeRun would throw + drop this run entirely
+    const sibling = writeRun(repo, 'lesson-build', 'sibling-1', runStatus('sibling-1', 'lesson-build'));
+    writeRun(repo, 'other-wf', 'other-1', runStatus('other-1', 'other-wf')); // must NOT leak into historyDirs
+
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    const hit = resolveRunHome(registry, 'garbled');
+
+    expect(hit, 'resolves from dir shape alone, even with unreadable run.json').toBeTruthy();
+    expect(hit!.runDir).toBe(garbledDir);
+    expect(hit!.workspaceRoot).toBe(repo);
+    expect(hit!.historyDirs.slice().sort()).toEqual([garbledDir, sibling].sort()); // scoped to lesson-build only
+  });
+
+  it('returns null for an unknown run id', () => {
+    const repo = fixtureRepo('lesson-build');
+    const registry: Registry = { products: [{ id: 'p', name: 'p', root: repo }] };
+    expect(resolveRunHome(registry, 'no-such-run')).toBeNull();
+  });
+});
+
+describe('resolveNamespaceTemplate', () => {
+  it('resolves a namespace with ZERO runs — the pinned-template surface needs no run at all', () => {
+    const repo = fixtureRepo('lesson-build'); // template only, no runs written
+    const registry: Registry = { products: [{ id: 'demo', name: 'demo', root: repo }] };
+
+    const hit = resolveNamespaceTemplate(registry, 'demo', 'lesson-build');
+    expect(hit).toEqual({ templateDir: path.join(repo, '.piflow', 'lesson-build', 'template') });
+  });
+
+  it('returns null for an unregistered product or an unknown namespace', () => {
+    const repo = fixtureRepo('lesson-build');
+    const registry: Registry = { products: [{ id: 'demo', name: 'demo', root: repo }] };
+    expect(resolveNamespaceTemplate(registry, 'not-a-product', 'lesson-build')).toBeNull();
+    expect(resolveNamespaceTemplate(registry, 'demo', 'not-a-namespace')).toBeNull();
+  });
+});
+
+// ── summarizeRun — done-run token/cost cache ───────────────────────────────────────────────────────────
+// A DONE run's `.pi/` never changes again in the ordinary path, so re-running buildRunView's full
+// events.jsonl replay on every fleet-listing poll (the GUI re-polls /__piflow/index.json every 4s) is pure
+// waste. The cache is keyed by run.json's mtime: unchanged mtime ⇒ reuse; a genuine rewrite (e.g. the
+// fusion run-first bake) bumps mtime ⇒ recompute. Proven here by mutating the underlying node `usage`
+// WITHOUT touching run.json's mtime (must still read the STALE cached numbers) and then WITH a bumped
+// mtime (must pick up the new numbers) — a real "always recompute" implementation fails the first
+// assertion; a real "cache forever, ignore mtime" implementation fails the second.
+describe('summarizeRun — done-run token/cost cache', () => {
+  it('reuses the cached tokenTotal across calls when run.json is unchanged, and recomputes once its mtime bumps', async () => {
+    const repo = fixtureRepo('lesson-build');
+    const status = {
+      ...runStatus('cached-1', 'lesson-build'),
+      nodes: { n1: { id: 'n1', label: 'N1', status: 'ok', artifacts: [], issues: [], usage: { inputTokens: 10, outputTokens: 5, cost: 1 } } },
+    };
+    const runDir = writeRun(repo, 'lesson-build', 'cached-1', status);
+    const rj = runJsonFile(runDir);
+    // Pin the mtime to an explicit, whole-millisecond instant up front — never read a NATURAL fs-generated
+    // mtime and feed it back through `utimesSync` to "restore" it: `Date` only carries whole-ms precision,
+    // but a real write's `statSync().mtimeMs` can carry a sub-ms fraction (e.g. on APFS), so a read-then-
+    // restore round trip silently drifts and the cache would (correctly) see it as "changed". Setting the
+    // SAME explicit Date twice has no such loss, since both writes target the identical requested instant.
+    const t0 = new Date('2026-01-01T00:00:00.000Z');
+    utimesSync(rj, t0, t0);
+
+    const first = await summarizeRun(runDir);
+    expect(first!.tokensBillable).toBe(15);
+    expect(first!.cost).toBe(1);
+
+    // Mutate the usage but re-pin the SAME mtime instant — a cache keyed on mtime must miss the change and
+    // keep returning the FIRST computation.
+    const mutated = JSON.parse(readFileSync(rj, 'utf8'));
+    mutated.nodes.n1.usage = { inputTokens: 999, outputTokens: 999, cost: 42 };
+    writeFileSync(rj, JSON.stringify(mutated));
+    utimesSync(rj, t0, t0);
+
+    const second = await summarizeRun(runDir);
+    expect(second!.tokensBillable, 'cache hit — must ignore the content change under an unchanged mtime').toBe(15);
+    expect(second!.cost).toBe(1);
+
+    // Now bump the mtime for real (a genuine rewrite) — the cache must invalidate and reflect the new usage.
+    const t1 = new Date(t0.getTime() + 60_000);
+    utimesSync(rj, t1, t1);
+
+    const third = await summarizeRun(runDir);
+    expect(third!.tokensBillable, 'mtime bump must invalidate the cache').toBe(1998);
+    expect(third!.cost).toBe(42);
   });
 });

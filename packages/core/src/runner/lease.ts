@@ -17,6 +17,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import { piDir } from './layout.js';
 import path from 'node:path';
+import { isProcessAlive } from './liveness.js';
 
 /** The on-disk lease identity. Timestamps are epoch-ms (a plain number, host-comparable via ttl). */
 export interface LeaseInfo {
@@ -69,13 +70,7 @@ export const lockFile = (run: string): string => path.join(piDir(run), 'run.lock
 
 function defaultIsAlive(pid: number, host: string): boolean {
   if (host !== os.hostname()) return true; // can't probe another machine's process table → trust the ttl
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e) {
-    // ESRCH = no such process (dead); EPERM = exists but not ours to signal (alive).
-    return (e as NodeJS.ErrnoException).code === 'EPERM';
-  }
+  return isProcessAlive(pid);
 }
 
 /** Read the current lease identity, or `null` if unlocked / unparseable. */

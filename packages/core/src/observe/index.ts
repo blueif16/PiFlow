@@ -48,7 +48,7 @@ export type { RunDigest, NodeDigest, Anomaly, AnomalyKind, RootCause, TelemetryE
 // is the write side: a run self-registers its repo at start (entry.ts), so discovery needs no manual `--root`.
 export { globalDir, productsFile, indexFile, homeTiersFile, ensurePiflowHome, loadRegistry, upsertRoot, saveRegistry, registerProductRoot } from './registry.js';
 export type { ProductEntry, Registry } from './registry.js';
-export { discoverNamespaces, discoverRunDirs, summarizeRun, buildSnapshot, groupByParent } from './discover.js';
+export { discoverNamespaces, discoverRunDirs, summarizeRun, buildSnapshot, groupByParent, resolveRunHome, resolveNamespaceTemplate } from './discover.js';
 export type { NamespaceDesc, NamespaceMeta, ThreadRow, ThreadNode, SnapshotNamespace, SnapshotProduct, Snapshot } from './discover.js';
 
 // M8 — the issues ENDPOINT projection: a thin observe wrapper over the optimize-substrate ledger
@@ -57,4 +57,4 @@ export { nodeIssuesProjection, allIssuesProjection } from './issues.js';
 
 // SCOPE — resolve the launched project's product roots from a cwd + build a registry scoped to them. The shared
 // spine behind "a view shows the project you launched it in, not the whole global registry" (piflowctl gui/tui).
-export { isProductRoot, findProductRoot, templateLayout, resolveScope, registryFromRoots, loadScopedRegistry } from './scope.js';
+export { isProductRoot, findProductRoot, templateLayout, resolveScope, resolveAndRegisterScope, registryFromRoots, loadScopedRegistry } from './scope.js';

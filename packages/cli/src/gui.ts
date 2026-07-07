@@ -5,13 +5,17 @@
 // in-app launcher). So it SERVES every registered folder (the global registry, pruned to those still on
 // disk) UNION the launched workspace, while the launched workspace stays the initial FOCUS. Flow:
 //   (1) locate `gui/` relative to this CLI (so a globally-linked `piflowctl` still finds it),
-//   (2) resolve the FOCUS via the shared `resolveScope` (@piflow/core): the SINGLE enclosing product (walk up
-//       to the nearest real `.piflow/` and stop there) OR, if launched outside any project, none,
+//   (2) resolve the FOCUS via `resolveAndRegisterScope` (@piflow/core): the SINGLE enclosing product (walk up
+//       to the nearest real `.piflow/` and stop there) OR, if launched outside any project, none — and, when a
+//       focus IS found, self-register it into the global `~/.piflow/products.json` (best-effort, same
+//       non-fatal contract as a run's own self-registration). This is the trigger that makes merely OPENING
+//       the viewer in a product folder enough for it to show up in every OTHER workspace's switcher too —
+//       before this, a product stayed invisible elsewhere until its first `piflowctl run`.
 //   (3) start the GUI server, passing the SERVED set via `PIFLOW_SCOPE_ROOTS` (focus ∪ pruned global registry)
 //       so the Vite middleware builds its snapshot from those roots (gui/vite.config.ts → core's
-//       `loadScopedRegistry`) — WITHOUT writing to the global ~/.piflow registry — and the FOCUS via
-//       `VITE_PIFLOW_HOME_ROOTS` so the client biases initial focus to the launched folder even after widening.
-//       The env channel is required because the spawned Vite server's own cwd is `gui/`, not the user's project.
+//       `loadScopedRegistry`) — and the FOCUS via `VITE_PIFLOW_HOME_ROOTS` so the client biases initial focus
+//       to the launched folder even after widening. The env channel is required because the spawned Vite
+//       server's own cwd is `gui/`, not the user's project.
 //
 // The viewer is the Vite dev server (it carries the index/products/stream middleware + HMR). It runs in the
 // foreground; Ctrl-C stops it. (`piflowctl tui` is the parallel front door for the terminal viewer.)
@@ -20,7 +24,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveScope, loadRegistry, isProductRoot } from '@piflow/core';
+import { resolveAndRegisterScope, loadRegistry, isProductRoot } from '@piflow/core';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -73,7 +77,7 @@ export async function runGuiCli(argv: string[]): Promise<void> {
   //    still exist AND are real product roots (drops dead / non-product junk entries).
   //    PIFLOW_SCOPE_ROOTS = focus ∪ pruned-global (what the middleware serves, no global-registry write);
   //    VITE_PIFLOW_HOME_ROOTS = focus (the client biases initial focus here even after widening).
-  const { scopeRoot, roots } = resolveScope(process.cwd());
+  const { scopeRoot, roots } = await resolveAndRegisterScope(process.cwd());
   const globalRoots = loadRegistry().products.map((p) => p.root).filter((r) => existsSync(r) && isProductRoot(r));
   const served = Array.from(new Set([...roots, ...globalRoots]));
   const env: NodeJS.ProcessEnv = { ...process.env };

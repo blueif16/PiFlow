@@ -194,6 +194,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
+- `b3e9a0d` 2026-07-07 — feat(gui): pin the canonical template above run history in the switcher
 
 ### Lessons — memory cluster
 
@@ -221,5 +222,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=134 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-07 · arc=135 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->
