@@ -409,6 +409,108 @@ describe('fixIssue — prove path rejects a regression (no auto-adopt)', () => {
   });
 });
 
+describe('fixIssue — SOFT gate path (no numeric oracle → the independent gate agent decides)', () => {
+  /** Give the node an `optimize.judge` so `nodeHasJudge()` is true and the SOFT path is taken. The judge file
+   *  need not exist — the injected `gate` seam replaces `runSubstrateGate`, so `buildGatePrompt` never runs. */
+  async function makeSoft(templateDir: string): Promise<void> {
+    const nodeJsonPath = join(templateDir, 'nodes', 'gameplay', 'node.json');
+    const nj = JSON.parse(await fs.readFile(nodeJsonPath, 'utf8'));
+    nj.optimize.judge = '{{WORKSPACE}}/skills/judge.md';
+    await fs.writeFile(nodeJsonPath, JSON.stringify(nj, null, 2));
+  }
+
+  it('ACCEPT ⇒ staged for human, gateVerdict present, numeric verdict ABSENT, status stays verifying', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture(); // no baseGraded ⇒ unmeasurable
+    await makeSoft(templateDir);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let gateSeen: any;
+    const res = await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      runAgent: async (o) => {
+        await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); // a real edit
+        return { status: okStatus(), text: 'ACCOUNT: I added an enumeration rule for every named mechanic.' };
+      },
+      spawnChild: async () => childResult('tS2.gameplay', await scratch('piflow-child-')),
+      measure: async () => measureReport({}), // graded {} ⇒ no shared keys ⇒ SOFT path (numeric gate can't decide)
+      gate: async (_runDir, _node, o) => {
+        gateSeen = o;
+        return { verdict: { decision: 'accept', rationale: 'the ladder mechanic is now classified; nothing else regressed' } };
+      },
+    });
+    expect(res.decision).toBe('staged');
+    expect(res.gateVerdict?.decision).toBe('accept');
+    expect(res.verdict).toBeUndefined(); // the numeric gate did NOT decide on the soft path
+    expect(res.dropback).toBeUndefined();
+    expect(res.childId).toBe('tS2.gameplay');
+    // the gate received the issue text, the fixer's own account, and read access to the candidate harness
+    expect(gateSeen.issueFileText).toContain('compose');
+    expect(gateSeen.fixerAccount).toContain('enumeration rule');
+    expect(gateSeen.candidateRef).toBe(res.candidateRef);
+    // a staged candidate stays at `verifying`, awaiting the human adopt (never a judge-gated auto-accept)
+    expect((await parseIssueFile(issuePath)).status).toBe('verifying');
+    const manifest = await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'));
+    expect(manifest.records[0]).toMatchObject({ decision: 'staged', landPolicy: 'stage-for-human', verifiedByRun: 'tS2.gameplay' });
+  });
+
+  it('REJECT ⇒ discarded, issue walks back to OPEN (re-attemptable), drop-back packet persisted (NO rubric)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await makeSoft(templateDir);
+    const res = await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      runAgent: editingAgent,
+      spawnChild: async () => childResult('tS2.gameplay', await scratch('piflow-child-')),
+      measure: async () => measureReport({}),
+      gate: async () => ({
+        verdict: {
+          decision: 'reject',
+          rationale: 'the detector was loosened, not the cause fixed',
+          category: 'band-aid',
+          steer: 'the root is upstream in the prompt, not the schema',
+        },
+      }),
+    });
+    expect(res.decision).toBe('discarded');
+    expect(res.gateVerdict?.decision).toBe('reject');
+    expect(res.dropback).toEqual({ category: 'band-aid', steer: 'the root is upstream in the prompt, not the schema' });
+
+    // the drop-back path (the least-tested path elsewhere): a proven-REJECT walks the issue back to `open` so a
+    // FRESH fixer can re-attempt it. Nothing landed: reason null, no attempt stamped.
+    const after = await parseIssueFile(issuePath);
+    expect(after.status).toBe('open');
+    expect(after.reason).toBeNull();
+    expect(after.attempts).toEqual([]);
+
+    // the drop-back packet rides the manifest for the outer loop — it carries the category + steer, no criteria.
+    const manifest = await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'));
+    expect(manifest.records[0].dropback).toEqual({ category: 'band-aid', steer: 'the root is upstream in the prompt, not the schema' });
+  });
+
+  it('a node with NEITHER a number NOR a judge does NOT invoke the gate agent (evaluateGate stage-for-human)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture(); // measure {} + NO judge
+    let gateCalled = false;
+    const res = await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      runAgent: editingAgent,
+      spawnChild: async () => childResult('x', await scratch('piflow-child-')),
+      measure: async () => measureReport({}),
+      gate: async () => {
+        gateCalled = true;
+        return { verdict: { decision: 'accept', rationale: 'x' } };
+      },
+    });
+    expect(gateCalled).toBe(false); // no optimize.judge ⇒ the gate agent is NOT the decider
+    expect(res.gateVerdict).toBeUndefined();
+    expect(res.decision).toBe('staged'); // evaluateGate: unmeasurable → stage-for-human
+    expect(res.verdict?.landPolicy).toBe('stage-for-human');
+  });
+});
+
 describe('fixIssue — skip-proof path (prove off)', () => {
   it('editsApplied≥1 with prove:false ⇒ no child run, status fix-landed, decision staged (unmeasurable→human), verifiedByRun null', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();

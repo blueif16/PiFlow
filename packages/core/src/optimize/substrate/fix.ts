@@ -62,6 +62,10 @@ import {
 } from './agent.js';
 import { spawnChildRun, type SpawnChildRunOpts, type SpawnChildRunResult } from './child-run.js';
 import { runSubstrateMeasure, type RunSubstrateMeasureOpts, type MeasureReport } from './measure.js';
+import {
+  runSubstrateGate,
+  type RunSubstrateGateOpts, type RunSubstrateGateResult, type GateVerdictFile, type GateRejectCategory,
+} from './gate.js';
 import { safeEmit, type SubstrateEvent, type SubstrateEventSink } from './events.js';
 
 /** The gate bucket every substrate fix uses — a non-ARCH, non-FUNCTIONALITY bucket, so `evaluateGate` applies
@@ -133,6 +137,14 @@ async function readNodeJsonRaw(templateDir: string, nodeId: string): Promise<Raw
   } catch (e) {
     throw new Error(`fixIssue: "${file}" is not valid JSON: ${(e as Error).message}`);
   }
+}
+
+/** Does the node declare an `optimize.judge` — a SOFT bar the gate agent can judge a fix against when there is
+ *  no numeric oracle? Reads `node.json` off disk (throws only if the node is unreadable, which fixIssue already
+ *  requires). Drives the gate ROUTING: unmeasurable + a judge ⇒ the gate agent, not "unmeasurable → human". */
+async function nodeHasJudge(templateDir: string, nodeId: string): Promise<boolean> {
+  const nj = await readNodeJsonRaw(templateDir, nodeId);
+  return typeof nj.optimize?.judge === 'string' && (nj.optimize.judge as string).length > 0;
 }
 
 export interface CandidateClosure {
@@ -350,6 +362,8 @@ export interface SubstrateManifestRecord {
   verifiedByRun: string | null;
   /** human-facing RAW per-key graded delta (empty on the skip path / when unmeasurable). */
   deltaSummary: Record<string, number>;
+  /** SOFT-gate reject only: the drop-back packet (coarse category + steer) for the outer loop's next fixer. */
+  dropback?: { category: GateRejectCategory; steer?: string };
 }
 
 export interface SubstrateManifest {
@@ -436,6 +450,8 @@ export interface FixIssueOpts extends BaseAgentChildOpts {
   // ── test/offline seams for the CHILD prove-run (default the real functions; never live-spawn in a test) ──
   spawnChild?: (parentRunDir: string, nodeId: string, opts: SpawnChildRunOpts) => Promise<SpawnChildRunResult>;
   measure?: (runDir: string, nodeId: string, opts: RunSubstrateMeasureOpts) => Promise<MeasureReport>;
+  /** Test/offline seam for the SOFT gate agent (default the real `runSubstrateGate`; never live-spawn a test). */
+  gate?: (runDir: string, nodeId: string, opts: RunSubstrateGateOpts) => Promise<RunSubstrateGateResult>;
 }
 
 export interface FixIssueResult {
@@ -447,8 +463,14 @@ export interface FixIssueResult {
   proved: boolean;
   /** the child run id that proved the fix, or null. */
   childId: string | null;
-  /** ABSENT on a dry-run — nothing was gated. */
+  /** The NUMERIC gate verdict. ABSENT on a dry-run — and on the SOFT-gate path (where `gateVerdict` carries it). */
   verdict?: GateVerdict;
+  /** SOFT-gate path ONLY (no numeric oracle + the node has an optimize.judge): the independent gate agent's
+   *  verdict. On this path `verdict` (the numeric gate) is absent and this carries the accept/reject instead. */
+  gateVerdict?: GateVerdictFile;
+  /** SOFT-gate REJECT ONLY: the drop-back packet (coarse category + a diversification steer) the outer loop
+   *  hands a FRESH fixer — never the gate's rubric/criteria (that would teach the retry to the test). */
+  dropback?: { category: GateRejectCategory; steer?: string };
   /** ABSENT on a dry-run — nothing was decided. */
   decision?: 'staged' | 'discarded';
   deltaSummary: Record<string, number>;
@@ -551,6 +573,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
 
   // (d) prove (self-rewind) — or skip (fix-landed → resolved on adopt). Unmeasurable ⇒ base/cand stay null.
   let childId: string | null = null;
+  let childDir: string | null = null;
   let base: number | null = null;
   let candidate: number | null = null;
   let deltaSummary: Record<string, number> = {};
@@ -564,6 +587,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
       buildCommand: opts.buildCommand,
     });
     childId = child.childId;
+    childDir = child.childDir;
     emit({ type: 'prove-started', issue: issue.name, childId });
     // measure the CHILD with workspace = the LIVE product root → pristine scorer grades a candidate artifact.
     const childReport = await measure(child.childDir, node, { workspace });
@@ -577,22 +601,62 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     emit({ type: 'measured', issue: issue.name, sharedKeys: fold.sharedKeys });
   }
 
-  // (e) gate — REUSE evaluateGate's editsApplied<1 + null⇒stage-for-human rules (the fold header).
-  const verdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base, candidate, editsApplied });
-  emit({ type: 'gated', issue: issue.name, accept: verdict.accept, reason: verdict.reason });
+  // (e) GATE — two decision surfaces on ONE proved candidate:
+  //   • NUMERIC (evaluateGate) wherever a graded oracle produced shared keys — deterministic, drift-proof.
+  //   • the INDEPENDENT GATE AGENT wherever the fix was proved but the node has NO number, only an
+  //     `optimize.judge` bar (the SOFT path). It judges the candidate artifact against the node's OWN criteria
+  //     — the same bar a regular run applies, no invented "fix contract" — and STAGES its accept for the human
+  //     (never a judge-gated auto-accept). A node with neither a number nor a judge falls to evaluateGate's
+  //     stage-for-human, exactly as before.
+  let decision: 'staged' | 'discarded';
+  let landPolicy: LandPolicy;
+  let reason: string;
+  let numericVerdict: GateVerdict | undefined;
+  let gateVerdict: GateVerdictFile | undefined;
+  let dropback: { category: GateRejectCategory; steer?: string } | undefined;
 
-  const decision: 'staged' | 'discarded' =
-    editsApplied < 1
-      ? 'discarded'
-      : verdict.accept
-        ? 'staged'
-        : verdict.landPolicy === 'stage-for-human'
-          ? 'staged' // unmeasurable/abstained → route to a human, never auto
-          : 'discarded'; // a measured regression / flat result
+  const numericMeasured = base !== null && candidate !== null; // shared graded keys existed
+  const softGate = editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasJudge(templateDir, node));
+
+  if (softGate && childDir !== null) {
+    const runGate = opts.gate ?? runSubstrateGate;
+    const gateRes = await runGate(childDir, node, {
+      workspace,
+      templateDir,
+      issueFileText: await fs.readFile(issuePathAbs, 'utf8'),
+      fixerDiff: '', // v1: the gate inspects the candidate harness (candidateRef, in its read scope) directly
+      fixerAccount: fixerResult.text ?? '',
+      candidateRef,
+      ...inheritedAgentOpts(opts),
+    });
+    gateVerdict = gateRes.verdict;
+    if (!gateVerdict) throw new Error(`fixIssue: the gate agent for node "${node}" returned no verdict`);
+    decision = gateVerdict.decision === 'accept' ? 'staged' : 'discarded';
+    landPolicy = 'stage-for-human'; // a model judgment STAGES; the human adopts (never judge-gated auto-accept).
+    reason = gateVerdict.rationale;
+    if (gateVerdict.decision === 'reject' && gateVerdict.category) {
+      dropback = { category: gateVerdict.category, ...(gateVerdict.steer ? { steer: gateVerdict.steer } : {}) };
+    }
+    emit({ type: 'gated', issue: issue.name, accept: gateVerdict.decision === 'accept', reason });
+  } else {
+    // NUMERIC / degenerate path — REUSE evaluateGate's editsApplied<1 + null⇒stage-for-human rules (fold header).
+    numericVerdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base, candidate, editsApplied });
+    emit({ type: 'gated', issue: issue.name, accept: numericVerdict.accept, reason: numericVerdict.reason });
+    decision =
+      editsApplied < 1
+        ? 'discarded'
+        : numericVerdict.accept
+          ? 'staged'
+          : numericVerdict.landPolicy === 'stage-for-human'
+            ? 'staged' // unmeasurable/abstained with no judge → route to a human, never auto
+            : 'discarded'; // a measured regression / flat result
+    landPolicy = numericVerdict.landPolicy;
+    reason = numericVerdict.reason;
+  }
 
   // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
   // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
-  // so a later triage/fix can re-attempt it (TASK 0's `verifying → open` back-edge). A staged candidate stays
+  // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). A staged candidate stays
   // at `verifying` awaiting adopt; the no-edit / skip-proof paths never entered `verifying` (nothing to undo).
   if (childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
 
@@ -604,14 +668,15 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     decision,
     candidateRef,
     liveRoot: workspace,
-    landPolicy: verdict.landPolicy,
-    reason: verdict.reason,
+    landPolicy,
+    reason,
     verifiedByRun: childId,
     deltaSummary,
+    ...(dropback ? { dropback } : {}),
   };
   const manifestPath = await upsertSubstrateManifest(stagingDir, record);
   emit({ type: 'staged', issue: issue.name, decision, manifestPath });
-  emit({ type: 'stopped', issue: issue.name, reason: decision === 'staged' ? 'staged for adopt' : `discarded (${verdict.reason})` });
+  emit({ type: 'stopped', issue: issue.name, reason: decision === 'staged' ? 'staged for adopt' : `discarded (${reason})` });
 
   return {
     issue: issue.name,
@@ -620,7 +685,9 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     editsApplied,
     proved: childId !== null,
     childId,
-    verdict,
+    verdict: numericVerdict,
+    ...(gateVerdict ? { gateVerdict } : {}),
+    ...(dropback ? { dropback } : {}),
     decision,
     deltaSummary,
     manifestPath,
