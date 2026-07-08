@@ -515,6 +515,9 @@ export interface FixIssueResult {
   /** SOFT-gate REJECT ONLY: the drop-back packet (coarse category + a diversification steer) the outer loop
    *  hands a FRESH fixer — never the gate's rubric/criteria (that would teach the retry to the test). */
   dropback?: { category: GateRejectCategory; steer?: string };
+  /** The fixer's own self-account (its final text — the root cause it claims to have fixed / what it tried).
+   *  The outer loop threads it into the NEXT attempt's RetryContext so a retry doesn't repeat the approach. */
+  fixerAccount?: string;
   /** ABSENT on a dry-run — nothing was decided. */
   decision?: 'staged' | 'discarded';
   deltaSummary: Record<string, number>;
@@ -741,6 +744,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     manifestPath,
     record,
     fixerRunDir: fixerResult.runDir,
+    ...(fixerResult.text ? { fixerAccount: fixerResult.text } : {}),
   };
 }
 
