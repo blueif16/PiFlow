@@ -333,6 +333,67 @@ describe('buildFixerPrompt — issue-as-dispatch + a root-cause / no-oracle / no
     // a data-tier anchor points the fixer at its staged playbook by id (the procedure this contract assumes).
     expect(p).toContain('piflow-fixer');
   });
+
+  it('appends a diversification block on a retry — prior categories, steers, and accounts + a "try a DIFFERENT approach" order', () => {
+    const p = buildFixerPrompt('---\ntitle: X\n---\nISSUE-BODY-MARKER-9', 'gameplay', {
+      attempt: 2,
+      priorDropbacks: [{ category: 'didnt-reach-root', steer: 'STEER-MARKER: the root is upstream in the schema' }],
+      priorAccounts: ['ACCOUNT-MARKER: I only reworded the prompt'],
+    });
+    expect(p).toMatch(/prior attempt/i);
+    expect(p).toMatch(/reject/i);
+    expect(p).toMatch(/do not repeat/i); // the anti-repeat instruction …
+    expect(p).toMatch(/different/i); //     … and the diversify order
+    expect(p).toContain('didnt-reach-root'); // the coarse category the gate returned
+    expect(p).toContain('STEER-MARKER: the root is upstream in the schema'); // the diversification steer
+    expect(p).toContain('ACCOUNT-MARKER: I only reworded the prompt'); // what the prior fixer tried (don't repeat)
+  });
+
+  it('omits the diversification block on the first attempt (no retry context) — the block is CONDITIONAL', () => {
+    const p = buildFixerPrompt('---\ntitle: X\n---\nISSUE-BODY-MARKER-9', 'gameplay');
+    expect(p).not.toMatch(/prior attempt/i);
+  });
+});
+
+// ── fixIssue — retry threading (per-attempt candidate dir + diversification prompt) ─────────────────────────
+describe('fixIssue — attemptTag + retry context threading', () => {
+  it('scopes the candidate dir by attemptTag and threads the retry context into the fixer prompt', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    let capturedPrompt = '';
+    let capturedCwd = '';
+    const res = await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      prove: false, // isolate the spawn composition — no child run needed
+      attemptTag: 'attempt-2',
+      retry: { attempt: 2, priorDropbacks: [{ category: 'band-aid', steer: 'RETRY-STEER-42' }], priorAccounts: ['reworded only'] },
+      runAgent: async (o: { cwd: string; prompt: string }): Promise<RunBaseAgentResult> => {
+        capturedPrompt = o.prompt;
+        capturedCwd = o.cwd;
+        await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); // a real edit ⇒ editsApplied ≥ 1
+        return agentResult();
+      },
+    });
+    const tail = join('candidates', 'soggy-crust', 'attempt-2');
+    expect(res.candidateRef.endsWith(tail)).toBe(true); // per-attempt dir, not the shared candidates/<issue>
+    expect(capturedCwd.endsWith(tail)).toBe(true); // the fixer actually ran in that per-attempt dir
+    expect(capturedPrompt).toMatch(/prior attempt/i); // retry threaded → diversification block present
+    expect(capturedPrompt).toContain('RETRY-STEER-42');
+  });
+
+  it('defaults to the shared candidates/<issue> dir when no attemptTag is given (backward compatible)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    const res = await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      prove: false,
+      runAgent: editingAgent,
+    });
+    expect(res.candidateRef.endsWith(join('candidates', 'soggy-crust'))).toBe(true);
+    expect(res.candidateRef.endsWith(join('soggy-crust', 'soggy-crust'))).toBe(false); // no accidental double nest
+  });
 });
 
 // ── fixIssue — the per-issue orchestration (seams injected) ───────────────────────────────────────────────

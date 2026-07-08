@@ -403,11 +403,26 @@ async function upsertSubstrateManifest(stagingDir: string, record: SubstrateMani
  *  runner resolves it via `locateSkillStage` (Ring 1 `<piflowHome>/skills/piflow-fixer`); a miss is advisory. */
 export const FIXER_SKILL = 'piflow-fixer';
 
+/** A rejected prior attempt's residue, threaded into the NEXT fixer so a retry DIVERSIFIES instead of repeating.
+ *  Carries ONLY the gate's coarse category + an optional diversification steer + what the prior fixer tried —
+ *  NEVER the gate's rubric/criteria (passing rejection as context ≠ optimizing the fixer against the gate;
+ *  the latter teaches hiding, not fixing — see docs/design/optimize-verification-loop.md §8). */
+export interface RetryContext {
+  /** 1-based attempt this fixer is on (2 = the first retry). A value ≤ 1 renders NO diversification block. */
+  attempt: number;
+  /** prior rejected attempts, OLDEST→NEWEST: the gate's coarse category + optional steer (no rubric). */
+  priorDropbacks: { category: GateRejectCategory; steer?: string }[];
+  /** each prior fixer's self-account (what it tried), oldest→newest — so the retry does not repeat the approach. */
+  priorAccounts: string[];
+}
+
 /** Build the fixer agent's FULL prompt: the issue FILE verbatim (its context brief is the specification) + a
- *  root-cause fix contract. Exported so a test can pin the contract's load-bearing MUST/MUST-NOT lines
- *  (agent behaviour itself is proven by the M7 live demo — eval, not unit). */
-export function buildFixerPrompt(issueFileText: string, node: string): string {
-  return [
+ *  root-cause fix contract, plus — on a RETRY (`retry.attempt > 1`) — a diversification block listing what the
+ *  prior attempts tried and why they were rejected, ordering a genuinely DIFFERENT approach. Exported so a test
+ *  can pin the contract's load-bearing MUST/MUST-NOT lines (agent behaviour itself is proven by the M7 live
+ *  demo — eval, not unit). */
+export function buildFixerPrompt(issueFileText: string, node: string, retry?: RetryContext): string {
+  const parts = [
     `<role>You are the FIXER agent for the "${node}" node — a senior engineer who ROOT-CAUSES a quality defect and repairs it at the source, inside an ISOLATED candidate copy of the node's read closure.</role>`,
     `<playbook>Your fixer PLAYBOOK — the issue lifecycle (open→closed) and the two-foot quality/harness routing — is staged as the "${FIXER_SKILL}" skill for this turn; it is the procedure this contract assumes. Follow it.</playbook>`,
     `<issue>\nThe issue below is the WHOLE dispatch contract — its context brief is your specification. Read it in full before editing.\n\n${issueFileText}\n</issue>`,
@@ -421,7 +436,30 @@ export function buildFixerPrompt(issueFileText: string, node: string): string {
       '</constraints>',
     ].join('\n'),
     `<self_check>Before finishing, re-read <issue> and confirm your edits address its ROOT cause (not just its symptom) and that you touched only candidate files. State, in one sentence, the root cause you fixed.</self_check>`,
-  ].join('\n\n');
+  ];
+
+  // On a retry, the block goes RIGHT BEFORE the self-check so it is the last thing read before acting — the
+  // procedural-fence position that binds. It is the ONLY channel for the prior verdicts; the gate's rubric is
+  // deliberately absent (Goodhart fence).
+  if (retry && retry.attempt > 1) {
+    const priors = retry.priorDropbacks
+      .map((d, i) => {
+        const tried = retry.priorAccounts[i] ? ` — it tried: ${retry.priorAccounts[i]}` : '';
+        const steer = d.steer ? ` Steer for a different angle: ${d.steer}` : '';
+        return `  - attempt ${i + 1} was REJECTED (category: ${d.category})${tried}.${steer}`;
+      })
+      .join('\n');
+    const block = [
+      '<prior_attempts>',
+      `This is attempt ${retry.attempt}. ${retry.priorDropbacks.length} prior attempt(s) on this issue were REJECTED by the gate:`,
+      priors,
+      'Do NOT repeat any approach above — it has already failed. Root-cause from a genuinely DIFFERENT angle (a different harness lever, or a different root hypothesis). These notes are the ONLY carry-over: there is no scoring rubric to satisfy — fix the defect, do not tune to a gate.',
+      '</prior_attempts>',
+    ].join('\n');
+    parts.splice(parts.length - 1, 0, block); // insert before <self_check>
+  }
+
+  return parts.join('\n\n');
 }
 
 // ── fixIssue — the per-issue orchestration ──────────────────────────────────────────────────────────────────
@@ -445,6 +483,12 @@ export interface FixIssueOpts extends BaseAgentChildOpts {
   lowerIsBetter?: (key: string) => boolean;
   /** where the candidate copy + manifest live. Default `<parentRunDir>/optimize/substrate/staging`. */
   stagingDir?: string;
+  /** OUTER-LOOP retry only: scope this attempt's candidate dir to `candidates/<issue>/<attemptTag>` so each
+   *  attempt's copy is preserved side-by-side (the retry loop can keep the best; a bare default overwrites). */
+  attemptTag?: string;
+  /** OUTER-LOOP retry only: the prior rejected attempts, threaded into the fixer prompt so it DIVERSIFIES
+   *  (categories + steers + accounts — NEVER the gate's rubric). Absent/attempt≤1 ⇒ no diversification block. */
+  retry?: RetryContext;
   /** live progress sink (fire-and-forget). */
   onEvent?: SubstrateEventSink;
   // ── test/offline seams for the CHILD prove-run (default the real functions; never live-spawn in a test) ──
@@ -518,12 +562,16 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
 
   const issue = await parseIssueFile(issuePathAbs);
   const stagingDir = opts.stagingDir ?? path.join(parentRunDir, 'optimize', 'substrate', 'staging');
-  const candidateRef = path.join(stagingDir, 'candidates', issue.name);
+  // On a retry the candidate is scoped per-attempt (`candidates/<issue>/<attemptTag>`) so attempts don't
+  // clobber each other; the default (no tag) keeps the original `candidates/<issue>` path.
+  const candidateRef = opts.attemptTag
+    ? path.join(stagingDir, 'candidates', issue.name, opts.attemptTag)
+    : path.join(stagingDir, 'candidates', issue.name);
 
   // The ONE fixer spawn composition — shared VERBATIM by the dry-run preview and the live spawn (never two
   // hand-copies that can drift apart).
   const fixerSpawn = (issueFileText: string): RunBaseAgentOpts => ({
-    prompt: buildFixerPrompt(issueFileText, node),
+    prompt: buildFixerPrompt(issueFileText, node, opts.retry),
     cwd: candidateRef,
     readScope: [candidateRef],
     owns: [candidateRef],
