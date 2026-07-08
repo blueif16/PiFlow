@@ -41,6 +41,7 @@ import {
 } from './optimize-substrate.js';
 import { runIssuesCli } from './issues.js';
 import { runRunsCli } from './runs.js';
+import { runRunsSweepCli } from './runs-sweep.js';
 import { runGuiCli } from './gui.js';
 import { runContextCli } from './context.js';
 import { runCloudCli } from './cloud.js';
@@ -69,6 +70,7 @@ USAGE
                                             freshness · compact (retire graduated/code-shifted/over-cap lessons)
   piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
   piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--rerun cold re-exec, --stop too)
+  piflowctl node    <run> --finalize [--ok=true|false]  force-CLOSE an existing STUCK (!done) run record (no nodeId needed)
   piflowctl reply   <run> <checkpointId> <value> [--by <who>]  answer a PARKED human-checkpoint (HITL) node —
                                             writes the reply file the runner is polling for so the run resumes
   piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
@@ -151,6 +153,10 @@ USAGE
                                             per-node substrate issue ledger (severity-desc, then firstSeen-asc)
   piflowctl runs    [--node <id>] [--status ok|error] [--since <days|ISO>] [--json]  cross-run summary; child
                                             runs render indented under their parent (optimize-substrate lineage)
+  piflowctl runs sweep [--dry-run|--apply] [--include-frozen] [--json]  REGISTRY-WIDE (every registered
+                                            product) audit of stuck !done runs: auto-heals (informational) /
+                                            stuck-no-pid / frozen buckets. Default --dry-run (writes nothing);
+                                            --apply finalizes stuck-no-pid (+ frozen iff --include-frozen).
   piflowctl --version                       print the piflowctl version
 
 RUN
@@ -203,6 +209,12 @@ NODE
   --stop        STOP the run by signalling its controlling process GROUP (SIGTERM→SIGKILL grace). This is a
                 per-RUN stop, not just one node: the runner records the run controller's pid in .pi/run.json
                 and spawns each node detached in that group. A run with no recorded pid (older run) errors.
+  --finalize [--ok=true|false]  RUN-LEVEL-ONLY (no nodeId needed): force-CLOSE an EXISTING, STUCK (!done) run
+                record — writes done:true, ok:<flag> (default false) via the same atomic writer every other
+                lane uses, preserving every other field verbatim. Refuses (no write) on an already-done:true
+                run. For the residual gap the live orphan-detection can't resolve alone: no controllerPid
+                recorded at all, or a frozen:true run that never got resumed. No confirmation prompt — naming
+                the exact <run> IS the confirmation; prints old state → new state.
 
 INIT
   (no args)     an interactive wizard over ~/.piflow. Core step: your pi provider's model tiers
@@ -450,9 +462,16 @@ async function main(): Promise<void> {
       process.exitCode = await runIssuesCli(rest);
       break;
     case 'runs':
-      // CROSS-RUN summary (M5.4) — the same runs-home scan `optimize triage --topk` rides; filters --node
-      // (executed fresh) / --status / --since; child runs render indented under their parent. --json for agents.
-      process.exitCode = await runRunsCli(rest);
+      // `sweep` is the REGISTRY-WIDE (every product) stuck-run audit/force-close — DISTINCT from the bare
+      // verb below (a single workflow's cross-run summary). Gated first so a workflow literally named
+      // "sweep" can never misroute (mirrors `optimize`'s subverb-first routing above).
+      if (rest[0] === 'sweep') {
+        process.exitCode = await runRunsSweepCli(rest.slice(1));
+      } else {
+        // CROSS-RUN summary (M5.4) — the same runs-home scan `optimize triage --topk` rides; filters --node
+        // (executed fresh) / --status / --since; child runs render indented under their parent. --json for agents.
+        process.exitCode = await runRunsCli(rest);
+      }
       break;
     case '--version':
     case '-v':

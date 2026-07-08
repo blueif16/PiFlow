@@ -26,13 +26,34 @@
 // controller pid is recorded, `--stop` FAILS with an actionable message — it NEVER guesses or signals a stale
 // pid. The pure planners (`buildNodeStopAction` / `buildStopAction`) build the signal PLAN so the wiring is
 // unit-testable without killing a real process; the kill itself is a thin wrapper (`signalProcess`).
+//
+// `--finalize [--ok=true|false]` is a RUN-LEVEL-ONLY action (no nodeId needed — naming the exact `<run>` IS
+// the confirmation): force-CLOSE an EXISTING, STUCK (`!done`) run record via the core `finalizeRun`
+// primitive (runner/finalize.ts). This is the explicit human-invoked closure for the residual gap the
+// already-merged live orphan-detection (observe/read.ts's `isRunOrphaned`) cannot resolve on its own — a run
+// with NO `controllerPid` recorded at all, or a `frozen:true` run that never got resumed. Unlike
+// `isRunOrphaned` (an ephemeral per-read verdict, never written to disk), `--finalize` ACTUALLY writes
+// `done:true, ok:opts.ok??false` via `writeStatus` — so every future read agrees, forever. It refuses (no
+// write) on an already-`done:true` run. `<run>` resolves via the SAME `resolveNodeRunDir` every other action
+// here uses — no separate lookup path.
 
 import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { mkdtemp, writeFile } from 'node:fs/promises';
-import { loadJournal as coreLoadJournal, piSessionsDir, piDir, runJsonFile, nodeDir, type Journal, type RunStatus, type RunResult } from '@piflow/core';
+import {
+  loadJournal as coreLoadJournal,
+  piSessionsDir,
+  piDir,
+  runJsonFile,
+  nodeDir,
+  finalizeRun as coreFinalizeRun,
+  type Journal,
+  type RunStatus,
+  type RunResult,
+  type FinalizeResult,
+} from '@piflow/core';
 import { runTemplate, runFailureReport, type ParsedRunArgs, type SandboxChoice } from './run.js';
 
 /** Shell-quote a single token (paths may contain spaces). Mirrors command.ts `q`. */
@@ -285,6 +306,13 @@ export interface NodeDeps {
    * window join). A test injects a stub (the pi-spawn boundary) so no real agent runs.
    */
   runTemplate?: (parsed: ParsedRunArgs) => Promise<RunResult | undefined>;
+  /**
+   * Force-close a STUCK (!done) run — the `--finalize` actuator. Default the real core `finalizeRun`
+   * (runner/finalize.ts), which reads `.pi/run.json` and writes a terminal record via `writeStatus` (the
+   * ONLY thing that ever writes that file). Injectable so a test can assert the call without touching a
+   * real run — though most tests just use a real temp dir, since this is pure fs + no process/spawn.
+   */
+  finalizeRun?: (dir: string, opts?: { ok?: boolean }) => Promise<FinalizeResult>;
   print?: (line: string) => void;
   error?: (line: string) => void;
 }
@@ -297,6 +325,10 @@ export interface ParsedNodeArgs {
   stop: boolean;
   /** COLD single-node re-execution from frozen upstream, in the EXISTING run dir (window=[node], forced RUN). */
   rerun: boolean;
+  /** RUN-LEVEL-ONLY: force-close an existing STUCK (!done) run record (no nodeId needed). */
+  finalize: boolean;
+  /** `--finalize`'s recorded verdict (`--ok=true|false`); omitted ⇒ the core primitive's default (false). */
+  ok?: boolean;
   message?: string;
   /** `--rerun` run flags, mirroring the `run`/`node` surface (threaded verbatim into the run). */
   sandbox?: string;
@@ -305,15 +337,21 @@ export interface ParsedNodeArgs {
   workspace?: string;
 }
 
-/** Parse the flat `node` argv → `{ run, nodeId, resume, stop, rerun, … }`. First two positionals = run, nodeId. */
+/**
+ * Parse the flat `node` argv → `{ run, nodeId, resume, stop, rerun, finalize, … }`. First two positionals =
+ * run, nodeId — EXCEPT `--finalize`, which is run-level-only and needs no nodeId (a bare `<run> --finalize`
+ * leaves `nodeId` empty; the handler does not require it for that action).
+ */
 export function parseNodeArgs(argv: string[]): ParsedNodeArgs {
-  const out: ParsedNodeArgs = { run: '', nodeId: '', resume: false, stop: false, rerun: false };
+  const out: ParsedNodeArgs = { run: '', nodeId: '', resume: false, stop: false, rerun: false, finalize: false };
   const positionals: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--resume') out.resume = true;
     else if (k === '--stop') out.stop = true;
     else if (k === '--rerun') out.rerun = true;
+    else if (k === '--finalize') out.finalize = true;
+    else if (k.startsWith('--ok=')) out.ok = k.slice('--ok='.length) === 'true';
     else if (k === '-m' || k === '--message') out.message = argv[++i];
     else if (k === '--sandbox') out.sandbox = argv[++i];
     else if (k === '--thinking') out.thinking = argv[++i];
@@ -384,18 +422,43 @@ export async function runNodeCli(argv: string[], deps: NodeDeps = {}): Promise<n
     });
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => { const t = setTimeout(r, ms); t.unref?.(); }));
   const runTemplateFn = deps.runTemplate ?? ((parsed: ParsedRunArgs) => runTemplate(parsed));
+  const finalizeRunFn = deps.finalizeRun ?? coreFinalizeRun;
   const print = deps.print ?? ((s: string) => process.stdout.write(s + '\n'));
   const error = deps.error ?? ((s: string) => process.stderr.write(s + '\n'));
 
   const parsed = parseNodeArgs(argv);
-  if (!parsed.run || !parsed.nodeId) {
-    error('piflowctl node: a run and a node id are required (piflowctl node <run> <nodeId> --resume [-m "<message>"] | --rerun | --stop).');
+  // `--finalize` is RUN-LEVEL-ONLY — naming the exact `<run>` is the whole confirmation, no nodeId needed.
+  if (!parsed.run || (!parsed.nodeId && !parsed.finalize)) {
+    error('piflowctl node: a run and a node id are required (piflowctl node <run> <nodeId> --resume [-m "<message>"] | --rerun | --stop | node <run> --finalize [--ok=true|false]).');
     return 1;
   }
-  if ([parsed.resume, parsed.stop, parsed.rerun].filter(Boolean).length !== 1) {
+  if ([parsed.resume, parsed.stop, parsed.rerun, parsed.finalize].filter(Boolean).length !== 1) {
     // neither, or more than one — EXACTLY one action is required.
-    error('piflowctl node: pass exactly one of --resume, --rerun, or --stop.');
+    error('piflowctl node: pass exactly one of --resume, --rerun, --stop, or --finalize.');
     return 1;
+  }
+
+  // ── --finalize: force-CLOSE a STUCK (!done) run record — the human-invoked closure `runs sweep` also
+  // rides. Resolve → call the core primitive → print exactly what changed (old state → new state) so the
+  // action is legible in a transcript, then surface a refusal (already done:true / no readable run.json)
+  // as a non-zero exit with the primitive's own actionable reason.
+  if (parsed.finalize) {
+    let finalizeRunDir: string;
+    try {
+      finalizeRunDir = resolveRunDir(parsed.run);
+    } catch (e) {
+      error((e as Error).message);
+      return 1;
+    }
+    const result = await finalizeRunFn(finalizeRunDir, { ok: parsed.ok });
+    if (!result.wrote) {
+      error(`piflowctl node ${parsed.run} --finalize: ${result.reason}`);
+      return 1;
+    }
+    print(
+      `piflowctl node: finalized run "${parsed.run}" at ${finalizeRunDir} — done:${result.before.done} ok:${JSON.stringify(result.before.ok)} → done:${result.after.done} ok:${JSON.stringify(result.after.ok)} (every other field preserved verbatim).`,
+    );
+    return 0;
   }
 
   // ── --rerun: COLD single-node re-execution from FROZEN upstream, in the EXISTING run dir. ──
