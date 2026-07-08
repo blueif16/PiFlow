@@ -393,6 +393,43 @@ describe('runSubstrateFixCli — selects issues severity-desc, caps, fixes seque
     });
     expect(lines.some((l) => l.includes('observe:'))).toBe(false);
   });
+
+  it('the outer loop RETRIES a soft-reject and the system-wide breaker HALTS after N consecutive exhausted issues', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    const out: string[] = [];
+    const errs: string[] = [];
+    let calls = 0;
+    await runSubstrateFixCli(['--node', 'gameplay', '--status', 'open', '--max-attempts', '2', '--breaker', '2'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      listIssues: async () => [
+        issueRec('a', 'high', 'open', '260706-01'),
+        issueRec('b', 'high', 'open', '260706-02'),
+        issueRec('c', 'high', 'open', '260706-03'),
+        issueRec('d', 'high', 'open', '260706-04'),
+      ],
+      // every attempt is a soft-gate REJECT carrying a drop-back ⇒ each issue exhausts its 2-attempt budget.
+      fixIssue: async (_p, opts): Promise<FixIssueResult> => {
+        calls++;
+        return {
+          issue: 'x', node: 'gameplay', candidateRef: `/c/${opts.attemptTag}`, editsApplied: 1, proved: true, childId: 'c',
+          gateVerdict: { decision: 'reject', rationale: 'band-aid', category: 'band-aid' },
+          dropback: { category: 'band-aid', steer: 's' }, decision: 'discarded', deltaSummary: {},
+        } as FixIssueResult;
+      },
+      print: (s) => out.push(s),
+      printErr: (s) => errs.push(s),
+    });
+    // 2 issues × 2 attempts = 4 fix calls, THEN the breaker halts before issues c/d (never reached).
+    expect(calls).toBe(4);
+    expect(errs.join('\n')).toMatch(/BREAKER tripped/i);
+    expect(out.some((l) => l.includes('EXHAUSTED') && l.includes('escalating'))).toBe(true); // the closed menu printed
+    const tally = out.find((l) => l.startsWith('optimize fix: node='))!;
+    expect(tally).toMatch(/2 issue\(s\) processed/);
+    expect(tally).toMatch(/2 escalated/);
+    expect(tally).toMatch(/HALTED by --breaker/);
+  });
 });
 
 // ── ADOPT (wraps adoptSubstrateManifest) ──────────────────────────────────────────────────────────────────────

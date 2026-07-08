@@ -101,9 +101,12 @@ USAGE
                                             --node also takes a DOTTED <run>.<id> ref, ≡ --node <id> --run <run>.
   piflowctl optimize fix    --node <id> [--issue <name> | --status open,regressed] [--watch] [--cap N] [--no-prove]
                                             fix the node's issues (severity-desc): candidate copy → fixer → prove
-                                            → strict-improvement gate → STAGE a manifest. --watch streams progress.
-                                            --dry-run prints the composed fixer spawn; mutates/spawns NOTHING.
-                                            --node also takes a DOTTED <run>.<id> ref, ≡ --node <id> --run <run>.
+                                            → gate → STAGE a manifest. A soft-gate REJECT drops back into a
+                                            bounded, diversifying retry (fresh fixer, --max-attempts N, default 3);
+                                            past the bound the best candidate is KEPT + escalated, never landed.
+                                            --breaker N halts the run after N consecutive issues exhaust (default 3;
+                                            0 = off). --watch streams progress. --dry-run prints the composed fixer
+                                            spawn; mutates/spawns NOTHING. --node also takes a DOTTED <run>.<id> ref.
   piflowctl optimize        --node <id> [--run <id> | --topk K]  the FULL loop = triage THEN fix (the default).
   piflowctl optimize adopt  --manifest <path> [--template <d>] [--backup-dir <d>]  LAND a staged substrate
                                             manifest onto the live product (adopt + commit + resolve the issue).

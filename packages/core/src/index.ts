@@ -548,10 +548,12 @@ export {
   listIssues, parseIssueFile, writeIssueFile, transitionIssue, reopen, stampAttempt, computeIssueId, assertTransition, ALLOWED_TRANSITIONS,
   runSubstrateMeasure, runSubstrateJudge,
   fixIssue, adoptSubstrateManifest, readSubstrateManifest, renderSubstrateEvent, UNPROVEN_BY_RUN,
+  fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
 } from './optimize/index.js';
 export type {
   Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
   RunSubstrateMeasureOpts, MeasureReport, SubstrateJudgeOpts, SubstrateJudgeResult,
   FixIssueOpts, FixIssueResult, SubstrateManifest, SubstrateManifestRecord,
   AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,
+  FixWithRetriesOpts, FixWithRetriesResult, RetryAttemptRecord, RetryEscalationPacket, RetryStopReason, RetryContext,
 } from './optimize/index.js';

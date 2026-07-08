@@ -6,7 +6,7 @@
 // Run: npx vitest run packages/core/test/optimize-substrate-retry-loop.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { fixIssueWithRetries, type RetryContext } from '../src/optimize/substrate/retry-loop.js';
+import { fixIssueWithRetries, makeConsecutiveExhaustedBreaker, type RetryContext } from '../src/optimize/substrate/retry-loop.js';
 import type { FixIssueOpts, FixIssueResult } from '../src/optimize/substrate/fix.js';
 
 const attemptOf = (o: FixIssueOpts): number => Number((o.attemptTag ?? 'attempt-1').split('-')[1]);
@@ -161,5 +161,39 @@ describe('fixIssueWithRetries — the triple cap (attempts · wall · tokens), f
     expect(res.stoppedBy).toBe('token-budget');
     expect(res.outcome).toBe('exhausted');
     expect(res.attempts).toHaveLength(2);
+  });
+});
+
+describe('makeConsecutiveExhaustedBreaker — the system-wide second-level breaker', () => {
+  it('trips only on N CONSECUTIVE exhausted outcomes', () => {
+    const b = makeConsecutiveExhaustedBreaker(3);
+    expect(b.record('exhausted')).toBe(false);
+    expect(b.record('exhausted')).toBe(false);
+    expect(b.record('exhausted')).toBe(true); // 3rd consecutive → architecture-problem signal
+    expect(b.tripped).toBe(true);
+  });
+
+  it('an accept RESETS the streak', () => {
+    const b = makeConsecutiveExhaustedBreaker(3);
+    b.record('exhausted');
+    b.record('exhausted');
+    expect(b.record('accepted')).toBe(false);
+    expect(b.streak).toBe(0);
+    expect(b.record('exhausted')).toBe(false); // streak restarts at 1
+  });
+
+  it('a passthrough is NEUTRAL — it neither increments nor resets (a different lane)', () => {
+    const b = makeConsecutiveExhaustedBreaker(3);
+    b.record('exhausted');
+    b.record('passthrough'); // neutral
+    b.record('exhausted');
+    expect(b.record('exhausted')).toBe(true); // 3 exhausted despite the interleaved passthrough
+  });
+
+  it('limit 0 disables the breaker (never trips)', () => {
+    const b = makeConsecutiveExhaustedBreaker(0);
+    expect(b.record('exhausted')).toBe(false);
+    expect(b.record('exhausted')).toBe(false);
+    expect(b.tripped).toBe(false);
   });
 });

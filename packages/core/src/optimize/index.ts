@@ -109,10 +109,19 @@ export {
 export type {
   FixIssueOpts, FixIssueResult, CandidateClosure, FoldGradedOpts, FoldGradedResult,
   CommitAdoptionResult, CommitIssueRef, SubstrateManifest, SubstrateManifestRecord,
-  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, RetryContext,
 } from './substrate/fix.js';
 export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
 export type { SubstrateEvent, SubstrateEventSink } from './substrate/events.js';
+
+// The OUTER retry loop (docs/design/optimize-verification-loop.md §8) — the bounded, diversifying loop that
+// CONSUMES the gate's soft-gate drop-back: fresh fixer per attempt (own candidate dir + prior-drop-back
+// context, never the rubric), a triple cap (attempts · wall · token), keep-best + a closed escalation menu on
+// exhaustion, plus the system-wide "N consecutive exhausted ⇒ architecture problem" breaker.
+export { fixIssueWithRetries, makeConsecutiveExhaustedBreaker } from './substrate/retry-loop.js';
+export type {
+  FixWithRetriesOpts, FixWithRetriesResult, RetryAttemptRecord, RetryEscalationPacket, RetryStopReason,
+} from './substrate/retry-loop.js';
 
 // The SUBSTRATE SOFT-JUDGE stage (docs/specs/optimize-substrate-plan.md §M4) — spawns ONE judge agent turn
 // over a run's measure report + criteria/gold/memory + the existing ledger, then mechanically post-processes

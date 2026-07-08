@@ -171,4 +171,36 @@ export async function fixIssueWithRetries(issuePath: string, opts: FixWithRetrie
   }
 }
 
+/**
+ * The SECOND-level (system-wide) circuit breaker: N CONSECUTIVE `exhausted` per-issue outcomes ⇒ an
+ * ARCHITECTURE problem — the diversified fixer is too weak, or the issues are framed wrong — so the caller
+ * should HALT the whole run and escalate rather than burn budget issue after issue (design §8, "loops of
+ * loops"). `accepted` RESETS the streak; `passthrough` is NEUTRAL (a numeric-path / no-edit single-shot is a
+ * different lane, not evidence about the diversified fixer). `limit <= 0` disables it. Pure/stateful factory so
+ * the CLI loop drives it and a test asserts trip/reset with no I/O. `record` returns whether it is NOW tripped.
+ */
+export function makeConsecutiveExhaustedBreaker(limit: number): {
+  record: (outcome: FixWithRetriesResult['outcome']) => boolean;
+  readonly streak: number;
+  readonly tripped: boolean;
+} {
+  let streak = 0;
+  let tripped = false;
+  return {
+    record(outcome): boolean {
+      if (outcome === 'exhausted') streak++;
+      else if (outcome === 'accepted') streak = 0;
+      // 'passthrough' → neutral (neither increments nor resets).
+      tripped = limit > 0 && streak >= limit;
+      return tripped;
+    },
+    get streak() {
+      return streak;
+    },
+    get tripped() {
+      return tripped;
+    },
+  };
+}
+
 export type { RetryContext };

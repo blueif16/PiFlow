@@ -21,7 +21,8 @@ import path from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import {
-  runSubstrateMeasure, runSubstrateJudge, fixIssue, adoptSubstrateManifest, listIssues, renderSubstrateEvent,
+  runSubstrateMeasure, runSubstrateJudge, fixIssue, fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
+  adoptSubstrateManifest, listIssues, renderSubstrateEvent,
   type SubstrateEvent, type FixIssueResult, type IssueRecord, type Status, type SubstrateManifest,
 } from '@piflow/core';
 import { resolveNodeRunDir } from './node.js';
@@ -192,6 +193,9 @@ export function parseSubstrateTriageArgs(argv: string[]): SubstrateTriageArgs {
 
 /** Per-pass cap on issues one `fix` pass processes (config-with-defaults; overridable via `--cap`). */
 export const DEFAULT_FIX_CAP = 5;
+/** Outer-loop defaults: the per-issue retry ceiling + the system-wide consecutive-exhausted halt (design §8). */
+export const DEFAULT_MAX_ATTEMPTS = 3;
+export const DEFAULT_BREAKER = 3;
 
 export interface SubstrateFixArgs {
   node: string;
@@ -208,6 +212,10 @@ export interface SubstrateFixArgs {
   model?: string;
   tolerance?: number;
   stagingDir?: string;
+  /** `--max-attempts N`: the per-issue retry ceiling — the PRIMARY bound of the outer loop (default 3). */
+  maxAttempts?: number;
+  /** `--breaker N`: system-wide halt after N CONSECUTIVE issues exhaust their retry budget (default 3; 0 = off). */
+  breaker?: number;
   /** `--dry-run`: compose the fixer spawn (prompt + jail + skill + config) and PRINT it — spawn/mutate NOTHING
    *  (no issue transition, no candidate copy, no manifest). Inherited from the base agent's preview seam. */
   dryRun?: boolean;
@@ -231,6 +239,8 @@ export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
     else if (k === '--model') out.model = argv[++i];
     else if (k === '--tolerance') out.tolerance = Number(argv[++i]);
     else if (k === '--staging-dir') out.stagingDir = argv[++i];
+    else if (k === '--max-attempts') out.maxAttempts = Math.max(1, Number(argv[++i]) || DEFAULT_MAX_ATTEMPTS);
+    else if (k === '--breaker') { const n = Number(argv[++i]); out.breaker = Number.isFinite(n) && n >= 0 ? n : DEFAULT_BREAKER; }
     else if (k === '--dry-run') out.dryRun = true;
     // unknown flags/tokens ignored (the full loop feeds this parser triage-only flags too).
   }
@@ -502,9 +512,16 @@ export async function runSubstrateFixCli(argv: string[], deps: SubstrateCliDeps 
   const fix = deps.fixIssue ?? fixIssue;
   let staged = 0;
   let discarded = 0;
+  let escalated = 0;
+  let processed = 0;
+  let halted = false;
+  // The SECOND-level (system-wide) breaker: N consecutive issues exhausting their retry budget ⇒ halt (§8).
+  const breaker = makeConsecutiveExhaustedBreaker(a.breaker ?? DEFAULT_BREAKER);
+
   for (const rec of records) {
     const outDir = fixerAgentOutDir(parentRunDir, a.node, rec.issue.name);
-    const res: FixIssueResult = await fix(rec.file, {
+    // The base fix opts every attempt shares (the retry loop adds attemptTag + retry per attempt).
+    const fixOpts = {
       parentRunDir, templateDir, workspace,
       prove: a.prove,
       outDir, // PERSIST the fixer spawn's run dir — never the base agent's ephemeral (deleted) default.
@@ -513,20 +530,51 @@ export async function runSubstrateFixCli(argv: string[], deps: SubstrateCliDeps 
       ...(a.stagingDir ? { stagingDir: path.resolve(deps.cwd ?? process.cwd(), a.stagingDir) } : {}),
       ...(a.tier ? { tier: a.tier } : {}),
       ...(a.model ? { model: a.model } : {}),
-      ...(a.dryRun ? { dryRun: true } : {}),
-    });
-    if (a.dryRun && res.dryRun) {
-      printSubstrateDryRun(`optimize fix[${path.basename(parentRunDir)}] node=${a.node} issue=${rec.issue.name}`, res.dryRun, print);
+    };
+
+    // DRY-RUN — a single spawn PREVIEW, never a retry (a preview mutates/decides nothing).
+    if (a.dryRun) {
+      const res = await fix(rec.file, { ...fixOpts, dryRun: true });
+      if (res.dryRun) printSubstrateDryRun(`optimize fix[${path.basename(parentRunDir)}] node=${a.node} issue=${rec.issue.name}`, res.dryRun, print);
       continue;
     }
-    if (res.decision === 'staged') staged++;
-    else discarded++;
+
+    // The OUTER loop: bounded, diversifying retries that consume the gate's drop-back (§8). `fixOnce` honors the
+    // injected fixIssue seam so a test drives each attempt.
+    const res = await fixIssueWithRetries(rec.file, {
+      ...fixOpts,
+      ...(a.maxAttempts !== undefined ? { maxAttempts: a.maxAttempts } : {}),
+      fixOnce: fix,
+    });
+    processed++;
+
+    if (res.outcome === 'accepted') {
+      staged++;
+    } else if (res.outcome === 'exhausted') {
+      discarded++;
+      escalated++;
+      print(`optimize fix: issue "${rec.issue.name}" EXHAUSTED after ${res.attempts.length} attempt(s) [${res.stoppedBy}] — escalating (best candidate KEPT, not landed):`);
+      for (const opt of res.escalation?.options ?? []) print(`  • ${opt}`);
+    } else {
+      discarded++; // passthrough — a non-retryable discard (numeric-path / no-edit)
+    }
     print(`observe: piflowctl telemetry ${outDir}`);
+
+    if (breaker.record(res.outcome)) {
+      printErr(
+        `optimize fix: SYSTEM-WIDE BREAKER tripped — ${breaker.streak} consecutive issues exhausted their retry budget. ` +
+          `This is an ARCHITECTURE signal (the fixer is too weak, or the issues are framed wrong), not a per-issue miss. ` +
+          `Halting; escalate before re-running (raise --breaker to override).`,
+      );
+      halted = true;
+      break;
+    }
   }
   if (a.dryRun) return; // a preview processed/staged/discarded nothing — no tally to print.
-  const left = total - records.length;
-  const leftNote = left > 0 ? ` (${left} left by --cap ${a.cap})` : '';
-  print(`optimize fix: node=${a.node} — ${records.length} issue(s) processed, ${staged} staged, ${discarded} discarded${leftNote}; adopt is a separate step.`);
+  const left = total - processed;
+  const leftNote = left > 0 ? ` (${left} left${halted ? ' — HALTED by --breaker' : ` by --cap ${a.cap}`})` : '';
+  const escNote = escalated > 0 ? `, ${escalated} escalated` : '';
+  print(`optimize fix: node=${a.node} — ${processed} issue(s) processed, ${staged} staged, ${discarded} discarded${escNote}${leftNote}; adopt is a separate step.`);
 }
 
 // ── full loop (bare `--node`) = triage THEN fix with the default selector ────────────────────────────────────
