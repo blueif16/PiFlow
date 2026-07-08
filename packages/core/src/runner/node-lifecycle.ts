@@ -926,7 +926,12 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       try {
         const promotes: ResolvedPromote[] = [];
         for (const raw of derived.promotes) {
-          const spec = parsePromote(raw);
+          // Resolve {{WORKSPACE}}/{{RUN}}/{{state.*}}/{{arg.*}} in the spec BEFORE parsing — mirrors the sibling
+          // project/registryProject/merge derive-ops above, each of which wraps its raw op in resolveDeep. Without
+          // this a file-sourced promote (`from:"{{WORKSPACE}}/…/x.json:field"`) can never resolve: the token stays
+          // literal and absUnder joins it under {{RUN}} (a bogus path), which forced authors onto the fragile
+          // `@return:` (model-echoed) source for a value that is a deterministic field of a produced file.
+          const spec = parsePromote(resolveDeep(raw, resolveCtx));
           const value = await extractPromoteValue(spec, { run: ctx.outDir, returnValue: parsed ?? undefined });
           promotes.push({ to: spec.to, value, merge: spec.merge });
         }
