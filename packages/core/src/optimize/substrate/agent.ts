@@ -1,5 +1,5 @@
 // optimize/substrate/agent.ts — the M4 ONE spawn wrapper (docs/specs/optimize-substrate-plan.md §M4). Every
-// substrate agent turn (the judge here; the fixer in M6) goes through `runSubstrateAgent` — never a
+// base agent turn (the judge here; the fixer in M6) goes through `runBaseAgent` — never a
 // hand-rolled `spawn('claude', …)`. It builds a LITERAL one-node `WorkflowSpec` (`executor:'claude-code'`)
 // and calls `runFromConfig` (runner/entry.ts) so credentials, model routing, the sandbox jail,
 // `parseClaudeResult`, and `NodeStatusRecord` telemetry are all INHERITED — byte-identical to a
@@ -35,22 +35,22 @@ import type { ModelTiers } from '../../runner/model-routing.js';
 import { parseClaudeResult } from '../../runner/claude-result.js';
 import { LocalSandboxProvider } from '../../sandbox/local.js';
 
-/** The default substrate-agent tier — NEVER `'deep'` (memory: optimize-fixer-tier-finding — the deep tier
+/** The default base-agent tier — NEVER `'deep'` (memory: optimize-fixer-tier-finding — the deep tier
  *  over-deliberates and won't commit edits). Overridable per call, like every other tier reference. */
-export const SUBSTRATE_AGENT_DEFAULT_TIER = 'balanced';
+export const BASE_AGENT_DEFAULT_TIER = 'balanced';
 
-/** The single node id every ephemeral substrate-agent WorkflowSpec uses (internal bookkeeping only — never
+/** The single node id every ephemeral base-agent WorkflowSpec uses (internal bookkeeping only — never
  *  surfaced to the caller, who only ever sees the returned status/text). */
 const AGENT_NODE_LABEL = 'agent';
 
 /**
- * The Base Agent's INHERITABLE field surface — declared ONCE, here. These are the fields every CHILD substrate
- * agent (the judge, the fixer, any future one) forwards VERBATIM to `runSubstrateAgent` rather than
+ * The Base Agent's INHERITABLE field surface — declared ONCE, here. These are the fields every CHILD base
+ * agent (the judge, the fixer, any future one) forwards VERBATIM to `runBaseAgent` rather than
  * re-declaring its own hand-copied subset (anything left off such a copy is silently lost — the bug class this
- * type kills). A child's opts EXTEND `SubstrateAgentChildOpts` and spread `inheritedAgentOpts(opts)` into the
+ * type kills). A child's opts EXTEND `BaseAgentChildOpts` and spread `inheritedAgentOpts(opts)` into the
  * `runAgent(...)` call, so a field added HERE (+ `INHERITED_KEYS`) reaches every child automatically.
  */
-export interface SubstrateAgentInherited {
+export interface BaseAgentInherited {
   /** SDK tier alias, resolved via `resolveClaudeModel`'s `claude` tier block. Default `'balanced'`. */
   tier?: string;
   /** An explicit model id/alias — WINS over `tier` (mirrors `resolveClaudeModel`'s own precedence). */
@@ -58,7 +58,7 @@ export interface SubstrateAgentInherited {
   /** Hard wall-clock cap for the agent's turn. Omitted ⇒ the runner's own default (no cap). */
   timeoutMs?: number;
   /** Sandbox provider. Omit ⇒ a read-scope-jailed `LocalSandboxProvider` — the DEFAULT, because every
-   *  substrate agent runs on the `claude-code` driver, which CANNOT run on the `inmemory` provider (it
+   *  base agent runs on the `claude-code` driver, which CANNOT run on the `inmemory` provider (it
    *  supports `local` only). A test injects its own (e.g. `InMemorySandboxProvider`) to stay offline. */
   provider?: SandboxProvider;
   /** Test/offline seam — forwarded to `runFromConfig` verbatim (fakes the spawned shell command; never
@@ -70,7 +70,7 @@ export interface SubstrateAgentInherited {
    *  `~/.piflow/model-tiers.json` (the SAME `RunOptions.modelRouting` seam `runner.ts` exposes). */
   modelRouting?: { tiers: ModelTiers; modelsIndex: Map<string, string> };
   /** DRY-RUN: build the one-node spec (the full composition + resolved config) and RETURN it as `plan`
-   *  WITHOUT spawning. The base-agent preview seam EVERY substrate agent (judge, fixer) inherits — a caller's
+   *  WITHOUT spawning. The base-agent preview seam EVERY base agent (judge, fixer) inherits — a caller's
    *  additive config (prompt, skill, tools, sandbox) is exactly what the returned plan surfaces. */
   dryRun?: boolean;
   /** OBSERVE seam: PERSIST the spawn's run dir here instead of the ephemeral tmpdir (which is deleted after
@@ -80,7 +80,7 @@ export interface SubstrateAgentInherited {
   outDir?: string;
 }
 
-export interface RunSubstrateAgentOpts extends SubstrateAgentInherited {
+export interface RunBaseAgentOpts extends BaseAgentInherited {
   /** The FULL, already-assembled prompt text — the caller resolves every token/embed itself; agent.ts does
    *  no token resolution of its own. */
   prompt: string;
@@ -99,15 +99,15 @@ export interface RunSubstrateAgentOpts extends SubstrateAgentInherited {
   skill?: string;
 }
 
-/** What a CHILD substrate agent's opts EMBED: the whole inherited base surface + the `runAgent` test seam
+/** What a CHILD base agent's opts EMBED: the whole inherited base surface + the `runAgent` test seam
  *  (replace the real spawn in a test — never live-spawn there; the live demo proves real agent behavior). */
-export interface SubstrateAgentChildOpts extends SubstrateAgentInherited {
-  runAgent?: (opts: RunSubstrateAgentOpts) => Promise<RunSubstrateAgentResult>;
+export interface BaseAgentChildOpts extends BaseAgentInherited {
+  runAgent?: (opts: RunBaseAgentOpts) => Promise<RunBaseAgentResult>;
 }
 
-/** The one enumerated key set behind `inheritedAgentOpts` — typed `Record<keyof SubstrateAgentInherited, true>`
+/** The one enumerated key set behind `inheritedAgentOpts` — typed `Record<keyof BaseAgentInherited, true>`
  *  so adding a field to the interface FAILS COMPILATION here until it is forwarded too (no silent loss). */
-const INHERITED_KEYS: Record<keyof SubstrateAgentInherited, true> = {
+const INHERITED_KEYS: Record<keyof BaseAgentInherited, true> = {
   tier: true,
   model: true,
   timeoutMs: true,
@@ -122,15 +122,15 @@ const INHERITED_KEYS: Record<keyof SubstrateAgentInherited, true> = {
 /** Project a child's opts DOWN to the base agent's inheritable surface — what every child spreads into its
  *  `runAgent(...)` call. Never spread `...opts` raw: a child's OWN fields (seams, dirs, caps) must not leak
  *  into the spawn opts. Undefined fields are omitted (exact-optional-safe). */
-export function inheritedAgentOpts(opts: SubstrateAgentInherited): SubstrateAgentInherited {
-  const out: Partial<Record<keyof SubstrateAgentInherited, unknown>> = {};
-  for (const k of Object.keys(INHERITED_KEYS) as (keyof SubstrateAgentInherited)[]) {
+export function inheritedAgentOpts(opts: BaseAgentInherited): BaseAgentInherited {
+  const out: Partial<Record<keyof BaseAgentInherited, unknown>> = {};
+  for (const k of Object.keys(INHERITED_KEYS) as (keyof BaseAgentInherited)[]) {
     if (opts[k] !== undefined) out[k] = opts[k];
   }
-  return out as SubstrateAgentInherited;
+  return out as BaseAgentInherited;
 }
 
-export interface RunSubstrateAgentResult {
+export interface RunBaseAgentResult {
   /** The one node's full status record — everything a claude-code node reports. ABSENT on a dry-run (nothing ran). */
   status?: NodeStatusRecord;
   /** The agent's parsed final text (via `parseClaudeResult`); `''` when unavailable. ABSENT on a dry-run. */
@@ -145,11 +145,11 @@ export interface RunSubstrateAgentResult {
 }
 
 /**
- * Spawn ONE claude-code agent turn and return its status + parsed text. THE spawn wrapper — every substrate
+ * Spawn ONE claude-code agent turn and return its status + parsed text. THE spawn wrapper — every base
  * agent (judge, fixer) calls this; never hand-roll a `spawn('claude', …)` or call `runFromConfig` directly
  * for an agent turn outside this function.
  */
-export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> {
+export async function runBaseAgent(opts: RunBaseAgentOpts): Promise<RunBaseAgentResult> {
   const spec: WorkflowSpec = {
     meta: { name: 'substrate-agent', description: 'ephemeral one-node substrate agent turn' },
     nodes: [
@@ -160,7 +160,7 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
         // `model` always wins inside `resolveClaudeModel` regardless of `tier` also being set — no need to
         // conditionally null one out here; setting both lets the SAME precedence every claude-code node uses
         // do the deciding.
-        tier: opts.tier ?? SUBSTRATE_AGENT_DEFAULT_TIER,
+        tier: opts.tier ?? BASE_AGENT_DEFAULT_TIER,
         model: opts.model,
         // A bare skill id rides onto the node so the runner's skill-staging path stages it (`--skill`); a
         // miss is advisory, so `undefined` here is a no-op (no skill declared), like every non-skill node.
@@ -168,7 +168,7 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
         tools: opts.tools ?? {},
         io: { reads: [], produces: [], artifacts: [] },
         sandbox: {
-          // DECLARE `local`: every substrate agent runs the claude-code driver, whose capability card lists
+          // DECLARE `local`: every base agent runs the claude-code driver, whose capability card lists
           // `sandbox.providers: ['local']` ONLY. Left undefined, `compile()` (dag.ts) stamps the run-level
           // `?? 'inmemory'` default, and the runner's `driverFits` precheck then warns `[driver-fit] … cannot
           // run on sandbox provider "inmemory"` (the runtime provider below is already local, so the spawn
@@ -184,7 +184,7 @@ export async function runSubstrateAgent(opts: RunSubstrateAgentOpts): Promise<Ru
   };
 
   // DRY-RUN: the spec IS the composition (prompt + tools + sandbox + skill + tier/model). Return it and STOP —
-  // no tmpdir, no runFromConfig, no spawn. Every substrate agent inherits this preview through this ONE seam.
+  // no tmpdir, no runFromConfig, no spawn. Every base agent inherits this preview through this ONE seam.
   if (opts.dryRun) return { plan: spec.nodes[0] };
 
   // Capture the ONE node's raw stdout by wrapping whichever execRunner would actually run — a pure

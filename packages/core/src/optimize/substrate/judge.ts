@@ -27,8 +27,8 @@ import {
   type Issue, type IssueRecord, type Severity,
 } from './issues.js';
 import {
-  inheritedAgentOpts, runSubstrateAgent,
-  type RunSubstrateAgentResult, type SubstrateAgentChildOpts,
+  inheritedAgentOpts, runBaseAgent,
+  type RunBaseAgentResult, type BaseAgentChildOpts,
 } from './agent.js';
 import { generateRunName } from '../../names/generator.js';
 
@@ -323,11 +323,11 @@ export async function postProcessJudgeDrafts(
 // ── (3) runSubstrateJudge — the full pass ───────────────────────────────────────────────────────────────
 
 /** The judge's opts = its OWN specialization (workspace/templateDir/cap) + the base agent's whole inherited
- *  field surface + the `runAgent` test seam, EMBEDDED via `SubstrateAgentChildOpts` (agent.ts) — never a
+ *  field surface + the `runAgent` test seam, EMBEDDED via `BaseAgentChildOpts` (agent.ts) — never a
  *  re-declared subset (anything left off a copy is silently lost; `dryRun`, tier/model, timeoutMs, and every
  *  future base field arrive here automatically). On `dryRun`, the pass returns the composed plan WITHOUT
  *  spawning, post-processing, or stamping the marker. */
-export interface SubstrateJudgeOpts extends SubstrateAgentChildOpts {
+export interface SubstrateJudgeOpts extends BaseAgentChildOpts {
   /** `{{WORKSPACE}}` — the product repo root. */
   workspace: string;
   /** The template dir (`nodes/<id>/{node.json,memory.md,issues/}`). */
@@ -346,10 +346,14 @@ export interface SubstrateJudgeResult {
   /** The judge agent's parsed final text (debugging/telemetry — never re-parsed for control flow). Absent on a dry-run. */
   agentText?: string;
   /** The judge agent's full node status record. Absent on a dry-run. */
-  agentStatus?: RunSubstrateAgentResult['status'];
+  agentStatus?: RunBaseAgentResult['status'];
+  /** The judge spawn's PERSISTED run dir (present ONLY when the caller passed `outDir` to the base agent) —
+   *  point the existing observe instruments at it (`piflowctl telemetry|status|trace <dir>`), exactly like a
+   *  workflow node's own run. Absent on the ephemeral default (already deleted) and on a dry-run. */
+  agentRunDir?: string;
   /** Present ONLY on a dry-run: the BASE agent's composed spec (`plan`) that WOULD have been spawned — the
    *  full ingested `prompt` + resolved sandbox/tier/model/tools/skill. Forwarded verbatim from the base agent. */
-  dryRun?: RunSubstrateAgentResult['plan'];
+  dryRun?: RunBaseAgentResult['plan'];
 }
 
 /**
@@ -363,7 +367,7 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
   const issuesDirPath = path.join(templateDir, 'nodes', nodeId, 'issues');
   const readScope = [runDir, templateDir, workspace];
   const owns = [issuesDirPath];
-  const runAgent = opts.runAgent ?? runSubstrateAgent;
+  const runAgent = opts.runAgent ?? runBaseAgent;
 
   const agentResult = await runAgent({
     prompt,
@@ -390,5 +394,8 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
   const when = new Date().toISOString();
   await fs.writeFile(path.join(markerDir, `triaged.${nodeId}.json`), JSON.stringify({ when, issues: landed }, null, 2) + '\n');
 
-  return { when, issues: landed, capped, agentText: agentResult.text, agentStatus: agentResult.status };
+  return {
+    when, issues: landed, capped,
+    agentText: agentResult.text, agentStatus: agentResult.status, agentRunDir: agentResult.runDir,
+  };
 }
