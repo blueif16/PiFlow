@@ -256,5 +256,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `nodeTokenSpine` (packages/core/src/observe/runView.ts:313) — 3 callers in `packages/core/src/observe/runView.ts`; tests: `packages/core/test/claude-accumulator.test.ts`, `packages/core/test/node-token-spine.test.ts`
 - `RunView` (packages/core/src/observe/runView.ts:135) — 15 callers in `packages/core/src/observe/assess.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/telemetry.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/assess-probe.test.ts`, `packages/core/test/observe-assess.test.ts`, `packages/core/test/telemetry.test.ts`
 
-<sub>derived 2026-07-07 · arc=89 commits · files=13 · lessons=65</sub>
+<sub>derived 2026-07-08 · arc=89 commits · files=13 · lessons=65</sub>
 <!-- okf:auto-end -->

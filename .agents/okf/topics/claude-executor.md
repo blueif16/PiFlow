@@ -160,8 +160,8 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:15) — 3 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 - `claudeCommand` (packages/core/src/runner/command.ts:135) — 6 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-command.test.ts`, `packages/core/test/command-thinking.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
-- `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 8 callers in `packages/core/src/optimize/substrate/agent.ts`, `packages/core/src/runner/drivers/claude-code.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
+- `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 8 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/optimize/substrate/agent.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=45 commits · files=5 · lessons=32</sub>
+<sub>derived 2026-07-08 · arc=45 commits · files=5 · lessons=32</sub>
 <!-- okf:auto-end -->

@@ -258,6 +258,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
 - `84294f9` 2026-07-06 — fix(core): resolveScope resolves to ONE workspace, not recursive down-discovery
 - `91fb8ee` 2026-07-07 — Merge feat/run-baseline-rerun: run --baseline/--stage-only windowed reruns + stageBaselineRun primitive
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
+- `1968111` 2026-07-07 — refactor(optimize): judge + fixer inherit the base substrate agent's full surface
+- `76f79ef` 2026-07-07 — feat(optimize): system-wide breaker + wire the outer loop into the fix CLI
 
 ### Lessons — memory cluster
 
@@ -285,8 +288,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
 - `buildNodeMemory` (packages/core/src/memory/skeleton.ts:15) — 7 callers in `packages/core/src/memory/seed.ts`, `packages/core/src/optimize/memorize.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
+- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-07 · arc=182 commits · files=15 · lessons=17</sub>
+<sub>derived 2026-07-08 · arc=185 commits · files=15 · lessons=17</sub>
 <!-- okf:auto-end -->

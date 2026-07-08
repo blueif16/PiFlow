@@ -123,6 +123,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 - `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -184,5 +185,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 20 callers in `packages/cli/src/init/steps/claude-code.ts`, `packages/cli/src/init/steps/model-tiers.ts`, `packages/cli/src/model.ts`, `packages/core/src/runner/runner.ts` +5 more; tests: `packages/core/test/agent-base.test.ts`, `packages/core/test/model-routing.test.ts`, `packages/core/test/piflow-home.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=50 commits · files=10 · lessons=48</sub>
+<sub>derived 2026-07-08 · arc=51 commits · files=10 · lessons=48</sub>
 <!-- okf:auto-end -->

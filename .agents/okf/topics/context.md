@@ -137,6 +137,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -184,5 +185,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/remote.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-07 · arc=51 commits · files=3 · lessons=34</sub>
+<sub>derived 2026-07-08 · arc=52 commits · files=3 · lessons=34</sub>
 <!-- okf:auto-end -->

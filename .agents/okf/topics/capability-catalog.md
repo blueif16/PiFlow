@@ -100,6 +100,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `762c08f` 2026-07-03 — feat(core+cli): catalog introspect --as <alias> — bridge registry names to local bind names
 - `507b890` 2026-07-03 — feat(core): parseSkillDoc — manifest widened with description + body
 - `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -171,5 +172,5 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/catalog-introspect.test.ts`, `packages/core/test/tool-config.test.ts`
 - `introspectMcpServer` (packages/core/src/catalog/introspect.ts:109) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
 
-<sub>derived 2026-07-07 · arc=34 commits · files=9 · lessons=58</sub>
+<sub>derived 2026-07-08 · arc=35 commits · files=9 · lessons=58</sub>
 <!-- okf:auto-end -->

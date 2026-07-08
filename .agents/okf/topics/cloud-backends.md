@@ -162,6 +162,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -222,5 +223,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=100 commits · files=8 · lessons=47</sub>
+<sub>derived 2026-07-08 · arc=101 commits · files=8 · lessons=47</sub>
 <!-- okf:auto-end -->

@@ -78,6 +78,7 @@ contract is pinned here. Design: `docs/design/gate-list-and-additive-profiles.md
 - `9d54218` 2026-06-24 — feat(core): generic run-profile node elision + transitive dep rewire
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `e9c58ee` 2026-07-06 — feat(core): gate-list fan-out + profile-overlay loader modules
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -96,8 +97,8 @@ contract is pinned here. Design: `docs/design/gate-list-and-additive-profiles.md
 - `UnknownProfileError` (packages/core/src/workflow/profile.ts:21) — 3 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/profile.ts`; tests: `packages/core/test/profile.test.ts`
 - `applyProfileByName` (packages/core/src/workflow/profile.ts:133) — 7 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/profile.test.ts`
 - `loadProfileOverlay` (packages/core/src/workflow/profile-overlay.ts:56) — 3 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `ProfileOverlayError` (packages/core/src/workflow/profile-overlay.ts:24) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/template/loader.ts`, `packages/core/src/workflow/profile-overlay.ts`; ⚠ no covering tests found
+- `ProfileOverlayError` (packages/core/src/workflow/profile-overlay.ts:24) — 4 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/profile-overlay.ts`; ⚠ no covering tests found
 - `applyProfile` (packages/core/src/workflow/profile.ts:95) — 3 callers in `packages/core/src/workflow/profile.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/profile.test.ts`
 
-<sub>derived 2026-07-07 · arc=3 commits · files=3 · lessons=8</sub>
+<sub>derived 2026-07-08 · arc=4 commits · files=3 · lessons=8</sub>
 <!-- okf:auto-end -->

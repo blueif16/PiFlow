@@ -196,6 +196,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -221,5 +222,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 18 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/retry.ts` +2 more; ⚠ no covering tests found
 - `RunScope` (packages/core/src/types.ts:668) — 19 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts` +6 more; ⚠ no covering tests found
 
-<sub>derived 2026-07-07 · arc=141 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-08 · arc=142 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

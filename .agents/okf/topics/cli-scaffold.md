@@ -212,6 +212,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
+- `1968111` 2026-07-07 — refactor(optimize): judge + fixer inherit the base substrate agent's full surface
+- `76f79ef` 2026-07-07 — feat(optimize): system-wide breaker + wire the outer loop into the fix CLI
 
 ### Lessons — memory cluster
 
@@ -302,5 +305,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 4 callers in `packages/cli/src/cli.ts`, `packages/cli/src/index.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 6 callers in `packages/cli/src/blueprint-stamp.ts`, `packages/cli/src/scaffold.ts`, `packages/cli/src/index.ts`; tests: `packages/cli/test/scaffold-memory.test.ts`, `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-07 · arc=152 commits · files=8 · lessons=77</sub>
+<sub>derived 2026-07-08 · arc=155 commits · files=8 · lessons=77</sub>
 <!-- okf:auto-end -->

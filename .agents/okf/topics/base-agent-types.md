@@ -194,6 +194,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -221,5 +222,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 10 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/workflow/agent-preset.ts`, `packages/core/src/workflow/template/render.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/agent-preset-expansion.test.ts`, `packages/core/test/agent-preset-roleprompt.test.ts`, `packages/core/test/agent-preset.test.ts`
 - `toFlowGraph` (gui/src/data/runView.ts:730) — 4 callers in `gui/src/components/WorkflowCanvas.tsx`; tests: `gui/src/data/liveModelToRunView.test.ts`, `gui/src/data/runView.test.ts`
 
-<sub>derived 2026-07-07 · arc=134 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-08 · arc=135 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

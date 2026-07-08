@@ -39,12 +39,25 @@ A design review with the human deliberately thinned the below. The shipped v1:
   present → the gate agent (accept ⇒ staged for human; reject ⇒ `verifying→open` + drop-back packet); else →
   `evaluateGate` stage-for-human. New `opts.gate` seam; soft-path tests incl. the reject/drop-back path
   (routing mutation-proven).
+- **The OUTER loop — `packages/core/src/optimize/substrate/retry-loop.ts` (`fixIssueWithRetries`).** Consumes the
+  drop-back: a soft-gate reject re-dispatches a FRESH fixer (its own `attempt-N` candidate dir) carrying the
+  accumulated categories + steers + prior fixer accounts as a `RetryContext` — never the rubric (`fix.ts`
+  `buildFixerPrompt` renders a rubric-free "prior attempts rejected → try a DIFFERENT approach" fence;
+  `fixerAccount` now surfaced so real runs thread "what was tried"). TRIPLE cap (attempts default 3 · wall ·
+  token, first-to-trip wins, cannot run away); past the bound → keep BEST + a CLOSED escalation menu, never a
+  silent drop / auto-land. `makeConsecutiveExhaustedBreaker` = the system-wide second level (N consecutive
+  exhausted ⇒ architecture signal ⇒ halt). Wired into `runSubstrateFixCli` (`--max-attempts`, `--breaker`).
+  Test-first, give-up path first; the caps/closure/breaker are mutation-proven. **Correction to §9's framing:**
+  the numeric `runOptimizeLoop` (`optimize/loop.ts`) is a SEPARATE loop (Loop A) that never calls `fixIssue`;
+  the drop-back lives only on the substrate soft path, so the outer loop is a NEW module there, not a change to
+  `runOptimizeLoop`. Numeric-path / no-edit discards (no drop-back) are non-retryable passthrough by design.
 
 ### Still open (build / iterate)
 - Ration the rerun by severity (today `prove` still runs once per candidate) — lane D's cost law.
 - Pass a real unified diff to the gate (v1 lets it inspect `candidateRef` directly).
-- The outer loop (`runOptimizeLoop`) consuming the drop-back packet to dispatch a FRESH, diversified fixer +
-  the bounded-retry / circuit-breaker / tested give-up path (§8).
+- Keep-BEST across attempts is heuristic on the scoreless soft path (the last, most-steered candidate + all
+  preserved for the human); a numeric score would enable true best-selection.
+- Per-attempt fixer `outDir` (today all attempts share one persisted spawn dir → only the last is observable).
 - prove-rerun provider → local when the parent recorded none.
 - Live-prove on `flaky-cottage`.
 

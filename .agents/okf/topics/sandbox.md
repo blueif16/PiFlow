@@ -156,6 +156,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -215,5 +216,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 5 callers in `deploy/e2b/bwrap-proof-driver.mjs`, `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-07 · arc=87 commits · files=8 · lessons=46</sub>
+<sub>derived 2026-07-08 · arc=88 commits · files=8 · lessons=46</sub>
 <!-- okf:auto-end -->

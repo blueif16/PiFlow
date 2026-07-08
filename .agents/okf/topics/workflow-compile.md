@@ -134,6 +134,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -190,5 +191,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:273) — 7 callers in `packages/cli/src/run.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/gate-list-profiles.test.ts`, `packages/core/test/judge-materialization.test.ts`
 - `NodeSpec` (packages/core/src/types.ts:17) — 78 callers in `packages/cli/src/inspect.ts`, `packages/core/src/contract.ts`, `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts` +10 more; tests: `packages/cli/test/inspect.test.ts`, `packages/core/test/build-node-config-fullaccess.test.ts`, `packages/core/test/build-node-config-skill.test.ts`, `packages/core/test/claude-code-driver.test.ts` +21
 
-<sub>derived 2026-07-07 · arc=78 commits · files=5 · lessons=43</sub>
+<sub>derived 2026-07-08 · arc=79 commits · files=5 · lessons=43</sub>
 <!-- okf:auto-end -->
