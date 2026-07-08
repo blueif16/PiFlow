@@ -66,7 +66,7 @@ export type {
 // existing carriers, and the sparse additive PROFILE overlay (`template/profiles/<name>.json`) loader/merge.
 export { fanoutGates, GateListError } from './workflow/gate-list.js';
 export type { GateEntry, GateFanout, FanoutJudgeGate, FanoutCheckpoint } from './workflow/gate-list.js';
-export { loadProfileOverlay, mergeProfileOverlay, ProfileOverlayError } from './workflow/profile-overlay.js';
+export { loadProfileOverlay, mergeProfileOverlay, profileOverlayFileExists, ProfileOverlayError } from './workflow/profile-overlay.js';
 export type { ProfileOverlay } from './workflow/profile-overlay.js';
 export { profileSchema, gateEntrySchema } from './workflow/template/schema/index.js';
 

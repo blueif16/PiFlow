@@ -366,6 +366,24 @@ function spanHash(p, startLine, endLine) {
 // shared leading path segments — the coverage rung's "nearest card" heuristic.
 const sharedSegs = (a, b) => { const A = a.split('/'), B = b.split('/'); let i = 0; while (i < A.length && i < B.length && A[i] === B[i]) i++; return i; };
 
+// Coverage-rung centrality tunables. CENTRALITY_MIN_INDEGREE: an uncovered file USED BY >= this many
+// other files is a genuine shared hub whose correctness spans multiple call-sites — a real mapping gap
+// even at ZERO churn (which the churn-gated HOT rung structurally cannot see). Live-calibrated against
+// this index (`codegraph node <f> --symbols-only` → "used by N files"): leaf/entrypoint files score 0,
+// a private single-consumer helper 1, while shared modules like profile-overlay.ts (2) / gate-list.ts (3)
+// and hubs like op-dispatch.ts (15) / loader.ts (29) score >= 2. So 2 is the leaf/private → shared-hub
+// boundary — the smallest fan-in that means "more than one module's correctness rides on this file."
+// CENTRALITY_MAX_PROBES bounds the per-file codegraph calls when the commit window touches many files.
+const CENTRALITY_MIN_INDEGREE = 2;
+const CENTRALITY_MAX_PROBES = 50;
+// A file's codegraph in-degree (how many other files depend on it) — the fan-in centrality §2 ranks by,
+// read from `node <file> --symbols-only`'s "used by N files" header. 0 when codegraph is off/unindexed.
+function fileInDegree(file) {
+  if (NO_CG) return 0;
+  const m = sh(CFG.codegraph, ['node', file, '--symbols-only']).match(/used by (\d+) files?/i);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 // ---- main ----
 const allKeys = readdirSync(HERE).filter(f => f.endsWith('.md')).map(f => f.replace(/\.md$/, ''));
 const unknown = only.filter(k => !allKeys.includes(k));
@@ -466,11 +484,34 @@ if (mode === 'reconcile') {
   }
   const union = new Set();
   for (const c of parsed) { for (const d of depPaths(c.curated, c.spec)) union.add(d); union.add(relative(REPO, c.path)); }
-  for (const [f, n] of [...freq.entries()].filter(([f, n]) => n >= 2 && !union.has(f) && existsSync(join(REPO, f))).sort((a, b) => b[1] - a[1]).slice(0, 10)) {
-    let best = null, bestLen = 1;
-    for (const c of parsed) for (const s of c.spec.seeds || []) { const k = sharedSegs(f, s); if (k > bestLen) { bestLen = k; best = c.spec.key; } }
+  const nearestCard = f => { let best = null, bestLen = 1; for (const c of parsed) for (const s of c.spec.seeds || []) { const k = sharedSegs(f, s); if (k > bestLen) { bestLen = k; best = c.spec.key; } } return best; };
+  const hot = [...freq.entries()].filter(([f, n]) => n >= 2 && !union.has(f) && existsSync(join(REPO, f))).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const hotReported = new Set(hot.map(([f]) => f));
+  for (const [f, n] of hot) {
     triggers++;
-    console.log(`UNCOVERED-HOT: ${f} (${n} recent commits, no card)${best ? ` — nearest card: ${best}` : ''}`);
+    console.log(`UNCOVERED-HOT: ${f} (${n} recent commits, no card)${nearestCard(f) ? ` — nearest card: ${nearestCard(f)}` : ''}`);
+  }
+
+  // CENTRAL rung — an uncovered file with high codegraph FAN-IN (used-by-N-files) is flagged REGARDLESS
+  // of churn: HOT above is churn-gated, so a NEW architecturally-central low-churn file (a fresh loader
+  // hub with 1 commit) is structurally invisible to it. Same candidate universe as HOT — the `freq` map,
+  // so instrument paths stay excluded BY THE SAME RULE — but the gate is centrality (§2's fan-in rank),
+  // not commit count. Skips whatever HOT already surfaced (one gap, one line). Needs codegraph; advisory,
+  // never blocking. Probes are capped so a wide commit window can't explode into unbounded codegraph calls.
+  if (!NO_CG) {
+    const cands = [...freq.keys()].filter(f => !union.has(f) && !hotReported.has(f) && existsSync(join(REPO, f)));
+    const central = [];
+    let probes = 0;
+    for (const f of cands) {
+      if (probes >= CENTRALITY_MAX_PROBES) { console.log(`(centrality rung capped at ${CENTRALITY_MAX_PROBES} probes — ${cands.length - probes} uncovered file(s) not scored)`); break; }
+      probes++;
+      const deg = fileInDegree(f);
+      if (deg >= CENTRALITY_MIN_INDEGREE) central.push([f, deg]);
+    }
+    for (const [f, deg] of central.sort((a, b) => b[1] - a[1]).slice(0, 10)) {
+      triggers++;
+      console.log(`UNCOVERED-CENTRAL: ${f} (in-degree ${deg}, no card)${nearestCard(f) ? ` — nearest card: ${nearestCard(f)}` : ''}`);
+    }
   }
 
   saveRecon({ head: gHead, bodyHashes: NO_CG ? state.bodyHashes : nextHashes });

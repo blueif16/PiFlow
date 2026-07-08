@@ -213,13 +213,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
 
-### Code anchors / blast radius (codegraph)
-
-- `runNode` (packages/core/src/runner/node-lifecycle.ts:114) — 1 caller in `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
-- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 10 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run-baseline.test.ts`, `packages/cli/test/run.test.ts`
-- `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
-- `RunContext` (packages/core/src/runner/run-context.ts:32) — 16 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts` +1 more; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:668) — 7 callers in `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
-
-<sub>derived 2026-07-07 · arc=141 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-08 · arc=141 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

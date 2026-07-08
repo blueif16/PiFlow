@@ -36,7 +36,7 @@ ADD-NODE
 - `packages/cli/src/scaffold.ts:206` — `buildNode` — PURE: id/phase/deps/contract + optional blocks + derives folded into `op[]`
 - `packages/cli/src/scaffold.ts:236` — `seedNodeMemory`/`seedNodeCodeMap` — seed memory.md + code-map.md create-if-absent (never clobbers prompt.md)
 RUN
-- `packages/cli/src/run.ts:576` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
+- `packages/cli/src/run.ts:578` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
 - `packages/core/src/runner/entry.ts:163` — `runFromTemplate` — the core template-run join the CLI delegates to
 
 # Freshness (anti-drift)
@@ -212,6 +212,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
+- `cc0775f` 2026-07-07 — feat(cli): add run --finalize and runs sweep to close stuck !done records
 
 ### Lessons — memory cluster
 
@@ -294,13 +295,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
 
-### Code anchors / blast radius (codegraph)
-
-- `buildNode` (packages/cli/src/scaffold.ts:206) — 1 caller in `packages/cli/src/scaffold.ts`; ⚠ no covering tests found
-- `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
-- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
-- `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
-- `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
-
-<sub>derived 2026-07-07 · arc=152 commits · files=8 · lessons=77</sub>
+<sub>derived 2026-07-08 · arc=153 commits · files=8 · lessons=77</sub>
 <!-- okf:auto-end -->

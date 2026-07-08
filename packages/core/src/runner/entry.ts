@@ -12,6 +12,7 @@ import path from 'node:path';
 import type { WorkflowSpec } from '../types.js';
 import { compile } from '../dag.js';
 import { applyProfileByName } from '../workflow/profile.js';
+import { profileOverlayFileExists } from '../workflow/profile-overlay.js';
 import { loadTemplate } from '../workflow/template/loader.js';
 import { instantiateRun } from '../workflow/template/instantiate.js';
 import { expandFusion, type FusionExpandOpts } from '../workflow/fusion/expand.js';
@@ -179,13 +180,22 @@ export async function runFromTemplate(templateDir: string, opts: RunFromTemplate
   } catch {
     /* registry write is best-effort — a run never depends on it */
   }
-  // (1) compile the template → WorkflowSpec (fail-closed §8 gate).
-  const loaded = await loadTemplate(templateDir);
+  // (1) compile the template → WorkflowSpec (fail-closed §8 gate). Thread the active `--profile` so an
+  // ADDITIVE overlay (`template/profiles/<name>.json`) MERGES its gates BEFORE the per-node fan-out — a
+  // profile-added agentic gate then materializes its `<producer>__judge` node on this LIVE path (gate-list §c).
+  const profileName = (runOpts as RunOptions).profile;
+  const loaded = await loadTemplate(templateDir, { profile: profileName });
   // (2) materialize the run thread folder (${RUN}/.pi/nodes/<id>/ + the empty state stub). ALL nodes are
   // materialized regardless of profile — an elided node's folder is harmless (it is just never executed).
   await instantiateRun(templateDir, runDir, { workspace });
   // (2.5) apply the active run PROFILE (elide nodes by the declared predicate, rewire deps) BEFORE compile.
-  let spec = applyProfileByName(loaded, (runOpts as RunOptions).profile);
+  // (gate-list §c precedence) The additive overlay already merged inside loadTemplate above. Apply the LEGACY
+  // elidePhases model only for a name the template DECLARES in meta.json.profiles; an OVERLAY-ONLY name (file
+  // present, not declared) must NOT reach applyProfileByName — it would throw UnknownProfileError — so skip it
+  // (the overlay was the whole point). A name that is NEITHER an overlay file NOR a declared profile still
+  // throws the loud unknown-profile error (the typo guard). A name that is BOTH applies overlay + elision.
+  const overlayOnly = !!profileName && profileOverlayFileExists(templateDir, profileName) && !loaded.profiles?.[profileName];
+  let spec = overlayOnly ? loaded : applyProfileByName(loaded, profileName);
   // (2.55) (G9) inline subworkflow-activated nodes as sub-DAGs — AFTER profile (never expand a dropped node),
   // BEFORE fusion + compile. A `ref` resolves to a sub-template dir relative to the template root; the child
   // loads through the SAME fail-closed §8 gate. No subworkflow node ⇒ the spec is returned unchanged.

@@ -190,4 +190,19 @@ describe('profiles — sparse additive overlay files', () => {
     expect(warn).toHaveBeenCalled();
     expect(warn.mock.calls.flat().join(' ')).toMatch(/deprecat/i);
   });
+
+  it('a `profiles` map with NO non-empty `elidePhases` does NOT fire the deprecation warning (already migrated)', async () => {
+    dir = await cloneFixture();
+    const meta = await readJson(path.join(dir, 'meta.json'));
+    // A declared profiles map that elides NOTHING (empty predicate + empty elidePhases) — the elidePhases model
+    // is not in use, so the deprecation warning (which is about elidePhases) must stay silent. Firing it on mere
+    // PRESENCE cries wolf on every already-migrated template. Narrowing to "some profile declares a non-empty
+    // elidePhases" is the fix — this asserts the silence.
+    meta.profiles = { full: {}, prod: { elidePhases: [] } };
+    await writeJson(path.join(dir, 'meta.json'), meta);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await loadTemplate(dir);
+    const deprecationWarned = warn.mock.calls.flat().join(' ').match(/deprecat/i);
+    expect(deprecationWarned, 'no non-empty elidePhases ⇒ no deprecation warning').toBeNull();
+  });
 });

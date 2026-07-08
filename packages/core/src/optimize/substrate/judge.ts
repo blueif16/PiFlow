@@ -21,16 +21,15 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { SandboxProvider } from '../../types.js';
-import type { CommandBuilder } from '../../runner/command.js';
-import type { ExecRunner } from '../../runner/exec-runner.js';
-import type { ModelTiers } from '../../runner/model-routing.js';
 import { resolveTokens } from '../../workflow/resolver.js';
 import {
   computeIssueId, listIssues, parseIssueFile, reopen, writeIssueFile,
   type Issue, type IssueRecord, type Severity,
 } from './issues.js';
-import { runSubstrateAgent, type RunSubstrateAgentOpts, type RunSubstrateAgentResult } from './agent.js';
+import {
+  inheritedAgentOpts, runBaseAgent,
+  type RunBaseAgentResult, type BaseAgentChildOpts,
+} from './agent.js';
 import { generateRunName } from '../../names/generator.js';
 
 /** Default cap on brand-new issues a single judge pass may land (the plan's documented default). Overridable
@@ -323,38 +322,38 @@ export async function postProcessJudgeDrafts(
 
 // ── (3) runSubstrateJudge — the full pass ───────────────────────────────────────────────────────────────
 
-export interface SubstrateJudgeOpts {
+/** The judge's opts = its OWN specialization (workspace/templateDir/cap) + the base agent's whole inherited
+ *  field surface + the `runAgent` test seam, EMBEDDED via `BaseAgentChildOpts` (agent.ts) — never a
+ *  re-declared subset (anything left off a copy is silently lost; `dryRun`, tier/model, timeoutMs, and every
+ *  future base field arrive here automatically). On `dryRun`, the pass returns the composed plan WITHOUT
+ *  spawning, post-processing, or stamping the marker. */
+export interface SubstrateJudgeOpts extends BaseAgentChildOpts {
   /** `{{WORKSPACE}}` — the product repo root. */
   workspace: string;
   /** The template dir (`nodes/<id>/{node.json,memory.md,issues/}`). */
   templateDir: string;
   /** Cap on brand-new issues landed this pass. Default `DEFAULT_JUDGE_CAP`. */
   cap?: number;
-  /** SDK tier alias for the judge turn. Default `substrate/agent.ts`'s own default ('balanced'). */
-  tier?: string;
-  /** An explicit model override — wins over `tier`. */
-  model?: string;
-  /** Test/offline seams — forwarded to `runSubstrateAgent` verbatim. */
-  provider?: SandboxProvider;
-  buildCommand?: CommandBuilder;
-  execRunner?: ExecRunner;
-  modelRouting?: { tiers: ModelTiers; modelsIndex: Map<string, string> };
-  /** Test seam — replaces the real agent spawn. Omit ⇒ the real `runSubstrateAgent` (never live-spawn in a
-   *  test; the M7 live demo is what proves real agent behavior). */
-  runAgent?: (opts: RunSubstrateAgentOpts) => Promise<RunSubstrateAgentResult>;
 }
 
 export interface SubstrateJudgeResult {
   /** ISO timestamp this pass completed (mirrors the written marker). */
   when: string;
-  /** Names of every issue touched this pass (new + reopened + re-seen). */
+  /** Names of every issue touched this pass (new + reopened + re-seen). Empty on a dry-run. */
   issues: string[];
-  /** Basenames of draft files left unlanded by the cap this pass. */
+  /** Basenames of draft files left unlanded by the cap this pass. Empty on a dry-run. */
   capped: string[];
-  /** The judge agent's parsed final text (debugging/telemetry — never re-parsed for control flow). */
-  agentText: string;
-  /** The judge agent's full node status record. */
-  agentStatus: RunSubstrateAgentResult['status'];
+  /** The judge agent's parsed final text (debugging/telemetry — never re-parsed for control flow). Absent on a dry-run. */
+  agentText?: string;
+  /** The judge agent's full node status record. Absent on a dry-run. */
+  agentStatus?: RunBaseAgentResult['status'];
+  /** The judge spawn's PERSISTED run dir (present ONLY when the caller passed `outDir` to the base agent) —
+   *  point the existing observe instruments at it (`piflowctl telemetry|status|trace <dir>`), exactly like a
+   *  workflow node's own run. Absent on the ephemeral default (already deleted) and on a dry-run. */
+  agentRunDir?: string;
+  /** Present ONLY on a dry-run: the BASE agent's composed spec (`plan`) that WOULD have been spawned — the
+   *  full ingested `prompt` + resolved sandbox/tier/model/tools/skill. Forwarded verbatim from the base agent. */
+  dryRun?: RunBaseAgentResult['plan'];
 }
 
 /**
@@ -366,21 +365,26 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
   const { workspace, templateDir } = opts;
   const prompt = await buildJudgePrompt(nodeId, { runDir, workspace, templateDir });
   const issuesDirPath = path.join(templateDir, 'nodes', nodeId, 'issues');
-  const runAgent = opts.runAgent ?? runSubstrateAgent;
+  const readScope = [runDir, templateDir, workspace];
+  const owns = [issuesDirPath];
+  const runAgent = opts.runAgent ?? runBaseAgent;
 
   const agentResult = await runAgent({
     prompt,
     cwd: workspace,
-    readScope: [runDir, templateDir, workspace],
-    owns: [issuesDirPath],
+    readScope,
+    owns,
     skill: TRIAGE_SKILL, // stage the default triage playbook (Ring 1); a miss degrades to the promptless playbook.
-    tier: opts.tier,
-    model: opts.model,
-    provider: opts.provider,
-    buildCommand: opts.buildCommand,
-    execRunner: opts.execRunner,
-    modelRouting: opts.modelRouting,
+    // The base agent's WHOLE inherited surface (tier/model/timeoutMs/provider/seams/dryRun/…), forwarded as
+    // one projection — never a hand-enumerated subset (dryRun's preview short-circuit rides this too).
+    ...inheritedAgentOpts(opts),
   });
+
+  // DRY-RUN: the base agent returned the composed plan (no spawn). Forward it and STOP — the judge's only job
+  // here was to ASSEMBLE the config (the additive layer); it does not post-process drafts or stamp a marker.
+  if (opts.dryRun) {
+    return { when: new Date().toISOString(), issues: [], capped: [], dryRun: agentResult.plan };
+  }
 
   const run = path.basename(path.resolve(runDir));
   const { landed, capped } = await postProcessJudgeDrafts(templateDir, nodeId, run, { cap: opts.cap });
@@ -390,5 +394,8 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
   const when = new Date().toISOString();
   await fs.writeFile(path.join(markerDir, `triaged.${nodeId}.json`), JSON.stringify({ when, issues: landed }, null, 2) + '\n');
 
-  return { when, issues: landed, capped, agentText: agentResult.text, agentStatus: agentResult.status };
+  return {
+    when, issues: landed, capped,
+    agentText: agentResult.text, agentStatus: agentResult.status, agentRunDir: agentResult.runDir,
+  };
 }

@@ -207,13 +207,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[tui-dag-structure-source]]
 - [[verify-nodes-never-in-dev-arms]]
 
-### Code anchors / blast radius (codegraph)
-
-- `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
-- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
-- `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-
-<sub>derived 2026-07-07 · arc=87 commits · files=8 · lessons=46</sub>
+<sub>derived 2026-07-08 · arc=87 commits · files=8 · lessons=46</sub>
 <!-- okf:auto-end -->

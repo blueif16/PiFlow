@@ -130,14 +130,14 @@ export async function runSkillCli(argv: string[], deps: SkillDeps = {}): Promise
   const err = deps.err ?? ((s: string) => void process.stderr.write(s));
   const [sub, ...rest] = argv;
   const json = argv.includes('--json');
-  const rings = { workspace: deps.workspace ?? process.cwd(), piflowHome: deps.piflowHome };
+  const rings = { workspace: deps.workspace ?? process.cwd() };
 
   switch (sub) {
     case 'list': {
       const entries = await listSkills(rings);
       if (json) out(JSON.stringify(entries, null, 2) + '\n');
       else if (entries.length === 0) {
-        err(`piflowctl skill: no skills found (searched ${rings.workspace}/.agents/skills and the home ring).\n`);
+        err(`piflowctl skill: no skills found (searched ${rings.workspace}/.agents/skills and ${rings.workspace}/.claude/skills).\n`);
       } else renderEntries(entries, out);
       return 0;
     }

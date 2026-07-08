@@ -82,6 +82,10 @@ describe('parsers', () => {
     expect(parseSubstrateFixArgs(['--node', 'g', '--watch-json'])).toMatchObject({ watch: true, watchJson: true });
     expect(parseSubstrateFixArgs(['--node', 'g', '--no-prove']).prove).toBe(false);
   });
+  it('parseSubstrateFixArgs: --dry-run → dryRun (the inherited base-agent preview; off by default)', () => {
+    expect(parseSubstrateFixArgs(['--node', 'g', '--dry-run']).dryRun).toBe(true);
+    expect(parseSubstrateFixArgs(['--node', 'g']).dryRun).toBeUndefined();
+  });
   it('parseSubstrateAdoptArgs: manifest + template + backup-dir + watch', () => {
     expect(parseSubstrateAdoptArgs(['--manifest', 'm.json', '--template', 't', '--backup-dir', 'b'])).toMatchObject({ manifest: 'm.json', template: 't', backupDir: 'b' });
   });
@@ -208,6 +212,44 @@ describe('runSubstrateTriageCli — measure feeds judge; --topk selects fresh, u
     expect(process.exitCode).toBe(2);
     expect(errs.join('\n')).toMatch(/could not resolve a template/);
   });
+
+  it('Phase-3 observe wiring: passes a PERSISTENT outDir=<runDir>/optimize/substrate/agents/judge.<node>/ to judge, and prints an observe hint naming it', async () => {
+    const dir = await tmp();
+    const templateDir = path.join(dir, 'template');
+    const runsHome = path.join(dir, 'runs');
+    const runDir = await seedRun(runsHome, '260706-03', { node: 'gameplay', startedAt: '2026-07-06T03:00:00Z' });
+    let seenOutDir: string | undefined;
+    const lines: string[] = [];
+    await runSubstrateTriageCli(['--node', 'gameplay', '--topk', '1'], {
+      resolveScope: () => ({ templateDir, runsHome }),
+      measure: async () => okReport(),
+      judge: async (_rd, _n, opts) => { seenOutDir = opts.outDir; return judged(['iss']); },
+      print: (s) => lines.push(s),
+    });
+    const expected = path.join(runDir, 'optimize', 'substrate', 'agents', 'judge.gameplay');
+    // RED before the wiring: judge ran with the base agent's ephemeral default (no `outDir`), so a triage
+    // spawn's run dir was deleted before anything could observe it.
+    expect(seenOutDir).toBe(expected);
+    expect(lines.some((l) => l.includes('observe:') && l.includes(expected))).toBe(true);
+  });
+
+  it('Phase-3 observe wiring: a DRY RUN passes no observe hint (nothing was spawned, so nothing to observe)', async () => {
+    const dir = await tmp();
+    const templateDir = path.join(dir, 'template');
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, '260706-03', { node: 'gameplay', startedAt: '2026-07-06T03:00:00Z' });
+    const lines: string[] = [];
+    await runSubstrateTriageCli(['--node', 'gameplay', '--topk', '1', '--dry-run'], {
+      resolveScope: () => ({ templateDir, runsHome }),
+      measure: async () => okReport(),
+      judge: async () => ({
+        when: 'now', issues: [], capped: [],
+        dryRun: { label: 'agent', executor: 'claude-code', prompt: 'p', tools: {}, io: { reads: [], produces: [], artifacts: [] } },
+      }),
+      print: (s) => lines.push(s),
+    });
+    expect(lines.some((l) => l.includes('observe:'))).toBe(false);
+  });
 });
 
 // ── FIX orchestration (issue selection order + cap + watch + parent run) ─────────────────────────────────────
@@ -266,6 +308,39 @@ describe('runSubstrateFixCli — selects issues severity-desc, caps, fixes seque
     expect(linesJson.some((l) => l.startsWith('{') && l.includes('"type":"gated"'))).toBe(true);
   });
 
+  it('--dry-run threads dryRun to fixIssue and prints the composition via the shared substrate printer (no tally, nothing mutated)', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    const lines: string[] = [];
+    let seenDryRun: boolean | undefined;
+    await runSubstrateFixCli(['--node', 'gameplay', '--issue', 'a', '--dry-run'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      listIssues: async () => [issueRec('a', 'high', 'open', '260706-01')],
+      fixIssue: async (_p, opts): Promise<FixIssueResult> => {
+        seenDryRun = opts.dryRun;
+        return {
+          issue: 'a', node: 'gameplay', candidateRef: '/cand/a', editsApplied: 0, proved: false, childId: null, deltaSummary: {},
+          dryRun: {
+            label: 'agent', prompt: 'THE-INGESTED-FIXER-PROMPT', executor: 'claude-code',
+            skill: '/ws/.claude/skills/piflow-fixer', tier: 'balanced', tools: {},
+            io: { reads: [], produces: [], artifacts: [] },
+            sandbox: { provider: 'local', read: ['/cand/a'], write: ['/cand/a'], execCwd: '/cand/a' },
+          },
+        } as FixIssueResult;
+      },
+      print: (s) => lines.push(s),
+    });
+    // RED before: parseSubstrateFixArgs dropped --dry-run and the handler never forwarded/printed a preview.
+    expect(seenDryRun).toBe(true);
+    const out = lines.join('\n');
+    expect(out).toMatch(/DRY RUN/);
+    expect(out).toContain('/ws/.claude/skills/piflow-fixer'); // the resolved skill PATH
+    expect(out).toContain('local'); // the declared sandbox provider
+    expect(out).toContain('THE-INGESTED-FIXER-PROMPT'); // the full ingested composition
+    expect(out).not.toMatch(/staged/); // a preview never prints the processed/staged/discarded tally
+  });
+
   it('no triaged run → exit 2 (must triage first)', async () => {
     const dir = await tmp();
     const runsHome = path.join(dir, 'runs');
@@ -278,6 +353,45 @@ describe('runSubstrateFixCli — selects issues severity-desc, caps, fixes seque
     });
     expect(process.exitCode).toBe(2);
     expect(errs.join('\n')).toMatch(/triage/);
+  });
+
+  it('Phase-3 observe wiring: passes a PERSISTENT outDir=<parentRunDir>/optimize/substrate/agents/fix.<node>.<issue>/ to fixIssue, and prints an observe hint naming it', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    let seenOutDir: string | undefined;
+    const lines: string[] = [];
+    await runSubstrateFixCli(['--node', 'gameplay', '--issue', 'a'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      listIssues: async () => [issueRec('a', 'high', 'open', '260706-01')],
+      fixIssue: async (_p, opts): Promise<FixIssueResult> => {
+        seenOutDir = opts.outDir;
+        return { decision: 'staged' } as FixIssueResult;
+      },
+      print: (s) => lines.push(s),
+    });
+    const expected = path.join(parent, 'optimize', 'substrate', 'agents', 'fix.gameplay.a');
+    // RED before the wiring: fixIssue ran with the base agent's ephemeral default (no `outDir`), so a fixer
+    // spawn's run dir was deleted before anything could observe it.
+    expect(seenOutDir).toBe(expected);
+    expect(lines.some((l) => l.includes('observe:') && l.includes(expected))).toBe(true);
+  });
+
+  it('Phase-3 observe wiring: a DRY RUN passes no observe hint (nothing was spawned, so nothing to observe)', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    const lines: string[] = [];
+    await runSubstrateFixCli(['--node', 'gameplay', '--issue', 'a', '--dry-run'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      listIssues: async () => [issueRec('a', 'high', 'open', '260706-01')],
+      fixIssue: async (): Promise<FixIssueResult> => ({
+        issue: 'a', node: 'gameplay', candidateRef: '/cand/a', editsApplied: 0, proved: false, childId: null, deltaSummary: {},
+        dryRun: { label: 'agent', executor: 'claude-code', prompt: 'p', tools: {}, io: { reads: [], produces: [], artifacts: [] } },
+      } as FixIssueResult),
+      print: (s) => lines.push(s),
+    });
+    expect(lines.some((l) => l.includes('observe:'))).toBe(false);
   });
 });
 

@@ -214,13 +214,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
-### Code anchors / blast radius (codegraph)
-
-- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 3 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/cli/src/agents.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; ⚠ no covering tests found
-- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-
-<sub>derived 2026-07-07 · arc=135 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-08 · arc=135 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

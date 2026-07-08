@@ -120,13 +120,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - [[piflow-rollout-enablement]]
 - [[runs-live-in-product-runs-folder]]
 
-### Code anchors / blast radius (codegraph)
-
-- `pieSlugList` (packages/core/src/names/slugify.ts:64) — 5 callers in `packages/core/src/names/generate-pies.mjs`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
-- `pieSlug` (packages/core/src/names/slugify.ts:43) — 4 callers in `packages/core/src/names/slugify.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
-- `generateRunName` (packages/core/src/names/generator.ts:40) — 8 callers in `packages/server/src/start-run.ts`, `packages/core/src/optimize/substrate/judge.ts`, `packages/core/src/names/index.ts`, `packages/cli/src/run.ts` +1 more; tests: `packages/core/test/names.test.ts`
-- `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
-- `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
-
-<sub>derived 2026-07-07 · arc=46 commits · files=7 · lessons=10</sub>
+<sub>derived 2026-07-08 · arc=46 commits · files=7 · lessons=10</sub>
 <!-- okf:auto-end -->

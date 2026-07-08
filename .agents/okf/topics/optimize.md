@@ -182,13 +182,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
 
-### Code anchors / blast radius (codegraph)
-
-- `scoreRun` (packages/core/src/optimize/score.ts:93) — 2 callers in `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `CheckableTask` (packages/core/src/optimize/replay.ts:34) — 10 callers in `packages/core/src/optimize/mine.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/replay.ts`; tests: `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-root-exports.test.ts`
-- `makeReplayStages` (packages/core/src/optimize/replay.ts:87) — 7 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-mine.test.ts`, `packages/core/test/optimize-replay.test.ts`, `packages/core/test/optimize-root-exports.test.ts`
-- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
-- `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/optimize/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
-
-<sub>derived 2026-07-07 · arc=28 commits · files=19 · lessons=42</sub>
+<sub>derived 2026-07-08 · arc=28 commits · files=19 · lessons=42</sub>
 <!-- okf:auto-end -->

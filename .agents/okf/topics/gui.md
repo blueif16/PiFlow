@@ -157,6 +157,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `62d1e1f` 2026-07-06 — feat(gui): run-row progress cluster + sort control in the switcher
 - `59db2f6` 2026-07-06 — Merge remote-tracking branch 'origin/main' into feat/gui-issues-surface
 - `b3e9a0d` 2026-07-07 — feat(gui): pin the canonical template above run history in the switcher
+- `29d932a` 2026-07-07 — fix(observe): stop showing runs as "running" after their controller died
 
 ### Lessons — memory cluster
 
@@ -219,12 +220,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
 
-### Code anchors / blast radius (codegraph)
-
-- `NodeHud` (gui/src/components/NodeHud.tsx:101) — 1 caller in `gui/src/components/NodeExpandOverlay.tsx`; ⚠ no covering tests found
-- `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `loadRunView` (gui/src/data/runView.ts:176) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
-- `watchRun` (packages/cli/src/watch.ts:61) — 15 callers in `packages/cli/src/watch.ts`, `packages/cli/src/telemetry.ts`, `tui/model.mjs`, `packages/server/src/handlers.ts` +3 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/watch.test.ts` +1
-
-<sub>derived 2026-07-07 · arc=96 commits · files=8 · lessons=57</sub>
+<sub>derived 2026-07-08 · arc=97 commits · files=8 · lessons=57</sub>
 <!-- okf:auto-end -->

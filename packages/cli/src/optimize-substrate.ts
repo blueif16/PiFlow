@@ -139,6 +139,23 @@ export function triagedMarker(runDir: string, node: string): string {
   return path.join(runDir, 'optimize', 'substrate', `triaged.${node}.json`);
 }
 
+// ── Phase-3 observe hooks: PERSISTENT default `outDir`s for the judge/fixer base-agent spawns, so a triage/fix
+// pass's agent run dir reaches the existing observe instruments (`piflowctl telemetry|status|trace <dir>`)
+// exactly like a workflow node's run — never the base agent's ephemeral (deleted) default. ─────────────────────
+
+/** The judge spawn's persisted run dir for `(runDir, node)` — one per triaged RUN (never collides: each
+ *  selected run in a triage pass already has its own `runDir`). */
+export function judgeAgentOutDir(runDir: string, node: string): string {
+  return path.join(runDir, 'optimize', 'substrate', 'agents', `judge.${node}`);
+}
+
+/** The fixer spawn's persisted run dir for `(parentRunDir, node, issue)` — issue-qualified because a single
+ *  `optimize fix` pass may process SEVERAL issues of the same node against the SAME parent run; a node-only
+ *  path would have the second fixer spawn silently overwrite the first's observe dir. */
+export function fixerAgentOutDir(parentRunDir: string, node: string, issue: string): string {
+  return path.join(parentRunDir, 'optimize', 'substrate', 'agents', `fix.${node}.${issue}`);
+}
+
 // ── arg parsing ─────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface SubstrateTriageArgs {
@@ -150,6 +167,9 @@ export interface SubstrateTriageArgs {
   tier?: string;
   model?: string;
   cap?: number;
+  /** `--dry-run`: measure, then build the judge composition + resolved config and PRINT it — spawn NOTHING.
+   *  Inherited from the base agent's preview seam; the same shape any base agent would ingest. */
+  dryRun?: boolean;
 }
 
 export function parseSubstrateTriageArgs(argv: string[]): SubstrateTriageArgs {
@@ -164,6 +184,7 @@ export function parseSubstrateTriageArgs(argv: string[]): SubstrateTriageArgs {
     else if (k === '--tier') out.tier = argv[++i];
     else if (k === '--model') out.model = argv[++i];
     else if (k === '--cap') out.cap = Number(argv[++i]);
+    else if (k === '--dry-run') out.dryRun = true;
     // unknown flags/tokens are ignored (the full loop feeds this parser fix-only flags too).
   }
   return out;
@@ -187,6 +208,9 @@ export interface SubstrateFixArgs {
   model?: string;
   tolerance?: number;
   stagingDir?: string;
+  /** `--dry-run`: compose the fixer spawn (prompt + jail + skill + config) and PRINT it — spawn/mutate NOTHING
+   *  (no issue transition, no candidate copy, no manifest). Inherited from the base agent's preview seam. */
+  dryRun?: boolean;
 }
 
 export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
@@ -207,6 +231,7 @@ export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
     else if (k === '--model') out.model = argv[++i];
     else if (k === '--tolerance') out.tolerance = Number(argv[++i]);
     else if (k === '--staging-dir') out.stagingDir = argv[++i];
+    else if (k === '--dry-run') out.dryRun = true;
     // unknown flags/tokens ignored (the full loop feeds this parser triage-only flags too).
   }
   return out;
@@ -351,15 +376,47 @@ export async function runSubstrateTriageCli(argv: string[], deps: SubstrateCliDe
 
   for (const runDir of runDirs) {
     await measure(runDir, a.node, { workspace }); // hard measurement FIRST (persists measure.<node>.json)
+    const outDir = judgeAgentOutDir(runDir, a.node);
     const r = await judge(runDir, a.node, {
       workspace, templateDir,
+      outDir, // PERSIST the judge spawn's run dir — never the base agent's ephemeral (deleted) default.
       ...(a.cap !== undefined ? { cap: a.cap } : {}),
       ...(a.tier ? { tier: a.tier } : {}),
       ...(a.model ? { model: a.model } : {}),
+      ...(a.dryRun ? { dryRun: true } : {}),
     });
+    if (a.dryRun && r.dryRun) {
+      printSubstrateDryRun(`optimize triage[${path.basename(runDir)}] node=${a.node}`, r.dryRun, print);
+      continue;
+    }
     const capNote = r.capped.length ? ` (+${r.capped.length} capped)` : '';
     print(`optimize triage[${path.basename(runDir)}] node=${a.node}: ${r.issues.length} issue(s) touched${capNote}`);
+    print(`observe: piflowctl telemetry ${outDir}`);
   }
+}
+
+/** Print a substrate DRY-RUN composition — the base agent's composed spec (`plan`): the resolved config
+ *  header, then the exact `prompt` (the full ingested context) the agent WOULD receive. Nothing was spawned.
+ *  The ONE printer every substrate preview shares (the judge's triage --dry-run AND the fixer's fix --dry-run);
+ *  `header` names the verb/target, the plan shape is the base agent's. */
+function printSubstrateDryRun(
+  header: string,
+  plan: {
+    executor?: string; skill?: string; tier?: string; model?: string; tools?: unknown; prompt?: string;
+    sandbox?: { provider?: string; read?: string[]; write?: string[]; execCwd?: string };
+  },
+  print: (s: string) => void,
+): void {
+  const sb = plan.sandbox ?? {};
+  print(`${header} — DRY RUN (base-agent preview; nothing spawned)`);
+  print(`  executor : ${plan.executor ?? '?'}    skill: ${plan.skill ?? '(none)'}    tier: ${plan.tier ?? '(substrate default)'}${plan.model ? `    model: ${plan.model}` : ''}`);
+  print(`  sandbox  : ${sb.provider ?? '(run default)'}`);
+  print(`  cwd      : ${sb.execCwd ?? ''}`);
+  print(`  readScope: ${(sb.read ?? []).join('  ·  ')}`);
+  print(`  owns     : ${(sb.write ?? []).join('  ·  ')}`);
+  print(`  tools    : ${JSON.stringify(plan.tools ?? {})}`);
+  print(`  ── ingested composition (the exact prompt the agent would receive) ──`);
+  print(plan.prompt ?? '(no prompt built)');
 }
 
 // ── fix (select issues → per-issue fixIssue → stage; adopt is separate) ──────────────────────────────────────
@@ -446,18 +503,27 @@ export async function runSubstrateFixCli(argv: string[], deps: SubstrateCliDeps 
   let staged = 0;
   let discarded = 0;
   for (const rec of records) {
+    const outDir = fixerAgentOutDir(parentRunDir, a.node, rec.issue.name);
     const res: FixIssueResult = await fix(rec.file, {
       parentRunDir, templateDir, workspace,
       prove: a.prove,
+      outDir, // PERSIST the fixer spawn's run dir — never the base agent's ephemeral (deleted) default.
       ...(onEvent ? { onEvent } : {}),
       ...(a.tolerance !== undefined ? { tolerance: a.tolerance } : {}),
       ...(a.stagingDir ? { stagingDir: path.resolve(deps.cwd ?? process.cwd(), a.stagingDir) } : {}),
       ...(a.tier ? { tier: a.tier } : {}),
       ...(a.model ? { model: a.model } : {}),
+      ...(a.dryRun ? { dryRun: true } : {}),
     });
+    if (a.dryRun && res.dryRun) {
+      printSubstrateDryRun(`optimize fix[${path.basename(parentRunDir)}] node=${a.node} issue=${rec.issue.name}`, res.dryRun, print);
+      continue;
+    }
     if (res.decision === 'staged') staged++;
     else discarded++;
+    print(`observe: piflowctl telemetry ${outDir}`);
   }
+  if (a.dryRun) return; // a preview processed/staged/discarded nothing — no tally to print.
   const left = total - records.length;
   const leftNote = left > 0 ? ` (${left} left by --cap ${a.cap})` : '';
   print(`optimize fix: node=${a.node} — ${records.length} issue(s) processed, ${staged} staged, ${discarded} discarded${leftNote}; adopt is a separate step.`);

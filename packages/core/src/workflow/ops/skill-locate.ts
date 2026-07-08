@@ -3,24 +3,19 @@
 // "multi-source-research") resolved to `<workspace>/<id>`, never existed, and the runner SILENTLY
 // skipped staging while the GUI display path (which searches wider roots) still showed the skill.
 // This module closes that split: it CLASSIFIES a ref — PATH-LIKE (a separator, an absolute path, or a
-// `{{token}}`) keeps `resolveSkillStage`'s exact semantics; a BARE ID searches the two LOCAL RINGS in
-// order — Ring 0 `<workspace>/.agents/skills/<id>`, then Ring 1 `<piflowHome>/skills/<id>` — accepting
-// only a dir that CONTAINS a `SKILL.md` (first hit wins). `skillSearchRoots` exports that ordering as
-// the single source of truth so the server display handler can consume the SAME rings, and `listSkills`
-// enumerates both rings for the catalog surface (workspace wins an id clash; the shadowed installed
-// bundle is still reported, flagged).
+// `{{token}}`) keeps `resolveSkillStage`'s exact semantics; a BARE ID searches the two PROJECT-LOCAL RINGS
+// in order — Ring 0 `<workspace>/.agents/skills/<id>`, then Ring 1 `<workspace>/.claude/skills/<id>` (where
+// `piflowctl skills install` lands them) — accepting only a dir that CONTAINS a `SKILL.md` (first hit wins).
+// `skillSearchRoots` exports that ordering as the single source of truth so the server display handler can
+// consume the SAME rings, and `listSkills` enumerates both rings for the catalog surface (.agents wins an id
+// clash; the shadowed .claude bundle is still reported, flagged). NEVER the global `~/.piflow/skills` — skill
+// resolution is ALWAYS project-local, so a run reproduces from the product alone with no machine-global state.
 
 import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { resolveSkillStage, type SkillStage } from './skill.js';
 import { parseSkillManifest } from './skill-manifest.js';
 import type { ResolveCtx } from '../resolver.js';
-
-/** The global piflow home — the SAME resolution `defaultAgentsDir` uses (`PIFLOW_HOME` = override + test seam). */
-function piflowHomeDir(override?: string): string {
-  return override ?? process.env.PIFLOW_HOME ?? path.join(os.homedir(), '.piflow');
-}
 
 /** A BARE skill id: no path separator, not absolute, no `{{token}}` — the only shape that ring-searches. */
 export function isBareSkillId(ref: string): boolean {
@@ -28,13 +23,14 @@ export function isBareSkillId(ref: string): boolean {
 }
 
 /**
- * The ordered ring roots a bare skill id searches: `<workspace>/.agents/skills` (Ring 0 — the project's
- * own bundles), then `<piflowHome>/skills` (Ring 1 — the installed catalog). THE single source of truth
- * for that ordering — the runner stages by it and the server display path must search by it, so a skill
- * a viewer can show is a skill the runtime actually stages.
+ * The ordered ring roots a bare skill id searches, BOTH project-local: `<workspace>/.agents/skills` (Ring 0
+ * — the project's own bundles), then `<workspace>/.claude/skills` (Ring 1 — where `piflowctl skills install`
+ * lands the installed catalog). THE single source of truth for that ordering — the runner stages by it and
+ * the server display path must search by it, so a skill a viewer can show is a skill the runtime actually
+ * stages. NEVER the global `~/.piflow/skills`: resolution hangs entirely off the product-root workspace.
  */
-export function skillSearchRoots(workspace: string, piflowHome?: string): string[] {
-  return [path.join(workspace, '.agents', 'skills'), path.join(piflowHomeDir(piflowHome), 'skills')];
+export function skillSearchRoots(workspace: string): string[] {
+  return [path.join(workspace, '.agents', 'skills'), path.join(workspace, '.claude', 'skills')];
 }
 
 /**
@@ -56,7 +52,6 @@ export type SkillLocateResult =
 export async function locateSkillStage(
   skillRef: string | undefined,
   ctx: ResolveCtx,
-  piflowHome?: string,
 ): Promise<SkillLocateResult> {
   if (!skillRef || !skillRef.trim()) return undefined;
   if (!isBareSkillId(skillRef)) {
@@ -64,7 +59,7 @@ export async function locateSkillStage(
     const ok = await fs.stat(stage.source).then(() => true, () => false);
     return ok ? { found: true, stage } : { found: false, ref: skillRef, searched: [stage.source] };
   }
-  const searched = skillSearchRoots(ctx.workspace, piflowHome).map((root) => path.join(root, skillRef));
+  const searched = skillSearchRoots(ctx.workspace).map((root) => path.join(root, skillRef));
   for (const dir of searched) {
     const hit = await fs.stat(path.join(dir, 'SKILL.md')).then((s) => s.isFile(), () => false);
     if (hit) return { found: true, stage: { source: dir, name: skillRef } };
@@ -78,7 +73,8 @@ export interface SkillListEntry {
   id: string;
   /** Absolute path to the bundle dir. */
   dir: string;
-  /** Which ring the bundle lives in: the project's `.agents/skills` or the installed `<piflowHome>/skills`. */
+  /** Which project ring the bundle lives in: `.agents/skills` (`'workspace'`) or `.claude/skills`
+   *  (`'installed'` — where `piflowctl skills install` lands them). */
   ring: 'workspace' | 'installed';
   /** The manifest's own name (SKILL.md frontmatter `name`, else the dir id). */
   name: string;
@@ -109,15 +105,18 @@ function extractDescription(raw: string): string {
 }
 
 /**
- * Enumerate the two local skill rings — Ring 0 `<workspace>/.agents/skills/*` (when a workspace is
- * given), then Ring 1 `<piflowHome>/skills/*` — in the SAME order `locateSkillStage` searches, so the
- * listing is exactly the resolvable catalog. Only a dir carrying a `SKILL.md` is a bundle; a missing
- * ring is simply empty; a malformed manifest yields an `error`-noted entry, never a throw.
+ * Enumerate the two PROJECT-LOCAL skill rings — Ring 0 `<workspace>/.agents/skills/*`, then Ring 1
+ * `<workspace>/.claude/skills/*` — in the SAME order `locateSkillStage` searches, so the listing is exactly
+ * the resolvable catalog. Both rings hang off the workspace, so with NO workspace there is nothing to
+ * enumerate (never a global scan). Only a dir carrying a `SKILL.md` is a bundle; a missing ring is simply
+ * empty; a malformed manifest yields an `error`-noted entry, never a throw.
  */
-export async function listSkills(opts: { workspace?: string; piflowHome?: string } = {}): Promise<SkillListEntry[]> {
+export async function listSkills(opts: { workspace?: string } = {}): Promise<SkillListEntry[]> {
   const rings: { root: string; ring: SkillListEntry['ring'] }[] = [];
-  if (opts.workspace) rings.push({ root: path.join(opts.workspace, '.agents', 'skills'), ring: 'workspace' });
-  rings.push({ root: path.join(piflowHomeDir(opts.piflowHome), 'skills'), ring: 'installed' });
+  if (opts.workspace) {
+    rings.push({ root: path.join(opts.workspace, '.agents', 'skills'), ring: 'workspace' });
+    rings.push({ root: path.join(opts.workspace, '.claude', 'skills'), ring: 'installed' });
+  }
 
   const out: SkillListEntry[] = [];
   const seen = new Set<string>();

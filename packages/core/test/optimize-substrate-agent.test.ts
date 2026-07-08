@@ -1,5 +1,5 @@
 // optimize/substrate/agent.ts — the M4 ONE spawn wrapper (docs/specs/optimize-substrate-plan.md §M4). Every
-// substrate agent (judge, later the fixer) goes through `runSubstrateAgent` instead of a hand-rolled
+// base agent (judge, later the fixer) goes through `runBaseAgent` instead of a hand-rolled
 // `spawn('claude', …)`. This suite pins:
 //   • model resolution speaks the SDK's tier language ONLY — 'balanced' is the default tier, resolved through
 //     the REAL `resolveClaudeModel` precedence (never a hardcoded model id anywhere in agent.ts);
@@ -20,7 +20,10 @@ import path from 'node:path';
 import type { NodeSpec, ResolveResult } from '../src/types.js';
 import type { CommandContext } from '../src/runner/command.js';
 import type { ModelTiers } from '../src/runner/model-routing.js';
-import { runSubstrateAgent, SUBSTRATE_AGENT_DEFAULT_TIER } from '../src/optimize/substrate/agent.js';
+import { runBaseAgent, BASE_AGENT_DEFAULT_TIER } from '../src/optimize/substrate/agent.js';
+import { driverFits } from '../src/runner/drivers/driver-fits.js';
+import { builtinDrivers } from '../src/runner/drivers/table.js';
+import { readRunModel } from '../src/observe/read.js';
 
 /** A `buildCommand` stub that (a) records the resolved NodeSpec it was called with and (b) makes the fake
  *  "agent" emit `stdout` verbatim via a real shell `printf` (so the REAL exec path/parsing is exercised). */
@@ -43,11 +46,11 @@ function claudeStdout(text: string): string {
 
 const BALANCED_TIERS: ModelTiers = { active: true, tiers: {}, claude: { balanced: 'claude-balanced-model' } };
 
-describe('runSubstrateAgent — spec-building (M4)', () => {
+describe('runBaseAgent — spec-building (M4)', () => {
   it('defaults tier to "balanced", resolved through the REAL resolveClaudeModel precedence (no hardcoded model)', async () => {
-    expect(SUBSTRATE_AGENT_DEFAULT_TIER).toBe('balanced');
+    expect(BASE_AGENT_DEFAULT_TIER).toBe('balanced');
     const capture: { node?: NodeSpec } = {};
-    const { status } = await runSubstrateAgent({
+    const { status } = await runBaseAgent({
       prompt: 'judge this node',
       cwd: process.cwd(),
       readScope: ['/tmp/a'],
@@ -61,9 +64,35 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
     expect(status.model).toBe('claude-balanced-model');
   });
 
+  it('dryRun returns the composed plan and spawns NOTHING (buildCommand never invoked, no status/text)', async () => {
+    const capture: { node?: NodeSpec } = {};
+    const result = await runBaseAgent({
+      prompt: 'JUDGE PROMPT — the exact ingested context',
+      cwd: '/tmp/ws',
+      readScope: ['/tmp/ws', '/tmp/run'],
+      owns: ['/tmp/ws/issues'],
+      skill: 'piflow-triage',
+      tier: 'balanced',
+      dryRun: true,
+      // if the dry-run branch ever failed to short-circuit, this builder WOULD run → capture.node set.
+      buildCommand: capturingBuilder(claudeStdout('SHOULD NEVER RUN'), capture),
+    });
+    // NOTHING spawned: the command builder was never called; no status/text produced.
+    expect(capture.node).toBeUndefined();
+    expect(result.status).toBeUndefined();
+    expect(result.text).toBeUndefined();
+    // the composed plan surfaces the exact ingested context + the resolved base-agent config.
+    expect(result.plan?.prompt).toBe('JUDGE PROMPT — the exact ingested context');
+    expect(result.plan?.executor).toBe('claude-code');
+    expect(result.plan?.skill).toBe('piflow-triage');
+    expect(result.plan?.tier).toBe('balanced');
+    expect(result.plan?.sandbox?.read).toEqual(['/tmp/ws', '/tmp/run']);
+    expect(result.plan?.sandbox?.write).toEqual(['/tmp/ws/issues']);
+  });
+
   it('an explicit `model` WINS over `tier` (same precedence every claude-code node uses)', async () => {
     const capture: { node?: NodeSpec } = {};
-    const { status } = await runSubstrateAgent({
+    const { status } = await runBaseAgent({
       prompt: 'judge this node',
       cwd: process.cwd(),
       readScope: [],
@@ -79,7 +108,7 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
 
   it('readScope/owns/execCwd/tools/timeoutMs land VERBATIM on the compiled node (captured at build time)', async () => {
     const capture: { node?: NodeSpec } = {};
-    await runSubstrateAgent({
+    await runBaseAgent({
       prompt: 'judge this node',
       cwd: '/repo/root',
       readScope: ['/run/dir', '/tpl/dir'],
@@ -95,9 +124,29 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
     expect(capture.node?.tools).toEqual({ allow: ['bash', 'read'] });
   });
 
+  it('declares sandbox provider "local" so the claude-code driver FITS (kills the spurious inmemory driver-fit warning)', async () => {
+    const capture: { node?: NodeSpec } = {};
+    await runBaseAgent({
+      prompt: 'judge this node',
+      cwd: '/repo/root',
+      readScope: ['/run/dir'],
+      owns: ['/tpl/dir/nodes/gameplay/issues'],
+      buildCommand: capturingBuilder(claudeStdout('ok'), capture),
+    });
+    // The COMPILED node must declare `local`, NOT the compile-time `inmemory` default (dag.ts `?? 'inmemory'`)
+    // that the claude-code driver (sandbox.providers === ['local']) cannot run on. Before the fix this is
+    // 'inmemory' and the runner emits `[driver-fit] … cannot run on sandbox provider "inmemory"`.
+    expect(capture.node?.sandbox.provider).toBe('local');
+    // …and driverFits agrees: the claude-code executor raises NO sandbox-provider problem (the exact warning
+    // the substrate judge/fixer spawn was emitting is gone). Asserted on the sandbox axis only so the tier
+    // axis can never mask it.
+    const fit = driverFits(capture.node!, builtinDrivers().get('claude-code')!);
+    expect(fit.problems.some((p) => p.includes('sandbox provider'))).toBe(false);
+  });
+
   it('tools defaults to {} (the SDK default claude-code builtin set) when omitted', async () => {
     const capture: { node?: NodeSpec } = {};
-    await runSubstrateAgent({
+    await runBaseAgent({
       prompt: 'p',
       cwd: process.cwd(),
       readScope: [],
@@ -117,7 +166,7 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
     process.env.PIFLOW_HOME = emptyHome;
     try {
       const capture: { node?: NodeSpec } = {};
-      const { status } = await runSubstrateAgent({
+      const { status } = await runBaseAgent({
         prompt: 'fix this node',
         cwd: emptyHome,
         readScope: [],
@@ -137,9 +186,46 @@ describe('runSubstrateAgent — spec-building (M4)', () => {
   });
 });
 
-describe('runSubstrateAgent — returns the NodeStatusRecord + the REAL parsed result text', () => {
+describe('runBaseAgent — the OBSERVE seam: a persisted run dir readable like any node\'s run', () => {
+  it('with `outDir` the spawn\'s run dir PERSISTS, is returned as `runDir`, and the observe reader resolves the agent node', async () => {
+    const outDir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-substrate-obs-'));
+    try {
+      const { status, runDir } = await runBaseAgent({
+        prompt: 'judge this node',
+        cwd: process.cwd(),
+        readScope: [],
+        owns: [],
+        outDir,
+        buildCommand: capturingBuilder(claudeStdout('observed'), {}),
+      });
+      expect(status?.status).toBe('ok');
+      // RED before: the ephemeral tmpdir was always used and rm'd in the finally — no `runDir` on the
+      // result and nothing left on disk for telemetry/status/trace to point at.
+      expect(runDir).toBe(outDir);
+      // the persisted dir IS a run dir the EXISTING observe instruments read — the same `.pi/run.json` +
+      // reader every workflow node's run dir goes through (readRunModel = the status/telemetry substrate).
+      const model = await readRunModel(runDir!);
+      expect(model.nodes.map((n) => n.id)).toContain('agent');
+    } finally {
+      await fs.rm(outDir, { recursive: true, force: true });
+    }
+  });
+
+  it('without `outDir` the scratch run dir stays EPHEMERAL — no `runDir` on the result (nothing survives to read)', async () => {
+    const { runDir } = await runBaseAgent({
+      prompt: 'p',
+      cwd: process.cwd(),
+      readScope: [],
+      owns: [],
+      buildCommand: capturingBuilder(claudeStdout('ok'), {}),
+    });
+    expect(runDir).toBeUndefined();
+  });
+});
+
+describe('runBaseAgent — returns the NodeStatusRecord + the REAL parsed result text', () => {
   it('text is the actual `result` event text off the node\'s genuine stdout (parseClaudeResult, not a guess)', async () => {
-    const { status, text } = await runSubstrateAgent({
+    const { status, text } = await runBaseAgent({
       prompt: 'judge this node',
       cwd: process.cwd(),
       readScope: [],
@@ -151,7 +237,7 @@ describe('runSubstrateAgent — returns the NodeStatusRecord + the REAL parsed r
   });
 
   it('text is "" when the stdout carries no `result` event (never throws, never fabricates)', async () => {
-    const { status, text } = await runSubstrateAgent({
+    const { status, text } = await runBaseAgent({
       prompt: 'judge this node',
       cwd: process.cwd(),
       readScope: [],
@@ -164,7 +250,7 @@ describe('runSubstrateAgent — returns the NodeStatusRecord + the REAL parsed r
 
   it('cleans up its own scratch run dir (no leftover tmp dir survives the call)', async () => {
     const before = (await fs.readdir(os.tmpdir())).filter((f) => f.startsWith('piflow-substrate-agent-'));
-    await runSubstrateAgent({
+    await runBaseAgent({
       prompt: 'p',
       cwd: process.cwd(),
       readScope: [],

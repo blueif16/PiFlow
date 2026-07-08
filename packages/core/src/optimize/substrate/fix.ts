@@ -53,16 +53,19 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import type { DefectBucket } from '../types.js';
-import type { SandboxProvider } from '../../types.js';
-import type { CommandBuilder } from '../../runner/command.js';
-import type { ExecRunner } from '../../runner/exec-runner.js';
-import type { ModelTiers } from '../../runner/model-routing.js';
 import { evaluateGate, type GateVerdict, type LandPolicy } from '../gate.js';
 import { adoptFromManifest, type AdoptManifest } from '../land.js';
 import { parseIssueFile, stampAttempt, transitionIssue, type Issue } from './issues.js';
-import { runSubstrateAgent, type RunSubstrateAgentOpts, type RunSubstrateAgentResult } from './agent.js';
+import {
+  inheritedAgentOpts, runBaseAgent,
+  type RunBaseAgentOpts, type RunBaseAgentResult, type BaseAgentChildOpts,
+} from './agent.js';
 import { spawnChildRun, type SpawnChildRunOpts, type SpawnChildRunResult } from './child-run.js';
 import { runSubstrateMeasure, type RunSubstrateMeasureOpts, type MeasureReport } from './measure.js';
+import {
+  runSubstrateGate,
+  type RunSubstrateGateOpts, type RunSubstrateGateResult, type GateVerdictFile, type GateRejectCategory,
+} from './gate.js';
 import { safeEmit, type SubstrateEvent, type SubstrateEventSink } from './events.js';
 
 /** The gate bucket every substrate fix uses — a non-ARCH, non-FUNCTIONALITY bucket, so `evaluateGate` applies
@@ -134,6 +137,14 @@ async function readNodeJsonRaw(templateDir: string, nodeId: string): Promise<Raw
   } catch (e) {
     throw new Error(`fixIssue: "${file}" is not valid JSON: ${(e as Error).message}`);
   }
+}
+
+/** Does the node declare an `optimize.judge` — a SOFT bar the gate agent can judge a fix against when there is
+ *  no numeric oracle? Reads `node.json` off disk (throws only if the node is unreadable, which fixIssue already
+ *  requires). Drives the gate ROUTING: unmeasurable + a judge ⇒ the gate agent, not "unmeasurable → human". */
+async function nodeHasJudge(templateDir: string, nodeId: string): Promise<boolean> {
+  const nj = await readNodeJsonRaw(templateDir, nodeId);
+  return typeof nj.optimize?.judge === 'string' && (nj.optimize.judge as string).length > 0;
 }
 
 export interface CandidateClosure {
@@ -351,6 +362,8 @@ export interface SubstrateManifestRecord {
   verifiedByRun: string | null;
   /** human-facing RAW per-key graded delta (empty on the skip path / when unmeasurable). */
   deltaSummary: Record<string, number>;
+  /** SOFT-gate reject only: the drop-back packet (coarse category + steer) for the outer loop's next fixer. */
+  dropback?: { category: GateRejectCategory; steer?: string };
 }
 
 export interface SubstrateManifest {
@@ -413,7 +426,11 @@ export function buildFixerPrompt(issueFileText: string, node: string): string {
 
 // ── fixIssue — the per-issue orchestration ──────────────────────────────────────────────────────────────────
 
-export interface FixIssueOpts {
+/** The fixer's opts = its OWN specialization (dirs/prove/fold/staging/events + the child-run seams) + the
+ *  base agent's whole inherited field surface + the `runAgent` test seam, EMBEDDED via
+ *  `BaseAgentChildOpts` (agent.ts) — never a re-declared subset (anything left off a copy is silently
+ *  lost; `dryRun` and every future base field arrive here automatically). */
+export interface FixIssueOpts extends BaseAgentChildOpts {
   /** the parent run being optimized (`spawnChildRun` replays a node of it; measure reports live under it). */
   parentRunDir: string;
   /** the product template dir (`nodes/<id>/{node.json,issues/}`). */
@@ -430,18 +447,11 @@ export interface FixIssueOpts {
   stagingDir?: string;
   /** live progress sink (fire-and-forget). */
   onEvent?: SubstrateEventSink;
-  // ── fixer-agent forwards (identical to substrate/agent.ts) ──
-  tier?: string;
-  model?: string;
-  timeoutMs?: number;
-  provider?: SandboxProvider;
-  buildCommand?: CommandBuilder;
-  execRunner?: ExecRunner;
-  modelRouting?: { tiers: ModelTiers; modelsIndex: Map<string, string> };
-  // ── test/offline seams (default the real functions; never live-spawn in a test) ──
-  runAgent?: (opts: RunSubstrateAgentOpts) => Promise<RunSubstrateAgentResult>;
+  // ── test/offline seams for the CHILD prove-run (default the real functions; never live-spawn in a test) ──
   spawnChild?: (parentRunDir: string, nodeId: string, opts: SpawnChildRunOpts) => Promise<SpawnChildRunResult>;
   measure?: (runDir: string, nodeId: string, opts: RunSubstrateMeasureOpts) => Promise<MeasureReport>;
+  /** Test/offline seam for the SOFT gate agent (default the real `runSubstrateGate`; never live-spawn a test). */
+  gate?: (runDir: string, nodeId: string, opts: RunSubstrateGateOpts) => Promise<RunSubstrateGateResult>;
 }
 
 export interface FixIssueResult {
@@ -453,11 +463,29 @@ export interface FixIssueResult {
   proved: boolean;
   /** the child run id that proved the fix, or null. */
   childId: string | null;
-  verdict: GateVerdict;
-  decision: 'staged' | 'discarded';
+  /** The NUMERIC gate verdict. ABSENT on a dry-run — and on the SOFT-gate path (where `gateVerdict` carries it). */
+  verdict?: GateVerdict;
+  /** SOFT-gate path ONLY (no numeric oracle + the node has an optimize.judge): the independent gate agent's
+   *  verdict. On this path `verdict` (the numeric gate) is absent and this carries the accept/reject instead. */
+  gateVerdict?: GateVerdictFile;
+  /** SOFT-gate REJECT ONLY: the drop-back packet (coarse category + a diversification steer) the outer loop
+   *  hands a FRESH fixer — never the gate's rubric/criteria (that would teach the retry to the test). */
+  dropback?: { category: GateRejectCategory; steer?: string };
+  /** ABSENT on a dry-run — nothing was decided. */
+  decision?: 'staged' | 'discarded';
   deltaSummary: Record<string, number>;
-  manifestPath: string;
-  record: SubstrateManifestRecord;
+  /** ABSENT on a dry-run — no manifest was staged. */
+  manifestPath?: string;
+  /** ABSENT on a dry-run — no manifest was staged. */
+  record?: SubstrateManifestRecord;
+  /** Present ONLY on a dry-run: the BASE agent's composed spec (`plan`) the fixer WOULD have been spawned
+   *  with — the full issue-dispatch `prompt` + the resolved candidate jail/skill/tier/model/tools. Forwarded
+   *  verbatim from the base agent's preview seam. */
+  dryRun?: RunBaseAgentResult['plan'];
+  /** The fixer spawn's PERSISTED run dir (present ONLY when the caller passed `outDir` to the base agent) —
+   *  point the existing observe instruments at it (`piflowctl telemetry|status|trace <dir>`), exactly like a
+   *  workflow node's own run. Absent on the ephemeral default (already deleted) and on a dry-run. */
+  fixerRunDir?: string;
 }
 
 /** Read the parent run's already-persisted graded metrics (`.graded` of its measure report), or `{}` if the
@@ -484,13 +512,48 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   const { templateDir, workspace, parentRunDir } = opts;
   const prove = opts.prove ?? true;
   const emit = (e: SubstrateEvent): void => safeEmit(opts.onEvent, e);
-  const runAgent = opts.runAgent ?? runSubstrateAgent;
+  const runAgent = opts.runAgent ?? runBaseAgent;
   const spawnChild = opts.spawnChild ?? spawnChildRun;
   const measure = opts.measure ?? runSubstrateMeasure;
 
   const issue = await parseIssueFile(issuePathAbs);
   const stagingDir = opts.stagingDir ?? path.join(parentRunDir, 'optimize', 'substrate', 'staging');
   const candidateRef = path.join(stagingDir, 'candidates', issue.name);
+
+  // The ONE fixer spawn composition — shared VERBATIM by the dry-run preview and the live spawn (never two
+  // hand-copies that can drift apart).
+  const fixerSpawn = (issueFileText: string): RunBaseAgentOpts => ({
+    prompt: buildFixerPrompt(issueFileText, node),
+    cwd: candidateRef,
+    readScope: [candidateRef],
+    owns: [candidateRef],
+    // Pass the EXACT resolved skill path, NOT the bare id: the runner uses a path-like ref DIRECTLY (no ring
+    // search — skill-locate.ts), so it doesn't matter that the fixer's exec `cwd` is the isolated candidate copy
+    // (which carries no skills). The playbook lives in the LIVE product root's installed-skills ring
+    // (`<workspace>/.claude/skills`, where `piflowctl skills install` lands piflow-fixer + piflow-triage). A miss
+    // still degrades to the promptless playbook (advisory), never a hard fail.
+    skill: path.join(workspace, '.claude', 'skills', FIXER_SKILL),
+    // The base agent's WHOLE inherited surface (tier/model/timeoutMs/provider/seams/dryRun/…), forwarded as one
+    // projection — never a hand-enumerated subset (the old copy here silently dropped `dryRun`).
+    ...inheritedAgentOpts(opts),
+  });
+
+  // DRY-RUN — the inherited base-agent preview: compose the exact spawn the fixer WOULD get (the candidateRef
+  // paths are computed, never created) and return its `plan` WITHOUT mutating ANYTHING — no issue transition,
+  // no candidate copy, no spawn, no prove/gate/stage, no events. Read-only throughout.
+  if (opts.dryRun) {
+    const preview = await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
+    return {
+      issue: issue.name,
+      node,
+      candidateRef,
+      editsApplied: 0,
+      proved: false,
+      childId: null,
+      deltaSummary: {},
+      dryRun: preview.plan,
+    };
+  }
 
   // (a) activate — guarded by the status machine (open|regressed → active).
   await transitionIssue(issuePathAbs, 'active');
@@ -503,27 +566,14 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   // (c) fixer — edits the candidate; editsApplied = a before/after content-hash diff of the candidate dir.
   const before = await hashCandidateTree(candidateRef);
   emit({ type: 'fixer-started', issue: issue.name });
-  const issueFileText = await fs.readFile(issuePathAbs, 'utf8');
-  await runAgent({
-    prompt: buildFixerPrompt(issueFileText, node),
-    cwd: candidateRef,
-    readScope: [candidateRef],
-    owns: [candidateRef],
-    skill: FIXER_SKILL, // stage the default fixer playbook (Ring 1); a miss degrades to the promptless playbook.
-    tier: opts.tier,
-    model: opts.model,
-    timeoutMs: opts.timeoutMs,
-    provider: opts.provider,
-    buildCommand: opts.buildCommand,
-    execRunner: opts.execRunner,
-    modelRouting: opts.modelRouting,
-  });
+  const fixerResult = await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
   const editsApplied = countChangedFiles(before, await hashCandidateTree(candidateRef));
   emit({ type: 'fixer-done', issue: issue.name, editsApplied });
   if (editsApplied >= 1) await transitionIssue(issuePathAbs, 'fix-landed'); // "candidate edit staged"
 
   // (d) prove (self-rewind) — or skip (fix-landed → resolved on adopt). Unmeasurable ⇒ base/cand stay null.
   let childId: string | null = null;
+  let childDir: string | null = null;
   let base: number | null = null;
   let candidate: number | null = null;
   let deltaSummary: Record<string, number> = {};
@@ -537,6 +587,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
       buildCommand: opts.buildCommand,
     });
     childId = child.childId;
+    childDir = child.childDir;
     emit({ type: 'prove-started', issue: issue.name, childId });
     // measure the CHILD with workspace = the LIVE product root → pristine scorer grades a candidate artifact.
     const childReport = await measure(child.childDir, node, { workspace });
@@ -550,22 +601,62 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     emit({ type: 'measured', issue: issue.name, sharedKeys: fold.sharedKeys });
   }
 
-  // (e) gate — REUSE evaluateGate's editsApplied<1 + null⇒stage-for-human rules (the fold header).
-  const verdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base, candidate, editsApplied });
-  emit({ type: 'gated', issue: issue.name, accept: verdict.accept, reason: verdict.reason });
+  // (e) GATE — two decision surfaces on ONE proved candidate:
+  //   • NUMERIC (evaluateGate) wherever a graded oracle produced shared keys — deterministic, drift-proof.
+  //   • the INDEPENDENT GATE AGENT wherever the fix was proved but the node has NO number, only an
+  //     `optimize.judge` bar (the SOFT path). It judges the candidate artifact against the node's OWN criteria
+  //     — the same bar a regular run applies, no invented "fix contract" — and STAGES its accept for the human
+  //     (never a judge-gated auto-accept). A node with neither a number nor a judge falls to evaluateGate's
+  //     stage-for-human, exactly as before.
+  let decision: 'staged' | 'discarded';
+  let landPolicy: LandPolicy;
+  let reason: string;
+  let numericVerdict: GateVerdict | undefined;
+  let gateVerdict: GateVerdictFile | undefined;
+  let dropback: { category: GateRejectCategory; steer?: string } | undefined;
 
-  const decision: 'staged' | 'discarded' =
-    editsApplied < 1
-      ? 'discarded'
-      : verdict.accept
-        ? 'staged'
-        : verdict.landPolicy === 'stage-for-human'
-          ? 'staged' // unmeasurable/abstained → route to a human, never auto
-          : 'discarded'; // a measured regression / flat result
+  const numericMeasured = base !== null && candidate !== null; // shared graded keys existed
+  const softGate = editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasJudge(templateDir, node));
+
+  if (softGate && childDir !== null) {
+    const runGate = opts.gate ?? runSubstrateGate;
+    const gateRes = await runGate(childDir, node, {
+      workspace,
+      templateDir,
+      issueFileText: await fs.readFile(issuePathAbs, 'utf8'),
+      fixerDiff: '', // v1: the gate inspects the candidate harness (candidateRef, in its read scope) directly
+      fixerAccount: fixerResult.text ?? '',
+      candidateRef,
+      ...inheritedAgentOpts(opts),
+    });
+    gateVerdict = gateRes.verdict;
+    if (!gateVerdict) throw new Error(`fixIssue: the gate agent for node "${node}" returned no verdict`);
+    decision = gateVerdict.decision === 'accept' ? 'staged' : 'discarded';
+    landPolicy = 'stage-for-human'; // a model judgment STAGES; the human adopts (never judge-gated auto-accept).
+    reason = gateVerdict.rationale;
+    if (gateVerdict.decision === 'reject' && gateVerdict.category) {
+      dropback = { category: gateVerdict.category, ...(gateVerdict.steer ? { steer: gateVerdict.steer } : {}) };
+    }
+    emit({ type: 'gated', issue: issue.name, accept: gateVerdict.decision === 'accept', reason });
+  } else {
+    // NUMERIC / degenerate path — REUSE evaluateGate's editsApplied<1 + null⇒stage-for-human rules (fold header).
+    numericVerdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base, candidate, editsApplied });
+    emit({ type: 'gated', issue: issue.name, accept: numericVerdict.accept, reason: numericVerdict.reason });
+    decision =
+      editsApplied < 1
+        ? 'discarded'
+        : numericVerdict.accept
+          ? 'staged'
+          : numericVerdict.landPolicy === 'stage-for-human'
+            ? 'staged' // unmeasurable/abstained with no judge → route to a human, never auto
+            : 'discarded'; // a measured regression / flat result
+    landPolicy = numericVerdict.landPolicy;
+    reason = numericVerdict.reason;
+  }
 
   // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
   // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
-  // so a later triage/fix can re-attempt it (TASK 0's `verifying → open` back-edge). A staged candidate stays
+  // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). A staged candidate stays
   // at `verifying` awaiting adopt; the no-edit / skip-proof paths never entered `verifying` (nothing to undo).
   if (childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
 
@@ -577,14 +668,15 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     decision,
     candidateRef,
     liveRoot: workspace,
-    landPolicy: verdict.landPolicy,
-    reason: verdict.reason,
+    landPolicy,
+    reason,
     verifiedByRun: childId,
     deltaSummary,
+    ...(dropback ? { dropback } : {}),
   };
   const manifestPath = await upsertSubstrateManifest(stagingDir, record);
   emit({ type: 'staged', issue: issue.name, decision, manifestPath });
-  emit({ type: 'stopped', issue: issue.name, reason: decision === 'staged' ? 'staged for adopt' : `discarded (${verdict.reason})` });
+  emit({ type: 'stopped', issue: issue.name, reason: decision === 'staged' ? 'staged for adopt' : `discarded (${reason})` });
 
   return {
     issue: issue.name,
@@ -593,11 +685,14 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     editsApplied,
     proved: childId !== null,
     childId,
-    verdict,
+    verdict: numericVerdict,
+    ...(gateVerdict ? { gateVerdict } : {}),
+    ...(dropback ? { dropback } : {}),
     decision,
     deltaSummary,
     manifestPath,
     record,
+    fixerRunDir: fixerResult.runDir,
   };
 }
 

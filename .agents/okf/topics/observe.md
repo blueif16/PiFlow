@@ -179,6 +179,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
 - `59db2f6` 2026-07-06 — Merge remote-tracking branch 'origin/main' into feat/gui-issues-surface
 - `b3e9a0d` 2026-07-07 — feat(gui): pin the canonical template above run history in the switcher
+- `29d932a` 2026-07-07 — fix(observe): stop showing runs as "running" after their controller died
 
 ### Lessons — memory cluster
 
@@ -249,13 +250,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
 
-### Code anchors / blast radius (codegraph)
-
-- `deriveNode` (packages/core/src/observe/derive.ts:84) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/index.ts`; tests: `packages/core/test/derive.test.ts`
-- `assembleNode` (packages/core/src/observe/runView.ts:374) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
-- `NodeTokenSpine` (packages/core/src/observe/runView.ts:294) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
-- `RunView` (packages/core/src/observe/runView.ts:135) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/observe/index.ts`, `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
-- `RunView` (gui/src/data/runView.ts:153) — 8 callers in `gui/src/data/runView.ts`; ⚠ no covering tests found
-
-<sub>derived 2026-07-07 · arc=90 commits · files=13 · lessons=65</sub>
+<sub>derived 2026-07-08 · arc=91 commits · files=13 · lessons=65</sub>
 <!-- okf:auto-end -->

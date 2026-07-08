@@ -779,6 +779,89 @@ describe('piflowctl run --dry-run --profile — the plan reflects the elided DAG
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// (E2) ADDITIVE PROFILE OVERLAY on the DRY-RUN PATH — a `template/profiles/<name>.json` overlay that
+// APPENDS an `agentic` gate must MERGE when `--profile <name>` is passed, so the dry-run plan shows the
+// materialized `<producer>__judge` node — the SAME judge the live run would execute. The bug: the dry-run
+// called loadTemplate(templateDir) with NO opts, so the overlay never merged and no judge appeared (a dead
+// flag). These clone template-min, drop in an overlay, and assert the judge shows up ONLY via --profile.
+// Drop the `{ profile }` threading in run.ts ⇒ the judge vanishes ⇒ these go red.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('piflowctl run --dry-run --profile — an additive OVERLAY materializes the judge in the plan', () => {
+  const JUDGE_ID = 'w0-classify-judge'; // slugify('w0-classify__judge') — the `__` collapses to `-`
+  // Clone template-min and write a profile overlay adding an `agentic` gate to w0-classify (judge tier `deep`
+  // differs from the producer's undefined tier — a valid judge). `declareLegacy` optionally ALSO declares the
+  // name in meta.json.profiles (with the given elidePhases) — the reconciliation matrix.
+  async function cloneWithOverlay(name: string, declareLegacy?: { elidePhases?: string[] }): Promise<string> {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-cli-overlay-tpl-'));
+    await fs.cp(FIXTURE, dir, { recursive: true });
+    const pdir = path.join(dir, 'profiles');
+    await fs.mkdir(pdir, { recursive: true });
+    await fs.writeFile(
+      path.join(pdir, `${name}.json`),
+      JSON.stringify({ nodes: { 'w0-classify': [{ type: 'agentic', judgeTier: 'deep', rubric: 'Exhaustive + consistent.' }] } }, null, 2),
+    );
+    if (declareLegacy) {
+      const meta = JSON.parse(await fs.readFile(path.join(dir, 'meta.json'), 'utf8'));
+      meta.profiles = { ...(meta.profiles ?? {}), [name]: declareLegacy };
+      await fs.writeFile(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
+    }
+    return dir;
+  }
+  async function dryPlan(dir: string, profile?: string): Promise<string> {
+    const lines: string[] = [];
+    const out = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-cli-overlay-out-'));
+    const ws = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-cli-overlay-ws-'));
+    try {
+      await runTemplate(
+        { templateDir: dir, dryRun: true, run: 'ov', args: {}, workspace: ws, outDir: out, profile },
+        { print: (s) => lines.push(s) },
+      );
+    } finally {
+      for (const d of [out, ws]) await fs.rm(d, { recursive: true, force: true });
+    }
+    return lines.join('\n');
+  }
+
+  it('the overlay judge appears ONLY when --profile is passed (declared-legacy + overlay — the game-omni shape)', async () => {
+    // The name is ALSO declared as an empty legacy profile (no elision) — mirrors game-omni's production/companion.
+    const dir = await cloneWithOverlay('production', {});
+    try {
+      const bare = await dryPlan(dir); // no --profile ⇒ the overlay is inert
+      expect(bare).not.toContain(JUDGE_ID);
+      const profiled = await dryPlan(dir, 'production'); // --profile ⇒ the overlay merges → the judge materializes
+      expect(profiled).toContain(JUDGE_ID);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('an OVERLAY-ONLY profile (no meta.json declaration) materializes the judge AND does not throw (reconciliation)', async () => {
+    // No legacy declaration: applyProfileByName would throw UnknownProfileError for this name if it were reached —
+    // the reconciliation must make it a NO-OP (the overlay already merged in loadTemplate). No throw + judge present.
+    const dir = await cloneWithOverlay('production');
+    try {
+      const profiled = await dryPlan(dir, 'production');
+      expect(profiled).toContain(JUDGE_ID);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a profile carrying BOTH an overlay AND elidePhases: the judge materializes AND the elided leaves drop', async () => {
+    // `lean` adds the judge to w0-classify (classify phase) AND elides the `build` phase (the two leaves).
+    const dir = await cloneWithOverlay('lean', { elidePhases: ['build'] });
+    try {
+      const profiled = await dryPlan(dir, 'lean');
+      expect(profiled).toContain(JUDGE_ID);       // overlay APPENDED the judge
+      expect(profiled).not.toContain('w2a-levels'); // elidePhases REMOVED the build leaves
+      expect(profiled).not.toContain('w2b-assets');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // (A2 · ANTI-FOOTGUN) A run launched WITHOUT --workspace anchors {{WORKSPACE}} (and the sandbox read-jail,
 // threaded as repoRoot) at the PRODUCT ROOT derived from the template's own `.piflow/<wf>/template/`
 // placement — NEVER process.cwd(). This is the highest-value migration fix: pre-change the workspace
