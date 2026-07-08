@@ -1,7 +1,9 @@
 // `piflowctl skill list|search` — the resolvable-skill catalog over core's `listSkills` (the SAME two rings
-// `locateSkillStage` stages by: workspace `.agents/skills` → `<piflowHome>/skills`). Tested through the
-// public `runSkillCli` with temp workspace + home rings via the injected deps (hermetic — no real ~/.piflow,
-// no cwd dependence).
+// `locateSkillStage` stages by, BOTH project-local: workspace `.agents/skills` → `<workspace>/.claude/skills`,
+// the latter where `piflowctl skills install` lands its catalog). NEVER a global `~/.piflow/skills` ring —
+// resolution hangs entirely off the workspace, so a run reproduces from the product alone with no
+// machine-global state. Tested through the public `runSkillCli` with a single temp workspace via the
+// injected deps (hermetic — no real ~/.piflow, no cwd dependence).
 //
 // Load-bearing behaviors pinned here:
 //   • `list` merges BOTH rings, tagging each row with its ring; a workspace bundle shadowing an installed
@@ -15,8 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runSkillCli } from '../src/skill.js';
 
-let WS: string; // workspace root (ring 0 = <WS>/.agents/skills)
-let HOME: string; // piflow home (ring 1 = <HOME>/skills)
+let WS: string; // workspace root: ring 0 = <WS>/.agents/skills, ring 1 = <WS>/.claude/skills
 
 function sink(): { text: string; write: (s: string) => void } {
   const parts: string[] = [];
@@ -31,7 +32,7 @@ function sink(): { text: string; write: (s: string) => void } {
 async function run(...argv: string[]): Promise<{ out: string; err: string; code: number }> {
   const o = sink();
   const e = sink();
-  const code = await runSkillCli(argv, { out: o.write, err: e.write, workspace: WS, piflowHome: HOME });
+  const code = await runSkillCli(argv, { out: o.write, err: e.write, workspace: WS });
   return { out: o.text, err: e.text, code };
 }
 
@@ -43,15 +44,13 @@ async function bundle(root: string, id: string, description: string): Promise<vo
 
 beforeEach(async () => {
   WS = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-skill-ws-'));
-  HOME = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-skill-home-'));
   await bundle(path.join(WS, '.agents', 'skills'), 'alpha', 'reads the alpha telemetry stream');
-  await bundle(path.join(HOME, 'skills'), 'beta', 'writes the beta research brief');
-  await bundle(path.join(HOME, 'skills'), 'alpha', 'the INSTALLED alpha (shadowed by the workspace copy)');
+  await bundle(path.join(WS, '.claude', 'skills'), 'beta', 'writes the beta research brief');
+  await bundle(path.join(WS, '.claude', 'skills'), 'alpha', 'the INSTALLED alpha (shadowed by the workspace copy)');
 });
 
 afterEach(async () => {
   await fs.rm(WS, { recursive: true, force: true });
-  await fs.rm(HOME, { recursive: true, force: true });
 });
 
 describe('piflowctl skill list — both rings, ring-tagged', () => {
@@ -69,7 +68,10 @@ describe('piflowctl skill list — both rings, ring-tagged', () => {
 
   it('a shadowed installed bundle is visible and flagged', async () => {
     const r = await run('list');
-    expect(r.out).toContain('shadowed');
+    // The `[shadowed]` marker is renderEntries' own flag suffix — assert THAT literal marker, not the
+    // bare word "shadowed" (which also appears, coincidentally, inside this fixture's own description
+    // text, so a bare substring check would pass even if the shadow flag/rendering were broken).
+    expect(r.out).toContain('[shadowed]');
   });
 
   it('--json emits the raw SkillListEntry[] (id, ring, dir, description)', async () => {
