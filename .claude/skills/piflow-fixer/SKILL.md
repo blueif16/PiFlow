@@ -161,9 +161,14 @@ ONE agent owns each returned verdict's whole cycle — route, dispatch, gate, im
 1. **Read two-front** — agentic (tokens, calls, errors, think) AND quality (judge marks) — never one alone.
 2. **Enumerate issues** — each born with its detector + artifact/trace line, or it is not an issue. Run the
    LAPSE gate on each before anything else.
-3. **Consult first (mandatory):** node memory for recurrence (LAPSE vs SKILL) + the rejected/dead-lever record
-   (never re-propose a lever this issue already proved inert), then the practices library; if the library
-   lacks the pattern, RESEARCH first and stage a card candidate.
+3. **Consult first (mandatory)** — the three knowledge legs `[[three-knowledge-legs]]`: node memory for
+   recurrence (LAPSE vs SKILL) + the rejected/dead-lever record (`memory-slices`, Leg A — project-stuck) · the
+   code slice for the root (`okf-slices`, Leg B — project-stuck) · then the PRACTICES LIBRARY this skill OWNS
+   (Leg C — the portable method cards under this skill's own **`library/cards/`**; universal, they travel WITH
+   the fixer, so they are present on ANY repo from day one). FIND by symptom: `node library/cards/_generate.mjs
+   --find "<symptom>"` (`--json` = ranked), then read the top `library/cards/<key>.md` fresh. EVERY `[[key]]`
+   cross-ref in this playbook names a card in `library/cards/` — resolve it there. If the library lacks the
+   pattern, RESEARCH first and stage a card candidate (`library/cards/_TEMPLATE.md`).
 4. **Dispatch one targeted subagent per issue**, packet curated: issue file · memory-lesson + card pointers ·
    code-slice pointer · frozen-rerun protocol · pre-register-your-signal order. Scope-fence each (no oracle,
    no git). **Model lanes by JOB SHAPE, not prestige** `[[fixer-model-tiering]]`: bounded edit-committing jobs

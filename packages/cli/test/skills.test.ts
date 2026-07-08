@@ -122,6 +122,14 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
     // And nothing OUTSIDE the default set at all (e.g. unrelated repo skills like premium-saas-stack).
     const landed = await fs.readdir(skillsRoot);
     expect(landed.sort()).toEqual(['piflow-fixer', 'piflow-gate', 'piflow-init', 'piflow-inspect', 'piflow-overlord', 'piflow-start', 'piflow-triage']);
+
+    // PORTABILITY GUARANTEE: the fixer OWNS the method library (Leg C) under `piflow-fixer/library/` — it MUST
+    // travel with the fixer on install (the whole skill subtree copies recursively), so a fixer on a fresh repo
+    // has the universal method cards from day one. This is exactly what a SKILL.md-only copy would silently drop.
+    const libCards = (await fs.readdir(path.join(skillsRoot, 'piflow-fixer', 'library', 'cards')))
+      .filter((f) => f.endsWith('.md') && !f.startsWith('_'));
+    expect(libCards.length, 'the fixer method library cards must install with the fixer').toBeGreaterThan(10);
+    expect(libCards).toContain('judge-reliability.md'); // a specific card the gate/fixer reference by [[key]]
   });
 });
 
