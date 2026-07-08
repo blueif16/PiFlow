@@ -251,6 +251,12 @@ export { runWorkflow, defaultExecRunner, defaultPiCommand, dispatchCommand, last
 // summarizeGates — the POLICY-channel distiller (node.op + checkpoint → the legible post-node consequence chain).
 export { buildNodeConfig, summarizeGates } from './runner/index.js';
 export type { GateSummary, GateSummaryEntry, NodeConfig } from './runner/status.js';
+// finalizeRun — the explicit, human-invoked force-close of a STUCK (!done) run record (`piflowctl node
+// --finalize` / `runs sweep --apply`). Writes via the SAME `writeStatus` every other lane uses; refuses on
+// an already-`done:true` run. See runner/finalize.ts for the residual gap it closes (no-controllerPid /
+// frozen-forever runs the live orphan-detection in observe/read.ts cannot resolve on its own).
+export { finalizeRun } from './runner/index.js';
+export type { FinalizeRunOpts, FinalizeResult } from './runner/index.js';
 // P6 — mid-run migration primitives: the single-writer lease (guards journal double-write across a
 // migration), the freeze-at-node-boundary signal (`.pi/freeze` → park the run), and the run-dir bundle
 // (the portable snapshot shipped laptop⇄cloud). Surfaced for @piflow/server (the migrate endpoints) +
