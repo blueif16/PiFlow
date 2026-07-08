@@ -24,7 +24,7 @@ import {
   DEFAULT_JUDGE_CAP,
 } from '../src/optimize/substrate/judge.js';
 import { computeIssueId, writeIssueFile, parseIssueFile, listIssues, type Issue } from '../src/optimize/substrate/issues.js';
-import type { RunSubstrateAgentOpts, RunSubstrateAgentResult } from '../src/optimize/substrate/agent.js';
+import type { RunBaseAgentOpts, RunBaseAgentResult } from '../src/optimize/substrate/agent.js';
 
 const tmpDirs: string[] = [];
 const scratch = async (prefix = 'piflow-judge-'): Promise<string> => {
@@ -298,7 +298,7 @@ describe('runSubstrateJudge — wires prompt→agent→post-process→marker, wi
     await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'judge the gameplay node');
 
     let capturedPrompt = '';
-    const fakeRunAgent = async (agentOpts: { prompt: string; owns: string[] }): Promise<RunSubstrateAgentResult> => {
+    const fakeRunAgent = async (agentOpts: { prompt: string; owns: string[] }): Promise<RunBaseAgentResult> => {
       capturedPrompt = agentOpts.prompt;
       // simulate the live agent's ONLY allowed side effect: writing a draft under its `owns` scope.
       const dir = agentOpts.owns[0];
@@ -308,7 +308,7 @@ describe('runSubstrateJudge — wires prompt→agent→post-process→marker, wi
         draftContent({ title: 'schema gate silently skipped', severity: 'critical', sig: 'gameplay::schema-gate-skipped' }),
       );
       return {
-        status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunSubstrateAgentResult['status'],
+        status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'],
         text: 'filed 1 issue',
       };
     };
@@ -335,10 +335,10 @@ describe('runSubstrateJudge — wires prompt→agent→post-process→marker, wi
 
     let seenReadScope: string[] = [];
     let seenOwns: string[] = [];
-    const fakeRunAgent = async (agentOpts: { readScope: string[]; owns: string[] }): Promise<RunSubstrateAgentResult> => {
+    const fakeRunAgent = async (agentOpts: { readScope: string[]; owns: string[] }): Promise<RunBaseAgentResult> => {
       seenReadScope = agentOpts.readScope;
       seenOwns = agentOpts.owns;
-      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunSubstrateAgentResult['status'], text: '' };
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
     };
     await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: fakeRunAgent });
 
@@ -355,10 +355,10 @@ describe('runSubstrateJudge — a TRUE child of the base agent (the ONE shared i
     await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
     await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
 
-    let captured: RunSubstrateAgentOpts | undefined;
-    const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
+    let captured: RunBaseAgentOpts | undefined;
+    const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
       captured = o;
-      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunSubstrateAgentResult['status'], text: '' };
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
     };
     await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, timeoutMs: 45000, runAgent: capturingRunAgent });
 
@@ -377,12 +377,49 @@ describe('runSubstrateJudge — stages the piflow-triage playbook for the judge 
     await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
 
     let capturedSkill: string | undefined = 'UNSET';
-    const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
+    const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
       capturedSkill = o.skill; // undefined before the wiring → RED against 'piflow-triage'
-      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunSubstrateAgentResult['status'], text: '' };
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
     };
     await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: capturingRunAgent });
 
     expect(capturedSkill).toBe('piflow-triage');
+  });
+});
+
+describe('runSubstrateJudge — surfaces the judge agent\'s runDir (Phase-3 observe wiring)', () => {
+  it('forwards the base agent\'s runDir onto SubstrateJudgeResult.agentRunDir, so the observe instruments can read the spawn like a node', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch();
+    const workspace = templateDir;
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+
+    const fakeRunAgent = async (): Promise<RunBaseAgentResult> => ({
+      status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'],
+      text: '',
+      runDir: '/fake/observe/judge-dir',
+    });
+    const result = await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: fakeRunAgent });
+
+    // RED before the wiring: runSubstrateJudge's final return surfaced only agentText/agentStatus — the base
+    // agent's `runDir` (already returned by runBaseAgent whenever `outDir` is set) was silently dropped.
+    expect(result.agentRunDir).toBe('/fake/observe/judge-dir');
+  });
+
+  it('is ABSENT when the agent result carries no runDir (the ephemeral default — nothing was persisted)', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch();
+    const workspace = templateDir;
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+
+    const fakeRunAgent = async (): Promise<RunBaseAgentResult> => ({
+      status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'],
+      text: '',
+    });
+    const result = await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: fakeRunAgent });
+
+    expect(result.agentRunDir).toBeUndefined();
   });
 });

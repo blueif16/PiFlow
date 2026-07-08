@@ -57,8 +57,8 @@ import { evaluateGate, type GateVerdict, type LandPolicy } from '../gate.js';
 import { adoptFromManifest, type AdoptManifest } from '../land.js';
 import { parseIssueFile, stampAttempt, transitionIssue, type Issue } from './issues.js';
 import {
-  inheritedAgentOpts, runSubstrateAgent,
-  type RunSubstrateAgentOpts, type RunSubstrateAgentResult, type SubstrateAgentChildOpts,
+  inheritedAgentOpts, runBaseAgent,
+  type RunBaseAgentOpts, type RunBaseAgentResult, type BaseAgentChildOpts,
 } from './agent.js';
 import { spawnChildRun, type SpawnChildRunOpts, type SpawnChildRunResult } from './child-run.js';
 import { runSubstrateMeasure, type RunSubstrateMeasureOpts, type MeasureReport } from './measure.js';
@@ -414,9 +414,9 @@ export function buildFixerPrompt(issueFileText: string, node: string): string {
 
 /** The fixer's opts = its OWN specialization (dirs/prove/fold/staging/events + the child-run seams) + the
  *  base agent's whole inherited field surface + the `runAgent` test seam, EMBEDDED via
- *  `SubstrateAgentChildOpts` (agent.ts) — never a re-declared subset (anything left off a copy is silently
+ *  `BaseAgentChildOpts` (agent.ts) — never a re-declared subset (anything left off a copy is silently
  *  lost; `dryRun` and every future base field arrive here automatically). */
-export interface FixIssueOpts extends SubstrateAgentChildOpts {
+export interface FixIssueOpts extends BaseAgentChildOpts {
   /** the parent run being optimized (`spawnChildRun` replays a node of it; measure reports live under it). */
   parentRunDir: string;
   /** the product template dir (`nodes/<id>/{node.json,issues/}`). */
@@ -459,7 +459,11 @@ export interface FixIssueResult {
   /** Present ONLY on a dry-run: the BASE agent's composed spec (`plan`) the fixer WOULD have been spawned
    *  with — the full issue-dispatch `prompt` + the resolved candidate jail/skill/tier/model/tools. Forwarded
    *  verbatim from the base agent's preview seam. */
-  dryRun?: RunSubstrateAgentResult['plan'];
+  dryRun?: RunBaseAgentResult['plan'];
+  /** The fixer spawn's PERSISTED run dir (present ONLY when the caller passed `outDir` to the base agent) —
+   *  point the existing observe instruments at it (`piflowctl telemetry|status|trace <dir>`), exactly like a
+   *  workflow node's own run. Absent on the ephemeral default (already deleted) and on a dry-run. */
+  fixerRunDir?: string;
 }
 
 /** Read the parent run's already-persisted graded metrics (`.graded` of its measure report), or `{}` if the
@@ -486,7 +490,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   const { templateDir, workspace, parentRunDir } = opts;
   const prove = opts.prove ?? true;
   const emit = (e: SubstrateEvent): void => safeEmit(opts.onEvent, e);
-  const runAgent = opts.runAgent ?? runSubstrateAgent;
+  const runAgent = opts.runAgent ?? runBaseAgent;
   const spawnChild = opts.spawnChild ?? spawnChildRun;
   const measure = opts.measure ?? runSubstrateMeasure;
 
@@ -496,7 +500,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
 
   // The ONE fixer spawn composition — shared VERBATIM by the dry-run preview and the live spawn (never two
   // hand-copies that can drift apart).
-  const fixerSpawn = (issueFileText: string): RunSubstrateAgentOpts => ({
+  const fixerSpawn = (issueFileText: string): RunBaseAgentOpts => ({
     prompt: buildFixerPrompt(issueFileText, node),
     cwd: candidateRef,
     readScope: [candidateRef],
@@ -540,7 +544,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   // (c) fixer — edits the candidate; editsApplied = a before/after content-hash diff of the candidate dir.
   const before = await hashCandidateTree(candidateRef);
   emit({ type: 'fixer-started', issue: issue.name });
-  await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
+  const fixerResult = await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
   const editsApplied = countChangedFiles(before, await hashCandidateTree(candidateRef));
   emit({ type: 'fixer-done', issue: issue.name, editsApplied });
   if (editsApplied >= 1) await transitionIssue(issuePathAbs, 'fix-landed'); // "candidate edit staged"
@@ -621,6 +625,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     deltaSummary,
     manifestPath,
     record,
+    fixerRunDir: fixerResult.runDir,
   };
 }
 

@@ -28,7 +28,7 @@ import {
 } from '../src/optimize/substrate/fix.js';
 import { renderSubstrateEvent, safeEmit, type SubstrateEvent } from '../src/optimize/substrate/events.js';
 import { computeIssueId, writeIssueFile, parseIssueFile, type Issue } from '../src/optimize/substrate/issues.js';
-import type { RunSubstrateAgentOpts, RunSubstrateAgentResult } from '../src/optimize/substrate/agent.js';
+import type { RunBaseAgentOpts, RunBaseAgentResult } from '../src/optimize/substrate/agent.js';
 import type { SpawnChildRunResult } from '../src/optimize/substrate/child-run.js';
 import type { MeasureReport } from '../src/optimize/substrate/measure.js';
 
@@ -44,8 +44,8 @@ afterEach(async () => {
 
 // ── shared fakes ────────────────────────────────────────────────────────────────────────────────────────
 const okStatus = () =>
-  ({ id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] }) as unknown as RunSubstrateAgentResult['status'];
-const agentResult = (): RunSubstrateAgentResult => ({ status: okStatus(), text: '' });
+  ({ id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] }) as unknown as RunBaseAgentResult['status'];
+const agentResult = (): RunBaseAgentResult => ({ status: okStatus(), text: '' });
 const measureReport = (graded: Record<string, number>): MeasureReport => ({ node: 'gameplay', graded }) as unknown as MeasureReport;
 const childResult = (childId: string, childDir: string): SpawnChildRunResult => ({ childId, childDir } as unknown as SpawnChildRunResult);
 
@@ -109,12 +109,12 @@ async function setupFixture(opts: { baseGraded?: Record<string, number> } = {}) 
 }
 
 /** A fixer that appends bytes to a copied candidate file (a real, hash-visible edit). */
-const editingAgent = async (o: { cwd: string }): Promise<RunSubstrateAgentResult> => {
+const editingAgent = async (o: { cwd: string }): Promise<RunBaseAgentResult> => {
   await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n');
   return agentResult();
 };
 /** A fixer that touches nothing (a no-op proposal → editsApplied 0). */
-const noopAgent = async (): Promise<RunSubstrateAgentResult> => agentResult();
+const noopAgent = async (): Promise<RunBaseAgentResult> => agentResult();
 
 function initGitRepo(dir: string): void {
   const git = (...a: string[]) => execFileSync('git', ['-C', dir, ...a], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -431,11 +431,46 @@ describe('fixIssue — skip-proof path (prove off)', () => {
   });
 });
 
+describe('fixIssue — surfaces the fixer agent\'s runDir (Phase-3 observe wiring)', () => {
+  it('forwards the LIVE fixer spawn\'s runDir onto FixIssueResult.fixerRunDir, so the observe instruments can read the spawn like a node', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    const res = await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      prove: false,
+      runAgent: async (o) => {
+        await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); // a real edit → normal flow
+        return { ...agentResult(), runDir: '/fake/observe/fix-dir' };
+      },
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    // RED before the wiring: the ONLY live `runAgent(fixerSpawn(...))` call's result (fix.ts's fixer-spawn
+    // site) was discarded entirely — nothing surfaced its `runDir` onto FixIssueResult.
+    expect(res.fixerRunDir).toBe('/fake/observe/fix-dir');
+  });
+
+  it('is ABSENT when the fixer spawn returns no runDir (the ephemeral default — nothing was persisted)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    const res = await fixIssue(issuePath, {
+      parentRunDir,
+      templateDir,
+      workspace,
+      prove: false,
+      runAgent: editingAgent,
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    expect(res.fixerRunDir).toBeUndefined();
+  });
+});
+
 describe('fixIssue — stages the piflow-fixer playbook for the fixer spawn', () => {
   it('passes the EXACT piflow-fixer skill PATH (product-root .claude/skills) to runAgent — a path-like ref the runner uses DIRECTLY, no fragile ring-search from the candidate cwd', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
     let capturedSkill: string | undefined = 'UNSET';
-    const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
+    const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
       capturedSkill = o.skill; // the bare id 'piflow-fixer' before the wiring → RED against the exact path
       await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); // a real edit → normal flow
       return agentResult();
@@ -458,8 +493,8 @@ describe('fixIssue — stages the piflow-fixer playbook for the fixer spawn', ()
 describe('fixIssue — a TRUE child of the base agent (the ONE shared inherited field surface)', () => {
   it('forwards the base agent\'s inherited fields — dryRun INCLUDED — to runAgent (never a hand-copied subset)', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
-    let captured: RunSubstrateAgentOpts | undefined;
-    const capturingRunAgent = async (o: RunSubstrateAgentOpts): Promise<RunSubstrateAgentResult> => {
+    let captured: RunBaseAgentOpts | undefined;
+    const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
       captured = o;
       return agentResult();
     };
