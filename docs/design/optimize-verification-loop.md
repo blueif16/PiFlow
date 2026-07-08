@@ -3,7 +3,50 @@
 > Status: DESIGN (2026-07-08). Branch `feat/triage-live-overlord`. Grounds the "what happens AFTER the
 > fixer applies the fix" thread. Backed by a 4-lane external research sweep (APR/overfitting · industrial &
 > agentic loops · independent-verifier/anti-reward-hacking · rerun rationing) — sources at the end.
-> Companion to `docs/handoff-w0-optimization.md`. This is the direction, not yet the build.
+> Companion to `docs/handoff-w0-optimization.md`. §2 is the research reframe (still valid); §0 records the
+> human design review that corrected the over-engineering and what actually SHIPPED.
+
+## 0. Post-review corrections + what shipped (SUPERSEDES the ambition in §3 / §6 / §7 where they conflict)
+
+A design review with the human deliberately thinned the below. The shipped v1:
+
+- **No invented "fix contract."** We do NOT synthesize a per-fix contract or held-out probes (§6). Verifying a
+  fix = re-run the node and judge it against the node's OWN bar — the exact same `optimize.judge` criteria a
+  regular run / companion judge uses. The oracle stays withheld from the fixer (already true); that is the only
+  fence needed. "Are we going to invent a contract every time? Don't be silly."
+- **The gate agent is a THIN base-agent child, not a subsystem.** Like `piflow-triage`/`piflow-fixer`: a SKILL
+  (`piflow-gate/SKILL.md` — the judgment) + a `judge.ts`-shaped module (`optimize/substrate/gate.ts` — assemble
+  → `runBaseAgent` → fail-closed `verdict.json`), sharing the whole inherited surface (dryRun/tier/model/sandbox/
+  observe). The tier ladder (§3) is NOT built as code: the node's own deterministic gates already run inside its
+  re-run; the gate agent adds only the two judgments a numeric gate can't — the reward-hack audit + soft quality.
+- **Auto-adopt is just a setting.** Default stays human-adopt; auto-adopt is a config flip (the seam exists),
+  NOT the elaborate measured-false-accept gate of §7.
+- **Quality is judged by the human's perception, not automated metrics.** We do NOT benchmark the gate vs random
+  / auto-measure false-accept as the mechanism (that path makes quality trash). The gate emits an evidence-cited
+  rationale for the human — the real quality eye. The ledger's reopen/`regressedIn` stays a passive signal.
+- **Drop-back feedback (the answered question): coach against the fixer's OWN goals, never hand it the answer
+  key.** On REJECT the fresh fixer gets: the prior diff ("tried, rejected"), a coarse failure CATEGORY
+  (`reward-hack | band-aid | didnt-reach-root | regressed-elsewhere`), a diversification steer, and ground-truths
+  — but NEVER the gate's rubric/criteria (that teaches to the test; optimizing against the monitor teaches
+  *hiding*, per OpenAI CoT-monitoring). Rejection-as-context ≠ optimizing the fixer against the gate.
+
+### Shipped (branch `feat/triage-live-overlord`)
+- `.claude/skills/piflow-gate/SKILL.md` — the gate playbook (3 checks · refute-by-default reward-hack audit ·
+  drop-back packet · uncertainty ⇒ reject · human is the quality eye). Registered in `DEFAULT_SKILLS` + bundle.
+- `packages/core/src/optimize/substrate/gate.ts` — `buildGatePrompt` + `runSubstrateGate` + fail-closed
+  `parseGateVerdict`. 13 tests, parse teeth mutation-proven.
+- `fix.ts` routing on one proved candidate: numeric oracle → `evaluateGate` (unchanged); else `optimize.judge`
+  present → the gate agent (accept ⇒ staged for human; reject ⇒ `verifying→open` + drop-back packet); else →
+  `evaluateGate` stage-for-human. New `opts.gate` seam; soft-path tests incl. the reject/drop-back path
+  (routing mutation-proven).
+
+### Still open (build / iterate)
+- Ration the rerun by severity (today `prove` still runs once per candidate) — lane D's cost law.
+- Pass a real unified diff to the gate (v1 lets it inspect `candidateRef` directly).
+- The outer loop (`runOptimizeLoop`) consuming the drop-back packet to dispatch a FRESH, diversified fixer +
+  the bounded-retry / circuit-breaker / tested give-up path (§8).
+- prove-rerun provider → local when the parent recorded none.
+- Live-prove on `flaky-cottage`.
 
 ## 1. The gap we are closing
 
