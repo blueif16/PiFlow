@@ -171,7 +171,7 @@ function nodeCriteriaRef(nj: RawNodeJson): string | undefined {
  *  against when there is no numeric oracle? Reads `node.json` off disk (throws only if the node is unreadable,
  *  which fixIssue already requires). Drives the gate ROUTING: unmeasurable + a bar ⇒ the gate agent, not
  *  "unmeasurable → human". */
-async function nodeHasCriteria(templateDir: string, nodeId: string): Promise<boolean> {
+export async function nodeHasCriteria(templateDir: string, nodeId: string): Promise<boolean> {
   return nodeCriteriaRef(await readNodeJsonRaw(templateDir, nodeId)) !== undefined;
 }
 
@@ -226,6 +226,37 @@ export function oracleTouchedByDiff(changedPaths: string[], exclude: string[]): 
   if (exclude.length === 0) return false;
   const set = new Set(exclude);
   return changedPaths.some((rel) => isOracleRel(rel, set, exclude));
+}
+
+/**
+ * The deterministic oracle guard that TRAVELS with a candidate to EVERY land point (verifyStage's gate,
+ * adopt's cherry-pick) — belt + suspenders beyond fixIssue's own fixer-side diff-guard. Re-derives the node's
+ * oracle EXCLUDE set (`readClosureRefs`) and checks the candidate commit's `git diff --name-only baseSha
+ * candidateSha` against it, so an oracle-touched candidate can never be re-selected, gate-accepted, and
+ * cherry-picked into the live product. FAIL-OPEN only when the node's `node.json` is unreadable (no oracle set
+ * can be derived here — the fixer-side guard already ran) or the diff cannot be computed.
+ */
+export async function candidateTouchesOracle(
+  templateDir: string,
+  node: string,
+  repoRoot: string,
+  baseSha: string,
+  candidateSha: string,
+): Promise<boolean> {
+  let exclude: string[];
+  try {
+    ({ exclude } = await readClosureRefs(templateDir, node));
+  } catch {
+    return false; // no readable node.json → cannot derive an oracle set (the fixer-side guard already ran)
+  }
+  if (exclude.length === 0) return false;
+  let changed: string[];
+  try {
+    changed = git(path.resolve(repoRoot), 'diff', '--name-only', baseSha, candidateSha).split('\n').filter(Boolean);
+  } catch {
+    return false; // unreachable shas / not a repo → cannot compute the diff; the other guards remain
+  }
+  return oracleTouchedByDiff(changed, exclude);
 }
 
 // ── the candidate git worktree (create → commit → tear down; the SHA is the candidate, not a tree) ───────────
@@ -332,7 +363,9 @@ export function commitCandidate(worktreeDir: string, baseSha: string, issue: Com
   if (staged.length === 0) return { changed: [] };
 
   const { subject, trailer } = issueCommitMessage(issue);
-  git(wt, '-c', 'commit.gpgsign=false', 'commit', '-m', subject, '-m', trailer);
+  // `-c user.name/email` so a HEADLESS host (CI/cloud) with no configured git identity never fails the commit
+  // with "Please tell me who you are"; `-c commit.gpgsign=false` so a signing-configured host never blocks it.
+  git(wt, '-c', 'commit.gpgsign=false', '-c', 'user.name=piflow-optimizer', '-c', 'user.email=optimizer@piflow.local', 'commit', '-m', subject, '-m', trailer);
   const candidateSha = git(wt, 'rev-parse', 'HEAD');
   const changed = git(wt, 'diff', '--name-only', baseSha, candidateSha).split('\n').filter(Boolean);
   return { candidateSha, changed };
@@ -727,183 +760,185 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   // (b) candidate = a fresh git worktree at HEAD (NOT a copy). The SHA is the candidate.
   const wt = await prepareCandidateWorktree(repoRoot, { node, issue: issue.name, attempt });
   const baseSha = wt.baseSha;
-  emit({ type: 'candidate-prepared', issue: issue.name, candidateRef: worktreeDir, included: fenceRels.length, excluded: exclude.length });
+  try {
+    emit({ type: 'candidate-prepared', issue: issue.name, candidateRef: worktreeDir, included: fenceRels.length, excluded: exclude.length });
 
-  // (c) fixer — edits the worktree; `git add -A && commit` → candidateSha; editsApplied = the diff name-count.
-  emit({ type: 'fixer-started', issue: issue.name });
-  const fixerResult = await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
-  const committed = commitCandidate(worktreeDir, baseSha, { node, name: issue.name, id: issue.id, title: issue.title });
-  const editsApplied = committed.changed.length;
-  const candidateSha = committed.candidateSha;
-  emit({ type: 'fixer-done', issue: issue.name, editsApplied });
+    // (c) fixer — edits the worktree; `git add -A && commit` → candidateSha; editsApplied = the diff name-count.
+    emit({ type: 'fixer-started', issue: issue.name });
+    const fixerResult = await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
+    const committed = commitCandidate(worktreeDir, baseSha, { node, name: issue.name, id: issue.id, title: issue.title });
+    const editsApplied = committed.changed.length;
+    const candidateSha = committed.candidateSha;
+    emit({ type: 'fixer-done', issue: issue.name, editsApplied });
 
-  // (c2) ORACLE DIFF-GUARD (belt + suspenders) — a candidate whose commit touched an oracle path is a
-  // FIXER-SIDE REJECTION (never a gate reject): it is discarded outright, never proved or gated. This catches an
-  // edit the dir-coarse sandbox fence could not (an oracle FILE inside an included DIR).
-  const oracleTouched = editsApplied >= 1 && oracleTouchedByDiff(committed.changed, exclude);
+    // (c2) ORACLE DIFF-GUARD (belt + suspenders) — a candidate whose commit touched an oracle path is a
+    // FIXER-SIDE REJECTION (never a gate reject): it is discarded outright, never proved or gated. This catches an
+    // edit the dir-coarse sandbox fence could not (an oracle FILE inside an included DIR).
+    const oracleTouched = editsApplied >= 1 && oracleTouchedByDiff(committed.changed, exclude);
 
-  // A real, non-oracle-touching edit advances the ledger "candidate edit staged".
-  if (editsApplied >= 1 && !oracleTouched) await transitionIssue(issuePathAbs, 'fix-landed');
+    // A real, non-oracle-touching edit advances the ledger "candidate edit staged".
+    if (editsApplied >= 1 && !oracleTouched) await transitionIssue(issuePathAbs, 'fix-landed');
 
-  // (d) prove (self-rewind) — against the candidate WORKTREE (its HEAD IS candidateSha). Skip on no-edit /
-  // oracle-touched / prove-off. Unmeasurable ⇒ base/cand stay null.
-  let childId: string | null = null;
-  let childDir: string | null = null;
-  let base: number | null = null;
-  let candidate: number | null = null;
-  let deltaSummary: Record<string, number> = {};
-  if (editsApplied >= 1 && !oracleTouched && proveEnabled) {
-    await transitionIssue(issuePathAbs, 'verifying');
-    const child = await spawnChild(parentRunDir, node, {
-      templateDir,
-      workspace: worktreeDir, // the node re-runs against the candidate worktree (HEAD = candidateSha)
-      spawnedBy: { by: 'substrate-fix', issue: issue.name, issueId: issue.id },
-      provider: opts.provider,
-      buildCommand: opts.buildCommand,
-    });
-    childId = child.childId;
-    childDir = child.childDir;
-    emit({ type: 'prove-started', issue: issue.name, childId });
-    // measure the CHILD with workspace = the LIVE product root → pristine scorer grades a candidate artifact.
-    const childReport = await measure(child.childDir, node, { workspace });
-    const fold = foldGradedDelta(await readParentGraded(parentRunDir, node), childReport.graded, {
-      tolerance: opts.tolerance,
-      lowerIsBetter: opts.lowerIsBetter,
-    });
-    base = fold.base;
-    candidate = fold.candidate;
-    deltaSummary = fold.deltaSummary;
-    emit({ type: 'measured', issue: issue.name, sharedKeys: fold.sharedKeys });
-  }
+    // (d) prove (self-rewind) — against the candidate WORKTREE (its HEAD IS candidateSha). Skip on no-edit /
+    // oracle-touched / prove-off. Unmeasurable ⇒ base/cand stay null.
+    let childId: string | null = null;
+    let childDir: string | null = null;
+    let base: number | null = null;
+    let candidate: number | null = null;
+    let deltaSummary: Record<string, number> = {};
+    if (editsApplied >= 1 && !oracleTouched && proveEnabled) {
+      await transitionIssue(issuePathAbs, 'verifying');
+      const child = await spawnChild(parentRunDir, node, {
+        templateDir,
+        workspace: worktreeDir, // the node re-runs against the candidate worktree (HEAD = candidateSha)
+        spawnedBy: { by: 'substrate-fix', issue: issue.name, issueId: issue.id },
+        provider: opts.provider,
+        buildCommand: opts.buildCommand,
+      });
+      childId = child.childId;
+      childDir = child.childDir;
+      emit({ type: 'prove-started', issue: issue.name, childId });
+      // measure the CHILD with workspace = the LIVE product root → pristine scorer grades a candidate artifact.
+      const childReport = await measure(child.childDir, node, { workspace });
+      const fold = foldGradedDelta(await readParentGraded(parentRunDir, node), childReport.graded, {
+        tolerance: opts.tolerance,
+        lowerIsBetter: opts.lowerIsBetter,
+      });
+      base = fold.base;
+      candidate = fold.candidate;
+      deltaSummary = fold.deltaSummary;
+      emit({ type: 'measured', issue: issue.name, sharedKeys: fold.sharedKeys });
+    }
 
-  // (e) GATE / DECISION surfaces on ONE proved candidate:
-  //   • ORACLE-TOUCHED ⇒ a FIXER-SIDE rejection short-circuit (no numeric gate, no gate agent).
-  //   • NUMERIC (evaluateGate) wherever a graded oracle produced shared keys — deterministic, drift-proof.
-  //   • the INDEPENDENT GATE AGENT wherever the fix was proved but the node has NO number, only an
-  //     `optimize.judge` bar (the SOFT path). A node with neither a number nor a judge falls to evaluateGate's
-  //     stage-for-human, exactly as before.
-  let decision: 'staged' | 'discarded';
-  let landPolicy: LandPolicy;
-  let reason: string;
-  let numericVerdict: GateVerdict | undefined;
-  let gateVerdict: GateVerdictFile | undefined;
-  let dropback: { category: GateRejectCategory; steer?: string } | undefined;
-  // Set ONLY on the SOFT path: verifyStage owns the gate agent — it writes record.json + walks the issue back
-  // on a reject, so fixIssue must NOT re-write the record or re-run the walk-back for that path.
-  let record: SubstrateManifestRecord | undefined;
+    // (e) GATE / DECISION surfaces on ONE proved candidate:
+    //   • ORACLE-TOUCHED ⇒ a FIXER-SIDE rejection short-circuit (no numeric gate, no gate agent).
+    //   • NUMERIC (evaluateGate) wherever a graded oracle produced shared keys — deterministic, drift-proof.
+    //   • the INDEPENDENT GATE AGENT wherever the fix was proved but the node has NO number, only an
+    //     `optimize.judge` bar (the SOFT path). A node with neither a number nor a judge falls to evaluateGate's
+    //     stage-for-human, exactly as before.
+    let decision: 'staged' | 'discarded';
+    let landPolicy: LandPolicy;
+    let reason: string;
+    let numericVerdict: GateVerdict | undefined;
+    let gateVerdict: GateVerdictFile | undefined;
+    let dropback: { category: GateRejectCategory; steer?: string } | undefined;
+    // Set ONLY on the SOFT path: verifyStage owns the gate agent — it writes record.json + walks the issue back
+    // on a reject, so fixIssue must NOT re-write the record or re-run the walk-back for that path.
+    let record: SubstrateManifestRecord | undefined;
 
-  const numericMeasured = base !== null && candidate !== null; // shared graded keys existed
-  // WS3: ONLY the `full` tier invokes the gate AGENT. `rerun` proves but stays on the NUMERIC gate even when
-  // the node has criteria; `none` never proves (childDir null), so it never reaches here.
-  const softGate = verifyTier === 'full' && !oracleTouched && editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasCriteria(templateDir, node));
+    const numericMeasured = base !== null && candidate !== null; // shared graded keys existed
+    // WS3: ONLY the `full` tier invokes the gate AGENT. `rerun` proves but stays on the NUMERIC gate even when
+    // the node has criteria; `none` never proves (childDir null), so it never reaches here.
+    const softGate = verifyTier === 'full' && !oracleTouched && editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasCriteria(templateDir, node));
 
-  if (oracleTouched) {
-    decision = 'discarded';
-    landPolicy = 'stage-for-human';
-    reason = 'candidate diff touched an oracle path (optimize.measure/criteria) — fixer-side rejection, never proved/gated';
-    emit({ type: 'gated', issue: issue.name, accept: false, reason });
-  } else if (verifyTier === 'none' && editsApplied >= 1) {
-    // WS3 TRIVIAL tier: a real edit under `verify:none` is STAGED with NO prove and NO gate (a typo-class fix).
-    // It rests adopt-ready exactly like the skip-proof path (childId null ⇒ status fix-landed below), but with an
-    // explicit reason. A 0-edit `none` falls through to the numeric path's "no edit applied" reject.
-    decision = 'staged';
-    landPolicy = 'stage-for-human';
-    reason = 'verify:none (trivial — no rerun/gate)';
-    emit({ type: 'gated', issue: issue.name, accept: true, reason });
-  } else if (softGate && childDir !== null) {
-    // The SOFT gate is the DECOUPLED `verifyStage` — the SAME callable `optimize verify` runs standalone (one
-    // code path, not two). It runs the gate agent, writes verdict.json + record.json under the lifecycle dir,
-    // and walks a rejected issue back to `open`; fixIssue only reads its outcome. The live candidate worktree
-    // still exists here (torn down below in step f), so verifyStage reuses it in place (createdWorktree=false).
-    const preRecord: SubstrateManifestRecord = {
-      issue: issue.name, issueId: issue.id, node, decision: 'discarded', candidateRef: branch, liveRoot: workspace,
-      baseSha, landPolicy: 'stage-for-human', reason: '', verifiedByRun: childId, deltaSummary,
-      ...(candidateSha ? { candidateSha } : {}),
-    };
-    const vs = await verifyStage(lifecycleDir, {
-      templateDir, workspace, childDir, candidateRef: worktreeDir, issuePath: issuePathAbs,
-      issueFileText: await fs.readFile(issuePathAbs, 'utf8'), fixerAccount: fixerResult.text ?? '',
-      baseRecord: preRecord, onEvent: emit, gate: opts.gate,
-      ...inheritedAgentOpts(opts),
-    });
-    decision = vs.decision;
-    landPolicy = 'stage-for-human'; // a model judgment STAGES; the human adopts (never judge-gated auto-accept).
-    reason = vs.gateVerdict.rationale;
-    gateVerdict = vs.gateVerdict;
-    dropback = vs.dropback;
-    record = vs.record;
-  } else {
-    // NUMERIC / degenerate path — REUSE evaluateGate's editsApplied<1 + null⇒stage-for-human rules (fold header).
-    numericVerdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base, candidate, editsApplied });
-    emit({ type: 'gated', issue: issue.name, accept: numericVerdict.accept, reason: numericVerdict.reason });
-    decision =
-      editsApplied < 1
-        ? 'discarded'
-        : numericVerdict.accept
-          ? 'staged'
-          : numericVerdict.landPolicy === 'stage-for-human'
-            ? 'staged' // unmeasurable/abstained with no judge → route to a human, never auto
-            : 'discarded'; // a measured regression / flat result
-    landPolicy = numericVerdict.landPolicy;
-    reason = numericVerdict.reason;
-  }
+    if (oracleTouched) {
+      decision = 'discarded';
+      landPolicy = 'stage-for-human';
+      reason = 'candidate diff touched an oracle path (optimize.measure/criteria) — fixer-side rejection, never proved/gated';
+      emit({ type: 'gated', issue: issue.name, accept: false, reason });
+    } else if (verifyTier === 'none' && editsApplied >= 1) {
+      // WS3 TRIVIAL tier: a real edit under `verify:none` is STAGED with NO prove and NO gate (a typo-class fix).
+      // It rests adopt-ready exactly like the skip-proof path (childId null ⇒ status fix-landed below), but with an
+      // explicit reason. A 0-edit `none` falls through to the numeric path's "no edit applied" reject.
+      decision = 'staged';
+      landPolicy = 'stage-for-human';
+      reason = 'verify:none (trivial — no rerun/gate)';
+      emit({ type: 'gated', issue: issue.name, accept: true, reason });
+    } else if (softGate && childDir !== null) {
+      // The SOFT gate is the DECOUPLED `verifyStage` — the SAME callable `optimize verify` runs standalone (one
+      // code path, not two). It runs the gate agent, writes verdict.json + record.json under the lifecycle dir,
+      // and walks a rejected issue back to `open`; fixIssue only reads its outcome. The live candidate worktree
+      // still exists here (torn down below in step f), so verifyStage reuses it in place (createdWorktree=false).
+      const preRecord: SubstrateManifestRecord = {
+        issue: issue.name, issueId: issue.id, node, decision: 'discarded', candidateRef: branch, liveRoot: workspace,
+        baseSha, landPolicy: 'stage-for-human', reason: '', verifiedByRun: childId, deltaSummary,
+        ...(candidateSha ? { candidateSha } : {}),
+      };
+      const vs = await verifyStage(lifecycleDir, {
+        templateDir, workspace, childDir, candidateRef: worktreeDir, issuePath: issuePathAbs,
+        issueFileText: await fs.readFile(issuePathAbs, 'utf8'), fixerAccount: fixerResult.text ?? '',
+        baseRecord: preRecord, onEvent: emit, gate: opts.gate,
+        ...inheritedAgentOpts(opts),
+      });
+      decision = vs.decision;
+      landPolicy = 'stage-for-human'; // a model judgment STAGES; the human adopts (never judge-gated auto-accept).
+      reason = vs.gateVerdict.rationale;
+      gateVerdict = vs.gateVerdict;
+      dropback = vs.dropback;
+      record = vs.record;
+    } else {
+      // NUMERIC / degenerate path — REUSE evaluateGate's editsApplied<1 + null⇒stage-for-human rules (fold header).
+      numericVerdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base, candidate, editsApplied });
+      emit({ type: 'gated', issue: issue.name, accept: numericVerdict.accept, reason: numericVerdict.reason });
+      decision =
+        editsApplied < 1
+          ? 'discarded'
+          : numericVerdict.accept
+            ? 'staged'
+            : numericVerdict.landPolicy === 'stage-for-human'
+              ? 'staged' // unmeasurable/abstained with no judge → route to a human, never auto
+              : 'discarded'; // a measured regression / flat result
+      landPolicy = numericVerdict.landPolicy;
+      reason = numericVerdict.reason;
+    }
 
-  // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
-  // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
-  // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). The SOFT path's verifyStage
-  // already did this walk-back (guarded by `!record`); a staged candidate stays at `verifying` awaiting adopt;
-  // the no-edit / oracle-touched / skip-proof paths never entered `verifying`.
-  if (!record && childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
+    // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
+    // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
+    // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). The SOFT path's verifyStage
+    // already did this walk-back (guarded by `!record`); a staged candidate stays at `verifying` awaiting adopt;
+    // the no-edit / oracle-touched / skip-proof paths never entered `verifying`.
+    if (!record && childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
 
-  // (f) CLEANUP — tear down the candidate worktree checkout AFTER prove/gate (both read it); the branch +
-  // candidateSha persist for adopt/discard.
-  removeCandidateWorktree(repoRoot, worktreeDir);
+    // (g) stage the record.json (adopt is the separate human step). The SOFT path's verifyStage already wrote it.
+    if (!record) {
+      record = {
+        issue: issue.name,
+        issueId: issue.id,
+        node,
+        decision,
+        candidateRef: branch,
+        liveRoot: workspace,
+        baseSha,
+        landPolicy,
+        reason,
+        verifiedByRun: childId,
+        deltaSummary,
+        ...(candidateSha ? { candidateSha } : {}),
+        ...(dropback ? { dropback } : {}),
+      };
+      await writeIssueRecord(parentRunDir, record); // record.json UNDER the lifecycle dir
+    }
+    const manifestPath = path.join(lifecycleDir, 'record.json');
+    emit({ type: 'staged', issue: issue.name, decision, manifestPath });
+    emit({ type: 'stopped', issue: issue.name, reason: decision === 'staged' ? 'staged for adopt' : `discarded (${reason})` });
 
-  // (g) stage the record.json (adopt is the separate human step). The SOFT path's verifyStage already wrote it.
-  if (!record) {
-    record = {
+    // WS1: persist the whole event trail as log.jsonl beside record.json (the lifecycle dir now exists).
+    await fs.writeFile(path.join(lifecycleDir, 'log.jsonl'), eventLog.map((e) => JSON.stringify(e)).join('\n') + '\n');
+
+    return {
       issue: issue.name,
-      issueId: issue.id,
       node,
-      decision,
       candidateRef: branch,
-      liveRoot: workspace,
       baseSha,
-      landPolicy,
-      reason,
-      verifiedByRun: childId,
-      deltaSummary,
+      editsApplied,
+      proved: childId !== null,
+      childId,
+      verdict: numericVerdict,
       ...(candidateSha ? { candidateSha } : {}),
+      ...(gateVerdict ? { gateVerdict } : {}),
       ...(dropback ? { dropback } : {}),
+      decision,
+      deltaSummary,
+      manifestPath,
+      record,
+      fixerRunDir: fixerResult.runDir,
+      ...(fixerResult.text ? { fixerAccount: fixerResult.text } : {}),
     };
-    await writeIssueRecord(parentRunDir, record); // record.json UNDER the lifecycle dir
+  } finally {
+    // (f) CLEANUP — tear down the candidate worktree checkout on EVERY exit (success OR a throw from
+    // the fixer / commit / prove / gate); the branch + candidateSha persist for adopt/discard.
+    removeCandidateWorktree(repoRoot, worktreeDir);
   }
-  const manifestPath = path.join(lifecycleDir, 'record.json');
-  emit({ type: 'staged', issue: issue.name, decision, manifestPath });
-  emit({ type: 'stopped', issue: issue.name, reason: decision === 'staged' ? 'staged for adopt' : `discarded (${reason})` });
-
-  // WS1: persist the whole event trail as log.jsonl beside record.json (the lifecycle dir now exists).
-  await fs.writeFile(path.join(lifecycleDir, 'log.jsonl'), eventLog.map((e) => JSON.stringify(e)).join('\n') + '\n');
-
-  return {
-    issue: issue.name,
-    node,
-    candidateRef: branch,
-    baseSha,
-    editsApplied,
-    proved: childId !== null,
-    childId,
-    verdict: numericVerdict,
-    ...(candidateSha ? { candidateSha } : {}),
-    ...(gateVerdict ? { gateVerdict } : {}),
-    ...(dropback ? { dropback } : {}),
-    decision,
-    deltaSummary,
-    manifestPath,
-    record,
-    fixerRunDir: fixerResult.runDir,
-    ...(fixerResult.text ? { fixerAccount: fixerResult.text } : {}),
-  };
 }
 
 // ── verifyStage — the DECOUPLED gate stage (WS2.1) ───────────────────────────────────────────────────────────
@@ -1007,6 +1042,25 @@ export async function verifyStage(
     );
   }
 
+  // (a2) THE ORACLE FENCE TRAVELS (Defect 1): before the gate, re-derive the deterministic oracle guard off the
+  // candidate commit. An oracle-touched candidate is a FIXER-SIDE rejection — it can NEVER be gate-accepted (else
+  // adopt would cherry-pick a scorer/criteria tamper into the live product). Finalize it discarded with the
+  // oracle reason and walk a `verifying` issue back to `open`, exactly like fixIssue's own diff-guard — no gate,
+  // no worktree recreated.
+  const baseRef = base.baseSha ?? `${base.candidateSha}~1`;
+  if (await candidateTouchesOracle(opts.templateDir, node, workspace, baseRef, base.candidateSha)) {
+    const reason = 'candidate diff touched an oracle path (optimize.measure/criteria) — fixer-side rejection, never gated';
+    const rejectVerdict: GateVerdictFile = { decision: 'reject', rationale: reason, category: 'reward-hack' };
+    emit({ type: 'gated', issue, accept: false, reason });
+    const record: SubstrateManifestRecord = { ...base, decision: 'discarded', landPolicy: 'stage-for-human', reason };
+    delete record.dropback;
+    await fs.mkdir(lifecycleDir, { recursive: true });
+    await fs.writeFile(path.join(lifecycleDir, 'record.json'), JSON.stringify(record, null, 2));
+    const cur = await parseIssueFile(issuePath);
+    if (cur.status === 'verifying') await transitionIssue(issuePath, 'open');
+    return { decision: 'discarded', gateVerdict: rejectVerdict, record };
+  }
+
   // (b) the candidate worktree the gate reads: an EXISTING checkout is used in place; a torn-down one is
   // recreated at candidateSha (and torn down again in the finally).
   let worktreeDir = opts.candidateRef;
@@ -1092,7 +1146,8 @@ export interface AdoptSubstrateManifestResult {
  *  signing-configured host never blocks the pick. */
 function cherryPickCandidate(liveRoot: string, candidateSha: string): { sha: string; files: string[] } {
   const root = path.resolve(liveRoot);
-  git(root, '-c', 'commit.gpgsign=false', 'cherry-pick', candidateSha);
+  // `-c user.name/email` so a headless host with no git identity can still author the cherry-pick commit.
+  git(root, '-c', 'commit.gpgsign=false', '-c', 'user.name=piflow-optimizer', '-c', 'user.email=optimizer@piflow.local', 'cherry-pick', candidateSha);
   const sha = git(root, 'rev-parse', 'HEAD');
   const files = git(root, 'diff-tree', '--no-commit-id', '--name-only', '-r', sha).split('\n').filter(Boolean);
   return { sha, files };
@@ -1121,6 +1176,13 @@ export async function adoptSubstrateManifest(
     }
     if (!record.candidateSha) {
       result.skipped.push({ issue: record.issue, reason: 'no candidate commit (candidateSha) to land' });
+      continue;
+    }
+    // FINAL BACKSTOP (Defect 1): never cherry-pick an oracle-touched candidate into the live product, even if a
+    // stale/tampered staged record slipped past the fixer-side guard + verifyStage.
+    const oracleBaseRef = record.baseSha ?? `${record.candidateSha}~1`;
+    if (await candidateTouchesOracle(opts.templateDir, record.node, record.liveRoot, oracleBaseRef, record.candidateSha)) {
+      result.skipped.push({ issue: record.issue, reason: 'candidate diff touches an oracle path (optimize.measure/criteria) — refusing to land' });
       continue;
     }
 

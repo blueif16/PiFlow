@@ -22,7 +22,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import {
   runSubstrateMeasure, runSubstrateJudge, fixIssue, fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
-  verifyStage, scanRecords, adoptSubstrateManifest, listIssues, renderSubstrateEvent,
+  verifyStage, scanRecords, adoptSubstrateManifest, listIssues, renderSubstrateEvent, nodeHasCriteria,
   type SubstrateEvent, type FixIssueResult, type IssueRecord, type Status, type SubstrateManifest,
   type SubstrateManifestRecord, type VerifyTier,
 } from '@piflow/core';
@@ -699,11 +699,23 @@ export async function runSubstrateVerifyCli(argv: string[], deps: SubstrateCliDe
     return;
   }
 
-  // Eligibility: records for this node that carry a candidateSha (a git-gate-able candidate); one via --issue.
+  // Eligibility (Defect 4a): the gate AGENT judges against the node's `optimize.criteria` — a numeric-only node
+  // (measure but no criteria/judge) has NOTHING for the gate to judge, so its records are NOT verify-eligible
+  // (and buildGatePrompt would throw). Fail-open on an unreadable node.json (the per-issue try/catch is the net).
+  let hasCriteria = true;
+  try { hasCriteria = await nodeHasCriteria(templateDir, a.node); } catch { hasCriteria = true; }
+  if (!hasCriteria) {
+    print(`optimize verify: node "${a.node}" has no optimize.criteria — the gate agent has no bar to judge against (a numeric-only node is gated by 'optimize fix', not the gate). Nothing to verify.`);
+    return;
+  }
+
+  // Eligibility: records for this node that carry a candidateSha (a git-gate-able candidate) AND are NOT already
+  // rejected — a `discarded` candidate (e.g. an oracle-touched fixer-side rejection) is NEVER silently re-gated
+  // by a plain verify (Defect 1); verify acts on candidates awaiting a gate, not on already-rejected ones.
   const all = await scanRecords(parentRunDir);
-  const records = all.filter((r) => r.node === a.node && !!r.candidateSha && (a.issue ? r.issue === a.issue : true));
+  const records = all.filter((r) => r.node === a.node && !!r.candidateSha && r.decision !== 'discarded' && (a.issue ? r.issue === a.issue : true));
   if (records.length === 0) {
-    print(`optimize verify: no verifiable candidate record${a.issue ? ` "${a.issue}"` : ''} for node "${a.node}" (a record needs a candidateSha; run 'optimize fix' first).`);
+    print(`optimize verify: no verifiable candidate record${a.issue ? ` "${a.issue}"` : ''} for node "${a.node}" (a record needs a candidateSha and must not be already discarded; run 'optimize fix' first).`);
     return;
   }
 
@@ -712,30 +724,39 @@ export async function runSubstrateVerifyCli(argv: string[], deps: SubstrateCliDe
   const resolveRunDir = deps.resolveRunDir ?? ((run, cwd) => resolveNodeRunDir({ run, cwd }));
   let staged = 0;
   let discarded = 0;
+  let errored = 0;
   for (const rec of records) {
-    const issuePath = path.join(templateDir, 'nodes', a.node, 'issues', `${rec.issue}.md`);
-    // the gate inspects the candidate artifact in the prove-rerun's child run; resolve it, else fall back to the
-    // parent run dir (best-effort — a live verify needs the child dir; the injected seam ignores it).
-    let childDir = parentRunDir;
-    if (rec.verifiedByRun && rec.verifiedByRun !== 'unproven') {
-      try { childDir = resolveRunDir(rec.verifiedByRun, deps.cwd); } catch { /* fall back to the parent run */ }
+    // (Defect 4b) each issue's gate is isolated: a per-issue throw (e.g. buildGatePrompt has no bar) is reported
+    // as a CLEAN line and the loop CONTINUES — never a raw stack trace that aborts the whole pass.
+    try {
+      const issuePath = path.join(templateDir, 'nodes', a.node, 'issues', `${rec.issue}.md`);
+      // the gate inspects the candidate artifact in the prove-rerun's child run; resolve it, else fall back to the
+      // parent run dir (best-effort — a live verify needs the child dir; the injected seam ignores it).
+      let childDir = parentRunDir;
+      if (rec.verifiedByRun && rec.verifiedByRun !== 'unproven') {
+        try { childDir = resolveRunDir(rec.verifiedByRun, deps.cwd); } catch { /* fall back to the parent run */ }
+      }
+      const vs = await verify({ runDir: parentRunDir, node: a.node, issue: rec.issue }, {
+        templateDir, workspace, childDir, issuePath,
+        outDir: verifyAgentOutDir(parentRunDir, a.node, rec.issue),
+        ...(onEvent ? { onEvent } : {}),
+        ...(a.tier ? { tier: a.tier } : {}),
+        ...(a.model ? { model: a.model } : {}),
+      });
+      if (vs.decision === 'staged') staged++;
+      else discarded++;
+      print(`optimize verify[${path.basename(parentRunDir)}] node=${a.node} issue=${rec.issue}: ${vs.decision} — ${vs.gateVerdict.rationale}`);
+      if (vs.decision === 'discarded' && vs.dropback) {
+        print(`  drop-back: ${vs.dropback.category}${vs.dropback.steer ? ` — ${vs.dropback.steer}` : ''}`);
+      }
+      if (vs.verdictPath) print(`  verdict: ${vs.verdictPath}`);
+    } catch (e) {
+      errored++;
+      printErr(`optimize verify[${path.basename(parentRunDir)}] node=${a.node} issue=${rec.issue}: could not verify — ${(e as Error).message}`);
     }
-    const vs = await verify({ runDir: parentRunDir, node: a.node, issue: rec.issue }, {
-      templateDir, workspace, childDir, issuePath,
-      outDir: verifyAgentOutDir(parentRunDir, a.node, rec.issue),
-      ...(onEvent ? { onEvent } : {}),
-      ...(a.tier ? { tier: a.tier } : {}),
-      ...(a.model ? { model: a.model } : {}),
-    });
-    if (vs.decision === 'staged') staged++;
-    else discarded++;
-    print(`optimize verify[${path.basename(parentRunDir)}] node=${a.node} issue=${rec.issue}: ${vs.decision} — ${vs.gateVerdict.rationale}`);
-    if (vs.decision === 'discarded' && vs.dropback) {
-      print(`  drop-back: ${vs.dropback.category}${vs.dropback.steer ? ` — ${vs.dropback.steer}` : ''}`);
-    }
-    if (vs.verdictPath) print(`  verdict: ${vs.verdictPath}`);
   }
-  print(`optimize verify: node=${a.node} — ${records.length} verified (${staged} staged, ${discarded} discarded); adopt is a separate step.`);
+  const errNote = errored > 0 ? `, ${errored} errored` : '';
+  print(`optimize verify: node=${a.node} — ${records.length} verified (${staged} staged, ${discarded} discarded${errNote}); adopt is a separate step.`);
 }
 
 // ── adopt (land staged records onto the live product — the human step wrapping adoptSubstrateManifest) ────────

@@ -282,6 +282,39 @@ describe('commitCandidate — git commit → candidateSha; editsApplied = diff n
   });
 });
 
+// ── Defect 3: commitCandidate must not fail on a headless host with NO git identity ─────────────────────────
+describe('commitCandidate — succeeds on a headless host with NO git identity (Defect 3)', () => {
+  it('injects an optimizer identity so `commit` never fails with "who are you" on a CI/cloud host', async () => {
+    const repo = await scratch('piflow-repo-');
+    await fs.writeFile(join(repo, 'a.txt'), 'a');
+    seedGitRepo(repo); // the SEED commit is made with the test identity
+    const wt = await prepareCandidateWorktree(repo, { node: 'gameplay', issue: 'soggy-crust', attempt: 1 });
+    const ref = { node: 'gameplay', name: 'soggy-crust', id: makeIssue().id, title: 'x' };
+    await fs.appendFile(join(wt.worktreeDir, 'a.txt'), '-CHANGED');
+
+    // simulate a headless host: strip ALL config identity AND forbid git's user@host auto-detection.
+    const g = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { stdio: ['ignore', 'pipe', 'pipe'] });
+    g('config', '--unset', 'user.name');
+    g('config', '--unset', 'user.email');
+    g('config', 'user.useConfigOnly', 'true');
+
+    const envKeys = ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL'];
+    const saved: Record<string, string | undefined> = {};
+    for (const k of envKeys) saved[k] = process.env[k];
+    process.env.GIT_CONFIG_GLOBAL = '/dev/null';
+    process.env.GIT_CONFIG_SYSTEM = '/dev/null';
+    for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) delete process.env[k];
+    try {
+      const c = commitCandidate(wt.worktreeDir, wt.baseSha, ref); // RED before the fix: throws "Please tell me who you are"
+      expect(c.candidateSha).toBeDefined();
+      expect(c.changed).toEqual(['a.txt']);
+    } finally {
+      for (const k of envKeys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+      removeCandidateWorktree(repo, wt.worktreeDir);
+    }
+  });
+});
+
 // ── WS0 behavior 4: the oracle diff-guard (pure fn) ───────────────────────────────────────────────────────
 describe('oracleTouchedByDiff — the diff guard (pure) (WS0 behavior 4)', () => {
   it('true iff a changed path is an oracle path (exact or under an excluded dir); empty exclude never trips', () => {
@@ -505,6 +538,25 @@ describe('fixIssue — the candidate worktree is torn down after the gate; the b
     // … but the branch still resolves to the candidate commit (durable for adopt).
     expect(res.candidateSha).toBeDefined();
     expect(execFileSync('git', ['-C', workspace, 'rev-parse', res.candidateRef]).toString().trim()).toBe(res.candidateSha);
+  });
+});
+
+describe('fixIssue — the candidate worktree is torn down even on a THROW (try/finally; Defect 2/5)', () => {
+  it('a throwing spawnChild rejects the fix AND still removes the candidate worktree checkout (no orphan)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture({ baseGraded: { 'feas.score': 0.5 } });
+    let capturedWt = '';
+    await expect(
+      fixIssue(issuePath, {
+        parentRunDir, templateDir, workspace,
+        // a real edit → commit → the worktree + candidateSha exist, THEN prove throws.
+        runAgent: async (o) => { capturedWt = o.cwd; await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); return agentResult(); },
+        spawnChild: async () => { throw new Error('boom-in-prove'); },
+        measure: async () => measureReport({ 'feas.score': 0.9 }),
+      }),
+    ).rejects.toThrow(/boom-in-prove/);
+    // the throw propagated, but the finally still tore down the checkout (the branch/SHA persist by design).
+    expect(capturedWt).not.toBe('');
+    await expect(fs.access(capturedWt)).rejects.toThrow();
   });
 });
 
@@ -1130,6 +1182,38 @@ describe('verifyStage — the standalone gate stage (WS2.1: NO fixer, NO re-prov
     // the recreated checkout is torn down after gating (verifyStage owns what it created).
     await expect(fs.access(recreatedDir)).rejects.toThrow();
   });
+
+  // ── Defect 1 (CRITICAL): the oracle fence TRAVELS to verifyStage — a decoupled verify can NEVER gate-accept an
+  // oracle-touched candidate (else adopt would cherry-pick a scorer-tamper into the live product). ────────────
+  it('REFUSES an oracle-touched candidate — never gates it, finalizes discarded with the oracle reason, walks the issue back', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture({ baseGraded: { 'feas.score': 0.5 } });
+    await makeSoft(templateDir);
+    await toVerifying(issuePath);
+    // a REAL candidate commit that TAMPERS with the scorer (eval/check.mjs is the measure oracle in setupFixture).
+    const issue = makeIssue();
+    const cwt = await prepareCandidateWorktree(workspace, { node: 'gameplay', issue: 'soggy-crust', attempt: 1 });
+    await fs.writeFile(join(cwt.worktreeDir, 'eval', 'check.mjs'), '// TAMPERED scorer\n');
+    const committed = commitCandidate(cwt.worktreeDir, cwt.baseSha, { node: 'gameplay', name: 'soggy-crust', id: issue.id, title: issue.title });
+    removeCandidateWorktree(workspace, cwt.worktreeDir); // only the SHA persists
+    const lifecycleDir = await seedRecord(parentRunDir, workspace, { candidateSha: committed.candidateSha, baseSha: cwt.baseSha, candidateRef: cwt.branch });
+
+    let gateCalled = false;
+    const res = await verifyStage({ runDir: parentRunDir, node: 'gameplay', issue: 'soggy-crust' }, {
+      templateDir, workspace, childDir: await scratch('piflow-child-'),
+      candidateRef: join(await scratch(), 'gone'), issuePath,
+      gate: async () => { gateCalled = true; return { verdict: { decision: 'accept', rationale: 'x' } }; },
+    });
+    expect(gateCalled).toBe(false);            // an oracle candidate is NEVER handed to the gate agent
+    expect(res.decision).toBe('discarded');
+    expect(res.gateVerdict.decision).toBe('reject');
+    expect(res.gateVerdict.rationale).toMatch(/oracle path/i);
+    // record.json is finalized discarded with the oracle reason (so a later verify/adopt won't re-pick it).
+    const onDisk = JSON.parse(await fs.readFile(join(lifecycleDir, 'record.json'), 'utf8')) as SubstrateManifestRecord;
+    expect(onDisk.decision).toBe('discarded');
+    expect(onDisk.reason).toMatch(/oracle path/i);
+    // the verifying issue is walked back to open (nothing landed).
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
+  });
 });
 
 // ── adoptSubstrateManifest — the SEPARATE human adopt step, git-native cherry-pick (WS0 behavior 6) ─────────
@@ -1207,7 +1291,9 @@ describe('adoptSubstrateManifest — cherry-picks candidateSha, commits, stamps 
     const again = await adoptSubstrateManifest(manifest, { templateDir });
     expect(again.adopted).toEqual([]);
     expect(again.skipped).toHaveLength(1);
-    expect(again.skipped[0].reason).toMatch(/already applied|nothing to land|conflict/i);
+    // pin the EMPTY/no-op branch specifically — dropping `conflict` so a mislabeled empty-pick (the base-drift
+    // reason) can't satisfy this assertion; the base-drift test below pins /base drift|conflict/ separately.
+    expect(again.skipped[0].reason).toMatch(/already applied|nothing to land|empty/i);
 
     // a discarded record is skipped up front.
     const discarded: SubstrateManifest = { records: [{ ...manifest.records[0], decision: 'discarded' }] };
@@ -1238,5 +1324,46 @@ describe('adoptSubstrateManifest — cherry-picks candidateSha, commits, stamps 
     expect((await parseIssueFile(issuePath)).status).toBe('verifying');
     // no half-applied cherry-pick was left behind (CHERRY_PICK_HEAD was aborted).
     expect(() => execFileSync('git', ['-C', workspace, 'rev-parse', '--verify', 'CHERRY_PICK_HEAD'], { stdio: ['ignore', 'pipe', 'pipe'] })).toThrow();
+  });
+
+  // ── Defect 1 (CRITICAL) FINAL BACKSTOP: adopt refuses to cherry-pick an oracle-touched candidate. ───────────
+  it('SKIPS an oracle-touched staged record — never cherry-picks the scorer-tamper into the live product', async () => {
+    // a live repo whose node.json declares eval/check.mjs as the measure ORACLE.
+    const workspace = await scratch('piflow-repo-');
+    await fs.mkdir(join(workspace, 'eval'), { recursive: true });
+    await fs.writeFile(join(workspace, 'eval', 'check.mjs'), '// scorer\n');
+    await fs.writeFile(join(workspace, 'level.json'), '{"v":1}\n');
+    seedGitRepo(workspace);
+
+    const templateDir = await scratch('piflow-tpl-');
+    const nodeDir = join(templateDir, 'nodes', 'gameplay');
+    await fs.mkdir(join(nodeDir, 'issues'), { recursive: true });
+    await fs.writeFile(join(nodeDir, 'node.json'), JSON.stringify({
+      contract: { readScope: ['{{WORKSPACE}}/eval'] },
+      optimize: { measure: [{ id: 'f', run: { cmd: 'node', args: ['{{WORKSPACE}}/eval/check.mjs'] } }] },
+    }));
+    const issuePath = join(nodeDir, 'issues', 'soggy-crust.md');
+    const issue = makeIssue({ status: 'verifying' });
+    await writeIssueFile(issuePath, issue);
+
+    // a REAL candidate commit that EDITS the oracle file (as if the fixer-side guard were somehow bypassed).
+    const cwt = await prepareCandidateWorktree(workspace, { node: 'gameplay', issue: 'soggy-crust', attempt: 1 });
+    await fs.writeFile(join(cwt.worktreeDir, 'eval', 'check.mjs'), '// TAMPERED\n');
+    const committed = commitCandidate(cwt.worktreeDir, cwt.baseSha, { node: 'gameplay', name: 'soggy-crust', id: issue.id, title: issue.title });
+    removeCandidateWorktree(workspace, cwt.worktreeDir);
+    const record: SubstrateManifestRecord = {
+      issue: 'soggy-crust', issueId: issue.id, node: 'gameplay', decision: 'staged',
+      candidateRef: cwt.branch, liveRoot: workspace, baseSha: cwt.baseSha, candidateSha: committed.candidateSha!,
+      landPolicy: 'stage-for-human', reason: 'staged', verifiedByRun: 'tS2.gameplay', deltaSummary: {},
+    };
+
+    const head = headOf(workspace);
+    const res = await adoptSubstrateManifest({ records: [record] }, { templateDir });
+    expect(res.adopted).toEqual([]);
+    expect(res.skipped).toHaveLength(1);
+    expect(res.skipped[0].reason).toMatch(/oracle path/i);
+    // the live product is UNTOUCHED (HEAD unchanged, scorer not tampered).
+    expect(headOf(workspace)).toBe(head);
+    expect(await fs.readFile(join(workspace, 'eval', 'check.mjs'), 'utf8')).toBe('// scorer\n');
   });
 });
