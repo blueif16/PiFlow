@@ -19,7 +19,8 @@ function rejected(attempt: number): FixIssueResult {
   return {
     issue: 'soggy-crust',
     node: 'gameplay',
-    candidateRef: `/run/staging/candidates/soggy-crust/attempt-${attempt}`,
+    candidateRef: `optimize/gameplay/soggy-crust/attempt-${attempt}`,
+    candidateSha: `sha-${attempt}`, // WS4: the DURABLE candidate reference keep-best/escalation carry
     editsApplied: 1,
     proved: true,
     childId: `child-${attempt}`,
@@ -55,7 +56,12 @@ describe('fixIssueWithRetries — give-up path (the least-exercised, must not ro
     expect(res.escalation).toBeDefined();
     expect(res.escalation!.attempts).toBe(3);
     expect(res.escalation!.options.length).toBeGreaterThan(0); // a CLOSED menu, not an open lament
-    expect(res.escalation!.candidateRefs).toHaveLength(3); // every attempt's candidate preserved on disk
+    expect(res.escalation!.candidateRefs).toHaveLength(3); // every attempt's candidate branch preserved on disk
+    // WS4: keep-best + escalation reference the DURABLE SHA (a torn-down worktree dir is not durable).
+    expect(res.escalation!.candidateShas).toEqual(['sha-1', 'sha-2', 'sha-3']);
+    expect(res.escalation!.bestCandidateSha).toBe('sha-3'); // the last (most-steered) candidate is best on the scoreless path
+    expect(res.attempts.map((a) => a.candidateSha)).toEqual(['sha-1', 'sha-2', 'sha-3']); // each attempt record carries its SHA
+    expect(res.escalation!.options[0]).toContain('sha-3'); // the menu points the human at the SHA, not a torn-down dir
   });
 });
 

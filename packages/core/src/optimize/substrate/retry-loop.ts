@@ -25,7 +25,11 @@ export interface RetryAttemptRecord {
   attempt: number;
   decision?: 'staged' | 'discarded';
   dropback?: { category: GateRejectCategory; steer?: string };
+  /** the candidate's throwaway BRANCH ref (still carried for the on-disk history / human-readable menu). */
   candidateRef: string;
+  /** WS4: the DURABLE candidate reference — the commit SHA. A torn-down worktree dir is not durable; the SHA is,
+   *  so keep-best + escalation reference THIS. Absent on a no-edit/oracle-touched attempt (no commit was made). */
+  candidateSha?: string;
   editsApplied: number;
   /** cost attributed to this attempt (via `attemptCost`); 0 when the cap is unwired. */
   cost: number;
@@ -39,10 +43,16 @@ export interface RetryEscalationPacket {
   stoppedBy: RetryStopReason;
   /** what each rejected attempt tried, oldest→newest (category + steer) — the "already tried" for the human. */
   history: { attempt: number; category?: GateRejectCategory; steer?: string }[];
-  /** every attempt's candidate dir, preserved on disk (nothing is deleted on give-up). */
+  /** every attempt's candidate branch ref, preserved on disk (nothing is deleted on give-up). */
   candidateRefs: string[];
-  /** the candidate handed forward as best (heuristic on the scoreless soft path — see `bestIsHeuristic`). */
+  /** WS4: every attempt's DURABLE candidate SHA (`''` for a no-edit attempt that made no commit) — what the
+   *  human actually cherry-picks/inspects; the branch is a convenience, the SHA is the truth. */
+  candidateShas: string[];
+  /** the candidate branch handed forward as best (heuristic on the scoreless soft path — see `bestIsHeuristic`). */
   bestCandidateRef: string;
+  /** WS4: the DURABLE SHA of the best candidate (`''` when it made no commit) — the reference the escalation
+   *  menu points the human at. */
+  bestCandidateSha: string;
   /** true when `best` was chosen without a numeric score (the soft path) — the human is the real selector. */
   bestIsHeuristic: boolean;
   /** the closed decision menu. */
@@ -120,10 +130,13 @@ export async function fixIssueWithRetries(issuePath: string, opts: FixWithRetrie
         .filter((a) => a.dropback)
         .map((a) => ({ attempt: a.attempt, category: a.dropback?.category, steer: a.dropback?.steer })),
       candidateRefs: attempts.map((a) => a.candidateRef),
+      candidateShas: attempts.map((a) => a.candidateSha ?? ''),
       bestCandidateRef: best?.candidateRef ?? '',
+      bestCandidateSha: best?.candidateSha ?? '',
       bestIsHeuristic: true,
       options: [
-        `adopt the best candidate as-is despite the reject after human review (${best?.candidateRef ?? 'n/a'})`,
+        // WS4: point the human at the DURABLE SHA (fall back to the branch when a no-edit best made no commit).
+        `adopt the best candidate as-is despite the reject after human review (${best?.candidateSha ?? best?.candidateRef ?? 'n/a'})`,
         're-scope or re-frame the issue — the fixer may be aiming at a root it cannot reach',
         'route a stronger fixer tier / a different model at this issue and re-run',
         'defer: leave the issue OPEN and move on',
@@ -152,6 +165,7 @@ export async function fixIssueWithRetries(issuePath: string, opts: FixWithRetrie
       decision: r.decision,
       dropback: r.dropback,
       candidateRef: r.candidateRef,
+      ...(r.candidateSha ? { candidateSha: r.candidateSha } : {}),
       editsApplied: r.editsApplied,
       cost,
     });
