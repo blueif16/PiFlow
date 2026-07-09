@@ -5,8 +5,9 @@ description: >-
   and decides its fate: STAGE it for a human to adopt, or REJECT it back to a fresh fixer. The third agent of
   the optimize loop and the last: triage NAMES the defect, the fixer SOLVES it, the GATE judges the fix — the
   issue file is the boundary object through all three, and the loop always runs them in that order. The CLI
-  spawns this agent over ONE fixer's staged candidate (`piflowctl optimize gate --node <id>`, or as the verify
-  step of `piflowctl optimize --node <id>`) equipped with this skill. LOAD / FOLLOW when: you ARE the
+  spawns this agent over the PROVED candidate via `piflowctl optimize verify --node <id>` (the standalone
+  gate-only re-check — there is NO `optimize gate` verb), or INLINE during `piflowctl optimize fix --node <id>`
+  on the full-tier soft path, equipped with this skill. LOAD / FOLLOW when: you ARE the
   gate/verify turn over a fixer's candidate; you must decide ACCEPT-and-stage vs REJECT-and-drop-back; you must
   audit a fix for reward-hacking / a band-aid / teaching-to-the-test; or a human asks "did the fix actually
   work", "is this a real fix or a hack", "why was the candidate rejected", "what does the retry get told", "who
@@ -45,8 +46,9 @@ Two facts set your defaults:
 - **You RECEIVE:** the CANDIDATE re-run's new output artifact (the node re-executed against the fixer's edited
   harness — its own deterministic gates / `io.checks` / `op` post-gates already ran inside that execution); the
   fixer's DIFF; the fixer's written ACCOUNT ("how I fixed it"); the original ISSUE file; and the node's quality
-  BAR — its `optimize.judge` criteria + gold sample (JUDGING references, YOUR oracle). The candidate's harness
-  was copied MINUS the oracle, so the fixer could not have read what you judge against.
+  BAR — its `optimize.criteria` (the shared bar; `optimize.judge` is a back-compat read alias) + gold sample
+  (JUDGING references, YOUR oracle). The candidate is a git commit fenced MINUS the oracle, so the fixer could
+  not have read what you judge against.
 - **You PRODUCE:** ONE structured verdict — `accept | reject`, an evidence-cited rationale, and (on reject) a
   DROP-BACK packet (§Reject). You author no fix, adopt nothing, and touch no file the fixer owned.
 
@@ -73,7 +75,7 @@ own** (a model's stated reasoning can misrepresent what it actually did). Hunt s
 A long, articulate account is not a defence — verbosity and confidence must not raise your verdict.
 
 ### 3 · Quality — is the cause fixed, on the node's OWN bar
-Judge the NEW artifact against the node's `optimize.judge` criteria + gold — the SAME standard a regular run
+Judge the NEW artifact against the node's `optimize.criteria` + gold — the SAME standard a regular run
 applies — on two questions: (a) is the issue's named defect actually ABSENT now (not just its detector quiet),
 and (b) did nothing else REGRESS (read the WHOLE board — a fix that closes the issue but breaks another axis is
 a REJECT). Do NOT invent a stricter or a bespoke bar; the node's own criteria are the bar. If the criteria do
