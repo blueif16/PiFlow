@@ -450,7 +450,9 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
       try {
         const promotes: ResolvedPromote[] = [];
         for (const raw of derived.promotes) {
-          const spec = parsePromote(raw);
+          // Resolve tokens before parsing (see the twin in node-lifecycle.ts) — a file-sourced promote whose
+          // `from` carries {{WORKSPACE}}/{{state.*}}/{{arg.*}} must be made physical before extractPromoteValue.
+          const spec = parsePromote(resolveDeep(raw, resolveCtx));
           const value = await extractPromoteValue(spec, { run: ctx.outDir, returnValue: undefined });
           promotes.push({ to: spec.to, value, merge: spec.merge });
         }

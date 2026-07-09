@@ -1095,6 +1095,46 @@ describe('runWorkflow — promote + barrier-merge + state I/O (S3)', () => {
     await fs.rm(outDir, { recursive: true, force: true });
   });
 
+  it('resolves a {{WORKSPACE}}-tokenized file source in a promote `from` (regression: promote skipped resolveDeep)', async () => {
+    // A file-sourced promote whose `from` carries a {{WORKSPACE}} token — the deterministic, MODEL-FREE way to
+    // lift a field of an artifact that lives under the workspace (NOT under {{RUN}}). Before the fix the promote
+    // loop parsed `raw` WITHOUT resolveDeep, so `{{WORKSPACE}}` stayed literal, absUnder joined it under {{RUN}},
+    // the read missed, and the promote threw → the node errored and the channel never landed. Nested field
+    // (`voice.constPrefix`) mirrors the real lesson-build setup-scaffold case.
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-ws-'));
+    await fs.mkdir(path.join(workspace, 'lesson-data', 'kp-foo'), { recursive: true });
+    await fs.writeFile(
+      path.join(workspace, 'lesson-data', 'kp-foo', 'pipeline.json'),
+      JSON.stringify({ voice: { constPrefix: 'kpFoo' }, composition: 'CompleteKpFooLesson' }) + '\n',
+    );
+
+    const scaffold: NodeIntent = {
+      label: 'Scaffold',
+      prompt: 'scaffold',
+      tools: {},
+      io: { reads: [], produces: ['out.txt'], artifacts: [{ path: 'out.txt' }] },
+      op: [
+        { when: 'post', transform: { kind: 'promote', from: '{{WORKSPACE}}/lesson-data/kp-foo/pipeline.json:voice.constPrefix', to: 'camelLessonId', reducer: 'set' } },
+        { when: 'post', transform: { kind: 'promote', from: '{{WORKSPACE}}/lesson-data/kp-foo/pipeline.json:composition', to: 'composition', reducer: 'set' } },
+      ],
+    };
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(compile(wf([scaffold])), {
+      run: 'promote-ws',
+      outDir,
+      workspace, // {{WORKSPACE}} ≠ {{RUN}} — the token MUST resolve to this, never to outDir
+      buildCommand: jsonArtifactBuilder(() => ({ 'out.txt': 'built' })),
+    });
+
+    expect(status.nodes.scaffold.status).toBe('ok');
+    const state = JSON.parse(await fs.readFile(stateFile(outDir), 'utf8'));
+    expect(state.camelLessonId).toBe('kpFoo');
+    expect(state.composition).toBe('CompleteKpFooLesson');
+
+    await fs.rm(outDir, { recursive: true, force: true });
+    await fs.rm(workspace, { recursive: true, force: true });
+  });
+
   it('barrier-merges two PARALLEL lanes that each promote a DIFFERENT channel (both land, persisted once)', async () => {
     // Two independent producers (one parallel stage), each promoting its own channel.
     const a: NodeIntent = {
