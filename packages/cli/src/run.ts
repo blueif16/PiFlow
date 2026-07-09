@@ -643,7 +643,13 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   // root; else the nearest enclosing product (findProductRoot); else cwd with a LOUD warning (never a
   // SILENT cwd footgun — the pre-migration default that anchored every token + the read-jail at wherever
   // the run happened to be invoked).
-  let workspace = parsed.workspace ?? templateLayout(tdir)?.productRoot ?? findProductRoot(tdir) ?? undefined;
+  // An explicit `--workspace` may be relative (e.g. `.` when already cd'd into the product) — resolve it
+  // against cwd HERE, once, mirroring `tdir` above. Left unresolved, a relative workspace flows verbatim
+  // into `{{WORKSPACE}}` token substitution; any hook that falls back to `path.resolve(runDir, resolved)`
+  // for a non-absolute value (e.g. `stageSeed`) then re-roots it under the RUN dir instead of the product
+  // root, silently resolving to a nonexistent path (seed hooks treat a missing source as a graceful skip,
+  // never a throw — so this produced no error, just a silently unstaged artifact).
+  let workspace = (parsed.workspace ? path.resolve(parsed.workspace) : undefined) ?? templateLayout(tdir)?.productRoot ?? findProductRoot(tdir) ?? undefined;
   if (!workspace) {
     workspace = process.cwd();
     console.warn(
