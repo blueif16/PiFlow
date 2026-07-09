@@ -383,7 +383,7 @@ export const nodeSchema = {
       },
     },
     optimize: {
-      // (optimize-substrate-plan.md, M0) The OPTIMIZER-FACING measurement + judge block. Unlike the other
+      // (optimize-substrate-plan.md, M0) The OPTIMIZER-FACING measurement + criteria block. Unlike the other
       // activation blocks above, this one is NEVER read by the loader's `toNodeIntent` — the out-of-band
       // optimize substrate reads `<templateDir>/nodes/<id>/node.json` straight off disk (precedent:
       // memory.md / recurrence.ts:49), so nothing here reaches the compiled NodeSpec. It still validates
@@ -391,14 +391,21 @@ export const nodeSchema = {
       // template load, exactly like a typo anywhere else (additionalProperties:false, §top).
       type: 'object',
       additionalProperties: false,
-      description: 'Optimizer-facing measurement + judge block, read via fs by the out-of-band optimize substrate — never loaded onto the runtime NodeSpec. Omitted ⇒ no substrate measurement.',
+      description: 'Optimizer-facing measurement + criteria block, read via fs by the out-of-band optimize substrate — never loaded onto the runtime NodeSpec. Omitted ⇒ no substrate measurement.',
       properties: {
         measure: {
           type: 'array',
           description: 'Post-run measurement ops — reuses $defs/op byte-for-byte (gate/run bodies are the meaningful ones post-run).',
           items: { $ref: '#/$defs/op' },
         },
-        judge: { type: 'string', minLength: 1, description: 'Token-resolved path to the soft-judge file.' },
+        // (WS3) The SHARED per-node quality bar read by BOTH triage and the gate. `criteria` is the current
+        // spelling; `judge` is the back-compat READ alias (a node.json with EITHER works; the readers prefer
+        // `criteria`). Both are token-resolved paths to the soft-criteria file.
+        criteria: { type: 'string', minLength: 1, description: 'Token-resolved path to the soft-criteria file (the shared triage+gate bar). Preferred over the `judge` alias.' },
+        judge: { type: 'string', minLength: 1, description: 'DEPRECATED alias of `criteria` (still READ). Token-resolved path to the soft-criteria file.' },
+        // (WS3) The node's DEFAULT per-issue verify tier — the fallback when an issue omits its own `verify`.
+        // Omitted ⇒ `full` (prove + the gate agent).
+        verifyDefault: { enum: ['none', 'rerun', 'full'], description: "Default per-issue verify tier (none|rerun|full) when an issue omits its own. Omitted ⇒ 'full'." },
       },
     },
   },

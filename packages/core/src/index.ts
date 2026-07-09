@@ -552,7 +552,7 @@ export {
   fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
 } from './optimize/index.js';
 export type {
-  Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
+  Issue, Severity, Status, Reason, VerifyTier, Attempt, IssueRecord, ListIssuesOpts,
   RunSubstrateMeasureOpts, MeasureReport, SubstrateJudgeOpts, SubstrateJudgeResult,
   FixIssueOpts, FixIssueResult, VerifyStageOpts, VerifyStageResult, SubstrateManifest, SubstrateManifestRecord,
   AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,

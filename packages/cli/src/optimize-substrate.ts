@@ -24,8 +24,11 @@ import {
   runSubstrateMeasure, runSubstrateJudge, fixIssue, fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
   verifyStage, scanRecords, adoptSubstrateManifest, listIssues, renderSubstrateEvent,
   type SubstrateEvent, type FixIssueResult, type IssueRecord, type Status, type SubstrateManifest,
-  type SubstrateManifestRecord,
+  type SubstrateManifestRecord, type VerifyTier,
 } from '@piflow/core';
+
+/** The valid per-issue verify tiers (WS3) — the `--verify` override guard. */
+const VERIFY_TIERS: readonly VerifyTier[] = ['none', 'rerun', 'full'];
 import { resolveNodeRunDir } from './node.js';
 import { templateDirFor } from './optimize-fix.js';
 import { scanRunsHome, nodeRanFresh, parseNodeRef, type ScanRunsHomeDeps, type NodeRef } from './runs-scan.js';
@@ -42,7 +45,7 @@ export type OptimizeRoute =
 const OPTIMIZE_VALUE_FLAGS = new Set([
   '--archetype', '--node', '--run', '--topk', '--template', '--workspace', '--cap', '--tolerance',
   '--tier', '--model', '--status', '--issue', '--staging-dir', '--backup-dir', '--manifest', '--since',
-  '--edit-budget', '--token-budget', '--fix-cycle-ceiling', '--binding',
+  '--edit-budget', '--token-budget', '--fix-cycle-ceiling', '--binding', '--verify',
 ]);
 
 /** The FIRST bare positional (a `<rundir>`) in `argv`, skipping every `--flag` and its consumed value, or
@@ -214,6 +217,9 @@ export interface SubstrateFixArgs {
   tier?: string;
   model?: string;
   tolerance?: number;
+  /** `--verify <tier>` (WS3): optional per-pass OVERRIDE of the issue-frontmatter/node-default verify tier
+   *  (none|rerun|full). Absent ⇒ the issue/node spine decides per issue. Invalid values are ignored. */
+  verify?: VerifyTier;
   /** `--max-attempts N`: the per-issue retry ceiling — the PRIMARY bound of the outer loop (default 3). */
   maxAttempts?: number;
   /** `--breaker N`: system-wide halt after N CONSECUTIVE issues exhaust their retry budget (default 3; 0 = off). */
@@ -240,6 +246,7 @@ export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
     else if (k === '--tier') out.tier = argv[++i];
     else if (k === '--model') out.model = argv[++i];
     else if (k === '--tolerance') out.tolerance = Number(argv[++i]);
+    else if (k === '--verify') { const v = argv[++i]; if ((VERIFY_TIERS as readonly string[]).includes(v)) out.verify = v as VerifyTier; }
     else if (k === '--max-attempts') out.maxAttempts = Math.max(1, Number(argv[++i]) || DEFAULT_MAX_ATTEMPTS);
     else if (k === '--breaker') { const n = Number(argv[++i]); out.breaker = Number.isFinite(n) && n >= 0 ? n : DEFAULT_BREAKER; }
     else if (k === '--dry-run') out.dryRun = true;
@@ -585,6 +592,7 @@ export async function runSubstrateFixCli(argv: string[], deps: SubstrateCliDeps 
       outDir, // PERSIST the fixer spawn's run dir — never the base agent's ephemeral (deleted) default.
       ...(onEvent ? { onEvent } : {}),
       ...(a.tolerance !== undefined ? { tolerance: a.tolerance } : {}),
+      ...(a.verify ? { verify: a.verify } : {}), // WS3 per-pass tier override (issue/node spine otherwise)
       ...(a.tier ? { tier: a.tier } : {}),
       ...(a.model ? { model: a.model } : {}),
     };

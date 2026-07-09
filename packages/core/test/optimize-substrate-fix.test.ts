@@ -20,6 +20,7 @@ import {
   commitCandidate,
   oracleTouchedByDiff,
   collectWorkspaceRefs,
+  readClosureRefs,
   foldGradedDelta,
   buildFixerPrompt,
   readSubstrateManifest,
@@ -140,6 +141,23 @@ const editingAgent = async (o: { cwd: string }): Promise<RunBaseAgentResult> => 
 /** A fixer that touches nothing (a no-op proposal → editsApplied 0). */
 const noopAgent = async (): Promise<RunBaseAgentResult> => agentResult();
 
+/** Give the gameplay node a soft bar under `optimize.<key>` (criteria OR the judge alias) so nodeHasCriteria is
+ *  true and the SOFT gate-agent path is reachable. Default `criteria` (the WS3 spelling). */
+async function setSoftBar(templateDir: string, key: 'criteria' | 'judge' = 'criteria'): Promise<void> {
+  const p = join(templateDir, 'nodes', 'gameplay', 'node.json');
+  const nj = JSON.parse(await fs.readFile(p, 'utf8'));
+  nj.optimize[key] = '{{WORKSPACE}}/skills/judge.md';
+  await fs.writeFile(p, JSON.stringify(nj, null, 2));
+}
+
+/** Set the node's optimize.verifyDefault tier on disk. */
+async function setVerifyDefault(templateDir: string, tier: string): Promise<void> {
+  const p = join(templateDir, 'nodes', 'gameplay', 'node.json');
+  const nj = JSON.parse(await fs.readFile(p, 'utf8'));
+  nj.optimize.verifyDefault = tier;
+  await fs.writeFile(p, JSON.stringify(nj, null, 2));
+}
+
 // ── events.ts ───────────────────────────────────────────────────────────────────────────────────────────
 describe('events — renderSubstrateEvent + safeEmit', () => {
   const ALL: SubstrateEvent[] = [
@@ -193,6 +211,26 @@ describe('collectWorkspaceRefs — {{WORKSPACE}} ref extraction (mechanical)', (
   it('normalizes redundant separators and drops workspace-escaping / empty paths', () => {
     const refs = collectWorkspaceRefs(['{{WORKSPACE}}/a//b/', '{{WORKSPACE}}/../escape', '{{WORKSPACE}}/']);
     expect([...refs]).toEqual(['a/b']);
+  });
+});
+
+// ── WS3: readClosureRefs — the shared bar (criteria OR the judge alias) is an oracle exclusion ──────────────
+describe('readClosureRefs — excludes BOTH optimize.criteria and the optimize.judge alias (WS3)', () => {
+  it('drops criteria + judge {{WORKSPACE}} refs from the fence include set (both are oracle)', async () => {
+    const templateDir = await scratch('piflow-tpl-');
+    const nodeDir = join(templateDir, 'nodes', 'gameplay');
+    await fs.mkdir(nodeDir, { recursive: true });
+    await fs.writeFile(join(nodeDir, 'node.json'), JSON.stringify({
+      contract: { readScope: ['{{WORKSPACE}}/templates'] },
+      optimize: {
+        measure: [{ id: 'm', run: { cmd: 'node', args: ['{{WORKSPACE}}/eval/check.mjs'] } }],
+        criteria: '{{WORKSPACE}}/skills/criteria.md',
+        judge: '{{WORKSPACE}}/skills/legacy-judge.md',
+      },
+    }));
+    const { include, exclude } = await readClosureRefs(templateDir, 'gameplay');
+    expect(include).toEqual(['templates']);
+    expect(exclude.sort()).toEqual(['eval/check.mjs', 'skills/criteria.md', 'skills/legacy-judge.md']);
   });
 });
 
@@ -612,6 +650,142 @@ describe('fixIssue — SOFT gate path (no numeric oracle → the independent gat
     expect(res.gateVerdict).toBeUndefined();
     expect(res.decision).toBe('staged'); // evaluateGate: unmeasurable → stage-for-human
     expect(res.verdict?.landPolicy).toBe('stage-for-human');
+  });
+});
+
+// ── WS3: per-issue verify TIER dispatch (none skips prove+gate · rerun = numeric only · full = gate agent) ──
+describe('fixIssue — WS3 verify-tier dispatch (none | rerun | full)', () => {
+  it('verify:none ⇒ STAGED with NO prove and NO gate (trivial); rests fix-landed, reason "verify:none"', async () => {
+    // measure THROWS: a §4 drill proving the prove path never runs under `none`.
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture({ baseGraded: { 'feas.score': 0.5 } });
+    await setSoftBar(templateDir); // even WITH criteria, none must not gate
+    let spawned = false;
+    let gateCalled = false;
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      verify: 'none',
+      runAgent: editingAgent,
+      spawnChild: async () => { spawned = true; return childResult('x', await scratch('piflow-child-')); },
+      measure: async () => { throw new Error('measure must NOT run under verify:none'); },
+      gate: async () => { gateCalled = true; return { verdict: { decision: 'accept', rationale: 'x' } }; },
+    });
+    expect(spawned).toBe(false);          // no prove
+    expect(gateCalled).toBe(false);       // no gate agent
+    expect(res.proved).toBe(false);
+    expect(res.childId).toBeNull();
+    expect(res.decision).toBe('staged');  // adopt-ready
+    expect(res.candidateSha).toBeDefined();
+    expect(res.record?.reason).toMatch(/verify:none/);
+    expect(res.record?.verifiedByRun).toBeNull();
+    expect((await parseIssueFile(issuePath)).status).toBe('fix-landed'); // rests adopt-ready
+  });
+
+  it('verify:none with a NO-OP fixer (0 edits) ⇒ discarded "no edit applied" (the trivial tier still needs an edit)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      verify: 'none',
+      runAgent: noopAgent,
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    expect(res.editsApplied).toBe(0);
+    expect(res.decision).toBe('discarded');
+    expect((await parseIssueFile(issuePath)).status).toBe('active'); // never advanced
+  });
+
+  it('verify:rerun ⇒ proves but NEVER the gate agent, even when the node has criteria (unmeasurable ⇒ numeric stage-for-human)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture(); // unmeasurable
+    await setSoftBar(templateDir); // node HAS criteria …
+    let spawned = false;
+    let gateCalled = false;
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      verify: 'rerun',
+      runAgent: editingAgent,
+      spawnChild: async () => { spawned = true; return childResult('tS2.gameplay', await scratch('piflow-child-')); },
+      measure: async () => measureReport({}),
+      gate: async () => { gateCalled = true; return { verdict: { decision: 'accept', rationale: 'x' } }; },
+    });
+    expect(spawned).toBe(true);           // it DID prove …
+    expect(gateCalled).toBe(false);       // … but rerun NEVER invokes the gate agent (numeric gate only)
+    expect(res.gateVerdict).toBeUndefined();
+    expect(res.verdict?.landPolicy).toBe('stage-for-human'); // numeric gate: unmeasurable → human
+    expect(res.decision).toBe('staged');
+  });
+
+  it('verify:rerun with shared numeric keys ⇒ the NUMERIC gate decides (proves + evaluateGate)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture({ baseGraded: { 'feas.score': 0.5 } });
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      verify: 'rerun',
+      runAgent: editingAgent,
+      spawnChild: async () => childResult('tS2.gameplay', await scratch('piflow-child-')),
+      measure: async () => measureReport({ 'feas.score': 0.9 }),
+    });
+    expect(res.proved).toBe(true);
+    expect(res.verdict?.accept).toBe(true); // 0.5 → 0.9 strict improvement, numeric
+    expect(res.decision).toBe('staged');
+  });
+
+  it('verify:full ⇒ proves + the gate AGENT decides (the contrast to rerun on the SAME unmeasurable+criteria node)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await setSoftBar(templateDir);
+    let gateCalled = false;
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      verify: 'full',
+      runAgent: editingAgent,
+      spawnChild: async () => childResult('tS2.gameplay', await scratch('piflow-child-')),
+      measure: async () => measureReport({}),
+      gate: async () => { gateCalled = true; return { verdict: { decision: 'accept', rationale: 'ok' } }; },
+    });
+    expect(gateCalled).toBe(true);          // full DOES invoke the gate agent
+    expect(res.gateVerdict?.decision).toBe('accept');
+    expect(res.verdict).toBeUndefined();    // numeric gate did not decide on the soft path
+    expect(res.decision).toBe('staged');
+  });
+
+  it('the tier SPINE: the issue\'s OWN `verify: none` frontmatter drives the tier (no opts override)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await writeIssueFile(issuePath, makeIssue({ verify: 'none' }));
+    let spawned = false;
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      runAgent: editingAgent,
+      spawnChild: async () => { spawned = true; return childResult('x', await scratch()); },
+      measure: async () => measureReport({}),
+    });
+    expect(spawned).toBe(false);          // frontmatter none ⇒ no prove
+    expect(res.record?.reason).toMatch(/verify:none/);
+  });
+
+  it('the tier SPINE: the node\'s optimize.verifyDefault drives the tier when the issue omits its own', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await setVerifyDefault(templateDir, 'none');
+    let spawned = false;
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      runAgent: editingAgent,
+      spawnChild: async () => { spawned = true; return childResult('x', await scratch()); },
+      measure: async () => measureReport({}),
+    });
+    expect(spawned).toBe(false);          // node default none ⇒ no prove
+    expect(res.decision).toBe('staged');
+  });
+
+  it('opts.verify (the CLI override) WINS over the issue frontmatter', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await writeIssueFile(issuePath, makeIssue({ verify: 'full' })); // frontmatter says full …
+    let spawned = false;
+    await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      verify: 'none', // … but the override says none
+      runAgent: editingAgent,
+      spawnChild: async () => { spawned = true; return childResult('x', await scratch()); },
+      measure: async () => measureReport({}),
+    });
+    expect(spawned).toBe(false);          // none won ⇒ no prove
   });
 });
 

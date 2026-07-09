@@ -76,6 +76,33 @@ describe('template-format schemas — the fixture VALIDATES (accept the real sha
     expect(r.ok).toBe(true);
   });
 
+  // (WS3) The optimizer-facing `optimize` block gains `criteria` (the rename of `judge` — the SHARED bar read
+  // by triage + gate) and `verifyDefault` (the node's default per-issue verify tier). `judge` survives as a
+  // back-compat READ alias. additionalProperties:false makes the typo/enum cases bite (the mutation these pin).
+  describe('optimize block — criteria (judge alias) + verifyDefault (WS3)', () => {
+    const withOptimize = async (optimize: unknown) => {
+      const node = { ...((await readJson(nodePath('w0-classify'))) as Record<string, unknown>), optimize };
+      return validate(nodeSchema as object, node);
+    };
+    it('accepts optimize.criteria (the renamed bar) + optimize.verifyDefault', async () => {
+      const r = await withOptimize({ criteria: '{{WORKSPACE}}/skills/criteria.md', verifyDefault: 'rerun' });
+      expect(r.errors).toEqual([]);
+      expect(r.ok).toBe(true);
+    });
+    it('STILL accepts optimize.judge (the back-compat read alias)', async () => {
+      const r = await withOptimize({ judge: '{{WORKSPACE}}/skills/judge.md' });
+      expect(r.ok).toBe(true);
+    });
+    it('REJECTS an unknown verifyDefault tier (enum bites)', async () => {
+      const r = await withOptimize({ verifyDefault: 'sometimes' });
+      expect(r.ok).toBe(false);
+    });
+    it('REJECTS a typo\'d optimize key (additionalProperties:false)', async () => {
+      const r = await withOptimize({ criterion: 'typo' });
+      expect(r.ok).toBe(false);
+    });
+  });
+
   it('the parallel lane is write-disjoint (the §5 invariant the fixture must encode)', async () => {
     const a = (await readJson(nodePath('w2a-levels'))) as { deps: string[]; contract: { owns: string[] } };
     const b = (await readJson(nodePath('w2b-assets'))) as { deps: string[]; contract: { owns: string[] } };

@@ -54,6 +54,10 @@ import { createHash } from 'node:crypto';
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 export type Status = 'open' | 'active' | 'fix-landed' | 'verifying' | 'resolved' | 'regressed';
 export type Reason = 'fixed' | 'wontfix' | 'false-positive' | 'superseded';
+/** Per-issue VERIFY TIER (WS3) — how much proof a fix of THIS issue must earn before it can rest adopt-ready:
+ *  `none` (trivial/typo — commit, no rerun, no gate), `rerun` (prove + the numeric gate only), `full` (prove +
+ *  the gate agent). Absent from an issue ⇒ the node's `optimize.verifyDefault` (itself defaulting to `full`). */
+export type VerifyTier = 'none' | 'rerun' | 'full';
 
 /** One row in an issue's append-only attempt history. `regressedIn` is stamped ONLY by `reopen()`. */
 export interface Attempt {
@@ -83,6 +87,10 @@ export interface Issue {
   lastSeen: string;
   /** append-only fix history. */
   attempts: Attempt[];
+  /** OPTIONAL per-issue verify tier (WS3) — none|rerun|full. Absent ⇒ the node's `optimize.verifyDefault` (→
+   *  `full`). The ONE optional frontmatter key: omitted from the on-disk file when unset, so a pre-WS3 issue
+   *  round-trips byte-for-byte unchanged. */
+  verify?: VerifyTier;
   /** the ~30–40 line context brief, rewritten by triage on every reopen; verbatim below the frontmatter. */
   body: string;
 }
@@ -90,9 +98,16 @@ export interface Issue {
 const SEVERITIES: readonly Severity[] = ['critical', 'high', 'medium', 'low'];
 const STATUSES: readonly Status[] = ['open', 'active', 'fix-landed', 'verifying', 'resolved', 'regressed'];
 const REASONS: readonly Reason[] = ['fixed', 'wontfix', 'false-positive', 'superseded'];
+const VERIFY_TIERS: readonly VerifyTier[] = ['none', 'rerun', 'full'];
 
-/** The frontmatter's keys, in the FIXED serialization order (also the required-key set the parser enforces). */
+/** The frontmatter's REQUIRED keys, in the FIXED serialization order (also the required-key set the parser
+ *  enforces — every one MUST be present). */
 const FRONTMATTER_KEYS = ['id', 'name', 'title', 'severity', 'status', 'reason', 'sig', 'firstSeen', 'lastSeen', 'attempts'] as const;
+/** OPTIONAL frontmatter keys — ALLOWED but never required. A pre-WS3 file omits them entirely (byte-stable);
+ *  a `verify` line renders BEFORE `attempts` only when the tier is set. Kept off `FRONTMATTER_KEYS` so the
+ *  fail-closed missing-key check never demands them. */
+const OPTIONAL_FRONTMATTER_KEYS = ['verify'] as const;
+const KNOWN_FRONTMATTER_KEYS = new Set<string>([...FRONTMATTER_KEYS, ...OPTIONAL_FRONTMATTER_KEYS]);
 
 // ── identity: the hash recipe ───────────────────────────────────────────────────────────────────────────
 
@@ -143,6 +158,8 @@ export function validateIssue(issue: Issue): void {
     if (a.regressedIn !== undefined && (typeof a.regressedIn !== 'string' || !a.regressedIn))
       invalid(`attempts[${i}].regressedIn must be a non-empty string when present`);
   });
+  if (issue.verify !== undefined && !VERIFY_TIERS.includes(issue.verify))
+    invalid(`verify must be one of ${VERIFY_TIERS.join('|')} when present, got ${JSON.stringify(issue.verify)}`);
 }
 
 // ── the strict minimal frontmatter codec (parse/render pair; see the module header for the format) ─────────
@@ -172,7 +189,7 @@ function parseIssueContent(raw: string): Issue {
 
   const missing = FRONTMATTER_KEYS.filter((k) => !(k in map));
   if (missing.length) throw new Error(`issue frontmatter missing required key(s): ${missing.join(', ')}`);
-  const extra = Object.keys(map).filter((k) => !(FRONTMATTER_KEYS as readonly string[]).includes(k));
+  const extra = Object.keys(map).filter((k) => !KNOWN_FRONTMATTER_KEYS.has(k));
   if (extra.length) throw new Error(`issue frontmatter has unknown key(s): ${extra.join(', ')}`);
 
   let attempts: unknown;
@@ -194,6 +211,7 @@ function parseIssueContent(raw: string): Issue {
     firstSeen: map.firstSeen,
     lastSeen: map.lastSeen,
     attempts: attempts as Attempt[],
+    ...('verify' in map ? { verify: map.verify as VerifyTier } : {}),
     body,
   };
   validateIssue(issue);
@@ -213,6 +231,8 @@ function renderIssueContent(issue: Issue): string {
     `sig: ${issue.sig}`,
     `firstSeen: ${issue.firstSeen}`,
     `lastSeen: ${issue.lastSeen}`,
+    // OPTIONAL — rendered only when set, right before `attempts`, so an unset issue stays byte-identical to a pre-WS3 file.
+    ...(issue.verify !== undefined ? [`verify: ${issue.verify}`] : []),
     `attempts: ${JSON.stringify(issue.attempts)}`,
   ];
   return `---\n${lines.join('\n')}\n---\n${issue.body}`;

@@ -79,7 +79,7 @@ export {
   assertTransition, transitionIssue, listIssues, ALLOWED_TRANSITIONS,
 } from './substrate/issues.js';
 export type {
-  Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
+  Issue, Severity, Status, Reason, VerifyTier, Attempt, IssueRecord, ListIssuesOpts,
 } from './substrate/issues.js';
 
 // The SUBSTRATE hard MEASUREMENT stage (docs/specs/optimize-substrate-plan.md §M3) — fires a node's

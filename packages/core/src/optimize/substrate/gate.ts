@@ -71,9 +71,10 @@ export interface BuildGatePromptOpts {
   verdictPath: string;
 }
 
-/** `<templateDir>/nodes/<node>/node.json`'s raw shape — only `optimize.judge` matters here (the node's BAR). */
+/** `<templateDir>/nodes/<node>/node.json`'s raw shape — only the shared BAR matters here: `optimize.criteria`,
+ *  or the back-compat `optimize.judge` alias (either works; criteria wins). */
 interface RawNodeJson {
-  optimize?: { judge?: string };
+  optimize?: { criteria?: string; judge?: string };
 }
 
 async function readNodeJson(templateDir: string, nodeId: string): Promise<RawNodeJson> {
@@ -117,17 +118,18 @@ const SEPARATION_LAW = [
 export async function buildGatePrompt(nodeId: string, opts: BuildGatePromptOpts): Promise<string> {
   const { runDir, workspace, templateDir, issueFileText, fixerDiff, fixerAccount, verdictPath } = opts;
   const nodeJson = await readNodeJson(templateDir, nodeId);
-  const judgeRaw = nodeJson.optimize?.judge;
+  // The shared bar: `optimize.criteria`, or the back-compat `optimize.judge` alias (either works; criteria wins).
+  const judgeRaw = nodeJson.optimize?.criteria ?? nodeJson.optimize?.judge;
   if (!judgeRaw) {
     throw new Error(
-      `buildGatePrompt: node "${nodeId}" has no "optimize.judge" configured in its node.json — the gate has no bar to judge against.`,
+      `buildGatePrompt: node "${nodeId}" has no "optimize.criteria" (or the legacy "optimize.judge") configured in its node.json — the gate has no bar to judge against.`,
     );
   }
   const judgeResolved = path.resolve(templateDir, resolveTokens(judgeRaw, { run: runDir, workspace }));
   const judgeContent = await readFileMaybe(judgeResolved);
   if (judgeContent === null) {
     throw new Error(
-      `buildGatePrompt: node "${nodeId}"'s declared optimize.judge file was not found: ${judgeResolved} (declared as "${judgeRaw}" in nodes/${nodeId}/node.json)`,
+      `buildGatePrompt: node "${nodeId}"'s declared optimize.criteria file was not found: ${judgeResolved} (declared as "${judgeRaw}" in nodes/${nodeId}/node.json)`,
     );
   }
 

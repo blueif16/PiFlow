@@ -100,12 +100,21 @@ describe('buildJudgePrompt — assembles every input; HALTs on a declared-but-mi
     expect(prompt.toLowerCase()).toMatch(/zero fix proposals|no fix proposals/); // the separation law
   });
 
-  it('HALTS with a clear error when optimize.judge is not declared at all', async () => {
+  it('resolves the bar via optimize.criteria (the WS3 rename), not only the legacy judge alias', async () => {
     const templateDir = await scratch();
     const runDir = await scratch();
-    await writeNodeJson(templateDir, 'gameplay', {}); // no `judge` key
+    await writeNodeJson(templateDir, 'gameplay', { criteria: 'nodes/gameplay/criteria.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'criteria.md'), 'CRITERIA-VIA-CRITERIA-KEY-9');
+    const prompt = await buildJudgePrompt('gameplay', { runDir, workspace: templateDir, templateDir });
+    expect(prompt).toContain('CRITERIA-VIA-CRITERIA-KEY-9');
+  });
+
+  it('HALTS with a clear error when neither optimize.criteria nor the judge alias is declared', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch();
+    await writeNodeJson(templateDir, 'gameplay', {}); // no bar
     await expect(buildJudgePrompt('gameplay', { runDir, workspace: templateDir, templateDir })).rejects.toThrow(
-      /no "optimize\.judge" configured|has no optimize\.judge/i,
+      /no "optimize\.criteria"|has no "optimize\.criteria"/i,
     );
   });
 

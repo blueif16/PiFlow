@@ -102,6 +102,13 @@ describe('parsers', () => {
     expect(parseSubstrateFixArgs(['--node', 'g', '--dry-run']).dryRun).toBe(true);
     expect(parseSubstrateFixArgs(['--node', 'g']).dryRun).toBeUndefined();
   });
+  it('parseSubstrateFixArgs: --verify <tier> parses a valid tier, ignores an invalid one, defaults undefined (WS3)', () => {
+    expect(parseSubstrateFixArgs(['--node', 'g', '--verify', 'none']).verify).toBe('none');
+    expect(parseSubstrateFixArgs(['--node', 'g', '--verify', 'rerun']).verify).toBe('rerun');
+    expect(parseSubstrateFixArgs(['--node', 'g', '--verify', 'full']).verify).toBe('full');
+    expect(parseSubstrateFixArgs(['--node', 'g', '--verify', 'bogus']).verify).toBeUndefined(); // invalid → ignored
+    expect(parseSubstrateFixArgs(['--node', 'g']).verify).toBeUndefined(); // off by default
+  });
   it('parseSubstrateAdoptArgs: manifest + template + backup-dir + watch; also --node/--issue/--run (WS2 regrammar)', () => {
     expect(parseSubstrateAdoptArgs(['--manifest', 'm.json', '--template', 't', '--backup-dir', 'b'])).toMatchObject({ manifest: 'm.json', template: 't', backupDir: 'b' });
     expect(parseSubstrateAdoptArgs(['--node', 'g', '--issue', 'soggy-crust', '--run', 'tS2'])).toMatchObject({ node: 'g', issue: 'soggy-crust', run: 'tS2' });
@@ -598,6 +605,26 @@ describe('runSubstrateFixCli — selects issues severity-desc, caps, fixes seque
     expect(tally).toMatch(/2 issue\(s\) processed/);
     expect(tally).toMatch(/2 escalated/);
     expect(tally).toMatch(/HALTED by --breaker/);
+  });
+
+  it('forwards --verify <tier> into each per-issue fixIssue opts (WS3 threading)', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    const seen: (string | undefined)[] = [];
+    await runSubstrateFixCli(['--node', 'gameplay', '--issue', 'a', '--verify', 'none'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      listIssues: async () => [issueRec('a', 'high', 'open', '260706-01')],
+      fixIssue: async (_p, opts): Promise<FixIssueResult> => {
+        seen.push(opts.verify);
+        return {
+          issue: 'a', node: 'gameplay', candidateRef: '/c', editsApplied: 1, proved: false, childId: null,
+          decision: 'staged', deltaSummary: {}, candidateSha: 'sha',
+        } as FixIssueResult;
+      },
+      print: () => {},
+    });
+    expect(seen).toEqual(['none']); // the tier reached the per-issue fix opts
   });
 });
 

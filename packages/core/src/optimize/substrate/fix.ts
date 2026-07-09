@@ -67,7 +67,7 @@ import { execFileSync } from 'node:child_process';
 
 import type { DefectBucket } from '../types.js';
 import { evaluateGate, type GateVerdict, type LandPolicy } from '../gate.js';
-import { parseIssueFile, stampAttempt, transitionIssue } from './issues.js';
+import { parseIssueFile, stampAttempt, transitionIssue, type VerifyTier } from './issues.js';
 import {
   inheritedAgentOpts, runBaseAgent,
   type RunBaseAgentOpts, type RunBaseAgentResult, type BaseAgentChildOpts,
@@ -134,12 +134,13 @@ export function collectWorkspaceRefs(value: unknown, into: Set<string> = new Set
   return into;
 }
 
-/** `<templateDir>/nodes/<id>/node.json`'s raw shape — the optimizer-facing block the loader never wires on. */
+/** `<templateDir>/nodes/<id>/node.json`'s raw shape — the optimizer-facing block the loader never wires on.
+ *  `criteria` is the current spelling of the shared bar; `judge` is the back-compat READ alias (either works). */
 interface RawNodeJson {
   contract?: { readScope?: unknown; execReads?: unknown };
   hooks?: unknown;
   op?: unknown;
-  optimize?: { measure?: unknown; judge?: unknown };
+  optimize?: { measure?: unknown; criteria?: unknown; judge?: unknown; verifyDefault?: unknown };
 }
 
 /** Read + parse the node's `node.json` off disk. Throws (naming the file) if it is missing or invalid — the
@@ -159,12 +160,26 @@ async function readNodeJsonRaw(templateDir: string, nodeId: string): Promise<Raw
   }
 }
 
-/** Does the node declare an `optimize.judge` — a SOFT bar the gate agent can judge a fix against when there is
- *  no numeric oracle? Reads `node.json` off disk (throws only if the node is unreadable, which fixIssue already
- *  requires). Drives the gate ROUTING: unmeasurable + a judge ⇒ the gate agent, not "unmeasurable → human". */
-async function nodeHasJudge(templateDir: string, nodeId: string): Promise<boolean> {
-  const nj = await readNodeJsonRaw(templateDir, nodeId);
-  return typeof nj.optimize?.judge === 'string' && (nj.optimize.judge as string).length > 0;
+/** The node's SHARED soft bar — `optimize.criteria`, or the back-compat `optimize.judge` alias (either works;
+ *  `criteria` wins). A non-empty string ⇒ the node has a soft bar the gate agent can judge against. */
+function nodeCriteriaRef(nj: RawNodeJson): string | undefined {
+  const raw = nj.optimize?.criteria ?? nj.optimize?.judge;
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
+/** Does the node declare a SOFT bar (`optimize.criteria`, or the `judge` alias) the gate agent can judge a fix
+ *  against when there is no numeric oracle? Reads `node.json` off disk (throws only if the node is unreadable,
+ *  which fixIssue already requires). Drives the gate ROUTING: unmeasurable + a bar ⇒ the gate agent, not
+ *  "unmeasurable → human". */
+async function nodeHasCriteria(templateDir: string, nodeId: string): Promise<boolean> {
+  return nodeCriteriaRef(await readNodeJsonRaw(templateDir, nodeId)) !== undefined;
+}
+
+/** The node's DEFAULT per-issue verify tier — `optimize.verifyDefault` when it is a valid tier, else `full`.
+ *  The fallback an issue inherits when its own frontmatter omits `verify`. Reads `node.json` off disk. */
+async function nodeVerifyDefault(templateDir: string, nodeId: string): Promise<VerifyTier> {
+  const raw = (await readNodeJsonRaw(templateDir, nodeId)).optimize?.verifyDefault;
+  return raw === 'none' || raw === 'rerun' || raw === 'full' ? raw : 'full';
 }
 
 /** The node's INCLUDE set (readScope/execReads/hooks/op {{WORKSPACE}} refs) and EXCLUDE/oracle set
@@ -187,6 +202,9 @@ export async function readClosureRefs(templateDir: string, nodeId: string): Prom
 
   const exclude = new Set<string>();
   collectWorkspaceRefs(nj.optimize?.measure, exclude);
+  // The shared bar is an ORACLE too (the fixer must not read/edit it) — exclude BOTH the `criteria` spelling
+  // and the back-compat `judge` alias.
+  collectWorkspaceRefs(nj.optimize?.criteria, exclude);
   collectWorkspaceRefs(nj.optimize?.judge, exclude);
 
   return { include: [...include], exclude: [...exclude] };
@@ -549,6 +567,10 @@ export interface FixIssueOpts extends BaseAgentChildOpts {
   workspace: string;
   /** run the prove-rerun (default true). false ⇒ skip straight to staging (skip-proof path). */
   prove?: boolean;
+  /** WS3 per-issue verify TIER OVERRIDE — wins over the issue's own `verify` frontmatter and the node's
+   *  `optimize.verifyDefault`. `none` skips prove+gate (trivial), `rerun` proves + the numeric gate only,
+   *  `full` proves + the gate agent. Absent ⇒ the issue-frontmatter/node-default spine decides. */
+  verify?: VerifyTier;
   /** graded-delta regression tolerance (default 0). */
   tolerance?: number;
   /** keys where LOWER is better, for the graded fold (default none). */
@@ -691,6 +713,13 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     };
   }
 
+  // WS3: the effective per-issue VERIFY TIER — CLI override > the issue's own `verify` frontmatter > the
+  // node's `optimize.verifyDefault` (→ `full`). `none` skips prove+gate (trivial); `rerun` proves + the
+  // NUMERIC gate only; `full` proves + the gate agent. `proveEnabled` folds the tier into the existing prove
+  // switch (a `none` tier — or an explicit `--no-prove` — turns proving off).
+  const verifyTier: VerifyTier = opts.verify ?? issue.verify ?? (await nodeVerifyDefault(templateDir, node));
+  const proveEnabled = prove && verifyTier !== 'none';
+
   // (a) activate — guarded by the status machine (open|regressed → active).
   await transitionIssue(issuePathAbs, 'active');
   emit({ type: 'issue-activated', issue: issue.name, node });
@@ -723,7 +752,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   let base: number | null = null;
   let candidate: number | null = null;
   let deltaSummary: Record<string, number> = {};
-  if (editsApplied >= 1 && !oracleTouched && prove) {
+  if (editsApplied >= 1 && !oracleTouched && proveEnabled) {
     await transitionIssue(issuePathAbs, 'verifying');
     const child = await spawnChild(parentRunDir, node, {
       templateDir,
@@ -764,13 +793,23 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   let record: SubstrateManifestRecord | undefined;
 
   const numericMeasured = base !== null && candidate !== null; // shared graded keys existed
-  const softGate = !oracleTouched && editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasJudge(templateDir, node));
+  // WS3: ONLY the `full` tier invokes the gate AGENT. `rerun` proves but stays on the NUMERIC gate even when
+  // the node has criteria; `none` never proves (childDir null), so it never reaches here.
+  const softGate = verifyTier === 'full' && !oracleTouched && editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasCriteria(templateDir, node));
 
   if (oracleTouched) {
     decision = 'discarded';
     landPolicy = 'stage-for-human';
-    reason = 'candidate diff touched an oracle path (optimize.measure/judge) — fixer-side rejection, never proved/gated';
+    reason = 'candidate diff touched an oracle path (optimize.measure/criteria) — fixer-side rejection, never proved/gated';
     emit({ type: 'gated', issue: issue.name, accept: false, reason });
+  } else if (verifyTier === 'none' && editsApplied >= 1) {
+    // WS3 TRIVIAL tier: a real edit under `verify:none` is STAGED with NO prove and NO gate (a typo-class fix).
+    // It rests adopt-ready exactly like the skip-proof path (childId null ⇒ status fix-landed below), but with an
+    // explicit reason. A 0-edit `none` falls through to the numeric path's "no edit applied" reject.
+    decision = 'staged';
+    landPolicy = 'stage-for-human';
+    reason = 'verify:none (trivial — no rerun/gate)';
+    emit({ type: 'gated', issue: issue.name, accept: true, reason });
   } else if (softGate && childDir !== null) {
     // The SOFT gate is the DECOUPLED `verifyStage` — the SAME callable `optimize verify` runs standalone (one
     // code path, not two). It runs the gate agent, writes verdict.json + record.json under the lifecycle dir,
