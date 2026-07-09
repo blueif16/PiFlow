@@ -405,31 +405,67 @@ export interface SubstrateManifest {
   records: SubstrateManifestRecord[];
 }
 
-/** `<stagingDir>/manifest.json`. */
-function manifestPathOf(stagingDir: string): string {
-  return path.join(stagingDir, 'manifest.json');
+// ── WS1: ONE FOLDER PER ISSUE — the shared manifest.json is dissolved into a per-issue record.json ───────────
+// Everything for an issue lives under its LIFECYCLE dir `runs/<run>/optimize/issues/<node>/<issue>/`: the
+// `record.json` (this issue's SubstrateManifestRecord), the gate's `verdict.json`, and the `log.jsonl` event
+// trail — addressed by `(node, issue)`, one hop, nothing reconstructed. `scanRecords` globs the per-issue
+// record.json files back into the aggregate list that bulk ops + the back-compat `readSubstrateManifest` view
+// consume; there is no shared `manifest.json` on disk anymore.
+
+/** The per-issue LIFECYCLE dir: `<runDir>/optimize/issues/<node>/<issue>/`. Everything addressed by
+ *  `(node, issue)` — record.json, verdict.json, log.jsonl — lives here. */
+export function issueLifecycleDir(runDir: string, node: string, issue: string): string {
+  return path.join(runDir, 'optimize', 'issues', node, issue);
 }
 
-/** Read the substrate manifest at `stagingDir` (or an empty one if absent/unreadable — never throws). */
-export async function readSubstrateManifest(stagingDir: string): Promise<SubstrateManifest> {
+/** The aggregate VIEW: glob every `optimize/issues/<node>/<issue>/record.json` under `runDir` and parse each
+ *  into a record, ordered deterministically (node, then issue). Never throws — a missing `issues/` tree (a run
+ *  with nothing staged) yields `[]`, and an unreadable/invalid single record.json (e.g. a lifecycle dir holding
+ *  only a log.jsonl) is skipped, so one corrupt file never fails the whole scan. */
+export async function scanRecords(runDir: string): Promise<SubstrateManifestRecord[]> {
+  const issuesRoot = path.join(runDir, 'optimize', 'issues');
+  let nodes: string[];
   try {
-    const parsed = JSON.parse(await fs.readFile(manifestPathOf(stagingDir), 'utf8'));
-    return Array.isArray(parsed?.records) ? (parsed as SubstrateManifest) : { records: [] };
+    nodes = (await fs.readdir(issuesRoot, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
   } catch {
-    return { records: [] };
+    return [];
   }
+  const records: SubstrateManifestRecord[] = [];
+  for (const node of nodes.sort()) {
+    const nodeDir = path.join(issuesRoot, node);
+    let issues: string[];
+    try {
+      issues = (await fs.readdir(nodeDir, { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name);
+    } catch {
+      continue;
+    }
+    for (const issue of issues.sort()) {
+      try {
+        const rec = JSON.parse(await fs.readFile(path.join(nodeDir, issue, 'record.json'), 'utf8')) as SubstrateManifestRecord;
+        if (rec && typeof rec === 'object' && typeof rec.issueId === 'string') records.push(rec);
+      } catch {
+        /* no valid record.json here — skip it (scanRecords is a lenient bulk view, never fail-the-run) */
+      }
+    }
+  }
+  return records;
 }
 
-/** Upsert `record` (keyed by issueId) into the manifest and write it DETERMINISTICALLY (records sorted by
- *  issue name, no timestamp/random — identical decisions render identical bytes). Returns the manifest path. */
-async function upsertSubstrateManifest(stagingDir: string, record: SubstrateManifestRecord): Promise<string> {
-  const current = await readSubstrateManifest(stagingDir);
-  const records = [...current.records.filter((r) => r.issueId !== record.issueId), record].sort((a, b) =>
-    a.issue < b.issue ? -1 : a.issue > b.issue ? 1 : 0,
-  );
-  await fs.mkdir(stagingDir, { recursive: true });
-  await fs.writeFile(manifestPathOf(stagingDir), JSON.stringify({ records }, null, 2));
-  return manifestPathOf(stagingDir);
+/** Write ONE issue's `record.json` under its lifecycle dir (DETERMINISTIC bytes — no timestamp/random, so an
+ *  identical decision renders identical bytes). Returns the record.json path. Replaces the shared-manifest
+ *  upsert: one file per issue, no read-merge-rewrite of every other issue's record. */
+async function writeIssueRecord(runDir: string, record: SubstrateManifestRecord): Promise<string> {
+  const dir = issueLifecycleDir(runDir, record.node, record.issue);
+  await fs.mkdir(dir, { recursive: true });
+  const file = path.join(dir, 'record.json');
+  await fs.writeFile(file, JSON.stringify(record, null, 2));
+  return file;
+}
+
+/** The aggregate manifest VIEW over a RUN dir: `{ records: scanRecords(runDir) }`. Back-compat for bulk
+ *  readers/tests that consumed the old shared `manifest.json` — now reconstructed from the per-issue records. */
+export async function readSubstrateManifest(runDir: string): Promise<SubstrateManifest> {
+  return { records: await scanRecords(runDir) };
 }
 
 // ── the fixer prompt (agentic-prompt-design: the issue file IS the dispatch; a tight fix contract) ──────────
@@ -517,9 +553,6 @@ export interface FixIssueOpts extends BaseAgentChildOpts {
   tolerance?: number;
   /** keys where LOWER is better, for the graded fold (default none). */
   lowerIsBetter?: (key: string) => boolean;
-  /** where the manifest lives. Default `<parentRunDir>/optimize/substrate/staging`. (The candidate itself is a
-   *  git worktree/branch, NOT a copy under here.) */
-  stagingDir?: string;
   /** OUTER-LOOP retry only: the per-attempt tag (`attempt-N`) → the candidate branch/worktree leaf, so each
    *  attempt's candidate is side-by-side. Absent ⇒ `attempt-1`. */
   attemptTag?: string;
@@ -563,9 +596,9 @@ export interface FixIssueResult {
   /** ABSENT on a dry-run — nothing was decided. */
   decision?: 'staged' | 'discarded';
   deltaSummary: Record<string, number>;
-  /** ABSENT on a dry-run — no manifest was staged. */
+  /** the issue's `record.json` path under its lifecycle dir. ABSENT on a dry-run — nothing was staged. */
   manifestPath?: string;
-  /** ABSENT on a dry-run — no manifest was staged. */
+  /** ABSENT on a dry-run — no record was staged. */
   record?: SubstrateManifestRecord;
   /** Present ONLY on a dry-run: the BASE agent's composed spec (`plan`) the fixer WOULD have been spawned
    *  with — the full issue-dispatch `prompt` + the resolved candidate jail/skill/tier/model/tools. Forwarded
@@ -607,13 +640,16 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   const node = path.basename(path.dirname(path.dirname(issuePathAbs)));
   const { templateDir, workspace, parentRunDir } = opts;
   const prove = opts.prove ?? true;
-  const emit = (e: SubstrateEvent): void => safeEmit(opts.onEvent, e);
+  // Every emit is also APPENDED to the issue's log.jsonl trail (written under its lifecycle dir at the end).
+  const eventLog: SubstrateEvent[] = [];
+  const emit = (e: SubstrateEvent): void => { eventLog.push(e); safeEmit(opts.onEvent, e); };
   const runAgent = opts.runAgent ?? runBaseAgent;
   const spawnChild = opts.spawnChild ?? spawnChildRun;
   const measure = opts.measure ?? runSubstrateMeasure;
 
   const issue = await parseIssueFile(issuePathAbs);
-  const stagingDir = opts.stagingDir ?? path.join(parentRunDir, 'optimize', 'substrate', 'staging');
+  // WS1: everything for this issue lives under ONE lifecycle dir (record.json · verdict.json · log.jsonl).
+  const lifecycleDir = issueLifecycleDir(parentRunDir, node, issue.name);
   const repoRoot = workspace; // the live product root is the git repo the candidate worktree branches from
   const attempt = attemptNumber(opts.attemptTag);
   const { branch, worktreeDir } = candidateWorktreeRef(repoRoot, { node, issue: issue.name, attempt });
@@ -741,6 +777,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
       fixerDiff: '', // v1: the gate inspects the candidate worktree (candidateRef, in its read scope) directly
       fixerAccount: fixerResult.text ?? '',
       candidateRef: worktreeDir,
+      gateOutDir: lifecycleDir, // WS1: the gate writes verdict.json under THIS issue's lifecycle dir
       ...inheritedAgentOpts(opts),
     });
     gateVerdict = gateRes.verdict;
@@ -794,9 +831,12 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     ...(candidateSha ? { candidateSha } : {}),
     ...(dropback ? { dropback } : {}),
   };
-  const manifestPath = await upsertSubstrateManifest(stagingDir, record);
+  const manifestPath = await writeIssueRecord(parentRunDir, record); // record.json UNDER the lifecycle dir
   emit({ type: 'staged', issue: issue.name, decision, manifestPath });
   emit({ type: 'stopped', issue: issue.name, reason: decision === 'staged' ? 'staged for adopt' : `discarded (${reason})` });
+
+  // WS1: persist the whole event trail as log.jsonl beside record.json (the lifecycle dir now exists).
+  await fs.writeFile(path.join(lifecycleDir, 'log.jsonl'), eventLog.map((e) => JSON.stringify(e)).join('\n') + '\n');
 
   return {
     issue: issue.name,

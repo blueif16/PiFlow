@@ -23,6 +23,8 @@ import {
   foldGradedDelta,
   buildFixerPrompt,
   readSubstrateManifest,
+  scanRecords,
+  issueLifecycleDir,
   UNPROVEN_BY_RUN,
   type SubstrateManifest,
   type SubstrateManifestRecord,
@@ -431,12 +433,19 @@ describe('fixIssue — prove path (edit → commit → child on the worktree →
     expect((await parseIssueFile(issuePath)).status).toBe('verifying');
 
     // the manifest carries the staged record with SHAs + childId (WS0 behavior 8).
-    const manifest = await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'));
+    const manifest = await readSubstrateManifest(parentRunDir);
     expect(manifest.records).toHaveLength(1);
     expect(manifest.records[0]).toMatchObject({ issue: 'soggy-crust', decision: 'staged', verifiedByRun: 'tS2.gameplay', node: 'gameplay' });
     expect(manifest.records[0].candidateSha).toBe(res.candidateSha);
     expect(manifest.records[0].baseSha).toBe(res.baseSha);
     expect(manifest.records[0].candidateRef).toBe('optimize/gameplay/soggy-crust/attempt-1');
+
+    // WS1: the record lives at ONE folder per issue — record.json UNDER the lifecycle dir; NO shared manifest.json.
+    const lifecycleDir = issueLifecycleDir(parentRunDir, 'gameplay', 'soggy-crust');
+    const onDisk = JSON.parse(await fs.readFile(join(lifecycleDir, 'record.json'), 'utf8')) as SubstrateManifestRecord;
+    expect(onDisk.candidateSha).toBe(res.candidateSha);
+    expect(res.manifestPath).toBe(join(lifecycleDir, 'record.json'));
+    await expect(fs.access(join(parentRunDir, 'optimize', 'substrate', 'staging', 'manifest.json'))).rejects.toThrow();
 
     expect(events.map((e) => e.type)).toEqual([
       'issue-activated', 'candidate-prepared', 'fixer-started', 'fixer-done', 'prove-started', 'measured', 'gated', 'staged', 'stopped',
@@ -501,7 +510,7 @@ describe('fixIssue — prove path rejects a regression (no auto-adopt)', () => {
     });
     expect(res.verdict?.accept).toBe(false);
     expect(res.decision).toBe('discarded');
-    const manifest = await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'));
+    const manifest = await readSubstrateManifest(parentRunDir);
     expect(manifest.records[0].decision).toBe('discarded');
 
     // a proven-REJECT walks the issue back to `open` (nothing landed: reason null, no attempt stamped).
@@ -551,7 +560,7 @@ describe('fixIssue — SOFT gate path (no numeric oracle → the independent gat
     expect(gateSeen.fixerAccount).toContain('enumeration rule');
     expect(gateSeen.candidateRef).toBe(capturedWt);
     expect((await parseIssueFile(issuePath)).status).toBe('verifying');
-    const manifest = await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'));
+    const manifest = await readSubstrateManifest(parentRunDir);
     expect(manifest.records[0]).toMatchObject({ decision: 'staged', landPolicy: 'stage-for-human', verifiedByRun: 'tS2.gameplay' });
   });
 
@@ -581,7 +590,7 @@ describe('fixIssue — SOFT gate path (no numeric oracle → the independent gat
     expect(after.reason).toBeNull();
     expect(after.attempts).toEqual([]);
 
-    const manifest = await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'));
+    const manifest = await readSubstrateManifest(parentRunDir);
     expect(manifest.records[0].dropback).toEqual({ category: 'band-aid', steer: 'the root is upstream in the prompt, not the schema' });
   });
 
@@ -721,7 +730,7 @@ describe('fixIssue — dry-run (the inherited base-agent preview)', () => {
     // NOTHING mutated: the issue never left `open`, the worktree was never created, no manifest, no events.
     expect((await parseIssueFile(issuePath)).status).toBe('open');
     await expect(fs.access(execCwd)).rejects.toThrow();
-    expect((await readSubstrateManifest(join(parentRunDir, 'optimize', 'substrate', 'staging'))).records).toEqual([]);
+    expect((await readSubstrateManifest(parentRunDir)).records).toEqual([]);
     expect(events).toEqual([]);
     expect(res.decision).toBeUndefined();
     expect(res.verdict).toBeUndefined();
@@ -748,6 +757,78 @@ describe('fixIssue — a no-op fixer is rejected', () => {
     expect(res.verdict?.reason).toMatch(/no edit applied/);
     expect(spawned).toBe(false); // never proves a 0-edit proposal
     expect((await parseIssueFile(issuePath)).status).toBe('active'); // never advanced to fix-landed
+  });
+});
+
+// ── WS1: one folder per issue — issueLifecycleDir · scanRecords · record.json · verdict.json · log.jsonl ─────
+describe('issueLifecycleDir — runs/<run>/optimize/issues/<node>/<issue>/ (WS1 behavior 1)', () => {
+  it('composes the per-issue lifecycle dir under the run dir', () => {
+    expect(issueLifecycleDir('/runs/tS2', 'gameplay', 'soggy-crust')).toBe(
+      join('/runs/tS2', 'optimize', 'issues', 'gameplay', 'soggy-crust'),
+    );
+  });
+});
+
+describe('scanRecords — the aggregate VIEW globs optimize/issues/*/*/record.json (WS1 behavior 3)', () => {
+  it('collects every per-issue record.json across nodes/issues; ignores dirs with no record.json', async () => {
+    const runDir = await scratch('piflow-run-');
+    const write = async (node: string, issue: string, rec: Partial<SubstrateManifestRecord>): Promise<void> => {
+      const dir = issueLifecycleDir(runDir, node, issue);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(join(dir, 'record.json'), JSON.stringify({ issue, issueId: `id-${issue}`, node, decision: 'staged', candidateRef: 'r', liveRoot: '/l', landPolicy: 'stage-for-human', reason: 'x', verifiedByRun: null, deltaSummary: {}, ...rec }, null, 2));
+    };
+    await write('gameplay', 'soggy-crust', { candidateSha: 'aaa' });
+    await write('gameplay', 'burnt-edge', { candidateSha: 'bbb' });
+    await write('narrative', 'flat-arc', { candidateSha: 'ccc' });
+    // a lifecycle dir with NO record.json (e.g. only a log.jsonl) contributes nothing.
+    const empty = issueLifecycleDir(runDir, 'gameplay', 'no-record');
+    await fs.mkdir(empty, { recursive: true });
+    await fs.writeFile(join(empty, 'log.jsonl'), '{}\n');
+
+    const records = await scanRecords(runDir);
+    expect(records.map((r) => `${r.node}/${r.issue}`).sort()).toEqual(['gameplay/burnt-edge', 'gameplay/soggy-crust', 'narrative/flat-arc']);
+    expect(records.find((r) => r.issue === 'flat-arc')?.candidateSha).toBe('ccc');
+    // an absent issues/ tree yields [] (never throws) — the empty-run case bulk readers rely on.
+    expect(await scanRecords(await scratch('piflow-empty-'))).toEqual([]);
+  });
+
+  it('readSubstrateManifest(runDir) returns { records: scanRecords(runDir) } (back-compat view)', async () => {
+    const runDir = await scratch('piflow-run-');
+    const dir = issueLifecycleDir(runDir, 'gameplay', 'soggy-crust');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(join(dir, 'record.json'), JSON.stringify({ issue: 'soggy-crust', issueId: 'id-x', node: 'gameplay', decision: 'staged', candidateRef: 'r', liveRoot: '/l', landPolicy: 'stage-for-human', reason: 'x', verifiedByRun: null, deltaSummary: {} }, null, 2));
+    const manifest = await readSubstrateManifest(runDir);
+    expect(manifest.records).toHaveLength(1);
+    expect(manifest.records[0].issue).toBe('soggy-crust');
+  });
+});
+
+describe('fixIssue — WS1 lifecycle artifacts (record.json · verdict.json · log.jsonl all under one dir)', () => {
+  it('writes verdict.json under the lifecycle dir (gate gets gateOutDir = the lifecycle dir) + a log.jsonl of the events', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    // make the node soft (has an optimize.judge) so the gate agent path runs.
+    const nodeJsonPath = join(templateDir, 'nodes', 'gameplay', 'node.json');
+    const nj = JSON.parse(await fs.readFile(nodeJsonPath, 'utf8'));
+    nj.optimize.judge = '{{WORKSPACE}}/skills/judge.md';
+    await fs.writeFile(nodeJsonPath, JSON.stringify(nj, null, 2));
+
+    let seenGateOutDir: string | undefined;
+    await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      runAgent: async (o) => { await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); return { status: okStatus(), text: 'root cause fixed' }; },
+      spawnChild: async () => childResult('tS2.gameplay', await scratch('piflow-child-')),
+      measure: async () => measureReport({}), // unmeasurable ⇒ SOFT path
+      gate: async (_rd, _n, o) => { seenGateOutDir = o.gateOutDir; return { verdict: { decision: 'accept', rationale: 'ok' } }; },
+    });
+
+    const lifecycleDir = issueLifecycleDir(parentRunDir, 'gameplay', 'soggy-crust');
+    expect(seenGateOutDir).toBe(lifecycleDir); // WS1 behavior 4: the gate writes verdict.json under the lifecycle dir
+
+    // log.jsonl records the event stream for this issue under the same dir.
+    const log = (await fs.readFile(join(lifecycleDir, 'log.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+    expect(log.map((e) => e.type)).toContain('issue-activated');
+    expect(log.map((e) => e.type)).toContain('staged');
+    expect(log.every((e) => e.issue === 'soggy-crust')).toBe(true);
   });
 });
 

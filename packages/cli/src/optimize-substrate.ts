@@ -211,7 +211,6 @@ export interface SubstrateFixArgs {
   tier?: string;
   model?: string;
   tolerance?: number;
-  stagingDir?: string;
   /** `--max-attempts N`: the per-issue retry ceiling — the PRIMARY bound of the outer loop (default 3). */
   maxAttempts?: number;
   /** `--breaker N`: system-wide halt after N CONSECUTIVE issues exhaust their retry budget (default 3; 0 = off). */
@@ -238,7 +237,6 @@ export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
     else if (k === '--tier') out.tier = argv[++i];
     else if (k === '--model') out.model = argv[++i];
     else if (k === '--tolerance') out.tolerance = Number(argv[++i]);
-    else if (k === '--staging-dir') out.stagingDir = argv[++i];
     else if (k === '--max-attempts') out.maxAttempts = Math.max(1, Number(argv[++i]) || DEFAULT_MAX_ATTEMPTS);
     else if (k === '--breaker') { const n = Number(argv[++i]); out.breaker = Number.isFinite(n) && n >= 0 ? n : DEFAULT_BREAKER; }
     else if (k === '--dry-run') out.dryRun = true;
@@ -527,7 +525,6 @@ export async function runSubstrateFixCli(argv: string[], deps: SubstrateCliDeps 
       outDir, // PERSIST the fixer spawn's run dir — never the base agent's ephemeral (deleted) default.
       ...(onEvent ? { onEvent } : {}),
       ...(a.tolerance !== undefined ? { tolerance: a.tolerance } : {}),
-      ...(a.stagingDir ? { stagingDir: path.resolve(deps.cwd ?? process.cwd(), a.stagingDir) } : {}),
       ...(a.tier ? { tier: a.tier } : {}),
       ...(a.model ? { model: a.model } : {}),
     };
