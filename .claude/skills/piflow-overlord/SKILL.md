@@ -39,6 +39,10 @@ agent, or an agent in a cloud control-sandbox. Everything below the seat stays t
 changes; that invariance is the whole point.
 
 ## Starting — the first commands (the on-ramp)
+**Step 0, before anything else — refresh skills:** `piflowctl skills install . --force` (run from the
+product-repo root). The overlord and its sibling skills evolve upstream; this guarantees the session runs on
+the newest versions, not whatever was copied in once.
+
 Two entry points, by what you're taking the seat over:
 - **A live run** — snapshot, then arm your wake source: `piflowctl status <rundir>` (one-shot per-node table:
   which node/stage) → `piflowctl telemetry <rundir> --watch` (streams the run fold live, then prints the
@@ -311,6 +315,27 @@ those skills hold the canonical command.
 Your WAKE sources are `telemetry --watch` (run fold) and `optimize --fix --watch` (optimize stream), armed with
 a `--wake-on` policy (§"The declarative wake-seam"); `watch --notify` is a terminal liveness ping only — never
 your decision surface.
+
+## CLI you must know — the piflowctl quick-reference (a pointer map, not documentation)
+These endpoints are the map, not the manual — to go deeper on any one, run `piflowctl <verb> --help` (or
+`piflowctl --help`); never rediscover commands by grepping the repo or reading CLI source, that wastes context.
+- **Keep skills fresh (do this first):** `piflowctl skills install . --force` — refresh all authoring+maintenance
+  skills into `.claude/skills/`. ⚠ Gotcha: plural `skills install` is a DIFFERENT verb from singular `skill add`;
+  `piflowctl skills --help` is currently broken (errors), so use `piflowctl --help` to see it.
+- **Run / resume a workflow:** `piflowctl run <templateDir> [--profile <p>] [--from <id>] [--until <id>]` →
+  detail in **piflow-start**.
+- **Observe a run:** `piflowctl status <rundir>` · `watch <rundir>` · `telemetry <rundir> [nodeId] [--watch]` ·
+  `trace <rundir> [nodeId]` · `logs <rundir>` → detail in **piflow-inspect**.
+- **Optimize loop (name → solve → judge → land):** `piflowctl optimize <rundir>` (read-only score+triage) ·
+  `piflowctl optimize triage --node <id>` (→ tool-stamped issue files; **piflow-triage**) · `piflowctl optimize
+  fix --node <id> [--issue <name>] [--watch]` (candidate copy → fixer → gate → STAGE a manifest;
+  **piflow-fixer**) · `piflowctl optimize gate --node <id>` (independent judge; **piflow-gate**) · `piflowctl
+  optimize adopt --manifest <path>` (land a staged manifest — a separate, EXPLICIT step, never a side effect of
+  `fix`).
+- **Skill rings (resolve a node's bare skill ref):** `piflowctl skill list|search|add` — distinct from `skills
+  install`.
+- **Editing a node/template? the standards reference:** **piflow-maintenance**. **Creating a workflow:**
+  **piflow-init**.
 
 ## Self-check (the bar for a good overlord turn — audit before you report)
 - [ ] The decision cites a **quoted observable signal** (stream event / artifact / verdict), not a vibe.
