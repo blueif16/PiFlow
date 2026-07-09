@@ -262,6 +262,13 @@ export interface ParsedRunArgs {
    */
   noResume?: boolean;
   /**
+   * `--checkpoints`: snapshot the WHOLE run dir into an external git store (`.piflow/<wf>/checkpoints/
+   * <id>.git`) at each STAGE BARRIER, tagged `pre-stage-<k>` — so `piflowctl snapshot restore <run> <k>`
+   * (or a child-run replay) rolls the tree, journal, and state back to that stage's ENTRY. Default OFF
+   * (additive — a run without it is byte-identical to today).
+   */
+  checkpoints?: boolean;
+  /**
    * (P4, §2.4) `--strict` — BLOCK a driver-fit misfit (sandbox provider · tier-vs-model-pin) instead of the
    * default advisory `console.warn`. A misfit node then HALTs with a loud error record. Omit ⇒ advisory.
    */
@@ -341,6 +348,7 @@ export function parseRunArgs(argv: string[]): ParsedRunArgs {
     const k = argv[i];
     if (k === '--dry-run') out.dryRun = true;
     else if (k === '--no-resume') out.noResume = true;
+    else if (k === '--checkpoints') out.checkpoints = true;
     else if (k === '--strict') out.strict = true;
     else if (k === '--run' || k === '--id') out.run = argv[++i];
     else if (k === '--workspace') out.workspace = argv[++i];
@@ -947,6 +955,8 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     from: parsed.from,
     until: parsed.until,
     ...(parsed.noResume ? { noResume: true } : {}),
+    // `--checkpoints` ⇒ snapshot the run dir into the external git store at each stage barrier (opt-in).
+    ...(parsed.checkpoints ? { checkpoints: true } : {}),
     // (P4, §2.4) `--strict` flips the author-time driver-fit preflight from advisory-warn to blocking.
     ...(parsed.strict ? { strict: true } : {}),
     ...(parsed.rerunNodes && parsed.rerunNodes.size ? { rerunNodes: parsed.rerunNodes } : {}),

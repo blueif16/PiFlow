@@ -24,6 +24,7 @@ import { runExtractCli } from './extract.js';
 import { runSchemaCli, renderAddNodeHelp } from './schema.js';
 import { runRunCli } from './run.js';
 import { runNodeCli } from './node.js';
+import { runSnapshotCli } from './snapshot.js';
 import { runReplyCli } from './reply.js';
 import { runInspectCli } from './inspect.js';
 import { runTelemetryCli } from './telemetry.js';
@@ -71,6 +72,9 @@ USAGE
   piflowctl run     <templateDir> [--run <id>] [flags]  drive a template run (real or --dry-run)
   piflowctl node    <run> <nodeId> --resume [-m "<msg>"]  warm-resume a node's stored pi session (--rerun cold re-exec, --stop too)
   piflowctl node    <run> --finalize [--ok=true|false]  force-CLOSE an existing STUCK (!done) run record (no nodeId needed)
+  piflowctl snapshot <list|restore> <run> [<stageIdxOrTag>]  RUN-DIR git checkpoints (run --checkpoints fills them):
+                                            list the pre-stage-<k> tags, or roll the run dir + journal + state
+                                            back to a stage's ENTRY in place (then re-run the id from that stage)
   piflowctl reply   <run> <checkpointId> <value> [--by <who>]  answer a PARKED human-checkpoint (HITL) node —
                                             writes the reply file the runner is polling for so the run resumes
   piflowctl inspect <templateDir> [nodeId] [--full]  per-node RESOLVED view (sandbox · tools · ops · prompt)
@@ -186,6 +190,8 @@ RUN
                    ALWAYS uses its canonical .piflow/<wf>/runs/<run>/ home and IGNORES --out (a
                    canonical run is never relocated). Default: canonical home, else out/<run>.
   --from / --until <substr>  resume / truncate the stage window.
+  --checkpoints    snapshot the run dir into an external git store (.piflow/<wf>/checkpoints/<id>.git) at each
+                   stage barrier (tag pre-stage-<k>) — replay a stage with 'snapshot restore'. Default off.
   --baseline <id|path>  SEED this run from a completed baseline run (a sibling run id under the template's
                    canonical runs home, or a path to a run dir): fork its frozen upstream artifacts +
                    .pi/state.json (minus the journal) into the new run dir, so a windowed --from re-run
@@ -363,6 +369,11 @@ async function main(): Promise<void> {
       break;
     case 'node':
       process.exitCode = await runNodeCli(rest);
+      break;
+    case 'snapshot':
+      // RUN-DIR GIT CHECKPOINTS (list|restore) — the external per-stage snapshot store `run --checkpoints`
+      // fills. DISTINCT from the HITL `checkpoint` (runner/checkpoint.ts): `snapshot` rolls the whole run dir.
+      process.exitCode = await runSnapshotCli(rest);
       break;
     case 'reply':
       process.exitCode = await runReplyCli(rest);
