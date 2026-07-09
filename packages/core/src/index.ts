@@ -548,7 +548,7 @@ export {
   listIssues, parseIssueFile, writeIssueFile, transitionIssue, reopen, stampAttempt, computeIssueId, assertTransition, ALLOWED_TRANSITIONS,
   runSubstrateMeasure, runSubstrateJudge,
   fixIssue, verifyStage, adoptSubstrateManifest, readSubstrateManifest, scanRecords, issueLifecycleDir,
-  renderSubstrateEvent, UNPROVEN_BY_RUN,
+  nodeHasCriteria, renderSubstrateEvent, UNPROVEN_BY_RUN,
   fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
 } from './optimize/index.js';
 export type {

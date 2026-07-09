@@ -273,6 +273,56 @@ describe('runSubstrateVerifyCli — resolves the candidate record(s) and runs ve
     expect(lines.join('\n')).toMatch(/no .*candidate|nothing to verify/i);
   });
 
+  it('a NUMERIC-ONLY node (optimize.measure, no criteria) is not verify-eligible — verifyStage never runs (Defect 4a)', async () => {
+    const dir = await tmp();
+    const templateDir = path.join(dir, 'template');
+    const runsHome = path.join(dir, 'runs');
+    // a REAL node.json with a measure oracle but NO optimize.criteria/judge — the gate agent has no bar.
+    const nodeDir = path.join(templateDir, 'nodes', 'gameplay');
+    await fs.mkdir(nodeDir, { recursive: true });
+    await fs.writeFile(path.join(nodeDir, 'node.json'), JSON.stringify({
+      optimize: { measure: [{ id: 'feas', run: { cmd: 'node', args: ['{{WORKSPACE}}/eval/check.mjs'] } }] },
+    }));
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'cand-1' });
+    let calls = 0;
+    const lines: string[] = [];
+    await runSubstrateVerifyCli(['--node', 'gameplay'], {
+      resolveScope: () => ({ templateDir, runsHome }),
+      verifyStage: async (): Promise<VerifyStageResult> => { calls++; return { decision: 'staged', gateVerdict: { decision: 'accept', rationale: 'x' }, record: {} as SubstrateManifestRecord }; },
+      print: (s) => lines.push(s),
+    });
+    expect(calls).toBe(0); // the gate agent has no criteria to judge — the record is NOT verify-eligible
+    expect(lines.join('\n')).toMatch(/no .*criteria|nothing to verify|not verifiable/i);
+  });
+
+  it('a per-issue verifyStage ERROR is reported cleanly and does NOT abort the loop with a raw stack (Defect 4b)', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'cand-a' });
+    await seedRecord(parent, 'gameplay', 'burnt-edge', { decision: 'staged', candidateSha: 'cand-b' });
+    const errs: string[] = [];
+    const verified: string[] = [];
+    // the whole handler MUST resolve (never reject with a raw stack) even though one issue throws.
+    await expect(runSubstrateVerifyCli(['--node', 'gameplay'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      verifyStage: async (target): Promise<VerifyStageResult> => {
+        const issue = (target as { issue: string }).issue;
+        if (issue === 'soggy-crust') throw new Error('buildGatePrompt: node "gameplay" has no optimize.criteria configured');
+        verified.push(issue);
+        return { decision: 'staged', gateVerdict: { decision: 'accept', rationale: 'ok' }, record: {} as SubstrateManifestRecord };
+      },
+      print: () => {},
+      printErr: (s) => errs.push(s),
+    })).resolves.toBeUndefined();
+    // the throwing issue was reported as a clean per-issue error …
+    expect(errs.join('\n')).toMatch(/soggy-crust/);
+    expect(errs.join('\n')).toMatch(/could not verify|error/i);
+    // … and the loop CONTINUED to verify the other issue (burnt-edge < soggy-crust, so it ran first regardless).
+    expect(verified).toEqual(['burnt-edge']);
+  });
+
   it('missing --node exits 2', async () => {
     const errs: string[] = [];
     await runSubstrateVerifyCli([], { printErr: (s) => errs.push(s) });
