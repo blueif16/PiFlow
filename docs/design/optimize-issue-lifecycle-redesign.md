@@ -134,8 +134,12 @@ them; the loop/gate/breaker LOGIC is untouched (WS4 is a mechanical `candidateRe
 
 ## 6. Risks + mitigations
 
-- **Oracle readable in the worktree** → sandbox `readScope` jails the fixer out of oracle paths (default-on) +
-  diff-policy guard. Test the fence directly (a fixer that tries to read/edit the scorer is blocked/rejected).
+- **Oracle in the worktree** → WRITES are fenced (`owns` = closure-minus-oracle jail + the post-commit
+  diff-policy guard rejects an oracle-touching candidate before prove/gate). ⚠️ KNOWN GAP (WS0-shipped): the
+  jail auto-adds `cwd` (the worktree root) to `readScope`, and the worktree is a full checkout, so the fixer can
+  still READ the oracle (scorer/criteria) — teaching-to-the-test is only backstopped by the gate's
+  refute-by-default reward-hack audit, not the jail. FOLLOW-UP: add an oracle DENYLIST to the seatbelt/bwrap
+  profile (a jail change) so reads are blocked too; until then reads are defense-in-depth, not sealed.
 - **Base drift between prove and adopt** → re-verify on drift; adopt is a real merge (conflicts surface).
 - **Worktree lifecycle leak** → tear down after prove/gate; a swept run removes dangling branches.
 - **Whole-repo commit noise on the branch** → throwaway branches namespaced `optimize/<node>/<issue>/attempt-N`;
