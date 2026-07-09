@@ -123,6 +123,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `ea146ff` 2026-07-02 — Merge feat/full-run-e2e: model default = the single system fixture (pi settings.json) + template-push + cloud plane
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 - `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 
 ### Lessons — memory cluster
 
@@ -176,5 +177,13 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[two-front-reporting]]
 - [[verify-nodes-never-in-dev-arms]]
 
-<sub>derived 2026-07-08 · arc=50 commits · files=10 · lessons=48</sub>
+### Code anchors / blast radius (codegraph)
+
+- `judgePresetId` (packages/core/src/workflow/fusion/presets.ts:43) — 3 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `expandNode` (packages/core/src/workflow/fusion/expand.ts:69) — 1 caller in `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
+- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/runner/runner.ts`, `packages/cli/src/run.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
+- `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
+
+<sub>derived 2026-07-09 · arc=51 commits · files=10 · lessons=48</sub>
 <!-- okf:auto-end -->

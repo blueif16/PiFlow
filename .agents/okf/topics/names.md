@@ -105,6 +105,10 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
+- `95d420d` 2026-07-08 — fix(cli): resolve a relative --workspace against cwd once
+- `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
+- `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
 
 ### Lessons — memory cluster
 
@@ -120,5 +124,13 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - [[piflow-rollout-enablement]]
 - [[runs-live-in-product-runs-folder]]
 
-<sub>derived 2026-07-08 · arc=46 commits · files=7 · lessons=10</sub>
+### Code anchors / blast radius (codegraph)
+
+- `pieSlugList` (packages/core/src/names/slugify.ts:64) — 5 callers in `packages/core/src/names/generate-pies.mjs`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+- `pieSlug` (packages/core/src/names/slugify.ts:43) — 4 callers in `packages/core/src/names/slugify.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+- `generateRunName` (packages/core/src/names/generator.ts:40) — 8 callers in `packages/server/src/start-run.ts`, `packages/core/src/optimize/substrate/judge.ts`, `packages/core/src/names/index.ts`, `packages/cli/src/run.ts` +1 more; tests: `packages/core/test/names.test.ts`
+- `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+- `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
+
+<sub>derived 2026-07-09 · arc=50 commits · files=7 · lessons=10</sub>
 <!-- okf:auto-end -->

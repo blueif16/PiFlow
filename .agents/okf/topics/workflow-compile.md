@@ -134,6 +134,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
+- `e9c123e` 2026-07-08 — feat(optimize): WS3 — per-issue verify tier + optimize.criteria rename (judge alias)
 
 ### Lessons — memory cluster
 
@@ -182,5 +184,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
-<sub>derived 2026-07-08 · arc=78 commits · files=5 · lessons=43</sub>
+### Code anchors / blast radius (codegraph)
+
+- `toNodeIntent` (packages/core/src/workflow/template/loader.ts:129) — 1 caller in `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
+- `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
+- `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
+- `loadTemplate` (packages/core/src/workflow/template/loader.ts:273) — 9 callers in `packages/core/src/runner/entry.ts`, `packages/core/src/optimize/substrate/child-run.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/gate-list-profiles.test.ts`, `packages/core/test/judge-materialization.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 38 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/drivers/types.ts` +3 more; tests: `packages/core/test/command-thinking.test.ts`, `packages/core/test/execcwd-staging.test.ts`, `packages/core/test/resolve-node-write-scope.test.ts`, `packages/core/test/schema.test.ts` +4
+
+<sub>derived 2026-07-09 · arc=80 commits · files=5 · lessons=43</sub>
 <!-- okf:auto-end -->

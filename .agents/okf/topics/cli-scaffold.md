@@ -216,9 +216,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `1968111` 2026-07-07 — refactor(optimize): judge + fixer inherit the base substrate agent's full surface
 - `cc0775f` 2026-07-07 — feat(cli): add run --finalize and runs sweep to close stuck !done records
 - `e129a69` 2026-07-07 — Merge feat/triage-live-overlord: land the independent gate-agent + fixer-owned portable method library
+- `76f79ef` 2026-07-07 — feat(optimize): system-wide breaker + wire the outer loop into the fix CLI
 - `95d420d` 2026-07-08 — fix(cli): resolve a relative --workspace against cwd once
 - `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
 - `b7bd0b7` 2026-07-08 — feat(cli): add piflow-maintenance to the DEFAULT importable skill set
+- `c7a6ade` 2026-07-08 — feat(optimize): WS2 — decouple the gate stage + uniform per-issue CLI
+- `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
+- `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
 
 ### Lessons — memory cluster
 
@@ -309,5 +313,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-09 · arc=159 commits · files=8 · lessons=77</sub>
+<sub>derived 2026-07-09 · arc=163 commits · files=8 · lessons=77</sub>
 <!-- okf:auto-end -->

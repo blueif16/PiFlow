@@ -258,8 +258,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
 - `84294f9` 2026-07-06 — fix(core): resolveScope resolves to ONE workspace, not recursive down-discovery
 - `91fb8ee` 2026-07-07 — Merge feat/run-baseline-rerun: run --baseline/--stage-only windowed reruns + stageBaselineRun primitive
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 - `41063b0` 2026-07-07 — feat(gui): self-register the focus workspace on launch, not just on run
+- `1968111` 2026-07-07 — refactor(optimize): judge + fixer inherit the base substrate agent's full surface
 - `cc0775f` 2026-07-07 — feat(cli): add run --finalize and runs sweep to close stuck !done records
+- `e129a69` 2026-07-07 — Merge feat/triage-live-overlord: land the independent gate-agent + fixer-owned portable method library
+- `76f79ef` 2026-07-07 — feat(optimize): system-wide breaker + wire the outer loop into the fix CLI
+- `b7bd0b7` 2026-07-08 — feat(cli): add piflow-maintenance to the DEFAULT importable skill set
+- `c7a6ade` 2026-07-08 — feat(optimize): WS2 — decouple the gate stage + uniform per-issue CLI
+- `b0a86ce` 2026-07-08 — feat(core): run-dir git checkpoint primitive (external per-stage snapshot store)
+- `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
+- `e9c123e` 2026-07-08 — feat(optimize): WS3 — per-issue verify tier + optimize.criteria rename (judge alias)
+- `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
 
 ### Lessons — memory cluster
 
@@ -282,5 +292,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-first-node-diagnosis]]
 - [[use-understanding-system-first]]
 
-<sub>derived 2026-07-08 · arc=184 commits · files=15 · lessons=17</sub>
+### Code anchors / blast radius (codegraph)
+
+- `seedNodeMemory` (packages/core/src/memory/seed.ts:30) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
+- `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
+- `buildNodeMemory` (packages/core/src/memory/skeleton.ts:15) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
+- `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
+- `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
+
+<sub>derived 2026-07-09 · arc=194 commits · files=15 · lessons=17</sub>
 <!-- okf:auto-end -->

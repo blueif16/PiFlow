@@ -152,6 +152,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `56c1d8e` 2026-07-06 — feat(optimize): M1 — run identity: date-seq names, lineage fields, child runs
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
+- `3efb62d` 2026-07-07 — fix(core): resolve tokens in promote `from` so file-sourced promotes work
 
 ### Lessons — memory cluster
 
@@ -230,5 +231,12 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
 
-<sub>derived 2026-07-08 · arc=89 commits · files=8 · lessons=73</sub>
+### Code anchors / blast radius (codegraph)
+
+- `CHECK_KINDS` (packages/core/src/checks.ts:62) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
+- `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
+- `evaluateChecks` (packages/core/src/checks.ts:117) — 5 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
+
+<sub>derived 2026-07-09 · arc=90 commits · files=8 · lessons=73</sub>
 <!-- okf:auto-end -->

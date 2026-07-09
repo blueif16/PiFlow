@@ -165,6 +165,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 - `95d420d` 2026-07-08 — fix(cli): resolve a relative --workspace against cwd once
 - `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
+- `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
 
 ### Lessons — memory cluster
 
@@ -223,7 +224,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `E2bSandboxProvider` (packages/e2b/src/e2b.ts:436) — 6 callers in `packages/e2b/src/e2b-sdk.ts`, `packages/e2b/src/index.ts`; tests: `packages/e2b/test/sandbox-e2b-parity.test.ts`, `packages/e2b/test/n127-negative-twin.test.ts`, `packages/e2b/test/nbreach-parity.test.ts`
 - `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
-- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
+- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-09 · arc=103 commits · files=8 · lessons=47</sub>
+<sub>derived 2026-07-09 · arc=104 commits · files=8 · lessons=47</sub>
 <!-- okf:auto-end -->

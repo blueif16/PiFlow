@@ -194,7 +194,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 - `b3e9a0d` 2026-07-07 — feat(gui): pin the canonical template above run history in the switcher
+- `3efb62d` 2026-07-07 — fix(core): resolve tokens in promote `from` so file-sourced promotes work
+- `e129a69` 2026-07-07 — Merge feat/triage-live-overlord: land the independent gate-agent + fixer-owned portable method library
+- `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
+- `e9c123e` 2026-07-08 — feat(optimize): WS3 — per-issue verify tier + optimize.criteria rename (judge alias)
+- `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
 
 ### Lessons — memory cluster
 
@@ -214,5 +220,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 
-<sub>derived 2026-07-08 · arc=135 commits · files=8 · lessons=14</sub>
+### Code anchors / blast radius (codegraph)
+
+- `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `mergePreset` (packages/core/src/workflow/agent-preset.ts:64) — 3 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `AgentPreset` (packages/core/src/workflow/agent-preset.ts:23) — 9 callers in `packages/cli/src/agents.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/agent-preset.ts`; ⚠ no covering tests found
+- `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
+
+<sub>derived 2026-07-09 · arc=141 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

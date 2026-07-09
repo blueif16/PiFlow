@@ -156,6 +156,12 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `b74b050` 2026-07-06 — feat(cli): run --baseline / --stage-only — seed a run from a baseline for windowed reruns
+- `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
+- `95d420d` 2026-07-08 — fix(cli): resolve a relative --workspace against cwd once
+- `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
+- `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
+- `e9c123e` 2026-07-08 — feat(optimize): WS3 — per-issue verify tier + optimize.criteria rename (judge alias)
+- `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
 
 ### Lessons — memory cluster
 
@@ -207,5 +213,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[tui-dag-structure-source]]
 - [[verify-nodes-never-in-dev-arms]]
 
-<sub>derived 2026-07-08 · arc=87 commits · files=8 · lessons=46</sub>
+### Code anchors / blast radius (codegraph)
+
+- `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
+- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
+- `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+
+<sub>derived 2026-07-09 · arc=93 commits · files=8 · lessons=46</sub>
 <!-- okf:auto-end -->
