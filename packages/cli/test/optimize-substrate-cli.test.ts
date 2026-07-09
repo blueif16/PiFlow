@@ -182,7 +182,7 @@ describe('runSubstrateVerifyCli — resolves the candidate record(s) and runs ve
     const dir = await tmp();
     const runsHome = path.join(dir, 'runs');
     const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
-    await seedRecord(parent, 'gameplay', 'soggy-crust', { candidateSha: 'cand-1' });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'cand-1' });
     const targets: unknown[] = [];
     const lines: string[] = [];
     await runSubstrateVerifyCli(['--node', 'gameplay', '--issue', 'soggy-crust'], {
@@ -204,7 +204,7 @@ describe('runSubstrateVerifyCli — resolves the candidate record(s) and runs ve
     const dir = await tmp();
     const runsHome = path.join(dir, 'runs');
     const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
-    await seedRecord(parent, 'gameplay', 'soggy-crust', { candidateSha: 'cand-1' });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'cand-1' });
     const lines: string[] = [];
     await runSubstrateVerifyCli(['--node', 'gameplay', '--issue', 'soggy-crust'], {
       resolveScope: () => scope(path.join(dir, 'template'), runsHome),
@@ -225,9 +225,9 @@ describe('runSubstrateVerifyCli — resolves the candidate record(s) and runs ve
     const dir = await tmp();
     const runsHome = path.join(dir, 'runs');
     const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
-    await seedRecord(parent, 'gameplay', 'soggy-crust', { candidateSha: 'cand-a' });
-    await seedRecord(parent, 'gameplay', 'burnt-edge', { candidateSha: 'cand-b' });
-    await seedRecord(parent, 'gameplay', 'no-candidate', { candidateSha: undefined }); // pre-WS0 / no-edit — NOT verifiable
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'cand-a' });
+    await seedRecord(parent, 'gameplay', 'burnt-edge', { decision: 'staged', candidateSha: 'cand-b' });
+    await seedRecord(parent, 'gameplay', 'no-candidate', { decision: 'staged', candidateSha: undefined }); // pre-WS0 / no-edit — NOT verifiable
     const verified: string[] = [];
     await runSubstrateVerifyCli(['--node', 'gameplay'], {
       resolveScope: () => scope(path.join(dir, 'template'), runsHome),
@@ -240,11 +240,28 @@ describe('runSubstrateVerifyCli — resolves the candidate record(s) and runs ve
     expect(verified.sort()).toEqual(['burnt-edge', 'soggy-crust']); // the no-candidateSha record is skipped
   });
 
+  it('SKIPS a DISCARDED record — a rejected candidate is never silently re-gated by a plain verify (Defect 1)', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    // a discarded record carrying a candidateSha (e.g. the oracle-touched fixer-side rejection) must NOT be re-selected.
+    await seedRecord(parent, 'gameplay', 'rejected-cand', { decision: 'discarded', candidateSha: 'cand-x' });
+    let calls = 0;
+    const lines: string[] = [];
+    await runSubstrateVerifyCli(['--node', 'gameplay'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      verifyStage: async (): Promise<VerifyStageResult> => { calls++; return { decision: 'staged', gateVerdict: { decision: 'accept', rationale: 'x' }, record: {} as SubstrateManifestRecord }; },
+      print: (s) => lines.push(s),
+    });
+    expect(calls).toBe(0); // a discarded record is NOT re-selected for a plain verify
+    expect(lines.join('\n')).toMatch(/no .*candidate|nothing to verify/i);
+  });
+
   it('no verifiable record → prints nothing-to-verify and never calls verifyStage', async () => {
     const dir = await tmp();
     const runsHome = path.join(dir, 'runs');
     const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
-    await seedRecord(parent, 'gameplay', 'no-candidate', { candidateSha: undefined });
+    await seedRecord(parent, 'gameplay', 'no-candidate', { decision: 'staged', candidateSha: undefined });
     let calls = 0;
     const lines: string[] = [];
     await runSubstrateVerifyCli(['--node', 'gameplay'], {

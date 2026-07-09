@@ -103,7 +103,7 @@ export type {
 // stampAttempt → status resolved). Its OWN dedicated SubstrateEvent stream + renderSubstrateEvent projection.
 export {
   fixIssue, verifyStage, adoptSubstrateManifest, prepareCandidateWorktree, removeCandidateWorktree, candidateWorktreeRef,
-  commitCandidate, oracleTouchedByDiff, readClosureRefs, foldGradedDelta, collectWorkspaceRefs, buildFixerPrompt,
+  commitCandidate, oracleTouchedByDiff, candidateTouchesOracle, readClosureRefs, foldGradedDelta, collectWorkspaceRefs, buildFixerPrompt,
   readSubstrateManifest, scanRecords, issueLifecycleDir, UNPROVEN_BY_RUN,
 } from './substrate/fix.js';
 export type {

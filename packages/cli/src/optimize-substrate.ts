@@ -699,11 +699,13 @@ export async function runSubstrateVerifyCli(argv: string[], deps: SubstrateCliDe
     return;
   }
 
-  // Eligibility: records for this node that carry a candidateSha (a git-gate-able candidate); one via --issue.
+  // Eligibility: records for this node that carry a candidateSha (a git-gate-able candidate) AND are NOT already
+  // rejected — a `discarded` candidate (e.g. an oracle-touched fixer-side rejection) is NEVER silently re-gated
+  // by a plain verify (Defect 1); verify acts on candidates awaiting a gate, not on already-rejected ones.
   const all = await scanRecords(parentRunDir);
-  const records = all.filter((r) => r.node === a.node && !!r.candidateSha && (a.issue ? r.issue === a.issue : true));
+  const records = all.filter((r) => r.node === a.node && !!r.candidateSha && r.decision !== 'discarded' && (a.issue ? r.issue === a.issue : true));
   if (records.length === 0) {
-    print(`optimize verify: no verifiable candidate record${a.issue ? ` "${a.issue}"` : ''} for node "${a.node}" (a record needs a candidateSha; run 'optimize fix' first).`);
+    print(`optimize verify: no verifiable candidate record${a.issue ? ` "${a.issue}"` : ''} for node "${a.node}" (a record needs a candidateSha and must not be already discarded; run 'optimize fix' first).`);
     return;
   }
 

@@ -171,7 +171,7 @@ function nodeCriteriaRef(nj: RawNodeJson): string | undefined {
  *  against when there is no numeric oracle? Reads `node.json` off disk (throws only if the node is unreadable,
  *  which fixIssue already requires). Drives the gate ROUTING: unmeasurable + a bar ⇒ the gate agent, not
  *  "unmeasurable → human". */
-async function nodeHasCriteria(templateDir: string, nodeId: string): Promise<boolean> {
+export async function nodeHasCriteria(templateDir: string, nodeId: string): Promise<boolean> {
   return nodeCriteriaRef(await readNodeJsonRaw(templateDir, nodeId)) !== undefined;
 }
 
@@ -226,6 +226,37 @@ export function oracleTouchedByDiff(changedPaths: string[], exclude: string[]): 
   if (exclude.length === 0) return false;
   const set = new Set(exclude);
   return changedPaths.some((rel) => isOracleRel(rel, set, exclude));
+}
+
+/**
+ * The deterministic oracle guard that TRAVELS with a candidate to EVERY land point (verifyStage's gate,
+ * adopt's cherry-pick) — belt + suspenders beyond fixIssue's own fixer-side diff-guard. Re-derives the node's
+ * oracle EXCLUDE set (`readClosureRefs`) and checks the candidate commit's `git diff --name-only baseSha
+ * candidateSha` against it, so an oracle-touched candidate can never be re-selected, gate-accepted, and
+ * cherry-picked into the live product. FAIL-OPEN only when the node's `node.json` is unreadable (no oracle set
+ * can be derived here — the fixer-side guard already ran) or the diff cannot be computed.
+ */
+export async function candidateTouchesOracle(
+  templateDir: string,
+  node: string,
+  repoRoot: string,
+  baseSha: string,
+  candidateSha: string,
+): Promise<boolean> {
+  let exclude: string[];
+  try {
+    ({ exclude } = await readClosureRefs(templateDir, node));
+  } catch {
+    return false; // no readable node.json → cannot derive an oracle set (the fixer-side guard already ran)
+  }
+  if (exclude.length === 0) return false;
+  let changed: string[];
+  try {
+    changed = git(path.resolve(repoRoot), 'diff', '--name-only', baseSha, candidateSha).split('\n').filter(Boolean);
+  } catch {
+    return false; // unreachable shas / not a repo → cannot compute the diff; the other guards remain
+  }
+  return oracleTouchedByDiff(changed, exclude);
 }
 
 // ── the candidate git worktree (create → commit → tear down; the SHA is the candidate, not a tree) ───────────
@@ -1007,6 +1038,25 @@ export async function verifyStage(
     );
   }
 
+  // (a2) THE ORACLE FENCE TRAVELS (Defect 1): before the gate, re-derive the deterministic oracle guard off the
+  // candidate commit. An oracle-touched candidate is a FIXER-SIDE rejection — it can NEVER be gate-accepted (else
+  // adopt would cherry-pick a scorer/criteria tamper into the live product). Finalize it discarded with the
+  // oracle reason and walk a `verifying` issue back to `open`, exactly like fixIssue's own diff-guard — no gate,
+  // no worktree recreated.
+  const baseRef = base.baseSha ?? `${base.candidateSha}~1`;
+  if (await candidateTouchesOracle(opts.templateDir, node, workspace, baseRef, base.candidateSha)) {
+    const reason = 'candidate diff touched an oracle path (optimize.measure/criteria) — fixer-side rejection, never gated';
+    const rejectVerdict: GateVerdictFile = { decision: 'reject', rationale: reason, category: 'reward-hack' };
+    emit({ type: 'gated', issue, accept: false, reason });
+    const record: SubstrateManifestRecord = { ...base, decision: 'discarded', landPolicy: 'stage-for-human', reason };
+    delete record.dropback;
+    await fs.mkdir(lifecycleDir, { recursive: true });
+    await fs.writeFile(path.join(lifecycleDir, 'record.json'), JSON.stringify(record, null, 2));
+    const cur = await parseIssueFile(issuePath);
+    if (cur.status === 'verifying') await transitionIssue(issuePath, 'open');
+    return { decision: 'discarded', gateVerdict: rejectVerdict, record };
+  }
+
   // (b) the candidate worktree the gate reads: an EXISTING checkout is used in place; a torn-down one is
   // recreated at candidateSha (and torn down again in the finally).
   let worktreeDir = opts.candidateRef;
@@ -1121,6 +1171,13 @@ export async function adoptSubstrateManifest(
     }
     if (!record.candidateSha) {
       result.skipped.push({ issue: record.issue, reason: 'no candidate commit (candidateSha) to land' });
+      continue;
+    }
+    // FINAL BACKSTOP (Defect 1): never cherry-pick an oracle-touched candidate into the live product, even if a
+    // stale/tampered staged record slipped past the fixer-side guard + verifyStage.
+    const oracleBaseRef = record.baseSha ?? `${record.candidateSha}~1`;
+    if (await candidateTouchesOracle(opts.templateDir, record.node, record.liveRoot, oracleBaseRef, record.candidateSha)) {
+      result.skipped.push({ issue: record.issue, reason: 'candidate diff touches an oracle path (optimize.measure/criteria) — refusing to land' });
       continue;
     }
 
