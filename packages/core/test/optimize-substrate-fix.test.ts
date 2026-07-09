@@ -1291,7 +1291,9 @@ describe('adoptSubstrateManifest — cherry-picks candidateSha, commits, stamps 
     const again = await adoptSubstrateManifest(manifest, { templateDir });
     expect(again.adopted).toEqual([]);
     expect(again.skipped).toHaveLength(1);
-    expect(again.skipped[0].reason).toMatch(/already applied|nothing to land|conflict/i);
+    // pin the EMPTY/no-op branch specifically — dropping `conflict` so a mislabeled empty-pick (the base-drift
+    // reason) can't satisfy this assertion; the base-drift test below pins /base drift|conflict/ separately.
+    expect(again.skipped[0].reason).toMatch(/already applied|nothing to land|empty/i);
 
     // a discarded record is skipped up front.
     const discarded: SubstrateManifest = { records: [{ ...manifest.records[0], decision: 'discarded' }] };
