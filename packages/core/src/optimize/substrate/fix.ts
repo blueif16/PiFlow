@@ -1,17 +1,25 @@
-// optimize/substrate/fix.ts — the M6 FIX phase (docs/specs/optimize-substrate-plan.md §M6). Per ONE issue:
-// activate → candidate copy → fixer agent → (prove) → gate → stage; then ADOPT is a SEPARATE exported human
-// step. Everything here is core-GENERIC (no product binding): the candidate closure, the oracle exclusion, the
-// edits-applied diff, and the graded-delta fold are all mechanical, derived from the node's own `node.json`.
+// optimize/substrate/fix.ts — the M6 FIX phase (docs/design/optimize-issue-lifecycle-redesign.md WS0). Per ONE
+// issue: activate → candidate WORKTREE → fixer agent → commit → (prove) → gate → stage; then ADOPT is a SEPARATE
+// exported human step. Everything here is core-GENERIC (no product binding): the candidate closure, the oracle
+// fence, the edits-applied diff, and the graded-delta fold are all mechanical, derived from the node's own
+// `node.json`.
 //
-// ── CANDIDATE CLOSURE (M6.1) ──────────────────────────────────────────────────────────────────────────────
-// The candidate copy is the node's `{{WORKSPACE}}`-READ closure MINUS the oracle: collect every `{{WORKSPACE}}`
-// path referenced by `contract.readScope` + `contract.execReads` + `hooks` + `op` (the INCLUDE set), then copy
-// each into the candidate dir at its same relative path — SKIPPING any path referenced by `optimize.measure`
-// or `optimize.judge` (the EXCLUDE set). The exclusion is enforced during the copy WALK (a measure-script that
-// lives inside an included readScope DIR is skipped when the walk reaches it), so the fixer physically cannot
-// edit the scorer. Both sets are read straight off `node.json` (the block is optimizer-facing — never on the
-// compiled NodeSpec, M0). A bare `{{WORKSPACE}}` (no sub-path) is IGNORED — copying the whole product root is
-// never the intent and the exclusion could not protect it.
+// ── CANDIDATE = A GIT COMMIT, NOT A COPY (WS0) ───────────────────────────────────────────────────────────────
+// The candidate is `{ baseSha, candidateSha }` on a throwaway branch — NOT a physical tree copy. The fixer edits
+// a git WORKTREE checked out at HEAD (`prepareCandidateWorktree`: `git worktree add -B optimize/<node>/<issue>/
+// attempt-N <wt> HEAD`), then `git add -A && commit` mints `candidateSha`. `editsApplied` = the count of
+// `git diff --name-only baseSha candidateSha`. This scales to whole-repo fixes and makes tracking a hash.
+//
+// ── ORACLE FENCE = SANDBOX + A DIFF GUARD (belt + suspenders; WS0) ──────────────────────────────────────────
+// The fixer spawns with `cwd = worktreeDir` and sandbox `readScope`/`owns` = the node's `{{WORKSPACE}}`-read
+// closure MINUS the oracle: collect every `{{WORKSPACE}}` path referenced by `contract.readScope` +
+// `contract.execReads` + `hooks` + `op` (the INCLUDE set), drop any referenced by `optimize.measure`/`judge`
+// (the EXCLUDE/oracle set) via the prefix rule, then map each surviving rel to `join(worktreeDir, rel)`. The
+// oracle paths simply are not in the allowlist, so the default-on seatbelt/bwrap jail denies the fixer any
+// read/write of the scorer/criteria — no jail code changes (the fence is AUTOMATIC via `runBaseAgent`). Because
+// a sandbox grant is dir-coarse (an oracle FILE inside an included DIR is still reachable), the DIFF GUARD is
+// the second layer: after commit, if the diff touches ANY oracle path the candidate is a FIXER-SIDE REJECTION
+// (`oracleTouchedByDiff`) — discarded outright, never proved or gated (it never games the score).
 //
 // ── GRADED-DELTA FOLD RULE (M6.3 — the accept decision) ──────────────────────────────────────────────────
 // After a prove-rerun, compare ONLY the numeric keys present in BOTH the parent's and the child's
@@ -32,10 +40,17 @@
 // auto-adopts — the strongest a fix reaches here is `staged`.
 //
 // ── PROVE / ORACLE IMMUTABILITY (M6.3) ───────────────────────────────────────────────────────────────────
-// Prove re-runs the node against the CANDIDATE workspace (spawnChildRun), then measures the CHILD run with
-// `workspace = the LIVE product root` — so pristine, un-copied scorer scripts grade a candidate-produced
-// artifact. The candidate never contains a scorer (the exclusion above); the live root is never edited (only
-// adopt touches it). Oracle immutability is mechanical, not a promise.
+// Prove re-runs the node against the candidate WORKTREE (its HEAD IS candidateSha) via `spawnChildRun`, then
+// measures the CHILD run with `workspace = the LIVE product root` — so pristine, un-copied scorer scripts grade
+// a candidate-produced artifact. The candidate never gained a scorer (the fence + diff guard); the live root is
+// never edited (only adopt touches it, by cherry-picking candidateSha). Oracle immutability is mechanical.
+//
+// ── ADOPT = CHERRY-PICK (git-native; WS0) ────────────────────────────────────────────────────────────────
+// `adoptSubstrateManifest` lands a staged record by `git cherry-pick candidateSha` onto the live branch (the
+// candidate commit already carries the `optimize(<node>): <title>` subject + `Issue:` trailer identity, so
+// cherry-pick preserves it), then stamps the issue (`commit`=the landed sha, `verifiedByRun`) and transitions
+// it → `resolved`. On BASE DRIFT (the live branch moved past baseSha and the pick conflicts) it ABORTS the
+// cherry-pick and SKIPS the record with a clear reason — never a forced/silent wrong-apply.
 //
 // ── RESTING STATE AFTER THE GATE (the issue's status is never stranded) ──────────────────────────────────
 // The prove path moves the issue to `verifying` before the rerun. After the gate decides, the issue must land
@@ -43,19 +58,16 @@
 // out of `verifying` for a rejected candidate; TASK 0 added `verifying → open`). So: a `discarded` decision that
 // went through a prove-rerun (childId !== null) walks the issue BACK to `open` — reason stays null, NO attempt is
 // stamped (nothing landed), so a later triage/fix re-attempts it. A `staged` candidate stays at `verifying`
-// awaiting the human adopt (verifying → resolved); the skip-proof/unmeasured/no-edit paths never entered
-// `verifying` (they rest at `fix-landed`/`active`), so they need no walk-back.
+// awaiting the human adopt (verifying → resolved); the skip-proof/unmeasured/no-edit/oracle-touched paths never
+// entered `verifying` (they rest at `fix-landed`/`active`), so they need no walk-back.
 
-import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 
 import type { DefectBucket } from '../types.js';
 import { evaluateGate, type GateVerdict, type LandPolicy } from '../gate.js';
-import { adoptFromManifest, type AdoptManifest } from '../land.js';
-import { parseIssueFile, stampAttempt, transitionIssue, type Issue } from './issues.js';
+import { parseIssueFile, stampAttempt, transitionIssue } from './issues.js';
 import {
   inheritedAgentOpts, runBaseAgent,
   type RunBaseAgentOpts, type RunBaseAgentResult, type BaseAgentChildOpts,
@@ -76,7 +88,15 @@ const SUBSTRATE_GATE_BUCKET: DefectBucket = 'SKILL';
  *  requires a NON-EMPTY string (issues.ts `validateIssue`), so `null` cannot be stored — this documents it. */
 export const UNPROVEN_BY_RUN = 'unproven';
 
-// ── the {{WORKSPACE}}-ref closure (mechanical; the whole M6.1 include/exclude derivation) ───────────────────
+// ── the git exec helper (ONE pattern: argv-array execFileSync, no shell → no escaping; mirrors worktree.ts) ──
+
+/** Run `git -C <root> <args…>` and return trimmed stdout. Throws on nonzero (the thrown error carries
+ *  `.stdout`/`.stderr` Buffers — the caller may try/catch to read them, e.g. a cherry-pick conflict). */
+function git(root: string, ...args: string[]): string {
+  return execFileSync('git', ['-C', root, ...args], { stdio: ['ignore', 'pipe', 'pipe'] }).toString().trim();
+}
+
+// ── the {{WORKSPACE}}-ref closure (mechanical; the whole include/exclude derivation) ────────────────────────
 
 /** Matches `{{WORKSPACE}}` optionally followed by `/a/path` (path chars only — never swallows trailing quotes,
  *  whitespace, or arg separators, so it works whether the token is a bare readScope entry or embedded in an
@@ -84,9 +104,9 @@ export const UNPROVEN_BY_RUN = 'unproven';
 const WORKSPACE_REF = /\{\{\s*WORKSPACE\s*\}\}(\/[A-Za-z0-9._\-/]*)?/g;
 
 /** Normalize a captured `/path` suffix into a clean POSIX workspace-relative path, or `null` to DROP it (a
- *  bare `{{WORKSPACE}}`, an empty/`.`/workspace-escaping path — none of which is a safe copy target). */
+ *  bare `{{WORKSPACE}}`, an empty/`.`/workspace-escaping path — none of which is a safe fence/guard target). */
 function normalizeRel(raw: string | undefined): string | null {
-  if (!raw) return null; // bare {{WORKSPACE}} → the whole product root; never a copy target
+  if (!raw) return null; // bare {{WORKSPACE}} → the whole product root; never a fence/guard target
   let rel = path.posix.normalize(raw.replace(/^\/+/, ''));
   if (!rel || rel === '.' || rel === '..' || rel.startsWith('../')) return null;
   rel = rel.replace(/\/+$/, '');
@@ -147,98 +167,157 @@ async function nodeHasJudge(templateDir: string, nodeId: string): Promise<boolea
   return typeof nj.optimize?.judge === 'string' && (nj.optimize.judge as string).length > 0;
 }
 
-export interface CandidateClosure {
-  /** the candidate dir the closure was copied into (`opts.candidateDir`). */
-  candidateRef: string;
-  /** the INCLUDE set (readScope/execReads/hooks/op {{WORKSPACE}} refs) — for telemetry. */
-  included: string[];
-  /** the EXCLUDE set (optimize.measure/judge {{WORKSPACE}} refs — the oracle) — for telemetry. */
-  excluded: string[];
+/** The node's INCLUDE set (readScope/execReads/hooks/op {{WORKSPACE}} refs) and EXCLUDE/oracle set
+ *  (optimize.measure/judge {{WORKSPACE}} refs), each a list of clean workspace-relative POSIX paths. Reused by
+ *  BOTH the fence (include MINUS exclude → the fixer's jail) and the diff guard (exclude → the oracle set). */
+export interface ClosureRefs {
+  include: string[];
+  exclude: string[];
 }
 
-/** Copy one real workspace path (`rel`) into the candidate at the same relative path, skipping any file/dir
- *  the exclusion predicate rejects (the oracle). Symlinks are NEVER followed (mirrors land.ts's walk). */
-async function copyInto(workspace: string, candidateDir: string, rel: string, isExcluded: (rel: string) => boolean): Promise<void> {
-  if (isExcluded(rel)) return; // an oracle path (or under one) — never lands in the candidate
-  const src = path.resolve(workspace, rel);
-  let st: import('node:fs').Stats;
-  try {
-    st = await fs.lstat(src);
-  } catch {
-    return; // a declared read root that does not exist on disk — nothing to copy (best-effort)
-  }
-  if (st.isSymbolicLink()) return; // never follow a link into an unbounded tree
-  if (st.isFile()) {
-    const dest = path.join(candidateDir, rel);
-    await fs.mkdir(path.dirname(dest), { recursive: true });
-    await fs.copyFile(src, dest);
-    return;
-  }
-  if (st.isDirectory()) {
-    const entries = await fs.readdir(src, { withFileTypes: true });
-    for (const e of entries) await copyInto(workspace, candidateDir, path.posix.join(rel, e.name), isExcluded);
-  }
+/** Derive the node's include/exclude {{WORKSPACE}}-ref sets straight off its `node.json` (the block is
+ *  optimizer-facing — never on the compiled NodeSpec). Deterministic; the whole include/exclude derivation. */
+export async function readClosureRefs(templateDir: string, nodeId: string): Promise<ClosureRefs> {
+  const nj = await readNodeJsonRaw(templateDir, nodeId);
+  const include = new Set<string>();
+  collectWorkspaceRefs(nj.contract?.readScope, include);
+  collectWorkspaceRefs(nj.contract?.execReads, include);
+  collectWorkspaceRefs(nj.hooks, include);
+  collectWorkspaceRefs(nj.op, include);
+
+  const exclude = new Set<string>();
+  collectWorkspaceRefs(nj.optimize?.measure, exclude);
+  collectWorkspaceRefs(nj.optimize?.judge, exclude);
+
+  return { include: [...include], exclude: [...exclude] };
+}
+
+/** PURE: is `rel` an oracle path — either exactly in the exclude set, or UNDER an excluded dir? The one prefix
+ *  rule the fence and the diff guard share (`exclude.has(rel) || excludeList.some(ex => rel.startsWith(ex+'/')`). */
+function isOracleRel(rel: string, exclude: Set<string>, excludeList: string[]): boolean {
+  return exclude.has(rel) || excludeList.some((ex) => rel.startsWith(`${ex}/`));
 }
 
 /**
- * Prepare the candidate copy for `nodeId`: the node's `{{WORKSPACE}}`-read closure MINUS the oracle exclusions
- * (see the module header). Reads `node.json` off disk, copies each included path into `opts.candidateDir`, and
- * returns the include/exclude sets. Deterministic given the same inputs (no timestamps/random in the copy).
+ * PURE, exported: does ANY changed path touch an oracle path (`optimize.measure`/`judge`)? The candidate's
+ * `git diff --name-only baseSha candidateSha` names are checked with the SAME prefix rule the fence uses. `true`
+ * ⇒ the candidate edited the scorer/criteria and is a FIXER-SIDE REJECTION (never proved or gated). An empty
+ * exclude set (no declared oracle) can never be touched.
  */
-export async function prepareCandidateClosure(
-  templateDir: string,
-  nodeId: string,
-  opts: { workspace: string; candidateDir: string },
-): Promise<CandidateClosure> {
-  const nodeJson = await readNodeJsonRaw(templateDir, nodeId);
-  const include = new Set<string>();
-  collectWorkspaceRefs(nodeJson.contract?.readScope, include);
-  collectWorkspaceRefs(nodeJson.contract?.execReads, include);
-  collectWorkspaceRefs(nodeJson.hooks, include);
-  collectWorkspaceRefs(nodeJson.op, include);
-
-  const exclude = new Set<string>();
-  collectWorkspaceRefs(nodeJson.optimize?.measure, exclude);
-  collectWorkspaceRefs(nodeJson.optimize?.judge, exclude);
-
-  const excludeList = [...exclude];
-  const isExcluded = (rel: string): boolean => exclude.has(rel) || excludeList.some((ex) => rel.startsWith(`${ex}/`));
-
-  await fs.mkdir(opts.candidateDir, { recursive: true });
-  for (const rel of include) await copyInto(opts.workspace, opts.candidateDir, rel, isExcluded);
-
-  return { candidateRef: opts.candidateDir, included: [...include], excluded: excludeList };
+export function oracleTouchedByDiff(changedPaths: string[], exclude: string[]): boolean {
+  if (exclude.length === 0) return false;
+  const set = new Set(exclude);
+  return changedPaths.some((rel) => isOracleRel(rel, set, exclude));
 }
 
-// ── editsApplied — a core-generic before/after content-hash diff of the candidate dir ───────────────────────
+// ── the candidate git worktree (create → commit → tear down; the SHA is the candidate, not a tree) ───────────
 
-/** Hash every REAL file (symlinks skipped) under `dir` → `Map<relPath, sha256hex>`. Absent dir ⇒ empty map. */
-export async function hashCandidateTree(dir: string): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  async function walk(rel: string): Promise<void> {
-    let entries: import('node:fs').Dirent[];
-    try {
-      entries = await fs.readdir(path.join(dir, rel), { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const e of entries) {
-      const childRel = rel ? path.posix.join(rel, e.name) : e.name;
-      const st = await fs.lstat(path.join(dir, childRel));
-      if (st.isSymbolicLink()) continue;
-      if (st.isDirectory()) await walk(childRel);
-      else if (st.isFile()) out.set(childRel, createHash('sha256').update(await fs.readFile(path.join(dir, childRel))).digest('hex'));
-    }
+/** The identity a candidate commit (and its adopted cherry-pick) references — its node + the issue's
+ *  name/id/title (the trailer + subject inputs). */
+export interface CommitIssueRef {
+  node: string;
+  name: string;
+  /** the issue's `sha256:<hex>` id (the trailer uses its first 7 hex chars). */
+  id: string;
+  title: string;
+}
+
+/** A prepared candidate worktree: the base commit the fixer starts from, the on-disk checkout it edits, and the
+ *  throwaway branch that owns the candidate commit after `commitCandidate`. */
+export interface CandidateWorktree {
+  /** the repo HEAD the worktree was checked out at (the candidate's base; base-drift is measured against it). */
+  baseSha: string;
+  /** the on-disk worktree checkout (the fixer's cwd; torn down after prove/gate — the branch/SHA persists). */
+  worktreeDir: string;
+  /** the throwaway branch `optimize/<node>/<issue>/attempt-N` the candidate commit lands on. */
+  branch: string;
+}
+
+/** DETERMINISTIC (no fs mutation): the throwaway branch + the on-disk worktree PATH for one candidate attempt.
+ *  The worktree lives OUTSIDE the product tree (a sibling `.piflow-optimize-worktrees/<repo-basename>/…`) so it
+ *  needs no gitignore and never recurses; the path is keyed by the repo's own basename so concurrent repos
+ *  never clash. Split from `prepareCandidateWorktree` so a dry-run can compose the fixer plan WITHOUT creating
+ *  anything on disk. */
+export function candidateWorktreeRef(
+  repoRoot: string,
+  spec: { node: string; issue: string; attempt: number },
+): { branch: string; worktreeDir: string } {
+  const root = path.resolve(repoRoot);
+  const leaf = `attempt-${spec.attempt}`;
+  const branch = `optimize/${spec.node}/${spec.issue}/${leaf}`;
+  const base = path.join(path.dirname(root), '.piflow-optimize-worktrees', path.basename(root));
+  const worktreeDir = path.join(base, spec.node, spec.issue, leaf);
+  return { branch, worktreeDir };
+}
+
+/**
+ * Create the per-attempt candidate worktree at `repoRoot`'s HEAD: `git worktree add -B <branch> <wtPath> HEAD`
+ * on the throwaway branch `optimize/<node>/<issue>/attempt-N`, returning `{ baseSha, worktreeDir, branch }`.
+ * Idempotent — a stale worktree/dir from a crashed prior attempt is dropped first. The fixer edits `worktreeDir`
+ * (a full repo checkout of any size), NOT a physical closure copy.
+ */
+export async function prepareCandidateWorktree(
+  repoRoot: string,
+  spec: { node: string; issue: string; attempt: number },
+): Promise<CandidateWorktree> {
+  const root = path.resolve(repoRoot);
+  const { branch, worktreeDir } = candidateWorktreeRef(root, spec);
+  const baseSha = git(root, 'rev-parse', 'HEAD');
+
+  // Idempotent: drop any stale worktree registration + dir at this path (a prior run/crash), then re-add.
+  try { git(root, 'worktree', 'remove', '--force', worktreeDir); } catch { /* none to remove */ }
+  await fs.rm(worktreeDir, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(worktreeDir), { recursive: true });
+
+  git(root, 'worktree', 'add', '-B', branch, worktreeDir, 'HEAD');
+  return { baseSha, worktreeDir, branch };
+}
+
+/** Tear down the candidate worktree CHECKOUT (`git worktree remove --force`); the branch + candidateSha PERSIST
+ *  for adopt. Best-effort — a throw here (dir already gone) must never mask the fix verdict. */
+export function removeCandidateWorktree(repoRoot: string, worktreeDir: string): void {
+  try {
+    git(path.resolve(repoRoot), 'worktree', 'remove', '--force', worktreeDir);
+  } catch {
+    /* best-effort: the branch is the durable artifact, not the checkout */
   }
-  await walk('');
-  return out;
 }
 
-/** Count the files that were added, removed, or content-changed between two `hashCandidateTree` snapshots. */
-export function countChangedFiles(before: Map<string, string>, after: Map<string, string>): number {
-  let n = 0;
-  for (const k of new Set([...before.keys(), ...after.keys()])) if (before.get(k) !== after.get(k)) n++;
-  return n;
+/** Build the candidate commit's `optimize(<node>): <title>` subject (greppable per node, mirroring game-omni's
+ *  `skillsys(<node>)`) + the `Issue: <node>/<name> — "<title>" (<hash7>)` trailer (commit ⇄ issue). */
+function issueCommitMessage(issue: CommitIssueRef): { subject: string; trailer: string } {
+  const hash7 = issue.id.replace(/^sha256:/, '').slice(0, 7);
+  return {
+    subject: `optimize(${issue.node}): ${issue.title}`,
+    trailer: `Issue: ${issue.node}/${issue.name} — "${issue.title}" (${hash7})`,
+  };
+}
+
+export interface CommitCandidateResult {
+  /** the candidate commit SHA — ABSENT when the fixer edited nothing (empty diff ⇒ no commit). */
+  candidateSha?: string;
+  /** the repo-relative paths `baseSha..candidateSha` changed (`editsApplied` = this length); [] on no edit. */
+  changed: string[];
+}
+
+/**
+ * Commit whatever the fixer left in the worktree: `git add -A`, and if anything is staged, commit it with the
+ * issue's subject + trailer (so a later cherry-pick preserves the identity) → `candidateSha`. Returns the
+ * changed-file list (`git diff --name-only baseSha candidateSha`). A NO-OP fixer (empty staged diff) ⇒ no
+ * commit, `candidateSha` undefined, `changed` []. `-c commit.gpgsign=false` so a signing-configured host never
+ * blocks the headless commit.
+ */
+export function commitCandidate(worktreeDir: string, baseSha: string, issue: CommitIssueRef): CommitCandidateResult {
+  const wt = path.resolve(worktreeDir);
+  git(wt, 'add', '-A');
+  const staged = git(wt, 'diff', '--cached', '--name-only').split('\n').filter(Boolean);
+  if (staged.length === 0) return { changed: [] };
+
+  const { subject, trailer } = issueCommitMessage(issue);
+  git(wt, '-c', 'commit.gpgsign=false', 'commit', '-m', subject, '-m', trailer);
+  const candidateSha = git(wt, 'rev-parse', 'HEAD');
+  const changed = git(wt, 'diff', '--name-only', baseSha, candidateSha).split('\n').filter(Boolean);
+  return { candidateSha, changed };
 }
 
 // ── the graded-delta fold (the accept signal; see the module header) ────────────────────────────────────────
@@ -292,56 +371,6 @@ export function foldGradedDelta(
   return { base: 0, candidate: cand, sharedKeys: shared.length, deltaSummary, improved, regressed };
 }
 
-// ── commitAdoption — the NET-NEW git commit helper (M6.4) ───────────────────────────────────────────────────
-
-export interface CommitAdoptionResult {
-  /** false when there was nothing staged to commit (a no-op — e.g. every adopted file was gitignored). */
-  committed: boolean;
-  /** the new commit SHA, or '' when `committed` is false. */
-  sha: string;
-  subject: string;
-  trailer: string;
-}
-
-/** The identity a commit references — its node + the issue's name/id/title (the trailer + subject inputs). */
-export interface CommitIssueRef {
-  node: string;
-  name: string;
-  /** the issue's `sha256:<hex>` id (the trailer uses its first 7 hex chars). */
-  id: string;
-  title: string;
-}
-
-/**
- * Stage `files` (repo-root-relative) and commit them with the SUBJECT `optimize(<node>): <title>` (greppable
- * per node, mirroring game-omni's `skillsys(<node>)`) + the TRAILER `Issue: <node>/<name> — "<title>"
- * (<hash7>)` (commit ⇄ issue, no message discipline needed in either direction). Argv-array `execFileSync`
- * (no shell → no escaping). NO-OP when nothing is staged (empty diff): returns `committed:false, sha:''`.
- */
-export function commitAdoption(repoRoot: string, files: string[], issue: CommitIssueRef): CommitAdoptionResult {
-  const root = path.resolve(repoRoot);
-  const git = (...args: string[]): string =>
-    execFileSync('git', ['-C', root, ...args], { stdio: ['ignore', 'pipe', 'pipe'] }).toString();
-
-  const hash7 = issue.id.replace(/^sha256:/, '').slice(0, 7);
-  const subject = `optimize(${issue.node}): ${issue.title}`;
-  const trailer = `Issue: ${issue.node}/${issue.name} — "${issue.title}" (${hash7})`;
-
-  if (files.length) git('add', '--', ...files);
-  // `git diff --cached --quiet` EXITS 1 when there IS a staged diff (execFileSync throws), 0 when clean.
-  let hasStaged = false;
-  try {
-    git('diff', '--cached', '--quiet');
-  } catch {
-    hasStaged = true;
-  }
-  if (!hasStaged) return { committed: false, sha: '', subject, trailer };
-
-  git('commit', '-m', subject, '-m', trailer);
-  const sha = git('rev-parse', 'HEAD').trim();
-  return { committed: true, sha, subject, trailer };
-}
-
 // ── the per-issue substrate manifest (writeStagingManifest-shaped, deterministic; M6.5) ─────────────────────
 
 export interface SubstrateManifestRecord {
@@ -351,10 +380,16 @@ export interface SubstrateManifestRecord {
   issueId: string;
   node: string;
   decision: 'staged' | 'discarded';
-  /** the candidate copy the fixer edited (adopt lands its real files onto `liveRoot`). */
+  /** the candidate's durable reference — the throwaway BRANCH `optimize/<node>/<issue>/attempt-N` (WS4 swaps
+   *  this for `candidateSha` directly). Kept present so downstream readers/tests still compile. */
   candidateRef: string;
-  /** the LIVE product root the candidate mirrors (adopt maps candidate→live here). */
+  /** the LIVE product root (a git repo) the candidate branched from; adopt cherry-picks `candidateSha` here. */
   liveRoot: string;
+  /** the repo HEAD the candidate branched from — adopt re-verifies against it on base drift. Absent on a
+   *  no-worktree path (never reached in practice; a decided record always has a worktree). */
+  baseSha?: string;
+  /** the candidate commit SHA adopt cherry-picks — ABSENT when the fixer edited nothing (no commit). */
+  candidateSha?: string;
   landPolicy: LandPolicy;
   /** `verdict.reason` — the flattened gate rationale (a reader needn't re-derive the gate). */
   reason: string;
@@ -473,7 +508,8 @@ export interface FixIssueOpts extends BaseAgentChildOpts {
   parentRunDir: string;
   /** the product template dir (`nodes/<id>/{node.json,issues/}`). */
   templateDir: string;
-  /** the LIVE product root — `{{WORKSPACE}}` for the candidate copy AND the pristine oracle for measuring. */
+  /** the LIVE product root — a GIT REPO: the candidate worktree branches from its HEAD, and it is the pristine
+   *  oracle the child run is measured against. */
   workspace: string;
   /** run the prove-rerun (default true). false ⇒ skip straight to staging (skip-proof path). */
   prove?: boolean;
@@ -481,10 +517,11 @@ export interface FixIssueOpts extends BaseAgentChildOpts {
   tolerance?: number;
   /** keys where LOWER is better, for the graded fold (default none). */
   lowerIsBetter?: (key: string) => boolean;
-  /** where the candidate copy + manifest live. Default `<parentRunDir>/optimize/substrate/staging`. */
+  /** where the manifest lives. Default `<parentRunDir>/optimize/substrate/staging`. (The candidate itself is a
+   *  git worktree/branch, NOT a copy under here.) */
   stagingDir?: string;
-  /** OUTER-LOOP retry only: scope this attempt's candidate dir to `candidates/<issue>/<attemptTag>` so each
-   *  attempt's copy is preserved side-by-side (the retry loop can keep the best; a bare default overwrites). */
+  /** OUTER-LOOP retry only: the per-attempt tag (`attempt-N`) → the candidate branch/worktree leaf, so each
+   *  attempt's candidate is side-by-side. Absent ⇒ `attempt-1`. */
   attemptTag?: string;
   /** OUTER-LOOP retry only: the prior rejected attempts, threaded into the fixer prompt so it DIVERSIFIES
    *  (categories + steers + accounts — NEVER the gate's rubric). Absent/attempt≤1 ⇒ no diversification block. */
@@ -501,13 +538,18 @@ export interface FixIssueOpts extends BaseAgentChildOpts {
 export interface FixIssueResult {
   issue: string;
   node: string;
+  /** the candidate's durable reference — the throwaway branch `optimize/<node>/<issue>/attempt-N`. */
   candidateRef: string;
+  /** the repo HEAD the candidate branched from (ABSENT on a dry-run). */
+  baseSha?: string;
+  /** the candidate commit SHA (ABSENT on a dry-run, a no-edit fixer, or an oracle-touched rejection). */
+  candidateSha?: string;
   editsApplied: number;
-  /** did a prove-rerun happen (editsApplied>=1 AND prove on)? */
+  /** did a prove-rerun happen (editsApplied>=1 AND prove on AND not oracle-touched)? */
   proved: boolean;
   /** the child run id that proved the fix, or null. */
   childId: string | null;
-  /** The NUMERIC gate verdict. ABSENT on a dry-run — and on the SOFT-gate path (where `gateVerdict` carries it). */
+  /** The NUMERIC gate verdict. ABSENT on a dry-run — and on the SOFT-gate / oracle-touched paths. */
   verdict?: GateVerdict;
   /** SOFT-gate path ONLY (no numeric oracle + the node has an optimize.judge): the independent gate agent's
    *  verdict. On this path `verdict` (the numeric gate) is absent and this carries the accept/reject instead. */
@@ -535,6 +577,13 @@ export interface FixIssueResult {
   fixerRunDir?: string;
 }
 
+/** Parse the 1-based attempt number out of an `attempt-N` tag (default 1 when absent/unrecognized). */
+function attemptNumber(attemptTag?: string): number {
+  if (!attemptTag) return 1;
+  const m = /(\d+)$/.exec(attemptTag);
+  return m ? Number(m[1]) : 1;
+}
+
 /** Read the parent run's already-persisted graded metrics (`.graded` of its measure report), or `{}` if the
  *  triage measure pass never ran / is unreadable (⇒ no shared keys ⇒ the gate stages for a human). */
 async function readParentGraded(parentRunDir: string, nodeId: string): Promise<Record<string, number>> {
@@ -549,9 +598,9 @@ async function readParentGraded(parentRunDir: string, nodeId: string): Promise<R
 }
 
 /**
- * Fix ONE issue end-to-end (activate → candidate → fixer → prove → gate → stage). ADOPT is the SEPARATE
- * `adoptSubstrateManifest` step. Never mutates the live product (only the candidate copy + the ledger's own
- * status/manifest). The node id is derived from the issue path (`…/nodes/<node>/issues/<name>.md`).
+ * Fix ONE issue end-to-end (activate → candidate worktree → fixer → commit → prove → gate → stage). ADOPT is the
+ * SEPARATE `adoptSubstrateManifest` step. Never mutates the live product tree (only a throwaway candidate branch
+ * + the ledger's own status/manifest). The node id is derived from the issue path (`…/nodes/<node>/issues/<name>.md`).
  */
 export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<FixIssueResult> {
   const issuePathAbs = path.resolve(issuePath);
@@ -565,39 +614,39 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
 
   const issue = await parseIssueFile(issuePathAbs);
   const stagingDir = opts.stagingDir ?? path.join(parentRunDir, 'optimize', 'substrate', 'staging');
-  // On a retry the candidate is scoped per-attempt (`candidates/<issue>/<attemptTag>`) so attempts don't
-  // clobber each other; the default (no tag) keeps the original `candidates/<issue>` path.
-  const candidateRef = opts.attemptTag
-    ? path.join(stagingDir, 'candidates', issue.name, opts.attemptTag)
-    : path.join(stagingDir, 'candidates', issue.name);
+  const repoRoot = workspace; // the live product root is the git repo the candidate worktree branches from
+  const attempt = attemptNumber(opts.attemptTag);
+  const { branch, worktreeDir } = candidateWorktreeRef(repoRoot, { node, issue: issue.name, attempt });
+
+  // The oracle FENCE (include MINUS exclude), computed once off node.json (a read, not a mutation — safe under
+  // dry-run). Each surviving rel maps to a worktree-absolute dir → the fixer's readScope/owns; the oracle paths
+  // are simply not in the allowlist, so the default-on jail denies them.
+  const { include, exclude } = await readClosureRefs(templateDir, node);
+  const excludeSet = new Set(exclude);
+  const fenceRels = include.filter((rel) => !isOracleRel(rel, excludeSet, exclude));
+  const fencePaths = fenceRels.map((rel) => path.join(worktreeDir, rel));
 
   // The ONE fixer spawn composition — shared VERBATIM by the dry-run preview and the live spawn (never two
-  // hand-copies that can drift apart).
+  // hand-copies that can drift apart). `cwd` is the worktree; the jail is the fence; the playbook is the
+  // product-root skill PATH (a path-like ref the runner uses directly, no ring-search from the worktree).
   const fixerSpawn = (issueFileText: string): RunBaseAgentOpts => ({
     prompt: buildFixerPrompt(issueFileText, node, opts.retry),
-    cwd: candidateRef,
-    readScope: [candidateRef],
-    owns: [candidateRef],
-    // Pass the EXACT resolved skill path, NOT the bare id: the runner uses a path-like ref DIRECTLY (no ring
-    // search — skill-locate.ts), so it doesn't matter that the fixer's exec `cwd` is the isolated candidate copy
-    // (which carries no skills). The playbook lives in the LIVE product root's installed-skills ring
-    // (`<workspace>/.claude/skills`, where `piflowctl skills install` lands piflow-fixer + piflow-triage). A miss
-    // still degrades to the promptless playbook (advisory), never a hard fail.
+    cwd: worktreeDir,
+    readScope: fencePaths,
+    owns: fencePaths,
     skill: path.join(workspace, '.claude', 'skills', FIXER_SKILL),
-    // The base agent's WHOLE inherited surface (tier/model/timeoutMs/provider/seams/dryRun/…), forwarded as one
-    // projection — never a hand-enumerated subset (the old copy here silently dropped `dryRun`).
     ...inheritedAgentOpts(opts),
   });
 
-  // DRY-RUN — the inherited base-agent preview: compose the exact spawn the fixer WOULD get (the candidateRef
-  // paths are computed, never created) and return its `plan` WITHOUT mutating ANYTHING — no issue transition,
-  // no candidate copy, no spawn, no prove/gate/stage, no events. Read-only throughout.
+  // DRY-RUN — the inherited base-agent preview: compose the exact spawn the fixer WOULD get (the worktree paths
+  // are computed, never created) and return its `plan` WITHOUT mutating ANYTHING — no issue transition, no
+  // worktree, no spawn, no prove/gate/stage, no events. Read-only throughout.
   if (opts.dryRun) {
     const preview = await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
     return {
       issue: issue.name,
       node,
-      candidateRef,
+      candidateRef: branch,
       editsApplied: 0,
       proved: false,
       childId: null,
@@ -610,29 +659,39 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   await transitionIssue(issuePathAbs, 'active');
   emit({ type: 'issue-activated', issue: issue.name, node });
 
-  // (b) candidate copy = the {{WORKSPACE}}-read closure minus the oracle exclusions.
-  const closure = await prepareCandidateClosure(templateDir, node, { workspace, candidateDir: candidateRef });
-  emit({ type: 'candidate-prepared', issue: issue.name, candidateRef, included: closure.included.length, excluded: closure.excluded.length });
+  // (b) candidate = a fresh git worktree at HEAD (NOT a copy). The SHA is the candidate.
+  const wt = await prepareCandidateWorktree(repoRoot, { node, issue: issue.name, attempt });
+  const baseSha = wt.baseSha;
+  emit({ type: 'candidate-prepared', issue: issue.name, candidateRef: worktreeDir, included: fenceRels.length, excluded: exclude.length });
 
-  // (c) fixer — edits the candidate; editsApplied = a before/after content-hash diff of the candidate dir.
-  const before = await hashCandidateTree(candidateRef);
+  // (c) fixer — edits the worktree; `git add -A && commit` → candidateSha; editsApplied = the diff name-count.
   emit({ type: 'fixer-started', issue: issue.name });
   const fixerResult = await runAgent(fixerSpawn(await fs.readFile(issuePathAbs, 'utf8')));
-  const editsApplied = countChangedFiles(before, await hashCandidateTree(candidateRef));
+  const committed = commitCandidate(worktreeDir, baseSha, { node, name: issue.name, id: issue.id, title: issue.title });
+  const editsApplied = committed.changed.length;
+  const candidateSha = committed.candidateSha;
   emit({ type: 'fixer-done', issue: issue.name, editsApplied });
-  if (editsApplied >= 1) await transitionIssue(issuePathAbs, 'fix-landed'); // "candidate edit staged"
 
-  // (d) prove (self-rewind) — or skip (fix-landed → resolved on adopt). Unmeasurable ⇒ base/cand stay null.
+  // (c2) ORACLE DIFF-GUARD (belt + suspenders) — a candidate whose commit touched an oracle path is a
+  // FIXER-SIDE REJECTION (never a gate reject): it is discarded outright, never proved or gated. This catches an
+  // edit the dir-coarse sandbox fence could not (an oracle FILE inside an included DIR).
+  const oracleTouched = editsApplied >= 1 && oracleTouchedByDiff(committed.changed, exclude);
+
+  // A real, non-oracle-touching edit advances the ledger "candidate edit staged".
+  if (editsApplied >= 1 && !oracleTouched) await transitionIssue(issuePathAbs, 'fix-landed');
+
+  // (d) prove (self-rewind) — against the candidate WORKTREE (its HEAD IS candidateSha). Skip on no-edit /
+  // oracle-touched / prove-off. Unmeasurable ⇒ base/cand stay null.
   let childId: string | null = null;
   let childDir: string | null = null;
   let base: number | null = null;
   let candidate: number | null = null;
   let deltaSummary: Record<string, number> = {};
-  if (editsApplied >= 1 && prove) {
+  if (editsApplied >= 1 && !oracleTouched && prove) {
     await transitionIssue(issuePathAbs, 'verifying');
     const child = await spawnChild(parentRunDir, node, {
       templateDir,
-      workspace: candidateRef, // the node re-runs against the CANDIDATE
+      workspace: worktreeDir, // the node re-runs against the candidate worktree (HEAD = candidateSha)
       spawnedBy: { by: 'substrate-fix', issue: issue.name, issueId: issue.id },
       provider: opts.provider,
       buildCommand: opts.buildCommand,
@@ -652,12 +711,11 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     emit({ type: 'measured', issue: issue.name, sharedKeys: fold.sharedKeys });
   }
 
-  // (e) GATE — two decision surfaces on ONE proved candidate:
+  // (e) GATE / DECISION surfaces on ONE proved candidate:
+  //   • ORACLE-TOUCHED ⇒ a FIXER-SIDE rejection short-circuit (no numeric gate, no gate agent).
   //   • NUMERIC (evaluateGate) wherever a graded oracle produced shared keys — deterministic, drift-proof.
   //   • the INDEPENDENT GATE AGENT wherever the fix was proved but the node has NO number, only an
-  //     `optimize.judge` bar (the SOFT path). It judges the candidate artifact against the node's OWN criteria
-  //     — the same bar a regular run applies, no invented "fix contract" — and STAGES its accept for the human
-  //     (never a judge-gated auto-accept). A node with neither a number nor a judge falls to evaluateGate's
+  //     `optimize.judge` bar (the SOFT path). A node with neither a number nor a judge falls to evaluateGate's
   //     stage-for-human, exactly as before.
   let decision: 'staged' | 'discarded';
   let landPolicy: LandPolicy;
@@ -667,17 +725,22 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   let dropback: { category: GateRejectCategory; steer?: string } | undefined;
 
   const numericMeasured = base !== null && candidate !== null; // shared graded keys existed
-  const softGate = editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasJudge(templateDir, node));
+  const softGate = !oracleTouched && editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasJudge(templateDir, node));
 
-  if (softGate && childDir !== null) {
+  if (oracleTouched) {
+    decision = 'discarded';
+    landPolicy = 'stage-for-human';
+    reason = 'candidate diff touched an oracle path (optimize.measure/judge) — fixer-side rejection, never proved/gated';
+    emit({ type: 'gated', issue: issue.name, accept: false, reason });
+  } else if (softGate && childDir !== null) {
     const runGate = opts.gate ?? runSubstrateGate;
     const gateRes = await runGate(childDir, node, {
       workspace,
       templateDir,
       issueFileText: await fs.readFile(issuePathAbs, 'utf8'),
-      fixerDiff: '', // v1: the gate inspects the candidate harness (candidateRef, in its read scope) directly
+      fixerDiff: '', // v1: the gate inspects the candidate worktree (candidateRef, in its read scope) directly
       fixerAccount: fixerResult.text ?? '',
-      candidateRef,
+      candidateRef: worktreeDir,
       ...inheritedAgentOpts(opts),
     });
     gateVerdict = gateRes.verdict;
@@ -708,21 +771,27 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
   // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
   // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). A staged candidate stays
-  // at `verifying` awaiting adopt; the no-edit / skip-proof paths never entered `verifying` (nothing to undo).
+  // at `verifying` awaiting adopt; the no-edit / oracle-touched / skip-proof paths never entered `verifying`.
   if (childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
 
-  // (f) stage the substrate manifest (adopt is the separate human step).
+  // (f) CLEANUP — tear down the candidate worktree checkout AFTER prove/gate (both read it); the branch +
+  // candidateSha persist for adopt/discard.
+  removeCandidateWorktree(repoRoot, worktreeDir);
+
+  // (g) stage the substrate manifest (adopt is the separate human step).
   const record: SubstrateManifestRecord = {
     issue: issue.name,
     issueId: issue.id,
     node,
     decision,
-    candidateRef,
+    candidateRef: branch,
     liveRoot: workspace,
+    baseSha,
     landPolicy,
     reason,
     verifiedByRun: childId,
     deltaSummary,
+    ...(candidateSha ? { candidateSha } : {}),
     ...(dropback ? { dropback } : {}),
   };
   const manifestPath = await upsertSubstrateManifest(stagingDir, record);
@@ -732,11 +801,13 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   return {
     issue: issue.name,
     node,
-    candidateRef,
+    candidateRef: branch,
+    baseSha,
     editsApplied,
     proved: childId !== null,
     childId,
     verdict: numericVerdict,
+    ...(candidateSha ? { candidateSha } : {}),
     ...(gateVerdict ? { gateVerdict } : {}),
     ...(dropback ? { dropback } : {}),
     decision,
@@ -748,17 +819,15 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   };
 }
 
-// ── adoptSubstrateManifest — the SEPARATE human ADOPT step (M6.4/M6.6) ───────────────────────────────────────
+// ── adoptSubstrateManifest — the SEPARATE human ADOPT step, git-native (cherry-pick; WS0) ────────────────────
 
 export interface AdoptSubstrateManifestOpts {
   /** the template dir — to reconstruct each issue's `<templateDir>/nodes/<node>/issues/<name>.md` path. */
   templateDir: string;
-  /** where `adoptFile` writes its `<basename>.bak` backups. Default a fresh tmp dir (reversible-enough). */
+  /** ACCEPTED for CLI back-compat but UNUSED by the commit-based landing — git history/reflog is the recovery
+   *  path for a cherry-pick (no per-file `.bak` copy, unlike the old file-copy adopt). */
   backupDir?: string;
   onEvent?: SubstrateEventSink;
-  // ── seams (default the real functions) ──
-  commit?: (repoRoot: string, files: string[], issue: CommitIssueRef) => CommitAdoptionResult;
-  adopt?: (manifest: AdoptManifest, opts: { backupDir: string; dryRun?: boolean }) => Promise<import('../land.js').AdoptReport>;
 }
 
 export interface AdoptSubstrateManifestResult {
@@ -766,21 +835,31 @@ export interface AdoptSubstrateManifestResult {
   skipped: { issue: string; reason: string }[];
 }
 
+/** Cherry-pick `candidateSha` onto `liveRoot`'s current branch, returning the landed commit sha + its changed
+ *  files. Throws on a conflict/empty pick (the caller aborts + skips). `-c commit.gpgsign=false` so a
+ *  signing-configured host never blocks the pick. */
+function cherryPickCandidate(liveRoot: string, candidateSha: string): { sha: string; files: string[] } {
+  const root = path.resolve(liveRoot);
+  git(root, '-c', 'commit.gpgsign=false', 'cherry-pick', candidateSha);
+  const sha = git(root, 'rev-parse', 'HEAD');
+  const files = git(root, 'diff-tree', '--no-commit-id', '--name-only', '-r', sha).split('\n').filter(Boolean);
+  return { sha, files };
+}
+
 /**
- * Adopt every `staged` record of a substrate manifest into the live product: land its candidate's real files
- * (reusing land.ts's symlink-safe, backup-first, idempotent walk), then `commitAdoption` (subject+trailer),
- * `stampAttempt({commit, verifiedByRun})`, and transition the issue → `resolved` (reason `fixed`) — the
- * fix-landed→resolved (skip) or verifying→resolved (prove) edge. A record that lands NO files (already
- * adopted, or every file gitignored) is SKIPPED, never a throw — so a re-adopt is a natural no-op.
+ * Adopt every `staged` record of a substrate manifest into the live product by `git cherry-pick candidateSha`
+ * onto its `liveRoot` (the candidate commit already carries the subject + `Issue:` trailer identity), then
+ * `stampAttempt({commit: the landed sha, verifiedByRun})` and transition the issue → `resolved` (reason
+ * `fixed`) — the fix-landed→resolved (skip) or verifying→resolved (prove) edge. On BASE DRIFT (a conflicting
+ * pick) the cherry-pick is ABORTED and the record SKIPPED with a clear reason — never a forced/silent apply. A
+ * record with no `candidateSha` (a no-edit/oracle-touched discard) is skipped up front; a re-adopt whose changes
+ * are already present is an empty pick → aborted + skipped (a natural no-op).
  */
 export async function adoptSubstrateManifest(
   manifest: SubstrateManifest,
   opts: AdoptSubstrateManifestOpts,
 ): Promise<AdoptSubstrateManifestResult> {
   const emit = (e: SubstrateEvent): void => safeEmit(opts.onEvent, e);
-  const commitFn = opts.commit ?? commitAdoption;
-  const adoptFn = opts.adopt ?? adoptFromManifest;
-  const backupDir = opts.backupDir ?? (await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-substrate-adopt-')));
 
   const result: AdoptSubstrateManifestResult = { adopted: [], skipped: [] };
   for (const record of manifest.records) {
@@ -788,29 +867,33 @@ export async function adoptSubstrateManifest(
       result.skipped.push({ issue: record.issue, reason: `decision is "${record.decision}" (not staged)` });
       continue;
     }
-    // Physical landing via land.ts's walk (symlink-safe, backup-first, byte-equal ⇒ skip = idempotent).
-    const report = await adoptFn(
-      { records: [{ node: record.node, landed: 'adopted', candidateRef: record.candidateRef, liveRoot: record.liveRoot }] },
-      { backupDir },
-    );
-    const files = report.adopted.map((a) => a.file);
-    if (files.length === 0) {
-      result.skipped.push({ issue: record.issue, reason: 'no files to land (already adopted or missing candidate)' });
+    if (!record.candidateSha) {
+      result.skipped.push({ issue: record.issue, reason: 'no candidate commit (candidateSha) to land' });
+      continue;
+    }
+
+    const root = path.resolve(record.liveRoot);
+    let landed: { sha: string; files: string[] };
+    try {
+      landed = cherryPickCandidate(root, record.candidateSha);
+    } catch (e) {
+      const out = `${(e as { stdout?: Buffer }).stdout ?? ''}${(e as { stderr?: Buffer }).stderr ?? ''}`;
+      try { git(root, 'cherry-pick', '--abort'); } catch { /* not mid-pick — nothing to abort */ }
+      const empty = /empty|nothing to commit|allow-empty/i.test(out);
+      result.skipped.push({
+        issue: record.issue,
+        reason: empty
+          ? 'candidate already applied (empty cherry-pick) — nothing to land'
+          : 'cherry-pick conflict (base drift) — aborted, not landed',
+      });
       continue;
     }
 
     const issuePath = path.join(opts.templateDir, 'nodes', record.node, 'issues', `${record.issue}.md`);
-    const issue: Issue = await parseIssueFile(issuePath);
-    const commit = commitFn(record.liveRoot, files, { node: record.node, name: record.issue, id: record.issueId, title: issue.title });
-    if (!commit.committed) {
-      result.skipped.push({ issue: record.issue, reason: 'nothing staged to commit (adopted files may be gitignored)' });
-      continue;
-    }
-
-    await stampAttempt(issuePath, { commit: commit.sha, verifiedByRun: record.verifiedByRun ?? UNPROVEN_BY_RUN });
+    await stampAttempt(issuePath, { commit: landed.sha, verifiedByRun: record.verifiedByRun ?? UNPROVEN_BY_RUN });
     await transitionIssue(issuePath, 'resolved', { reason: 'fixed' }); // fix-landed→resolved | verifying→resolved
-    emit({ type: 'adopted', issue: record.issue, commit: commit.sha, files: files.length });
-    result.adopted.push({ issue: record.issue, node: record.node, commit: commit.sha, files });
+    emit({ type: 'adopted', issue: record.issue, commit: landed.sha, files: landed.files.length });
+    result.adopted.push({ issue: record.issue, node: record.node, commit: landed.sha, files: landed.files });
   }
   return result;
 }

@@ -96,19 +96,19 @@ export type {
   SubstrateThresholds, TraceMetricsReport, ThinkingSpan, ToolLoopFlag, TokenWasteSignal, CacheMissFlag,
 } from './substrate/trace-metrics.js';
 
-// The SUBSTRATE FIX phase (docs/specs/optimize-substrate-plan.md §M6) — per ONE issue: activate → candidate
-// closure (the {{WORKSPACE}}-read closure MINUS the oracle exclusions) → fixer agent → prove-rerun → the
-// graded-delta gate (REUSING evaluateGate) → stage a substrate manifest; ADOPT is the SEPARATE human step
-// (adoptSubstrateManifest → adoptFile + commitAdoption → stampAttempt → status resolved). Its OWN dedicated
-// SubstrateEvent stream + renderSubstrateEvent projection (a sibling of optimize/events.ts, never shared).
+// The SUBSTRATE FIX phase (docs/design/optimize-issue-lifecycle-redesign.md WS0) — per ONE issue: activate →
+// candidate WORKTREE (a git worktree at HEAD, jailed to the read closure MINUS the oracle) → fixer agent →
+// commit (candidateSha) → prove-rerun → the graded-delta gate (REUSING evaluateGate) → stage a substrate
+// manifest; ADOPT is the SEPARATE human step (adoptSubstrateManifest → git cherry-pick candidateSha →
+// stampAttempt → status resolved). Its OWN dedicated SubstrateEvent stream + renderSubstrateEvent projection.
 export {
-  fixIssue, adoptSubstrateManifest, commitAdoption, prepareCandidateClosure, foldGradedDelta,
-  hashCandidateTree, countChangedFiles, collectWorkspaceRefs, buildFixerPrompt, readSubstrateManifest,
-  UNPROVEN_BY_RUN,
+  fixIssue, adoptSubstrateManifest, prepareCandidateWorktree, removeCandidateWorktree, candidateWorktreeRef,
+  commitCandidate, oracleTouchedByDiff, readClosureRefs, foldGradedDelta, collectWorkspaceRefs, buildFixerPrompt,
+  readSubstrateManifest, UNPROVEN_BY_RUN,
 } from './substrate/fix.js';
 export type {
-  FixIssueOpts, FixIssueResult, CandidateClosure, FoldGradedOpts, FoldGradedResult,
-  CommitAdoptionResult, CommitIssueRef, SubstrateManifest, SubstrateManifestRecord,
+  FixIssueOpts, FixIssueResult, CandidateWorktree, CommitCandidateResult, CommitIssueRef, ClosureRefs,
+  FoldGradedOpts, FoldGradedResult, SubstrateManifest, SubstrateManifestRecord,
   AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, RetryContext,
 } from './substrate/fix.js';
 export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
