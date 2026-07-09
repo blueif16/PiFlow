@@ -47,6 +47,8 @@ import { descendantsMap, loadJournal } from './journal.js';
 // P6 — mid-run migration: the single-writer lease + the freeze-at-node-boundary signal.
 import { acquireLease, LeaseHeldError, type Lease, type AcquireOpts } from './lease.js';
 import { defaultFreezeSignal } from './migrate.js';
+// Run-dir git checkpoints (opt-in): the external per-stage snapshot store the barrier commits into.
+import { snapshotGitDir, snapshotInit, snapshotCommit } from './snapshot.js';
 export { acquireLease, readLease, LeaseHeldError, lockFile } from './lease.js';
 export type { Lease, LeaseInfo, AcquireOpts } from './lease.js';
 export { requestFreeze, clearFreeze, freezeFile, defaultFreezeSignal } from './migrate.js';
@@ -300,6 +302,15 @@ export interface RunOptions {
    * wants a custom stale threshold. Ignored when `lease === false`.
    */
   leaseOpts?: AcquireOpts;
+  /**
+   * Run-dir git CHECKPOINTS — when true, snapshot the WHOLE run dir into an EXTERNAL git store
+   * (`.piflow/<wf>/checkpoints/<id>.git`) at each STAGE BARRIER (+ an initial C0 before stage 0), tagged
+   * `pre-stage-<k>`. Restoring a tag reverts the tree — incl. `.pi/journal.json`/state.json — to that
+   * stage's ENTRY, so a replayed node never sees its own prior outputs or downstream pollution (see
+   * ./snapshot.ts). DEFAULT off (omit/false): byte-identical to today (no git dir, no commits). Committing
+   * is BEST-EFFORT — a git hiccup is swallowed, never failing a real run.
+   */
+  checkpoints?: boolean;
 }
 
 /** The result of a run: the final status record + the host run dir it was written to. */
@@ -694,6 +705,18 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     return { status: ctx.status, outDir };
   }
 
+  // Run-dir git CHECKPOINTS (opt-in) — the external per-stage snapshot store. C0 = the `pre-stage-<fromIdx>`
+  // ENTRY tree (every selected node pending / the frozen-upstream prefix), committed AFTER the run scope is
+  // up (so a preflight/scope bail never inits a git dir) and BEFORE any stage runs. The barrier commits the
+  // NEXT stage's entry inside the loop. All best-effort — a git failure never fails the run (default OFF ⇒
+  // this whole block is skipped and the run is byte-identical to today).
+  const checkpoints = opts.checkpoints ?? false;
+  const ckGitDir = snapshotGitDir(outDir);
+  if (checkpoints) {
+    snapshotInit(ckGitDir, outDir);
+    snapshotCommit(ckGitDir, outDir, fromIdx, selected[0]?.nodeIds ?? []);
+  }
+
   let halted = false;
   let frozen = false; // P6: set true when a freeze parks the run at a stage boundary
   try {
@@ -766,6 +789,15 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
 
       // HALT-on-failure (run.mjs 1315–1322): first error/blocked stops the run; downstream never runs.
       if (results.some((r) => r.status === 'error' || r.status === 'blocked')) halted = true;
+
+      // Run-dir git CHECKPOINT at the STAGE BARRIER (opt-in) — this is the one quiescent instant: every lane
+      // has quiesced, the journal is flushed per-node, and the barrier state is persisted, so the tree == the
+      // NEXT stage's ENTRY. Commit it as `pre-stage-<globalIdx+1>` (globalIdx = fromIdx+i) so replaying any of
+      // that next stage's nodes restores this exact tree. Skipped on `halted` — a FAILED stage has no valid
+      // successor-entry (you replay from `pre-stage-<globalIdx>`, committed before it ran). Best-effort.
+      if (checkpoints && !halted) {
+        snapshotCommit(ckGitDir, outDir, fromIdx + i + 1, selected[i + 1]?.nodeIds ?? []);
+      }
 
       // P6 — the NODE-BOUNDARY freeze point. All lanes have quiesced, the journal is flushed per-node,
       // and the barrier state is persisted — the one safe instant to hand the run to another host. If a
