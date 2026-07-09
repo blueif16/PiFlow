@@ -508,6 +508,25 @@ describe('fixIssue — the candidate worktree is torn down after the gate; the b
   });
 });
 
+describe('fixIssue — the candidate worktree is torn down even on a THROW (try/finally; Defect 2/5)', () => {
+  it('a throwing spawnChild rejects the fix AND still removes the candidate worktree checkout (no orphan)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture({ baseGraded: { 'feas.score': 0.5 } });
+    let capturedWt = '';
+    await expect(
+      fixIssue(issuePath, {
+        parentRunDir, templateDir, workspace,
+        // a real edit → commit → the worktree + candidateSha exist, THEN prove throws.
+        runAgent: async (o) => { capturedWt = o.cwd; await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n'); return agentResult(); },
+        spawnChild: async () => { throw new Error('boom-in-prove'); },
+        measure: async () => measureReport({ 'feas.score': 0.9 }),
+      }),
+    ).rejects.toThrow(/boom-in-prove/);
+    // the throw propagated, but the finally still tore down the checkout (the branch/SHA persist by design).
+    expect(capturedWt).not.toBe('');
+    await expect(fs.access(capturedWt)).rejects.toThrow();
+  });
+});
+
 describe('fixIssue — attemptTag + retry context threading (WS0: per-attempt worktree/branch)', () => {
   it('scopes the candidate worktree/branch by attemptTag and threads the retry context into the fixer prompt', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
