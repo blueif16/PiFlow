@@ -363,7 +363,9 @@ export function commitCandidate(worktreeDir: string, baseSha: string, issue: Com
   if (staged.length === 0) return { changed: [] };
 
   const { subject, trailer } = issueCommitMessage(issue);
-  git(wt, '-c', 'commit.gpgsign=false', 'commit', '-m', subject, '-m', trailer);
+  // `-c user.name/email` so a HEADLESS host (CI/cloud) with no configured git identity never fails the commit
+  // with "Please tell me who you are"; `-c commit.gpgsign=false` so a signing-configured host never blocks it.
+  git(wt, '-c', 'commit.gpgsign=false', '-c', 'user.name=piflow-optimizer', '-c', 'user.email=optimizer@piflow.local', 'commit', '-m', subject, '-m', trailer);
   const candidateSha = git(wt, 'rev-parse', 'HEAD');
   const changed = git(wt, 'diff', '--name-only', baseSha, candidateSha).split('\n').filter(Boolean);
   return { candidateSha, changed };
@@ -1144,7 +1146,8 @@ export interface AdoptSubstrateManifestResult {
  *  signing-configured host never blocks the pick. */
 function cherryPickCandidate(liveRoot: string, candidateSha: string): { sha: string; files: string[] } {
   const root = path.resolve(liveRoot);
-  git(root, '-c', 'commit.gpgsign=false', 'cherry-pick', candidateSha);
+  // `-c user.name/email` so a headless host with no git identity can still author the cherry-pick commit.
+  git(root, '-c', 'commit.gpgsign=false', '-c', 'user.name=piflow-optimizer', '-c', 'user.email=optimizer@piflow.local', 'cherry-pick', candidateSha);
   const sha = git(root, 'rev-parse', 'HEAD');
   const files = git(root, 'diff-tree', '--no-commit-id', '--name-only', '-r', sha).split('\n').filter(Boolean);
   return { sha, files };

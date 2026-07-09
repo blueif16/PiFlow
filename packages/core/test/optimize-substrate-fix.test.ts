@@ -282,6 +282,39 @@ describe('commitCandidate — git commit → candidateSha; editsApplied = diff n
   });
 });
 
+// ── Defect 3: commitCandidate must not fail on a headless host with NO git identity ─────────────────────────
+describe('commitCandidate — succeeds on a headless host with NO git identity (Defect 3)', () => {
+  it('injects an optimizer identity so `commit` never fails with "who are you" on a CI/cloud host', async () => {
+    const repo = await scratch('piflow-repo-');
+    await fs.writeFile(join(repo, 'a.txt'), 'a');
+    seedGitRepo(repo); // the SEED commit is made with the test identity
+    const wt = await prepareCandidateWorktree(repo, { node: 'gameplay', issue: 'soggy-crust', attempt: 1 });
+    const ref = { node: 'gameplay', name: 'soggy-crust', id: makeIssue().id, title: 'x' };
+    await fs.appendFile(join(wt.worktreeDir, 'a.txt'), '-CHANGED');
+
+    // simulate a headless host: strip ALL config identity AND forbid git's user@host auto-detection.
+    const g = (...a: string[]) => execFileSync('git', ['-C', repo, ...a], { stdio: ['ignore', 'pipe', 'pipe'] });
+    g('config', '--unset', 'user.name');
+    g('config', '--unset', 'user.email');
+    g('config', 'user.useConfigOnly', 'true');
+
+    const envKeys = ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM', 'GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL'];
+    const saved: Record<string, string | undefined> = {};
+    for (const k of envKeys) saved[k] = process.env[k];
+    process.env.GIT_CONFIG_GLOBAL = '/dev/null';
+    process.env.GIT_CONFIG_SYSTEM = '/dev/null';
+    for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL']) delete process.env[k];
+    try {
+      const c = commitCandidate(wt.worktreeDir, wt.baseSha, ref); // RED before the fix: throws "Please tell me who you are"
+      expect(c.candidateSha).toBeDefined();
+      expect(c.changed).toEqual(['a.txt']);
+    } finally {
+      for (const k of envKeys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
+      removeCandidateWorktree(repo, wt.worktreeDir);
+    }
+  });
+});
+
 // ── WS0 behavior 4: the oracle diff-guard (pure fn) ───────────────────────────────────────────────────────
 describe('oracleTouchedByDiff — the diff guard (pure) (WS0 behavior 4)', () => {
   it('true iff a changed path is an oracle path (exact or under an excluded dir); empty exclude never trips', () => {
