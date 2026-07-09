@@ -267,6 +267,13 @@ export {
   packRunDir, unpackRunDir, BUNDLE_EXCLUDE, stageBaselineRun, BASELINE_SEED_EXCLUDE,
 } from './runner/index.js';
 export type { Lease, LeaseInfo, AcquireOpts, PackOpts, UnpackOpts, StageBaselineOpts } from './runner/index.js';
+// Run-dir git checkpoints — the external per-stage snapshot store. Surfaced for @piflow/cli (`snapshot`
+// list/restore + `run --checkpoints`) and the child-run replay consume site.
+export {
+  snapshotGitDir, snapshotInit, snapshotCommit, snapshotRestore, snapshotMaterialize,
+  snapshotList, snapshotExists, stageTag, resolveStageRef, CHECKPOINT_IGNORE,
+} from './runner/index.js';
+export type { SnapshotResult, SnapshotEntry } from './runner/index.js';
 // (op⊖ops) derivesFromOp / gatesFromOp / runOpsFromOp — reconstruct the per-family executor inputs from a
 // node's canonical `op[]` (the SOLE derive rep; the legacy `node.ops` was retired in U6). The runner reads
 // derives/gates/run ops through these three adapters (one home), and consumers (inspector) render via them.

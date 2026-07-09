@@ -8,6 +8,20 @@ export { acquireLease, readLease, LeaseHeldError, lockFile } from './lease.js';
 export type { Lease, LeaseInfo, AcquireOpts } from './lease.js';
 export { requestFreeze, clearFreeze, freezeFile, defaultFreezeSignal, packRunDir, unpackRunDir, BUNDLE_EXCLUDE, stageBaselineRun, BASELINE_SEED_EXCLUDE } from './migrate.js';
 export type { PackOpts, UnpackOpts, StageBaselineOpts } from './migrate.js';
+// Run-dir git checkpoints — the external per-stage snapshot store (barrier commit + in-place restore + child materialize).
+export {
+  snapshotGitDir,
+  snapshotInit,
+  snapshotCommit,
+  snapshotRestore,
+  snapshotMaterialize,
+  snapshotList,
+  snapshotExists,
+  stageTag,
+  resolveStageRef,
+  CHECKPOINT_IGNORE,
+} from './snapshot.js';
+export type { SnapshotResult, SnapshotEntry } from './snapshot.js';
 // finalizeRun — the explicit, human-invoked closure of a STUCK (!done) run record (`node --finalize` /
 // `runs sweep --apply`): the ONLY thing besides the runner itself that ever writes `.pi/run.json` (via the
 // SAME serialized+atomic `writeStatus`). See finalize.ts for the residual gap this closes.
