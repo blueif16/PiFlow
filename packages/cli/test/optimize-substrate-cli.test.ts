@@ -9,10 +9,11 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { IssueRecord, Issue, MeasureReport, SubstrateJudgeResult, FixIssueResult, SubstrateEvent } from '@piflow/core';
+import type { IssueRecord, Issue, MeasureReport, SubstrateJudgeResult, FixIssueResult, SubstrateEvent, VerifyStageResult, SubstrateManifestRecord } from '@piflow/core';
 import {
   routeOptimize, firstPositional, parseSubstrateTriageArgs, parseSubstrateFixArgs, parseSubstrateAdoptArgs,
-  runSubstrateTriageCli, runSubstrateFixCli, runSubstrateAdoptCli, runsHomeFor, DEFAULT_FIX_CAP, resolveNodeAndRun,
+  parseSubstrateVerifyArgs, runSubstrateTriageCli, runSubstrateFixCli, runSubstrateAdoptCli, runSubstrateVerifyCli,
+  resolveSubstrateSelector, runsHomeFor, DEFAULT_FIX_CAP, resolveNodeAndRun,
 } from '../src/optimize-substrate.js';
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'substrate-cli-'));
@@ -41,12 +42,27 @@ function issueRec(name: string, severity: Issue['severity'], status: Issue['stat
 const okReport = (): MeasureReport => ({ node: 'gameplay', graded: {} } as unknown as MeasureReport);
 const judged = (issues: string[]): SubstrateJudgeResult => ({ when: 'now', issues, capped: [], agentText: '', agentStatus: {} as SubstrateJudgeResult['agentStatus'] });
 
+/** Seed a per-issue record.json under a run's lifecycle dir (runs/<run>/optimize/issues/<node>/<issue>/). */
+async function seedRecord(runDir: string, node: string, issue: string, over: Partial<SubstrateManifestRecord> = {}): Promise<void> {
+  const dir = path.join(runDir, 'optimize', 'issues', node, issue);
+  await fs.mkdir(dir, { recursive: true });
+  const rec: SubstrateManifestRecord = {
+    issue, issueId: `sha256:${'0'.repeat(64)}`, node, decision: 'discarded', candidateRef: `optimize/${node}/${issue}/attempt-1`,
+    liveRoot: '/live', baseSha: 'base0', candidateSha: 'cand0', landPolicy: 'stage-for-human', reason: '',
+    verifiedByRun: 'tS2.gameplay', deltaSummary: {}, ...over,
+  };
+  await fs.writeFile(path.join(dir, 'record.json'), JSON.stringify(rec, null, 2));
+}
+
 // ── DISPATCH ROUTING (M5.1 table) ─────────────────────────────────────────────────────────────────────────
 describe('routeOptimize — the M5.1 dispatch table', () => {
   it.each<[string[], string]>([
     [['triage', '--node', 'g'], 'substrate-triage'],
     [['fix', '--node', 'g'], 'substrate-fix'],
+    [['verify', '--node', 'g'], 'substrate-verify'],       // WS2: the new gate-only verb
     [['adopt', '--manifest', 'm.json'], 'substrate-adopt'],
+    [['adopt', '--node', 'g'], 'substrate-adopt'],         // WS2: adopt by --node/--issue (scanRecords)
+    [['verify'], 'classic'],                               // a rundir literally named `verify` WITHOUT --node
     [['--node', 'gameplay'], 'substrate-full'],           // bare --node, no positional → full loop
     [['--node', 'gameplay', '--run', 'tS2'], 'substrate-full'],
     [['somedir'], 'classic'],                             // optimize <rundir>
@@ -86,8 +102,20 @@ describe('parsers', () => {
     expect(parseSubstrateFixArgs(['--node', 'g', '--dry-run']).dryRun).toBe(true);
     expect(parseSubstrateFixArgs(['--node', 'g']).dryRun).toBeUndefined();
   });
-  it('parseSubstrateAdoptArgs: manifest + template + backup-dir + watch', () => {
+  it('parseSubstrateFixArgs: --verify <tier> parses a valid tier, ignores an invalid one, defaults undefined (WS3)', () => {
+    expect(parseSubstrateFixArgs(['--node', 'g', '--verify', 'none']).verify).toBe('none');
+    expect(parseSubstrateFixArgs(['--node', 'g', '--verify', 'rerun']).verify).toBe('rerun');
+    expect(parseSubstrateFixArgs(['--node', 'g', '--verify', 'full']).verify).toBe('full');
+    expect(parseSubstrateFixArgs(['--node', 'g', '--verify', 'bogus']).verify).toBeUndefined(); // invalid → ignored
+    expect(parseSubstrateFixArgs(['--node', 'g']).verify).toBeUndefined(); // off by default
+  });
+  it('parseSubstrateAdoptArgs: manifest + template + backup-dir + watch; also --node/--issue/--run (WS2 regrammar)', () => {
     expect(parseSubstrateAdoptArgs(['--manifest', 'm.json', '--template', 't', '--backup-dir', 'b'])).toMatchObject({ manifest: 'm.json', template: 't', backupDir: 'b' });
+    expect(parseSubstrateAdoptArgs(['--node', 'g', '--issue', 'soggy-crust', '--run', 'tS2'])).toMatchObject({ node: 'g', issue: 'soggy-crust', run: 'tS2' });
+  });
+  it('parseSubstrateVerifyArgs: node, issue, run pin, tier/model (WS2 verify verb)', () => {
+    expect(parseSubstrateVerifyArgs(['--node', 'g'])).toMatchObject({ node: 'g' });
+    expect(parseSubstrateVerifyArgs(['--node', 'g', '--issue', 'soggy-crust', '--run', 'tS2', '--tier', 'deep'])).toMatchObject({ node: 'g', issue: 'soggy-crust', run: 'tS2', tier: 'deep' });
   });
   it('runsHomeFor: canonical template ↔ sibling runs home', () => {
     expect(runsHomeFor('/x/.piflow/wf/template')).toBe(path.join('/x/.piflow/wf', 'runs'));
@@ -123,6 +151,154 @@ describe('resolveNodeAndRun — a dotted --node pins a run exactly like --run; a
     const runsHome = path.join(dir, 'runs');
     expect(resolveNodeAndRun('gameplay', 'tS2', runsHome)).toEqual({ node: 'gameplay', run: 'tS2' });
     expect(resolveNodeAndRun('gameplay', undefined, runsHome)).toEqual({ node: 'gameplay', run: undefined });
+  });
+});
+
+// ── resolveSubstrateSelector — the ONE selector shared by fix/verify/adopt (WS2.3) ────────────────────────────
+describe('resolveSubstrateSelector — uniform (node, run, scope) resolution with dotted-ref handling', () => {
+  it('a plain node passes through; the injected scope is returned verbatim', () => {
+    const sel = resolveSubstrateSelector({ node: 'gameplay', run: 'tS2' }, {
+      resolveScope: () => ({ templateDir: '/tpl', runsHome: '/runs' }),
+    });
+    expect(sel).toEqual({ templateDir: '/tpl', runsHome: '/runs', node: 'gameplay', run: 'tS2' });
+  });
+
+  it('a DOTTED node pins the run (≡ --run), and a DISAGREEING explicit --run throws', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await fs.mkdir(path.join(runsHome, 'tS2'), { recursive: true });
+    await fs.mkdir(path.join(runsHome, 'other'), { recursive: true });
+    const scope = { resolveScope: () => ({ templateDir: '/tpl', runsHome }) };
+    expect(resolveSubstrateSelector({ node: 'tS2.gameplay' }, scope)).toMatchObject({ node: 'gameplay', run: 'tS2' });
+    expect(() => resolveSubstrateSelector({ node: 'tS2.gameplay', run: 'other' }, scope)).toThrowError(/disagree/);
+  });
+});
+
+// ── VERIFY (WS2.2) — gate an existing candidate record; NO fixer, NO re-prove ─────────────────────────────────
+describe('runSubstrateVerifyCli — resolves the candidate record(s) and runs verifyStage', () => {
+  const scope = (templateDir: string, runsHome: string) => ({ templateDir, runsHome });
+
+  it('--node --issue: scans the record, calls verifyStage for that issue, prints the ACCEPT verdict', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { candidateSha: 'cand-1' });
+    const targets: unknown[] = [];
+    const lines: string[] = [];
+    await runSubstrateVerifyCli(['--node', 'gameplay', '--issue', 'soggy-crust'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      verifyStage: async (target): Promise<VerifyStageResult> => {
+        targets.push(target);
+        return { decision: 'staged', gateVerdict: { decision: 'accept', rationale: 'the defect is absent now' }, record: {} as SubstrateManifestRecord, verdictPath: '/v/verdict.json' };
+      },
+      print: (s) => lines.push(s),
+    });
+    expect(targets).toHaveLength(1);
+    expect(targets[0]).toMatchObject({ node: 'gameplay', issue: 'soggy-crust' });
+    const out = lines.join('\n');
+    expect(out).toMatch(/soggy-crust/);
+    expect(out).toMatch(/staged|accept/i);
+  });
+
+  it('on a REJECT prints the drop-back category + steer', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { candidateSha: 'cand-1' });
+    const lines: string[] = [];
+    await runSubstrateVerifyCli(['--node', 'gameplay', '--issue', 'soggy-crust'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      verifyStage: async (): Promise<VerifyStageResult> => ({
+        decision: 'discarded',
+        gateVerdict: { decision: 'reject', rationale: 'band-aid', category: 'band-aid', steer: 'the root is upstream in the prompt' },
+        dropback: { category: 'band-aid', steer: 'the root is upstream in the prompt' },
+        record: {} as SubstrateManifestRecord,
+      }),
+      print: (s) => lines.push(s),
+    });
+    const out = lines.join('\n');
+    expect(out).toMatch(/band-aid/);
+    expect(out).toMatch(/the root is upstream in the prompt/);
+  });
+
+  it('omit --issue: verifies EVERY record carrying a candidateSha, skipping one that has none', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { candidateSha: 'cand-a' });
+    await seedRecord(parent, 'gameplay', 'burnt-edge', { candidateSha: 'cand-b' });
+    await seedRecord(parent, 'gameplay', 'no-candidate', { candidateSha: undefined }); // pre-WS0 / no-edit — NOT verifiable
+    const verified: string[] = [];
+    await runSubstrateVerifyCli(['--node', 'gameplay'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      verifyStage: async (target): Promise<VerifyStageResult> => {
+        verified.push((target as { issue: string }).issue);
+        return { decision: 'staged', gateVerdict: { decision: 'accept', rationale: 'ok' }, record: {} as SubstrateManifestRecord };
+      },
+      print: () => {},
+    });
+    expect(verified.sort()).toEqual(['burnt-edge', 'soggy-crust']); // the no-candidateSha record is skipped
+  });
+
+  it('no verifiable record → prints nothing-to-verify and never calls verifyStage', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'no-candidate', { candidateSha: undefined });
+    let calls = 0;
+    const lines: string[] = [];
+    await runSubstrateVerifyCli(['--node', 'gameplay'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      verifyStage: async (): Promise<VerifyStageResult> => { calls++; return { decision: 'staged', gateVerdict: { decision: 'accept', rationale: 'x' }, record: {} as SubstrateManifestRecord }; },
+      print: (s) => lines.push(s),
+    });
+    expect(calls).toBe(0);
+    expect(lines.join('\n')).toMatch(/no .*candidate|nothing to verify/i);
+  });
+
+  it('missing --node exits 2', async () => {
+    const errs: string[] = [];
+    await runSubstrateVerifyCli([], { printErr: (s) => errs.push(s) });
+    expect(process.exitCode).toBe(2);
+    expect(errs.join('\n')).toMatch(/--node/);
+  });
+});
+
+// ── ADOPT by --node/--issue via scanRecords (WS2.4) ───────────────────────────────────────────────────────────
+describe('runSubstrateAdoptCli — adopt by --node/--issue resolves staged records via scanRecords', () => {
+  const scope = (templateDir: string, runsHome: string) => ({ templateDir, runsHome });
+
+  it('--node --issue: builds a manifest from the staged record and drives adoptManifest', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'cand-1' });
+    let seenRecords: SubstrateManifestRecord[] = [];
+    const lines: string[] = [];
+    await runSubstrateAdoptCli(['--node', 'gameplay', '--issue', 'soggy-crust'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      adoptManifest: async (m) => { seenRecords = m.records; return { adopted: [{ issue: 'soggy-crust', node: 'gameplay', commit: 'abcdef1', files: ['x'] }], skipped: [] }; },
+      print: (s) => lines.push(s),
+    });
+    expect(seenRecords).toHaveLength(1);
+    expect(seenRecords[0]).toMatchObject({ issue: 'soggy-crust', decision: 'staged', candidateSha: 'cand-1' });
+    expect(lines.join('\n')).toMatch(/1 issue\(s\) landed/);
+  });
+
+  it('--node with NO --issue adopts ALL staged records (a discarded record is not handed to adopt)', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'a' });
+    await seedRecord(parent, 'gameplay', 'burnt-edge', { decision: 'staged', candidateSha: 'b' });
+    await seedRecord(parent, 'gameplay', 'flat-note', { decision: 'discarded', candidateSha: 'c' });
+    let seen: SubstrateManifestRecord[] = [];
+    await runSubstrateAdoptCli(['--node', 'gameplay'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      adoptManifest: async (m) => { seen = m.records; return { adopted: [], skipped: [] }; },
+      print: () => {},
+    });
+    expect(seen.map((r) => r.issue).sort()).toEqual(['burnt-edge', 'soggy-crust']); // discarded flat-note excluded
   });
 });
 
@@ -392,6 +568,63 @@ describe('runSubstrateFixCli — selects issues severity-desc, caps, fixes seque
       print: (s) => lines.push(s),
     });
     expect(lines.some((l) => l.includes('observe:'))).toBe(false);
+  });
+
+  it('the outer loop RETRIES a soft-reject and the system-wide breaker HALTS after N consecutive exhausted issues', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    const out: string[] = [];
+    const errs: string[] = [];
+    let calls = 0;
+    await runSubstrateFixCli(['--node', 'gameplay', '--status', 'open', '--max-attempts', '2', '--breaker', '2'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      listIssues: async () => [
+        issueRec('a', 'high', 'open', '260706-01'),
+        issueRec('b', 'high', 'open', '260706-02'),
+        issueRec('c', 'high', 'open', '260706-03'),
+        issueRec('d', 'high', 'open', '260706-04'),
+      ],
+      // every attempt is a soft-gate REJECT carrying a drop-back ⇒ each issue exhausts its 2-attempt budget.
+      fixIssue: async (_p, opts): Promise<FixIssueResult> => {
+        calls++;
+        return {
+          issue: 'x', node: 'gameplay', candidateRef: `/c/${opts.attemptTag}`, editsApplied: 1, proved: true, childId: 'c',
+          gateVerdict: { decision: 'reject', rationale: 'band-aid', category: 'band-aid' },
+          dropback: { category: 'band-aid', steer: 's' }, decision: 'discarded', deltaSummary: {},
+        } as FixIssueResult;
+      },
+      print: (s) => out.push(s),
+      printErr: (s) => errs.push(s),
+    });
+    // 2 issues × 2 attempts = 4 fix calls, THEN the breaker halts before issues c/d (never reached).
+    expect(calls).toBe(4);
+    expect(errs.join('\n')).toMatch(/BREAKER tripped/i);
+    expect(out.some((l) => l.includes('EXHAUSTED') && l.includes('escalating'))).toBe(true); // the closed menu printed
+    const tally = out.find((l) => l.startsWith('optimize fix: node='))!;
+    expect(tally).toMatch(/2 issue\(s\) processed/);
+    expect(tally).toMatch(/2 escalated/);
+    expect(tally).toMatch(/HALTED by --breaker/);
+  });
+
+  it('forwards --verify <tier> into each per-issue fixIssue opts (WS3 threading)', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    const seen: (string | undefined)[] = [];
+    await runSubstrateFixCli(['--node', 'gameplay', '--issue', 'a', '--verify', 'none'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      listIssues: async () => [issueRec('a', 'high', 'open', '260706-01')],
+      fixIssue: async (_p, opts): Promise<FixIssueResult> => {
+        seen.push(opts.verify);
+        return {
+          issue: 'a', node: 'gameplay', candidateRef: '/c', editsApplied: 1, proved: false, childId: null,
+          decision: 'staged', deltaSummary: {}, candidateSha: 'sha',
+        } as FixIssueResult;
+      },
+      print: () => {},
+    });
+    expect(seen).toEqual(['none']); // the tier reached the per-issue fix opts
   });
 });
 

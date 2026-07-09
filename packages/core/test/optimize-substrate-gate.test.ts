@@ -66,15 +66,26 @@ describe('buildGatePrompt', () => {
     expect(prompt).toMatch(/never adopt|SEPARATION LAW/i);
   });
 
-  it('HALTS when the node declares no optimize.judge (the gate has no bar)', async () => {
+  it('resolves the bar via optimize.criteria (the WS3 rename), not only the legacy judge alias', async () => {
     const templateDir = await scratch();
-    await writeNodeJson(templateDir, 'w0-classify', {}); // no judge
+    await writeNodeJson(templateDir, 'w0-classify', { criteria: 'criteria.md' });
+    await fs.writeFile(join(templateDir, 'criteria.md'), 'CRITERION-VIA-CRITERIA-KEY');
+    const prompt = await buildGatePrompt('w0-classify', {
+      runDir: '/r', workspace: templateDir, templateDir,
+      issueFileText: 'x', fixerDiff: '', fixerAccount: '', verdictPath: '/r/v.json',
+    });
+    expect(prompt).toContain('CRITERION-VIA-CRITERIA-KEY');
+  });
+
+  it('HALTS when the node declares neither optimize.criteria nor the judge alias (the gate has no bar)', async () => {
+    const templateDir = await scratch();
+    await writeNodeJson(templateDir, 'w0-classify', {}); // no bar
     await expect(
       buildGatePrompt('w0-classify', {
         runDir: '/r', workspace: templateDir, templateDir,
         issueFileText: 'x', fixerDiff: '', fixerAccount: '', verdictPath: '/r/v.json',
       }),
-    ).rejects.toThrow(/no "optimize.judge"/);
+    ).rejects.toThrow(/no "optimize\.criteria"/);
   });
 
   it('HALTS when the declared optimize.judge file is missing', async () => {

@@ -37,6 +37,7 @@ import {
   routeOptimize,
   runSubstrateTriageCli,
   runSubstrateFixCli,
+  runSubstrateVerifyCli,
   runSubstrateFullLoopCli,
   runSubstrateAdoptCli,
 } from './optimize-substrate.js';
@@ -107,12 +108,19 @@ USAGE
                                             --node also takes a DOTTED <run>.<id> ref, ≡ --node <id> --run <run>.
   piflowctl optimize fix    --node <id> [--issue <name> | --status open,regressed] [--watch] [--cap N] [--no-prove]
                                             fix the node's issues (severity-desc): candidate copy → fixer → prove
-                                            → strict-improvement gate → STAGE a manifest. --watch streams progress.
-                                            --dry-run prints the composed fixer spawn; mutates/spawns NOTHING.
-                                            --node also takes a DOTTED <run>.<id> ref, ≡ --node <id> --run <run>.
+                                            → gate → STAGE a manifest. A soft-gate REJECT drops back into a
+                                            bounded, diversifying retry (fresh fixer, --max-attempts N, default 3);
+                                            past the bound the best candidate is KEPT + escalated, never landed.
+                                            --breaker N halts the run after N consecutive issues exhaust (default 3;
+                                            0 = off). --watch streams progress. --dry-run prints the composed fixer
+                                            spawn; mutates/spawns NOTHING. --node also takes a DOTTED <run>.<id> ref.
+  piflowctl optimize verify --node <id> [--issue <name>] [--run <id>]  re-gate an EXISTING candidate record
+                                            (its candidateSha + proved child) — the decoupled gate stage: NO
+                                            fixer, NO re-prove. Prints the verdict; on reject, the drop-back.
   piflowctl optimize        --node <id> [--run <id> | --topk K]  the FULL loop = triage THEN fix (the default).
-  piflowctl optimize adopt  --manifest <path> [--template <d>] [--backup-dir <d>]  LAND a staged substrate
-                                            manifest onto the live product (adopt + commit + resolve the issue).
+  piflowctl optimize adopt  --node <id> [--issue <name>] [--run <id>]  LAND the staged record(s) onto the live
+                                            product (cherry-pick candidateSha + resolve the issue). Omit --issue
+                                            to land every staged record. (--manifest <path> is a hidden alias.)
   piflowctl logs    [dir|run] [options]     stream / replay / diagnose per-node event archives
   piflowctl model   [list | set <tier> <modelId> [--claude] | activate | deactivate]  the model-tier config
   piflowctl claude-code [connect [--token <t>] | status]  OPTIONAL credential for the claude-code executor
@@ -411,6 +419,7 @@ async function main(): Promise<void> {
       switch (routeOptimize(rest)) {
         case 'substrate-triage': await runSubstrateTriageCli(rest.slice(1)); break;
         case 'substrate-fix': await runSubstrateFixCli(rest.slice(1)); break;
+        case 'substrate-verify': await runSubstrateVerifyCli(rest.slice(1)); break;
         case 'substrate-adopt': await runSubstrateAdoptCli(rest.slice(1)); break;
         case 'substrate-full': await runSubstrateFullLoopCli(rest); break;
         case 'classic-rounds': await runOptimizeLoopCli(rest); break;

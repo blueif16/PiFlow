@@ -561,11 +561,14 @@ export type {
 export {
   listIssues, parseIssueFile, writeIssueFile, transitionIssue, reopen, stampAttempt, computeIssueId, assertTransition, ALLOWED_TRANSITIONS,
   runSubstrateMeasure, runSubstrateJudge,
-  fixIssue, adoptSubstrateManifest, readSubstrateManifest, renderSubstrateEvent, UNPROVEN_BY_RUN,
+  fixIssue, verifyStage, adoptSubstrateManifest, readSubstrateManifest, scanRecords, issueLifecycleDir,
+  renderSubstrateEvent, UNPROVEN_BY_RUN,
+  fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
 } from './optimize/index.js';
 export type {
-  Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
+  Issue, Severity, Status, Reason, VerifyTier, Attempt, IssueRecord, ListIssuesOpts,
   RunSubstrateMeasureOpts, MeasureReport, SubstrateJudgeOpts, SubstrateJudgeResult,
-  FixIssueOpts, FixIssueResult, SubstrateManifest, SubstrateManifestRecord,
+  FixIssueOpts, FixIssueResult, VerifyStageOpts, VerifyStageResult, SubstrateManifest, SubstrateManifestRecord,
   AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,
+  FixWithRetriesOpts, FixWithRetriesResult, RetryAttemptRecord, RetryEscalationPacket, RetryStopReason, RetryContext,
 } from './optimize/index.js';

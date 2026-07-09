@@ -79,7 +79,7 @@ export {
   assertTransition, transitionIssue, listIssues, ALLOWED_TRANSITIONS,
 } from './substrate/issues.js';
 export type {
-  Issue, Severity, Status, Reason, Attempt, IssueRecord, ListIssuesOpts,
+  Issue, Severity, Status, Reason, VerifyTier, Attempt, IssueRecord, ListIssuesOpts,
 } from './substrate/issues.js';
 
 // The SUBSTRATE hard MEASUREMENT stage (docs/specs/optimize-substrate-plan.md §M3) — fires a node's
@@ -96,23 +96,32 @@ export type {
   SubstrateThresholds, TraceMetricsReport, ThinkingSpan, ToolLoopFlag, TokenWasteSignal, CacheMissFlag,
 } from './substrate/trace-metrics.js';
 
-// The SUBSTRATE FIX phase (docs/specs/optimize-substrate-plan.md §M6) — per ONE issue: activate → candidate
-// closure (the {{WORKSPACE}}-read closure MINUS the oracle exclusions) → fixer agent → prove-rerun → the
-// graded-delta gate (REUSING evaluateGate) → stage a substrate manifest; ADOPT is the SEPARATE human step
-// (adoptSubstrateManifest → adoptFile + commitAdoption → stampAttempt → status resolved). Its OWN dedicated
-// SubstrateEvent stream + renderSubstrateEvent projection (a sibling of optimize/events.ts, never shared).
+// The SUBSTRATE FIX phase (docs/design/optimize-issue-lifecycle-redesign.md WS0) — per ONE issue: activate →
+// candidate WORKTREE (a git worktree at HEAD, jailed to the read closure MINUS the oracle) → fixer agent →
+// commit (candidateSha) → prove-rerun → the graded-delta gate (REUSING evaluateGate) → stage a substrate
+// manifest; ADOPT is the SEPARATE human step (adoptSubstrateManifest → git cherry-pick candidateSha →
+// stampAttempt → status resolved). Its OWN dedicated SubstrateEvent stream + renderSubstrateEvent projection.
 export {
-  fixIssue, adoptSubstrateManifest, commitAdoption, prepareCandidateClosure, foldGradedDelta,
-  hashCandidateTree, countChangedFiles, collectWorkspaceRefs, buildFixerPrompt, readSubstrateManifest,
-  UNPROVEN_BY_RUN,
+  fixIssue, verifyStage, adoptSubstrateManifest, prepareCandidateWorktree, removeCandidateWorktree, candidateWorktreeRef,
+  commitCandidate, oracleTouchedByDiff, readClosureRefs, foldGradedDelta, collectWorkspaceRefs, buildFixerPrompt,
+  readSubstrateManifest, scanRecords, issueLifecycleDir, UNPROVEN_BY_RUN,
 } from './substrate/fix.js';
 export type {
-  FixIssueOpts, FixIssueResult, CandidateClosure, FoldGradedOpts, FoldGradedResult,
-  CommitAdoptionResult, CommitIssueRef, SubstrateManifest, SubstrateManifestRecord,
-  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult,
+  FixIssueOpts, FixIssueResult, VerifyStageOpts, VerifyStageResult, CandidateWorktree, CommitCandidateResult,
+  CommitIssueRef, ClosureRefs, FoldGradedOpts, FoldGradedResult, SubstrateManifest, SubstrateManifestRecord,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, RetryContext,
 } from './substrate/fix.js';
 export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
 export type { SubstrateEvent, SubstrateEventSink } from './substrate/events.js';
+
+// The OUTER retry loop (docs/design/optimize-verification-loop.md §8) — the bounded, diversifying loop that
+// CONSUMES the gate's soft-gate drop-back: fresh fixer per attempt (own candidate dir + prior-drop-back
+// context, never the rubric), a triple cap (attempts · wall · token), keep-best + a closed escalation menu on
+// exhaustion, plus the system-wide "N consecutive exhausted ⇒ architecture problem" breaker.
+export { fixIssueWithRetries, makeConsecutiveExhaustedBreaker } from './substrate/retry-loop.js';
+export type {
+  FixWithRetriesOpts, FixWithRetriesResult, RetryAttemptRecord, RetryEscalationPacket, RetryStopReason,
+} from './substrate/retry-loop.js';
 
 // The SUBSTRATE SOFT-JUDGE stage (docs/specs/optimize-substrate-plan.md §M4) — spawns ONE judge agent turn
 // over a run's measure report + criteria/gold/memory + the existing ledger, then mechanically post-processes

@@ -55,7 +55,8 @@ export interface BuildJudgePromptOpts {
 /** `<templateDir>/nodes/<node>/node.json`'s raw shape — only the `optimize` block matters here (M0). The
  *  loader deliberately never wires this onto the compiled NodeSpec; consumers read it straight off disk. */
 interface RawNodeJson {
-  optimize?: { measure?: unknown; judge?: string };
+  // `criteria` is the current spelling of the shared bar; `judge` is the back-compat READ alias (either works).
+  optimize?: { measure?: unknown; criteria?: string; judge?: string };
 }
 
 async function readNodeJson(templateDir: string, nodeId: string): Promise<RawNodeJson> {
@@ -120,17 +121,18 @@ const OUTPUT_SPEC = [
 export async function buildJudgePrompt(nodeId: string, opts: BuildJudgePromptOpts): Promise<string> {
   const { runDir, workspace, templateDir } = opts;
   const nodeJson = await readNodeJson(templateDir, nodeId);
-  const judgeRaw = nodeJson.optimize?.judge;
+  // The shared bar: `optimize.criteria`, or the back-compat `optimize.judge` alias (either works; criteria wins).
+  const judgeRaw = nodeJson.optimize?.criteria ?? nodeJson.optimize?.judge;
   if (!judgeRaw) {
     throw new Error(
-      `buildJudgePrompt: node "${nodeId}" has no "optimize.judge" configured in its node.json — nothing to judge with.`,
+      `buildJudgePrompt: node "${nodeId}" has no "optimize.criteria" (or the legacy "optimize.judge") configured in its node.json — nothing to judge with.`,
     );
   }
   const judgeResolved = path.resolve(templateDir, resolveTokens(judgeRaw, { run: runDir, workspace }));
   const judgeContent = await readFileMaybe(judgeResolved);
   if (judgeContent === null) {
     throw new Error(
-      `buildJudgePrompt: node "${nodeId}"'s declared optimize.judge file was not found: ${judgeResolved} (declared as "${judgeRaw}" in nodes/${nodeId}/node.json)`,
+      `buildJudgePrompt: node "${nodeId}"'s declared optimize.criteria file was not found: ${judgeResolved} (declared as "${judgeRaw}" in nodes/${nodeId}/node.json)`,
     );
   }
 

@@ -124,6 +124,44 @@ describe('parseIssueFile / writeIssueFile — byte-stable round-trip', () => {
   });
 });
 
+// ── verify tier — the optional per-issue frontmatter field (WS3) ──────────────────────────────────────
+describe('verify tier — the OPTIONAL per-issue frontmatter field (WS3)', () => {
+  it('round-trips each tier; unset ⇒ NO verify line at all (a pre-WS3 file stays byte-stable)', async () => {
+    const dir = await scratch();
+    for (const tier of ['none', 'rerun', 'full'] as const) {
+      const file = join(dir, `${tier}.md`);
+      const issue = makeIssue({ verify: tier });
+      await writeIssueFile(file, issue);
+      expect(await fs.readFile(file, 'utf8')).toContain(`verify: ${tier}`);
+      expect(await parseIssueFile(file)).toEqual(issue); // reads the tier back exactly
+    }
+    // an issue with NO verify tier renders no `verify:` line and reads back undefined.
+    const bare = join(dir, 'bare.md');
+    await writeIssueFile(bare, makeIssue());
+    expect(await fs.readFile(bare, 'utf8')).not.toContain('verify:');
+    expect((await parseIssueFile(bare)).verify).toBeUndefined();
+  });
+
+  it('accepts a hand-written frontmatter carrying `verify` (an OPTIONAL key — allowed, never required)', async () => {
+    const dir = await scratch();
+    const file = join(dir, 'v.md');
+    await fs.writeFile(file, [
+      '---',
+      `id: ${computeIssueId('gameplay', 'gameplay::x')}`,
+      'name: v', 'title: t', 'severity: high', 'status: open', 'reason: null',
+      'sig: gameplay::x', 'firstSeen: 260706-01', 'lastSeen: 260706-01',
+      'verify: rerun',
+      'attempts: []',
+      '---', 'body',
+    ].join('\n'));
+    expect((await parseIssueFile(file)).verify).toBe('rerun');
+  });
+
+  it('fails CLOSED on an invalid verify tier value', () => {
+    expect(() => validateIssue(makeIssue({ verify: 'sometimes' as never }))).toThrow(/verify/);
+  });
+});
+
 // ── identity: the hash recipe ────────────────────────────────────────────────────────────────────────
 describe('computeIssueId — pure hash of (nodeId, sig) ONLY', () => {
   it('is STABLE when title/prose/attempts change (same nodeId + sig)', () => {
