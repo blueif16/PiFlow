@@ -18,7 +18,9 @@ import type { PromptIO } from './init/types.js';
 import { createPromptIO } from './init/prompt.js';
 
 // The DEFAULT skill set — the skills that ship to a consumer repo BY DEFAULT: the authoring pair
-// (`piflow-init`/`start`) + `piflow-inspect` (the run-inspection instrument router) + the FOUR optimize-loop
+// (`piflow-init`/`start`) + `piflow-maintenance` (the canonical node-config/run-condition STANDARDS reference —
+// init's brother, read before editing an existing node.json/template) + `piflow-inspect` (the run-inspection
+// instrument router) + the FOUR optimize-loop
 // agents `piflow-triage` (names a defect → records the issue), `piflow-fixer` (solves one issue open→closed;
 // also the human-facing fix protocol; OWNS the portable method library under `piflow-fixer/library/` — Leg C,
 // its universal cards travel with the fixer so a fresh repo has proven methods from day one), `piflow-gate`
@@ -27,7 +29,7 @@ import { createPromptIO } from './init/prompt.js';
 // `piflow-enhance` (RETIRED — its improve loop is being split into `piflow-triage` + `piflow-fixer` + `piflow-gate`).
 // The prepack script copies exactly these into the packaged dir; the dev fallback applies the same allowlist so
 // dev ≡ packaged. A bare install with no manifest installs EXACTLY this set — nothing more.
-export const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord'] as const;
+export const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-maintenance', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord'] as const;
 
 /** Optional, OPT-IN skill add-ons: id → the skill dir(s) it installs + a one-line wizard description.
  *  MIRROR the skill-name list in scripts/bundle-skills.mjs (the same dual-copy discipline as DEFAULT_SKILLS). */

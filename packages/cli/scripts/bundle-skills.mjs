@@ -14,14 +14,15 @@ const repoRoot = path.join(pkgRoot, '..', '..'); // repo root
 const canonical = path.join(repoRoot, '.claude', 'skills');
 const dest = path.join(pkgRoot, 'skills');
 
-// The DEFAULT skill set travels to a consumer repo BY DEFAULT — the authoring pair (init/start) + piflow-inspect
-// (the instrument router) + the four optimize-loop agents piflow-triage (issue authoring), piflow-fixer (the
-// fixer playbook; OWNS the portable method library under piflow-fixer/library/ — Leg C, travels with the fixer),
-// piflow-gate (judges the candidate fix), and piflow-overlord (control plane). EXCLUDES piflow-release (SDK
-// publishing), piflow-web-design (marketing-site only), and piflow-enhance (RETIRED). MIRROR DEFAULT_SKILLS in
-// src/skills.ts (this plain .mjs can't import the TS catalog). A skill's whole subtree (incl. piflow-fixer/library)
-// is copied recursively, so the library rides along automatically.
-const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord'];
+// The DEFAULT skill set travels to a consumer repo BY DEFAULT — the authoring pair (init/start) +
+// piflow-maintenance (the canonical node-config/run-condition standards reference — init's brother) +
+// piflow-inspect (the instrument router) + the four optimize-loop agents piflow-triage (issue authoring),
+// piflow-fixer (the fixer playbook; OWNS the portable method library under piflow-fixer/library/ — Leg C,
+// travels with the fixer), piflow-gate (judges the candidate fix), and piflow-overlord (control plane). EXCLUDES
+// piflow-release (SDK publishing), piflow-web-design (marketing-site only), and piflow-enhance (RETIRED). MIRROR
+// DEFAULT_SKILLS in src/skills.ts (this plain .mjs can't import the TS catalog). A skill's whole subtree (incl.
+// piflow-fixer/library) is copied recursively, so the library rides along automatically.
+const DEFAULT_SKILLS = ['piflow-init', 'piflow-start', 'piflow-maintenance', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord'];
 // Plus the opt-in ADD-ON skills so `skills install --with/--all` can reach them from the tarball. MIRROR
 // SKILL_ADDONS in src/skills.ts (this plain .mjs can't import the TS catalog) — understand → okf-slices,
 // memory → memory-slices.

@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { installSkills, runSkillsCli } from '../src/skills.js';
 import type { PromptIO } from '../src/init/types.js';
 
-// `piflowctl skills install` ships the DEFAULT skill set (the authoring trio piflow-init/start/enhance +
-// piflow-fixer + the piflow-inspect instrument router) into ANY target repo's `.claude/skills/` so a fresh
+// `piflowctl skills install` ships the DEFAULT skill set (the authoring pair piflow-init/start + the
+// piflow-maintenance standards reference + piflow-fixer + the piflow-inspect instrument router) into ANY target repo's `.claude/skills/` so a fresh
 // Claude Code agent there is equipped to compose, run, and debug workflows against the SDK and to run the
 // fixer playbook. The canonical skill SOURCE stays repo-root `.claude/skills/`; the packaged copy is a
 // generated build artifact (prepack). The load-bearing invariant these tests pin is ANTI-DRIFT: install is a
@@ -92,7 +92,7 @@ describe('installSkills — pure copy of each skill subdir into <target>/.claude
     // transform/duplicate. Compare raw bytes (Buffer.equals), the strongest no-drift guard.
     installSkills(REPO_SKILLS, TARGET, { force: false });
 
-    for (const name of ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord']) {
+    for (const name of ['piflow-init', 'piflow-start', 'piflow-maintenance', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord']) {
       const canonical = await fs.readFile(path.join(REPO_SKILLS, name, 'SKILL.md'));
       const installed = await fs.readFile(
         path.join(TARGET, '.claude', 'skills', name, 'SKILL.md'),
@@ -109,7 +109,7 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
     const skillsRoot = path.join(TARGET, '.claude', 'skills');
     // The default set landed (proving srcDir resolved to the repo-root via the dev fallback — the packaged
     // skills/ dir is absent in a source checkout).
-    for (const name of ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord']) {
+    for (const name of ['piflow-init', 'piflow-start', 'piflow-maintenance', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord']) {
       await expect(fs.access(path.join(skillsRoot, name, 'SKILL.md'))).resolves.toBeUndefined();
     }
     // The dev fallback must install ONLY the default set — not piflow-release (SDK publishing) or
@@ -121,7 +121,7 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
     }
     // And nothing OUTSIDE the default set at all (e.g. unrelated repo skills like premium-saas-stack).
     const landed = await fs.readdir(skillsRoot);
-    expect(landed.sort()).toEqual(['piflow-fixer', 'piflow-gate', 'piflow-init', 'piflow-inspect', 'piflow-overlord', 'piflow-start', 'piflow-triage']);
+    expect(landed.sort()).toEqual(['piflow-fixer', 'piflow-gate', 'piflow-init', 'piflow-inspect', 'piflow-maintenance', 'piflow-overlord', 'piflow-start', 'piflow-triage']);
 
     // PORTABILITY GUARANTEE: the fixer OWNS the method library (Leg C) under `piflow-fixer/library/` — it MUST
     // travel with the fixer on install (the whole skill subtree copies recursively), so a fixer on a fresh repo
@@ -141,7 +141,7 @@ describe('runSkillsCli — install [targetDir] [--force]', () => {
 describe('runSkillsCli — understand add-on (--with / --all / --wizard / manifest)', () => {
   const skillsRootOf = (t: string) => path.join(t, '.claude', 'skills');
   const manifestOf = (t: string) => path.join(t, '.piflow', 'skills.json');
-  const DEFAULT_SKILL_NAMES = ['piflow-init', 'piflow-start', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord'];
+  const DEFAULT_SKILL_NAMES = ['piflow-init', 'piflow-start', 'piflow-maintenance', 'piflow-inspect', 'piflow-triage', 'piflow-fixer', 'piflow-gate', 'piflow-overlord'];
 
   const assertDefaultsPresent = async (): Promise<void> => {
     for (const name of DEFAULT_SKILL_NAMES) {

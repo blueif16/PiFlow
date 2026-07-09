@@ -309,7 +309,7 @@ CLAUDE-CODE  (OPTIONAL — a node runs on a headless local Claude session via 'n
   Linux/cloud. The runner resolves env → ~/.piflow/claude-code.json → local login (runner/claude-executor.ts).
 
 SKILLS
-  install [targetDir] [--force]  copy piflow's workflow-authoring skills (piflow-init/start/enhance) into
+  install [targetDir] [--force]  copy piflow's workflow-authoring skills (piflow-init/start/maintenance, +inspect/optimize agents) into
                             <targetDir>/.claude/skills/ so a fresh Claude Code agent there can compose
                             workflows against the SDK. Default targetDir = cwd. An existing skill dir is
                             kept unless --force. (The skills are bundled in the npm tarball; a source checkout
