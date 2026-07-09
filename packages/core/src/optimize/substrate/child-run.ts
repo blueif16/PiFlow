@@ -28,6 +28,7 @@ import { resolveNodeWriteScope } from '../../runner/node-lifecycle.js';
 import type { ResolveCtx } from '../../workflow/resolver.js';
 import { loadState } from '../../workflow/state.js';
 import { stageBaselineRun } from '../../runner/migrate.js';
+import { snapshotGitDir, snapshotExists, snapshotMaterialize, stageTag } from '../../runner/snapshot.js';
 import { runJsonFile, piSessionsDir } from '../../runner/layout.js';
 import { childRunName } from '../../names/child.js';
 
@@ -156,25 +157,47 @@ export async function spawnChildRun(
   const wf = compile(spec);
   const node = wf.nodes[nodeId];
   if (!node) throw new Error(`spawnChildRun: unknown node "${nodeId}" in template ${opts.templateDir}`);
-  resolveChildWindow(wf, nodeId); // throws on ambiguity; the SAME (from,until)=(nodeId,nodeId) pair is passed below
+  // Resolve the node's OWN stage (throws on --from/--until substring ambiguity); its stage index IS the
+  // checkpoint `pre-stage-<k>` grain — the tree at the instant this node began.
+  const { fromIdx } = resolveChildWindow(wf, nodeId);
 
-  // (3) CONSTRUCT the replay via the SHARED baseline-seed primitive: fork the parent's `.pi` tree (minus its
-  // journal — journal.ts:219-221 then makes the target node unconditionally run; the skipped upstream prefix
-  // is force-`reused`, runner.ts) into the fresh child dir. The `run --baseline` CLI path uses the SAME seed.
-  // childDir is a freshly-minted (collision-checked) sibling, so the skip-filled default has nothing to skip.
-  await stageBaselineRun(parentDir, childDir);
+  const workspace = opts.workspace ?? process.cwd();
+
+  // (3) CONSTRUCT the replay. PREFERRED: if the parent ran with git CHECKPOINTS, MATERIALIZE the node's
+  // STAGE-ENTRY tree (`pre-stage-<k>`) straight into the fresh child dir — a whole-tree checkout, so the
+  // journal + state roll back to stage-k entry AND no downstream node's output (written in a LATER stage)
+  // can survive, with ZERO per-artifact reasoning. FALLBACK (a pre-feature parent with no store): the
+  // SHARED baseline-seed primitive forks the parent's `.pi` tree MINUS its journal (journal.ts:219-221 then
+  // makes the target node unconditionally run; the `--from`-pinned upstream prefix stays force-`reused`).
+  // childDir is a freshly-minted (collision-checked) sibling — nothing to overwrite either way.
+  const ckGitDir = snapshotGitDir(parentDir);
+  const usedSnapshot = snapshotExists(ckGitDir);
+  if (usedSnapshot) {
+    const res = snapshotMaterialize(ckGitDir, childDir, stageTag(fromIdx));
+    if (!res.ok) {
+      throw new Error(
+        `spawnChildRun: checkpoint restore of "${stageTag(fromIdx)}" for node "${nodeId}" failed: ${res.error}`,
+      );
+    }
+  } else {
+    await stageBaselineRun(parentDir, childDir);
+  }
 
   // (4) RESET the node's resolved WRITE SCOPE in the copy (contract.owns, token-resolved) — so the node's
   // seed re-stages it from scratch (seed.ts's destFilled===false path) instead of the run seeing the
-  // parent's stale output. `workspace` is resolved the SAME way both here and at the runFromTemplate call
-  // below, so the token resolution and the actual run agree.
-  const workspace = opts.workspace ?? process.cwd();
-  const resolveCtx: ResolveCtx = { run: childDir, workspace, state: await loadState(childDir) };
-  const owned = resolveNodeWriteScope(node, resolveCtx);
-  for (const entry of owned) {
-    const rel = ownsPath(entry);
-    if (!rel) continue; // a glob-only entry ("**") normalizes to '' — never nuke the run root itself
-    await fs.rm(path.resolve(childDir, rel), { recursive: true, force: true });
+  // parent's stale output. ONLY on the FALLBACK path: a checkpoint restore already yields the exact
+  // stage-ENTRY tree — the node's own output was ABSENT when it began — so no per-artifact reset is needed
+  // (and the whole-tree checkout also cleared any downstream pollution the owns-reset never touched).
+  // `workspace` is resolved the SAME way both here and at the runFromTemplate call below, so the token
+  // resolution and the actual run agree.
+  if (!usedSnapshot) {
+    const resolveCtx: ResolveCtx = { run: childDir, workspace, state: await loadState(childDir) };
+    const owned = resolveNodeWriteScope(node, resolveCtx);
+    for (const entry of owned) {
+      const rel = ownsPath(entry);
+      if (!rel) continue; // a glob-only entry ("**") normalizes to '' — never nuke the run root itself
+      await fs.rm(path.resolve(childDir, rel), { recursive: true, force: true });
+    }
   }
 
   // (5) clear the node's warm session so it starts a COLD conversation (never resumes the parent's turns).
