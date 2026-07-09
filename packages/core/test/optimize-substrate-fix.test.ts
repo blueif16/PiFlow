@@ -25,12 +25,13 @@ import {
   readSubstrateManifest,
   scanRecords,
   issueLifecycleDir,
+  verifyStage,
   UNPROVEN_BY_RUN,
   type SubstrateManifest,
   type SubstrateManifestRecord,
 } from '../src/optimize/substrate/fix.js';
 import { renderSubstrateEvent, safeEmit, type SubstrateEvent } from '../src/optimize/substrate/events.js';
-import { computeIssueId, writeIssueFile, parseIssueFile, type Issue } from '../src/optimize/substrate/issues.js';
+import { computeIssueId, writeIssueFile, parseIssueFile, transitionIssue, type Issue } from '../src/optimize/substrate/issues.js';
 import type { RunBaseAgentOpts, RunBaseAgentResult } from '../src/optimize/substrate/agent.js';
 import type { SpawnChildRunResult } from '../src/optimize/substrate/child-run.js';
 import type { MeasureReport } from '../src/optimize/substrate/measure.js';
@@ -829,6 +830,131 @@ describe('fixIssue — WS1 lifecycle artifacts (record.json · verdict.json · l
     expect(log.map((e) => e.type)).toContain('issue-activated');
     expect(log.map((e) => e.type)).toContain('staged');
     expect(log.every((e) => e.issue === 'soggy-crust')).toBe(true);
+  });
+});
+
+// ── WS2: verifyStage — the decoupled GATE stage (reads record.json → gate agent → verdict → record + status) ─
+describe('verifyStage — the standalone gate stage (WS2.1: NO fixer, NO re-prove)', () => {
+  /** Give the node an optimize.judge (the SOFT bar) so the gate agent path applies. */
+  async function makeSoft(templateDir: string): Promise<void> {
+    const nodeJsonPath = join(templateDir, 'nodes', 'gameplay', 'node.json');
+    const nj = JSON.parse(await fs.readFile(nodeJsonPath, 'utf8'));
+    nj.optimize.judge = '{{WORKSPACE}}/skills/judge.md';
+    await fs.writeFile(nodeJsonPath, JSON.stringify(nj, null, 2));
+  }
+
+  /** Walk the issue open → active → fix-landed → verifying (the state a staged candidate rests at). */
+  async function toVerifying(issuePath: string): Promise<void> {
+    await transitionIssue(issuePath, 'active');
+    await transitionIssue(issuePath, 'fix-landed');
+    await transitionIssue(issuePath, 'verifying');
+  }
+
+  /** Seed a record.json (with a candidateSha) under the issue's lifecycle dir. */
+  async function seedRecord(parentRunDir: string, workspace: string, over: Partial<SubstrateManifestRecord> = {}): Promise<string> {
+    const dir = issueLifecycleDir(parentRunDir, 'gameplay', 'soggy-crust');
+    await fs.mkdir(dir, { recursive: true });
+    const rec: SubstrateManifestRecord = {
+      issue: 'soggy-crust', issueId: makeIssue().id, node: 'gameplay', decision: 'discarded',
+      candidateRef: 'optimize/gameplay/soggy-crust/attempt-1', liveRoot: workspace, baseSha: 'base0',
+      candidateSha: 'deadbeefcafe', landPolicy: 'stage-for-human', reason: 'pre-gate', verifiedByRun: 'tS2.gameplay',
+      deltaSummary: {}, ...over,
+    };
+    await fs.writeFile(join(dir, 'record.json'), JSON.stringify(rec, null, 2));
+    return dir;
+  }
+
+  it('ACCEPT: reads record.json + runs the gate (gateOutDir = lifecycle dir), record → staged, issue stays verifying', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await makeSoft(templateDir);
+    await toVerifying(issuePath);
+    const lifecycleDir = await seedRecord(parentRunDir, workspace);
+    const wt = await scratch('piflow-wt-'); // an EXISTING candidateRef dir ⇒ no worktree recreation
+    const childDir = await scratch('piflow-child-');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let gateSeen: any;
+    const res = await verifyStage({ runDir: parentRunDir, node: 'gameplay', issue: 'soggy-crust' }, {
+      templateDir, workspace, childDir, candidateRef: wt, issuePath, fixerAccount: 'ACCT-MARKER',
+      gate: async (_rd, _n, o) => { gateSeen = o; return { verdict: { decision: 'accept', rationale: 'defect absent, nothing regressed' }, verdictPath: join(o.gateOutDir!, 'verdict.json') }; },
+    });
+    expect(res.decision).toBe('staged');
+    expect(res.gateVerdict.decision).toBe('accept');
+    expect(res.dropback).toBeUndefined();
+    // the gate ran against the candidate worktree, wrote its verdict under the lifecycle dir, saw the fixer account.
+    expect(gateSeen.gateOutDir).toBe(lifecycleDir);
+    expect(gateSeen.candidateRef).toBe(wt);
+    expect(gateSeen.fixerAccount).toBe('ACCT-MARKER');
+    // record.json flips to staged; the issue stays verifying (awaiting the human adopt).
+    const onDisk = JSON.parse(await fs.readFile(join(lifecycleDir, 'record.json'), 'utf8')) as SubstrateManifestRecord;
+    expect(onDisk.decision).toBe('staged');
+    expect(onDisk.candidateSha).toBe('deadbeefcafe'); // durable candidate fields preserved
+    expect((await parseIssueFile(issuePath)).status).toBe('verifying');
+  });
+
+  it('REJECT: record → discarded + dropback persisted, issue walks back to OPEN (re-attemptable), NO re-prove', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await makeSoft(templateDir);
+    await toVerifying(issuePath);
+    const lifecycleDir = await seedRecord(parentRunDir, workspace);
+    const wt = await scratch('piflow-wt-');
+    let spawned = false;
+    const res = await verifyStage({ runDir: parentRunDir, node: 'gameplay', issue: 'soggy-crust' }, {
+      templateDir, workspace, childDir: await scratch('piflow-child-'), candidateRef: wt, issuePath,
+      spawnChild: async () => { spawned = true; return childResult('x', await scratch()); }, // MUST be untouched (no re-prove)
+      gate: async () => ({ verdict: { decision: 'reject', rationale: 'detector loosened, not the cause', category: 'band-aid', steer: 'root is upstream in the prompt' } }),
+    } as Parameters<typeof verifyStage>[1]);
+    expect(res.decision).toBe('discarded');
+    expect(res.dropback).toEqual({ category: 'band-aid', steer: 'root is upstream in the prompt' });
+    expect(spawned).toBe(false); // verify NEVER re-proves
+    const onDisk = JSON.parse(await fs.readFile(join(lifecycleDir, 'record.json'), 'utf8')) as SubstrateManifestRecord;
+    expect(onDisk.decision).toBe('discarded');
+    expect(onDisk.dropback).toEqual({ category: 'band-aid', steer: 'root is upstream in the prompt' });
+    // a proven-REJECT walks the verifying issue back to open (nothing landed).
+    const after = await parseIssueFile(issuePath);
+    expect(after.status).toBe('open');
+    expect(after.reason).toBeNull();
+  });
+
+  it('a record with NO candidateSha cannot be gated — throws (the pre-WS0 copy-based candidate case)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await makeSoft(templateDir);
+    await toVerifying(issuePath);
+    await seedRecord(parentRunDir, workspace, { candidateSha: undefined });
+    await expect(
+      verifyStage({ runDir: parentRunDir, node: 'gameplay', issue: 'soggy-crust' }, {
+        templateDir, workspace, childDir: await scratch('piflow-child-'), candidateRef: join(await scratch(), 'gone'), issuePath,
+        gate: async () => ({ verdict: { decision: 'accept', rationale: 'x' } }),
+      }),
+    ).rejects.toThrow(/candidateSha|no candidate/i);
+  });
+
+  it('re-creates a worktree at candidateSha when the candidate checkout is gone, then tears it down', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await makeSoft(templateDir);
+    await toVerifying(issuePath);
+    // make a REAL candidate commit on a throwaway branch (as fixIssue would), then tear the worktree down.
+    const issue = makeIssue();
+    const cwt = await prepareCandidateWorktree(workspace, { node: 'gameplay', issue: 'soggy-crust', attempt: 1 });
+    await fs.appendFile(join(cwt.worktreeDir, 'templates', 'genres.json'), '\n// candidate edit\n');
+    const committed = commitCandidate(cwt.worktreeDir, cwt.baseSha, { node: 'gameplay', name: 'soggy-crust', id: issue.id, title: issue.title });
+    removeCandidateWorktree(workspace, cwt.worktreeDir); // torn down — only the SHA persists
+    await seedRecord(parentRunDir, workspace, { candidateSha: committed.candidateSha, candidateRef: cwt.branch });
+
+    let recreatedDir = '';
+    const res = await verifyStage({ runDir: parentRunDir, node: 'gameplay', issue: 'soggy-crust' }, {
+      templateDir, workspace, childDir: await scratch('piflow-child-'),
+      candidateRef: cwt.worktreeDir, // the torn-down path (does not exist) ⇒ verifyStage must recreate at candidateSha
+      issuePath,
+      gate: async (_rd, _n, o) => {
+        recreatedDir = o.candidateRef!;
+        // the recreated worktree exists at gate time and holds the candidate's committed edit.
+        expect((await fs.readFile(join(o.candidateRef!, 'templates', 'genres.json'), 'utf8'))).toContain('candidate edit');
+        return { verdict: { decision: 'accept', rationale: 'ok' } };
+      },
+    });
+    expect(res.decision).toBe('staged');
+    // the recreated checkout is torn down after gating (verifyStage owns what it created).
+    await expect(fs.access(recreatedDir)).rejects.toThrow();
   });
 });
 

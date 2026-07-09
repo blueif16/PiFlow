@@ -759,6 +759,9 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   let numericVerdict: GateVerdict | undefined;
   let gateVerdict: GateVerdictFile | undefined;
   let dropback: { category: GateRejectCategory; steer?: string } | undefined;
+  // Set ONLY on the SOFT path: verifyStage owns the gate agent — it writes record.json + walks the issue back
+  // on a reject, so fixIssue must NOT re-write the record or re-run the walk-back for that path.
+  let record: SubstrateManifestRecord | undefined;
 
   const numericMeasured = base !== null && candidate !== null; // shared graded keys existed
   const softGate = !oracleTouched && editsApplied >= 1 && childDir !== null && !numericMeasured && (await nodeHasJudge(templateDir, node));
@@ -769,26 +772,27 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     reason = 'candidate diff touched an oracle path (optimize.measure/judge) — fixer-side rejection, never proved/gated';
     emit({ type: 'gated', issue: issue.name, accept: false, reason });
   } else if (softGate && childDir !== null) {
-    const runGate = opts.gate ?? runSubstrateGate;
-    const gateRes = await runGate(childDir, node, {
-      workspace,
-      templateDir,
-      issueFileText: await fs.readFile(issuePathAbs, 'utf8'),
-      fixerDiff: '', // v1: the gate inspects the candidate worktree (candidateRef, in its read scope) directly
-      fixerAccount: fixerResult.text ?? '',
-      candidateRef: worktreeDir,
-      gateOutDir: lifecycleDir, // WS1: the gate writes verdict.json under THIS issue's lifecycle dir
+    // The SOFT gate is the DECOUPLED `verifyStage` — the SAME callable `optimize verify` runs standalone (one
+    // code path, not two). It runs the gate agent, writes verdict.json + record.json under the lifecycle dir,
+    // and walks a rejected issue back to `open`; fixIssue only reads its outcome. The live candidate worktree
+    // still exists here (torn down below in step f), so verifyStage reuses it in place (createdWorktree=false).
+    const preRecord: SubstrateManifestRecord = {
+      issue: issue.name, issueId: issue.id, node, decision: 'discarded', candidateRef: branch, liveRoot: workspace,
+      baseSha, landPolicy: 'stage-for-human', reason: '', verifiedByRun: childId, deltaSummary,
+      ...(candidateSha ? { candidateSha } : {}),
+    };
+    const vs = await verifyStage(lifecycleDir, {
+      templateDir, workspace, childDir, candidateRef: worktreeDir, issuePath: issuePathAbs,
+      issueFileText: await fs.readFile(issuePathAbs, 'utf8'), fixerAccount: fixerResult.text ?? '',
+      baseRecord: preRecord, onEvent: emit, gate: opts.gate,
       ...inheritedAgentOpts(opts),
     });
-    gateVerdict = gateRes.verdict;
-    if (!gateVerdict) throw new Error(`fixIssue: the gate agent for node "${node}" returned no verdict`);
-    decision = gateVerdict.decision === 'accept' ? 'staged' : 'discarded';
+    decision = vs.decision;
     landPolicy = 'stage-for-human'; // a model judgment STAGES; the human adopts (never judge-gated auto-accept).
-    reason = gateVerdict.rationale;
-    if (gateVerdict.decision === 'reject' && gateVerdict.category) {
-      dropback = { category: gateVerdict.category, ...(gateVerdict.steer ? { steer: gateVerdict.steer } : {}) };
-    }
-    emit({ type: 'gated', issue: issue.name, accept: gateVerdict.decision === 'accept', reason });
+    reason = vs.gateVerdict.rationale;
+    gateVerdict = vs.gateVerdict;
+    dropback = vs.dropback;
+    record = vs.record;
   } else {
     // NUMERIC / degenerate path — REUSE evaluateGate's editsApplied<1 + null⇒stage-for-human rules (fold header).
     numericVerdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base, candidate, editsApplied });
@@ -807,31 +811,35 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
 
   // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
   // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
-  // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). A staged candidate stays
-  // at `verifying` awaiting adopt; the no-edit / oracle-touched / skip-proof paths never entered `verifying`.
-  if (childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
+  // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). The SOFT path's verifyStage
+  // already did this walk-back (guarded by `!record`); a staged candidate stays at `verifying` awaiting adopt;
+  // the no-edit / oracle-touched / skip-proof paths never entered `verifying`.
+  if (!record && childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
 
   // (f) CLEANUP — tear down the candidate worktree checkout AFTER prove/gate (both read it); the branch +
   // candidateSha persist for adopt/discard.
   removeCandidateWorktree(repoRoot, worktreeDir);
 
-  // (g) stage the substrate manifest (adopt is the separate human step).
-  const record: SubstrateManifestRecord = {
-    issue: issue.name,
-    issueId: issue.id,
-    node,
-    decision,
-    candidateRef: branch,
-    liveRoot: workspace,
-    baseSha,
-    landPolicy,
-    reason,
-    verifiedByRun: childId,
-    deltaSummary,
-    ...(candidateSha ? { candidateSha } : {}),
-    ...(dropback ? { dropback } : {}),
-  };
-  const manifestPath = await writeIssueRecord(parentRunDir, record); // record.json UNDER the lifecycle dir
+  // (g) stage the record.json (adopt is the separate human step). The SOFT path's verifyStage already wrote it.
+  if (!record) {
+    record = {
+      issue: issue.name,
+      issueId: issue.id,
+      node,
+      decision,
+      candidateRef: branch,
+      liveRoot: workspace,
+      baseSha,
+      landPolicy,
+      reason,
+      verifiedByRun: childId,
+      deltaSummary,
+      ...(candidateSha ? { candidateSha } : {}),
+      ...(dropback ? { dropback } : {}),
+    };
+    await writeIssueRecord(parentRunDir, record); // record.json UNDER the lifecycle dir
+  }
+  const manifestPath = path.join(lifecycleDir, 'record.json');
   emit({ type: 'staged', issue: issue.name, decision, manifestPath });
   emit({ type: 'stopped', issue: issue.name, reason: decision === 'staged' ? 'staged for adopt' : `discarded (${reason})` });
 
@@ -857,6 +865,171 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     fixerRunDir: fixerResult.runDir,
     ...(fixerResult.text ? { fixerAccount: fixerResult.text } : {}),
   };
+}
+
+// ── verifyStage — the DECOUPLED gate stage (WS2.1) ───────────────────────────────────────────────────────────
+// The gate step of `fixIssue`, extracted so it is INDEPENDENTLY callable: given ONE issue's candidate record
+// (its `candidateSha` + the already-proved child run), it runs the gate agent, writes `verdict.json`, finalizes
+// `record.json` (decision + drop-back), and lands the issue on an honest status — NO fixer, NO re-prove.
+// `fixIssue` calls this for its soft-gate branch (one code path, not two); `optimize verify` calls it standalone.
+
+export interface VerifyStageOpts extends BaseAgentChildOpts {
+  /** the product template dir (`nodes/<id>/node.json` carries the `optimize.judge` bar). */
+  templateDir: string;
+  /** the prove-rerun CHILD run dir — holds the candidate artifact the gate inspects. */
+  childDir: string;
+  /** `{{WORKSPACE}}` — the live product root. Default: the record's `liveRoot`. */
+  workspace?: string;
+  /** the issue `.md` to update status on. Default `<templateDir>/nodes/<node>/issues/<issue>.md`. */
+  issuePath?: string;
+  /** the candidate worktree granted read to the gate. Recreated at `candidateSha` when this path is absent on
+   *  disk (a torn-down candidate) and torn down again afterwards; an EXISTING dir (fixIssue's live worktree)
+   *  is used in place and left for its owner to tear down. */
+  candidateRef?: string;
+  /** the fixer's account (a claim the gate cross-checks). '' when none. */
+  fixerAccount?: string;
+  /** the issue file text (the defect spec). Default: read from `issuePath`. */
+  issueFileText?: string;
+  /** live progress sink (fire-and-forget). */
+  onEvent?: SubstrateEventSink;
+  /** INTERNAL fixIssue fast-path: the base record to finalize IN PLACE of reading `record.json` (which fixIssue
+   *  has NOT written yet at gate time). Standalone `optimize verify` omits this → reads the lifecycle dir. */
+  baseRecord?: SubstrateManifestRecord;
+  /** test/offline seam for the SOFT gate agent (default the real `runSubstrateGate`; never live-spawn a test). */
+  gate?: (runDir: string, nodeId: string, opts: RunSubstrateGateOpts) => Promise<RunSubstrateGateResult>;
+}
+
+export interface VerifyStageResult {
+  decision: 'staged' | 'discarded';
+  gateVerdict: GateVerdictFile;
+  /** REJECT only: the drop-back packet (coarse category + steer) the outer loop hands a FRESH fixer. */
+  dropback?: { category: GateRejectCategory; steer?: string };
+  /** the finalized record (also written to `<lifecycleDir>/record.json`). */
+  record: SubstrateManifestRecord;
+  /** the gate's `verdict.json` path (absent only when the gate seam returned none). */
+  verdictPath?: string;
+}
+
+/** Does a path exist on disk? */
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Recreate a DETACHED worktree at `candidateSha` (a torn-down candidate) so the gate can read the edit in
+ *  place. Path is a sibling `.piflow-optimize-worktrees/<repo>/<node>/<issue>/verify`, idempotently reset. */
+async function recreateCandidateWorktree(repoRoot: string, node: string, issue: string, candidateSha: string): Promise<string> {
+  const root = path.resolve(repoRoot);
+  const wtPath = path.join(path.dirname(root), '.piflow-optimize-worktrees', path.basename(root), node, issue, 'verify');
+  try { git(root, 'worktree', 'remove', '--force', wtPath); } catch { /* none to remove */ }
+  await fs.rm(wtPath, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(wtPath), { recursive: true });
+  git(root, 'worktree', 'add', '--detach', wtPath, candidateSha);
+  return wtPath;
+}
+
+/**
+ * Verify ONE issue's candidate: read its record (or the injected `baseRecord`), run the gate agent against the
+ * already-proved child + the candidate worktree, write `verdict.json` + the finalized `record.json` under the
+ * lifecycle dir, and land the issue's status (a REJECT walks a `verifying` issue back to `open`). NEVER re-runs
+ * the fixer and NEVER re-proves. A record with no `candidateSha` (a pre-WS0 copy candidate) cannot be gated.
+ */
+export async function verifyStage(
+  target: string | { runDir: string; node: string; issue: string },
+  opts: VerifyStageOpts,
+): Promise<VerifyStageResult> {
+  const lifecycleDir = typeof target === 'string' ? target : issueLifecycleDir(target.runDir, target.node, target.issue);
+  const emit = (e: SubstrateEvent): void => safeEmit(opts.onEvent, e);
+
+  // (a) the candidate record: fixIssue passes it inline (record.json not written yet); standalone reads it.
+  let base = opts.baseRecord;
+  if (!base) {
+    const file = path.join(lifecycleDir, 'record.json');
+    let raw: string;
+    try {
+      raw = await fs.readFile(file, 'utf8');
+    } catch (e) {
+      throw new Error(`verifyStage: no record.json at ${file} — nothing to verify (run 'optimize fix' first): ${(e as Error).message}`);
+    }
+    base = JSON.parse(raw) as SubstrateManifestRecord;
+  }
+  const { node, issue } = base;
+  const workspace = opts.workspace ?? base.liveRoot;
+  const issuePath = opts.issuePath ?? path.join(opts.templateDir, 'nodes', node, 'issues', `${issue}.md`);
+
+  // A git-native candidate IS a candidateSha; a record without one (a pre-WS0 copy candidate) cannot be gated.
+  if (!base.candidateSha) {
+    throw new Error(
+      `verifyStage: record for ${node}/${issue} has no candidateSha — a copy-based / no-edit candidate cannot be git-gated (re-fix it under the candidate-as-commit model).`,
+    );
+  }
+
+  // (b) the candidate worktree the gate reads: an EXISTING checkout is used in place; a torn-down one is
+  // recreated at candidateSha (and torn down again in the finally).
+  let worktreeDir = opts.candidateRef;
+  let createdWorktree = false;
+  if (!worktreeDir || !(await pathExists(worktreeDir))) {
+    worktreeDir = await recreateCandidateWorktree(workspace, node, issue, base.candidateSha);
+    createdWorktree = true;
+  }
+
+  try {
+    // (c) the gate agent — the SAME `runSubstrateGate` fixIssue uses; verdict.json lands under the lifecycle dir.
+    const runGate = opts.gate ?? runSubstrateGate;
+    const gateRes = await runGate(opts.childDir, node, {
+      workspace,
+      templateDir: opts.templateDir,
+      issueFileText: opts.issueFileText ?? (await fs.readFile(issuePath, 'utf8')),
+      fixerDiff: '', // the gate inspects the candidate worktree (candidateRef, in its read scope) directly
+      fixerAccount: opts.fixerAccount ?? '',
+      candidateRef: worktreeDir,
+      gateOutDir: lifecycleDir,
+      ...inheritedAgentOpts(opts),
+    });
+    const gateVerdict = gateRes.verdict;
+    if (!gateVerdict) throw new Error(`verifyStage: the gate agent for node "${node}" returned no verdict`);
+
+    const decision: 'staged' | 'discarded' = gateVerdict.decision === 'accept' ? 'staged' : 'discarded';
+    const dropback =
+      gateVerdict.decision === 'reject' && gateVerdict.category
+        ? { category: gateVerdict.category, ...(gateVerdict.steer ? { steer: gateVerdict.steer } : {}) }
+        : undefined;
+    emit({ type: 'gated', issue, accept: decision === 'staged', reason: gateVerdict.rationale });
+
+    // (d) finalize record.json under the lifecycle dir (decision + landPolicy + reason + drop-back). Any stale
+    // drop-back from a prior reject is stripped on an accept.
+    const record: SubstrateManifestRecord = {
+      ...base,
+      decision,
+      landPolicy: 'stage-for-human',
+      reason: gateVerdict.rationale,
+      ...(dropback ? { dropback } : {}),
+    };
+    if (!dropback) delete record.dropback;
+    await fs.mkdir(lifecycleDir, { recursive: true });
+    await fs.writeFile(path.join(lifecycleDir, 'record.json'), JSON.stringify(record, null, 2));
+
+    // (e) issue status: a proven-REJECT walks a `verifying` issue back to `open` (nothing landed); an ACCEPT
+    // stays at `verifying` for the human adopt. Guarded so a standalone re-verify of a non-verifying issue no-ops.
+    if (decision === 'discarded') {
+      const cur = await parseIssueFile(issuePath);
+      if (cur.status === 'verifying') await transitionIssue(issuePath, 'open');
+    }
+
+    return {
+      decision,
+      gateVerdict,
+      ...(dropback ? { dropback } : {}),
+      record,
+      ...(gateRes.verdictPath ? { verdictPath: gateRes.verdictPath } : {}),
+    };
+  } finally {
+    if (createdWorktree) removeCandidateWorktree(workspace, worktreeDir);
+  }
 }
 
 // ── adoptSubstrateManifest — the SEPARATE human ADOPT step, git-native (cherry-pick; WS0) ────────────────────

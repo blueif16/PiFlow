@@ -22,8 +22,9 @@ import { existsSync, readdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import {
   runSubstrateMeasure, runSubstrateJudge, fixIssue, fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
-  adoptSubstrateManifest, listIssues, renderSubstrateEvent,
+  verifyStage, scanRecords, adoptSubstrateManifest, listIssues, renderSubstrateEvent,
   type SubstrateEvent, type FixIssueResult, type IssueRecord, type Status, type SubstrateManifest,
+  type SubstrateManifestRecord,
 } from '@piflow/core';
 import { resolveNodeRunDir } from './node.js';
 import { templateDirFor } from './optimize-fix.js';
@@ -33,7 +34,7 @@ import { scanRunsHome, nodeRanFresh, parseNodeRef, type ScanRunsHomeDeps, type N
 
 /** Which handler `piflowctl optimize <rest…>` routes to. `classic-*` = the shipped routing loop, byte-unchanged. */
 export type OptimizeRoute =
-  | 'substrate-triage' | 'substrate-fix' | 'substrate-adopt' | 'substrate-full'
+  | 'substrate-triage' | 'substrate-fix' | 'substrate-verify' | 'substrate-adopt' | 'substrate-full'
   | 'classic-rounds' | 'classic-adopt' | 'classic-fix' | 'classic';
 
 /** Value-taking flags across BOTH the substrate + classic optimize surfaces — so `firstPositional` can tell a
@@ -68,7 +69,9 @@ export function firstPositional(argv: string[]): string | undefined {
 export function routeOptimize(rest: string[]): OptimizeRoute {
   if (rest[0] === 'triage' && rest.includes('--node')) return 'substrate-triage';
   if (rest[0] === 'fix' && rest.includes('--node')) return 'substrate-fix';
-  if (rest[0] === 'adopt' && rest.includes('--manifest')) return 'substrate-adopt';
+  if (rest[0] === 'verify' && rest.includes('--node')) return 'substrate-verify';
+  // adopt is uniform now: `--manifest <path>` (hidden back-compat) OR `--node [--issue]` (the WS2 regrammar).
+  if (rest[0] === 'adopt' && (rest.includes('--manifest') || rest.includes('--node'))) return 'substrate-adopt';
   if (rest.includes('--rounds')) return 'classic-rounds';
   if (rest.includes('--adopt')) return 'classic-adopt';
   if (rest.includes('--fix')) return 'classic-fix';
@@ -245,8 +248,44 @@ export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
   return out;
 }
 
+/** `optimize verify --node <id> [--issue <name>] [--run <id>]` — the gate-only verb (WS2.2): re-gate an
+ *  existing candidate record (its `candidateSha` + the proved child) with NO fixer and NO re-prove. */
+export interface SubstrateVerifyArgs {
+  node: string;
+  run?: string;
+  issue?: string;
+  template?: string;
+  workspace?: string;
+  tier?: string;
+  model?: string;
+  watch: boolean;
+  watchJson: boolean;
+}
+
+export function parseSubstrateVerifyArgs(argv: string[]): SubstrateVerifyArgs {
+  const out: SubstrateVerifyArgs = { node: '', watch: false, watchJson: false };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--node') out.node = argv[++i] ?? '';
+    else if (k === '--run') out.run = argv[++i];
+    else if (k === '--issue') out.issue = argv[++i];
+    else if (k === '--template') out.template = argv[++i];
+    else if (k === '--workspace') out.workspace = argv[++i];
+    else if (k === '--tier') out.tier = argv[++i];
+    else if (k === '--model') out.model = argv[++i];
+    else if (k === '--watch') out.watch = true;
+    else if (k === '--watch-json') { out.watch = true; out.watchJson = true; }
+    // unknown flags ignored.
+  }
+  return out;
+}
+
 export interface SubstrateAdoptArgs {
+  /** hidden back-compat alias — a staged manifest.json path. The WS2 grammar is `--node [--issue]`. */
   manifest: string;
+  node?: string;
+  run?: string;
+  issue?: string;
   template?: string;
   backupDir?: string;
   watch: boolean;
@@ -258,6 +297,9 @@ export function parseSubstrateAdoptArgs(argv: string[]): SubstrateAdoptArgs {
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--manifest') out.manifest = argv[++i] ?? '';
+    else if (k === '--node') out.node = argv[++i];
+    else if (k === '--run') out.run = argv[++i];
+    else if (k === '--issue') out.issue = argv[++i];
     else if (k === '--template') out.template = argv[++i];
     else if (k === '--backup-dir') out.backupDir = argv[++i];
     else if (k === '--watch') out.watch = true;
@@ -293,6 +335,25 @@ export function resolveNodeAndRun(nodeArg: string, explicitRun: string | undefin
   return { node: ref.node, run: ref.run ?? explicitRun };
 }
 
+/**
+ * The ONE selector shared by `fix`/`verify`/`adopt` (WS2.3): resolve `(templateDir, runsHome, node, run)` from a
+ * possibly-dotted `--node` + an optional `--run`. Resolves the scope on the BARE node id, then reconciles a
+ * dotted ref with `--run` (`resolveNodeAndRun`). Throws (caller → exit 2) on an unresolvable scope or a
+ * dotted/`--run` contradiction. Each verb layers its OWN eligibility on top (fix: open|regressed issues;
+ * verify: records with a candidateSha; adopt: staged records).
+ */
+export function resolveSubstrateSelector(
+  a: { node: string; run?: string; template?: string },
+  deps: SubstrateCliDeps,
+): { templateDir: string; runsHome: string; node: string; run?: string } {
+  const { templateDir, runsHome } = (deps.resolveScope ?? resolveSubstrateScope)({ node: bareNodeId(a.node), template: a.template, run: a.run, cwd: deps.cwd });
+  if (a.node.includes('.')) {
+    const ref = resolveNodeAndRun(a.node, a.run, runsHome);
+    return { templateDir, runsHome, node: ref.node, run: ref.run };
+  }
+  return { templateDir, runsHome, node: a.node, run: a.run };
+}
+
 // ── shared deps + tiny helpers ──────────────────────────────────────────────────────────────────────────────
 
 /** The injectable seam shared by the substrate verbs — every default is the real core/fs; a test passes fakes
@@ -311,6 +372,7 @@ export interface SubstrateCliDeps {
   judge?: typeof runSubstrateJudge;
   listIssues?: typeof listIssues;
   fixIssue?: typeof fixIssue;
+  verifyStage?: typeof verifyStage;
   adoptManifest?: typeof adoptSubstrateManifest;
 }
 
@@ -429,9 +491,9 @@ function printSubstrateDryRun(
 
 // ── fix (select issues → per-issue fixIssue → stage; adopt is separate) ──────────────────────────────────────
 
-/** The parent run the fix replays a node of (spawnChildRun) + reads the base graded metrics from: `--run`
- *  pins it; else the NEWEST run bearing this node's triaged marker (the run we most recently triaged). */
-async function resolveParentRun(a: SubstrateFixArgs, runsHome: string, deps: SubstrateCliDeps): Promise<string | undefined> {
+/** The parent run a node-scoped verb operates on: `--run` pins it; else the NEWEST run bearing this node's
+ *  triaged marker (the run we most recently triaged — where its candidate records live). Shared by fix/verify. */
+async function resolveParentRun(a: { run?: string; node: string }, runsHome: string, deps: SubstrateCliDeps): Promise<string | undefined> {
   if (a.run) {
     const resolve = deps.resolveRunDir ?? ((run, cwd) => resolveNodeRunDir({ run, cwd }));
     return resolve(a.run, deps.cwd);
@@ -470,16 +532,14 @@ export async function runSubstrateFixCli(argv: string[], deps: SubstrateCliDeps 
     process.exitCode = 2;
     return;
   }
-  const dottedNode = a.node.includes('.');
   let templateDir: string;
   let runsHome: string;
   try {
-    ({ templateDir, runsHome } = (deps.resolveScope ?? resolveSubstrateScope)({ node: bareNodeId(a.node), template: a.template, run: a.run, cwd: deps.cwd }));
-    if (dottedNode) {
-      const ref = resolveNodeAndRun(a.node, a.run, runsHome);
-      a.node = ref.node;
-      a.run = ref.run;
-    }
+    const sel = resolveSubstrateSelector(a, deps); // the ONE selector (dotted-ref + scope) shared with verify/adopt
+    templateDir = sel.templateDir;
+    runsHome = sel.runsHome;
+    a.node = sel.node;
+    a.run = sel.run;
   } catch (e) {
     printErr((e as Error).message);
     process.exitCode = 2;
@@ -586,11 +646,95 @@ export async function runSubstrateFullLoopCli(argv: string[], deps: SubstrateCli
   await runSubstrateFixCli(argv, deps);
 }
 
-// ── adopt (land a staged substrate manifest — the human step wrapping adoptSubstrateManifest) ────────────────
-// PLAN DELTA: the plan under-specified the substrate adopt spelling. Chosen: `optimize adopt --manifest <path>`
-// — a POSITIONAL subverb (`adopt`) + a `--manifest` flag, so it is disjoint from the classic `optimize --adopt
-// <manifest>` FLAG path (which routes to runOptimizeAdoptCli, byte-unchanged). `--manifest` is required so the
-// subverb only ever fires on the intended shape, never on a classic invocation.
+// ── verify (WS2.2) — the DECOUPLED gate: re-gate an existing candidate record; NO fixer, NO re-prove ──────────
+
+/** The verify verb's per-issue observe dir for the gate spawn — mirrors the fixer's, keyed by (parent, node, issue). */
+export function verifyAgentOutDir(parentRunDir: string, node: string, issue: string): string {
+  return path.join(parentRunDir, 'optimize', 'substrate', 'agents', `verify.${node}.${issue}`);
+}
+
+/**
+ * `piflowctl optimize verify --node <id> [--issue <name>] [--run <id>]` — the gate-only stage (WS2.2). Resolve
+ * the candidate record(s) for the node (one via `--issue`, else EVERY record carrying a `candidateSha`) under the
+ * scoped run, then run `verifyStage` on each: the independent gate agent judges the already-proved candidate,
+ * writes `verdict.json`, and lands the decision. NO fixer, NO re-prove. Prints each verdict; on a reject, prints
+ * the drop-back category + steer. Missing `--node`/parent run exits 2.
+ */
+export async function runSubstrateVerifyCli(argv: string[], deps: SubstrateCliDeps = {}): Promise<void> {
+  const a = parseSubstrateVerifyArgs(argv);
+  const print = deps.print ?? stdout;
+  const printErr = deps.printErr ?? stderr;
+  if (!a.node) {
+    printErr('piflowctl optimize verify: --node <id> is required (the node TYPE whose candidate to gate).');
+    process.exitCode = 2;
+    return;
+  }
+  let templateDir: string;
+  let runsHome: string;
+  try {
+    const sel = resolveSubstrateSelector(a, deps);
+    templateDir = sel.templateDir;
+    runsHome = sel.runsHome;
+    a.node = sel.node;
+    a.run = sel.run;
+  } catch (e) {
+    printErr((e as Error).message);
+    process.exitCode = 2;
+    return;
+  }
+  const workspace = a.workspace ? path.resolve(deps.cwd ?? process.cwd(), a.workspace) : (deps.cwd ?? process.cwd());
+
+  const parentRunDir = await resolveParentRun(a, runsHome, deps);
+  if (!parentRunDir) {
+    printErr(`piflowctl optimize verify: no triaged run found for node "${a.node}" — run 'optimize fix --node ${a.node}' first, or pass --run <id>.`);
+    process.exitCode = 2;
+    return;
+  }
+
+  // Eligibility: records for this node that carry a candidateSha (a git-gate-able candidate); one via --issue.
+  const all = await scanRecords(parentRunDir);
+  const records = all.filter((r) => r.node === a.node && !!r.candidateSha && (a.issue ? r.issue === a.issue : true));
+  if (records.length === 0) {
+    print(`optimize verify: no verifiable candidate record${a.issue ? ` "${a.issue}"` : ''} for node "${a.node}" (a record needs a candidateSha; run 'optimize fix' first).`);
+    return;
+  }
+
+  const onEvent = watchSink(a.watch, a.watchJson, print);
+  const verify = deps.verifyStage ?? verifyStage;
+  const resolveRunDir = deps.resolveRunDir ?? ((run, cwd) => resolveNodeRunDir({ run, cwd }));
+  let staged = 0;
+  let discarded = 0;
+  for (const rec of records) {
+    const issuePath = path.join(templateDir, 'nodes', a.node, 'issues', `${rec.issue}.md`);
+    // the gate inspects the candidate artifact in the prove-rerun's child run; resolve it, else fall back to the
+    // parent run dir (best-effort — a live verify needs the child dir; the injected seam ignores it).
+    let childDir = parentRunDir;
+    if (rec.verifiedByRun && rec.verifiedByRun !== 'unproven') {
+      try { childDir = resolveRunDir(rec.verifiedByRun, deps.cwd); } catch { /* fall back to the parent run */ }
+    }
+    const vs = await verify({ runDir: parentRunDir, node: a.node, issue: rec.issue }, {
+      templateDir, workspace, childDir, issuePath,
+      outDir: verifyAgentOutDir(parentRunDir, a.node, rec.issue),
+      ...(onEvent ? { onEvent } : {}),
+      ...(a.tier ? { tier: a.tier } : {}),
+      ...(a.model ? { model: a.model } : {}),
+    });
+    if (vs.decision === 'staged') staged++;
+    else discarded++;
+    print(`optimize verify[${path.basename(parentRunDir)}] node=${a.node} issue=${rec.issue}: ${vs.decision} — ${vs.gateVerdict.rationale}`);
+    if (vs.decision === 'discarded' && vs.dropback) {
+      print(`  drop-back: ${vs.dropback.category}${vs.dropback.steer ? ` — ${vs.dropback.steer}` : ''}`);
+    }
+    if (vs.verdictPath) print(`  verdict: ${vs.verdictPath}`);
+  }
+  print(`optimize verify: node=${a.node} — ${records.length} verified (${staged} staged, ${discarded} discarded); adopt is a separate step.`);
+}
+
+// ── adopt (land staged records onto the live product — the human step wrapping adoptSubstrateManifest) ────────
+// WS2 regrammar: `optimize adopt --node <id> [--issue <name>] [--run <id>]` resolves the staged record(s) via
+// `scanRecords` and cherry-picks each `candidateSha`. `--manifest <path>` survives as a HIDDEN back-compat alias
+// (a staged manifest.json). Both spellings are disjoint from the classic `optimize --adopt <manifest>` FLAG path
+// (runOptimizeAdoptCli, byte-unchanged).
 
 /** The template dir for the manifest's issues: `--template` > derived from the canonical manifest path
  *  (`<runDir>/optimize/substrate/staging/manifest.json` → `…/template`) > discovery by the first record's node. */
@@ -604,18 +748,65 @@ function resolveAdoptTemplateDir(manifestPath: string, manifest: SubstrateManife
   return resolveTemplateDir({ ...(node ? { node } : {}), cwd });
 }
 
+/** Print the adopted/skipped summary shared by both adopt spellings. */
+function printAdoptSummary(result: { adopted: { node: string; issue: string; commit: string; files: string[] }[]; skipped: { issue: string; reason: string }[] }, print: (s: string) => void): void {
+  print(`optimize adopt: ${result.adopted.length} issue(s) landed; ${result.skipped.length} skipped.`);
+  for (const ad of result.adopted) print(`  + ${ad.node}/${ad.issue} → ${ad.commit.slice(0, 7)} (${ad.files.length} file(s))`);
+  for (const sk of result.skipped) print(`  · skipped ${sk.issue}: ${sk.reason}`);
+}
+
 /**
- * `piflowctl optimize adopt --manifest <path> [--template <dir>] [--backup-dir <d>] [--watch]` — land every
- * `staged` record of a substrate manifest onto the live product (adoptSubstrateManifest → adoptFile + commit +
- * stampAttempt + status resolved). A missing/malformed manifest exits 2. Prints an adopted/skipped summary.
+ * `piflowctl optimize adopt --node <id> [--issue <name>] [--run <id>]` — land the staged record(s) onto the live
+ * product (adoptSubstrateManifest → cherry-pick candidateSha + stampAttempt + status resolved). Resolves records
+ * via `scanRecords` for the scoped run (all `staged` records, or the one named by `--issue`). `--manifest <path>`
+ * is a HIDDEN back-compat alias. A missing/malformed input exits 2. Prints an adopted/skipped summary.
  */
 export async function runSubstrateAdoptCli(argv: string[], deps: SubstrateCliDeps = {}): Promise<void> {
   const a = parseSubstrateAdoptArgs(argv);
   const print = deps.print ?? stdout;
   const printErr = deps.printErr ?? stderr;
   const cwd = deps.cwd ?? process.cwd();
+  const adopt = deps.adoptManifest ?? adoptSubstrateManifest;
+  const onEvent = watchSink(a.watch, a.watchJson, print);
+
+  // Path A — the WS2 grammar: adopt by --node/--issue, records resolved via scanRecords for the scoped run.
+  if (!a.manifest && a.node) {
+    let templateDir: string;
+    let runsHome: string;
+    let node: string;
+    let run: string | undefined;
+    try {
+      const sel = resolveSubstrateSelector({ node: a.node, run: a.run, template: a.template }, deps);
+      ({ templateDir, runsHome, node, run } = sel);
+    } catch (e) {
+      printErr(`piflowctl optimize adopt: ${(e as Error).message}`);
+      process.exitCode = 2;
+      return;
+    }
+    const parentRunDir = await resolveParentRun({ run, node }, runsHome, deps);
+    if (!parentRunDir) {
+      printErr(`piflowctl optimize adopt: no triaged run found for node "${node}" — pass --run <id>, or run 'optimize fix' first.`);
+      process.exitCode = 2;
+      return;
+    }
+    const all = await scanRecords(parentRunDir);
+    const records: SubstrateManifestRecord[] = all.filter((r) => r.node === node && r.decision === 'staged' && (a.issue ? r.issue === a.issue : true));
+    if (records.length === 0) {
+      print(`optimize adopt: no staged record${a.issue ? ` "${a.issue}"` : ''} to land for node "${node}".`);
+      return;
+    }
+    const result = await adopt({ records }, {
+      templateDir,
+      ...(a.backupDir ? { backupDir: path.resolve(cwd, a.backupDir) } : {}),
+      ...(onEvent ? { onEvent } : {}),
+    });
+    printAdoptSummary(result, print);
+    return;
+  }
+
+  // Path B — the HIDDEN back-compat alias: a staged manifest.json path.
   if (!a.manifest) {
-    printErr('piflowctl optimize adopt: --manifest <path> is required (the staged substrate manifest.json to land).');
+    printErr('piflowctl optimize adopt: --node <id> [--issue <name>] is required (or the --manifest <path> back-compat alias).');
     process.exitCode = 2;
     return;
   }
@@ -643,14 +834,10 @@ export async function runSubstrateAdoptCli(argv: string[], deps: SubstrateCliDep
     return;
   }
 
-  const onEvent = watchSink(a.watch, a.watchJson, print);
-  const adopt = deps.adoptManifest ?? adoptSubstrateManifest;
   const result = await adopt(manifest, {
     templateDir,
     ...(a.backupDir ? { backupDir: path.resolve(cwd, a.backupDir) } : {}),
     ...(onEvent ? { onEvent } : {}),
   });
-  print(`optimize adopt: ${result.adopted.length} issue(s) landed; ${result.skipped.length} skipped.`);
-  for (const ad of result.adopted) print(`  + ${ad.node}/${ad.issue} → ${ad.commit.slice(0, 7)} (${ad.files.length} file(s))`);
-  for (const sk of result.skipped) print(`  · skipped ${sk.issue}: ${sk.reason}`);
+  printAdoptSummary(result, print);
 }
