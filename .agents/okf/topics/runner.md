@@ -201,6 +201,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
 - `39991eb` 2026-07-08 — feat(core): commit a run-dir git checkpoint at each stage barrier (opt-in)
 - `9442c31` 2026-07-09 — fix(optimize): thread run args into the substrate measure ResolveCtx
+- `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
 
 ### Lessons — memory cluster
 
@@ -225,5 +226,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 10 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/run-context.ts`; ⚠ no covering tests found
 - `RunScope` (packages/core/src/types.ts:679) — 5 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/sandbox/local.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=146 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-10 · arc=147 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

@@ -152,9 +152,11 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-template-authoring-constraints]]
 - [[piflowctl-bin-rename]]
 - [[playbook-skills-depth-over-budget]]
 - [[roadmap-bookkeeping-linear]]
+- [[run-level-blame-design]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[skill-marketplace-gui-design]]
 - [[skill-trigger-generalize-not-keyword-match]]
@@ -172,5 +174,5 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/tool-config.test.ts`, `packages/core/test/catalog-introspect.test.ts`
 - `introspectMcpServer` (packages/core/src/catalog/introspect.ts:109) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
 
-<sub>derived 2026-07-09 · arc=35 commits · files=9 · lessons=58</sub>
+<sub>derived 2026-07-10 · arc=35 commits · files=9 · lessons=60</sub>
 <!-- okf:auto-end -->

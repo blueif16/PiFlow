@@ -104,5 +104,5 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:144) — 12 callers in `packages/core/src/workflow/agent-base.ts`, `packages/core/src/workflow/gate-list.ts`, `packages/core/src/workflow/judge/materialize.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/gate-authoring.test.ts`
 - `GatePolicy` (packages/core/src/workflow/gate-authoring.ts:32) — 10 callers in `packages/core/src/workflow/gate-list.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-authoring.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-09 · arc=3 commits · files=3 · lessons=17</sub>
+<sub>derived 2026-07-10 · arc=3 commits · files=3 · lessons=17</sub>
 <!-- okf:auto-end -->

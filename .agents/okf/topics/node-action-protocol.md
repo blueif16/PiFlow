@@ -154,6 +154,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
 - `3efb62d` 2026-07-07 — fix(core): resolve tokens in promote `from` so file-sourced promotes work
 - `c23aa8e` 2026-07-09 — fix(runner): stamp a retried node's TRUE wall-clock span, not the winning attempt
+- `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
 
 ### Lessons — memory cluster
 
@@ -241,5 +242,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 2 callers in `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-10 · arc=91 commits · files=8 · lessons=76</sub>
+<sub>derived 2026-07-10 · arc=92 commits · files=8 · lessons=76</sub>
 <!-- okf:auto-end -->

@@ -136,6 +136,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 - `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 - `e9c123e` 2026-07-08 — feat(optimize): WS3 — per-issue verify tier + optimize.criteria rename (judge alias)
+- `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
 
 ### Lessons — memory cluster
 
@@ -193,5 +194,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:273) — 9 callers in `packages/core/src/runner/entry.ts`, `packages/core/src/optimize/substrate/child-run.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/gate-list-profiles.test.ts`, `packages/core/test/judge-materialization.test.ts`
 - `NodeSpec` (packages/core/src/types.ts:17) — 9 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=80 commits · files=5 · lessons=44</sub>
+<sub>derived 2026-07-10 · arc=81 commits · files=5 · lessons=44</sub>
 <!-- okf:auto-end -->

@@ -269,6 +269,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
+- [[npm-run-is-system-contract]]
 - [[observe-single-data-path]]
 - [[okf-coverage-boundary]]
 - [[omniscience-piflow-setup]]
@@ -288,9 +289,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-template-authoring-constraints]]
 - [[piflowctl-bin-rename]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
+- [[run-level-blame-design]]
 - [[runs-live-in-product-runs-folder]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
@@ -313,5 +316,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-09 · arc=163 commits · files=8 · lessons=77</sub>
+<sub>derived 2026-07-10 · arc=163 commits · files=8 · lessons=80</sub>
 <!-- okf:auto-end -->

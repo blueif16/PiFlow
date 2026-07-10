@@ -100,5 +100,5 @@ contract is pinned here. Design: `docs/design/gate-list-and-additive-profiles.md
 - `ProfileOverlayError` (packages/core/src/workflow/profile-overlay.ts:24) — 4 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/profile-overlay.ts`; ⚠ no covering tests found
 - `applyProfile` (packages/core/src/workflow/profile.ts:95) — 3 callers in `packages/core/src/workflow/profile.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/profile.test.ts`
 
-<sub>derived 2026-07-09 · arc=4 commits · files=3 · lessons=8</sub>
+<sub>derived 2026-07-10 · arc=4 commits · files=3 · lessons=8</sub>
 <!-- okf:auto-end -->

@@ -119,6 +119,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
 - `3efb62d` 2026-07-07 — fix(core): resolve tokens in promote `from` so file-sourced promotes work
+- `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
 
 ### Lessons — memory cluster
 
@@ -164,5 +165,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-09 · arc=46 commits · files=5 · lessons=32</sub>
+<sub>derived 2026-07-10 · arc=47 commits · files=5 · lessons=32</sub>
 <!-- okf:auto-end -->
