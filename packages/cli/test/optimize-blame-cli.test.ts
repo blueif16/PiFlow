@@ -110,6 +110,28 @@ describe('runSubstrateBlameCli', () => {
     expect(calls).toEqual(['measure:b', 'blame-measure', 'blame-judge']);
   });
 
+  it('--watch streams the blame-measured boundary after the mechanical fold (not only judge/verify)', async () => {
+    const dir = await tmp();
+    const templateDir = path.join(dir, 'template');
+    const runsHome = path.join(dir, 'runs');
+    const runDir = await seedRun(runsHome, 'r1', '2026-07-09T00:00:00Z');
+    const lines: string[] = [];
+    await runSubstrateBlameCli(['r1', '--watch-json'], {
+      resolveRunDir: () => runDir,
+      resolveScope: () => ({ templateDir, runsHome }),
+      measure: async () => okMeasure(),
+      // the measure fold runs; blame-measured must be announced right after it, before the judge phase.
+      blameMeasure: async () => okBlameMeasure(),
+      blameJudge: async (rd, opts) => { opts.onEvent?.({ type: 'blame-judged', blamed: 0 }); return judged(emptySummary); },
+      print: (s) => lines.push(s),
+    });
+    const measuredIdx = lines.findIndex((l) => l.includes('blame-measured'));
+    const judgedIdx = lines.findIndex((l) => l.includes('blame-judged'));
+    expect(measuredIdx).toBeGreaterThanOrEqual(0); // the mechanical fold boundary is on the stream
+    expect(judgedIdx).toBeGreaterThanOrEqual(0);
+    expect(measuredIdx).toBeLessThan(judgedIdx); // and it precedes the judge phase
+  });
+
   it('passes templateDir/workspace/verifyRound + a PERSISTENT outDir to the judge; prints the observe hint', async () => {
     const dir = await tmp();
     const templateDir = path.join(dir, 'template');

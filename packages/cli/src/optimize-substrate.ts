@@ -1047,6 +1047,9 @@ export async function runSubstrateBlameCli(argv: string[], deps: SubstrateCliDep
   }
 
   const workspace = a.workspace ? path.resolve(cwd, a.workspace) : cwd;
+  // The `--watch` sink is built BEFORE the measure fold so its phase boundary (`blame-measured`) reaches the
+  // stream too — the judge/verify boundaries alone would leave the mechanical fold silently unannounced.
+  const onEvent = watchSink(a.watch, a.watchJson, print);
 
   // (1) measure — every node the run is missing a report for (mechanical, free; self-sufficient).
   const measure = deps.measure ?? runSubstrateMeasure;
@@ -1055,9 +1058,10 @@ export async function runSubstrateBlameCli(argv: string[], deps: SubstrateCliDep
     if (!existsSync(reportPath)) await measure(runDir, node, { workspace });
   }
 
-  // (2) the run-level hard-measure fold (mechanical, free).
+  // (2) the run-level hard-measure fold (mechanical, free) — announce its boundary on the stream (§4 step 1).
   const blameMeasure = deps.blameMeasure ?? runBlameMeasure;
   await blameMeasure(runDir, { workspace });
+  onEvent?.({ type: 'blame-measured' });
 
   // Idempotent rewrite — clear stale per-node blame files BEFORE the judge spawn, never on a --dry-run preview
   // (a preview writes/deletes nothing). Dissent traces are always preserved (clearStaleBlameFiles's own law).
@@ -1065,7 +1069,6 @@ export async function runSubstrateBlameCli(argv: string[], deps: SubstrateCliDep
 
   // (3) the judge + one verify round.
   const outDir = blameAgentOutDir(runDir);
-  const onEvent = watchSink(a.watch, a.watchJson, print);
   const blameJudge = deps.blameJudge ?? runBlameJudge;
   const result = await blameJudge(runDir, {
     templateDir, workspace, outDir,
