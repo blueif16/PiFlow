@@ -124,6 +124,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `c466b0d` 2026-07-03 — feat(core): enforce the requires-floor — a bound skill's requires auto-wires into node tools
 - `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
 - `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
+- `c23aa8e` 2026-07-09 — fix(runner): stamp a retried node's TRUE wall-clock span, not the winning attempt
 
 ### Lessons — memory cluster
 
@@ -157,6 +158,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[observe-single-data-path]]
+- [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
@@ -167,8 +169,10 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
+- [[piflow-template-authoring-constraints]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
+- [[run-level-blame-design]]
 - [[sandbox-readscope-default-on]]
 - [[skill-marketplace-gui-design]]
 - [[swarm-consensus-deferred]]
@@ -182,8 +186,8 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `judgePresetId` (packages/core/src/workflow/fusion/presets.ts:43) — 3 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `expandNode` (packages/core/src/workflow/fusion/expand.ts:69) — 1 caller in `packages/core/src/workflow/fusion/expand.ts`; ⚠ no covering tests found
 - `FUSION_PRESETS` (packages/core/src/workflow/fusion/presets.ts:24) — 2 callers in `packages/core/src/workflow/fusion/expand.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/runner/runner.ts`, `packages/cli/src/run.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
+- `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-09 · arc=51 commits · files=10 · lessons=48</sub>
+<sub>derived 2026-07-10 · arc=52 commits · files=10 · lessons=51</sub>
 <!-- okf:auto-end -->

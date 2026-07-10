@@ -76,6 +76,16 @@
 (allow file-read*
 @SCOPE_ALLOWS@)
 
+;; --- per-exec bookkeeping DENY (provider-injected; the runner's OWN .pi internals a node must never read) ---
+;; Rendered LAST so it OVERRIDES the workdir/scope grants above (SBPL: last match wins). A node runs with a
+;; RUN-wide read grant, but the run dir also holds the runner bookkeeping (.pi/sessions, .pi/nodes,
+;; .pi/journal.json, .pi/state.json) -- internals a node has no business reading. This block denies those and
+;; re-allows the node's OWN staged inputs (.pi/staged/<id>, .pi/skills) after the deny. Empty (byte-identical)
+;; when the provider injects no deny. WHY: on run 260710-02 W4 nodes burned 300-540s running find under
+;; RUN/.pi hunting for driver-side scripts; the prose guardrail was unenforceable, so the boundary now lives
+;; in the kernel.
+@READ_DENY@
+
 ;; ===========================================================================================
 ;; WRITE SCOPE -- symmetric to the read jail above. Deny EVERY file write up front, then re-allow only
 ;; (1) the toolchain write-scratch roots (Codex-derived: see WRITABLE SET in the header) and (2) the

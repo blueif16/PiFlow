@@ -570,6 +570,17 @@ export interface CreateOpts {
    */
   execCwd?: string;
   execReads?: string[];
+  /**
+   * BOOKKEEPING-DENY (additive; local jail only, ignored by cloud/in-memory). `readDeny`: subpaths to DENY
+   * reads on AFTER the scope allows, so they OVERRIDE an otherwise-`{{RUN}}`-wide read grant — used to carve
+   * the runner's OWN `.pi/**` bookkeeping (sessions/nodes/journal/state) out of a node's read scope so it can
+   * never `find`/`cat`/`ls` the internals. `readDenyExcept`: subpaths RE-allowed after the deny (the node's
+   * own `.pi/staged/<id>` inputs + `.pi/skills`). Omitted ⇒ no deny layer (byte-identical). WHY: run
+   * 260710-02's W4 nodes burned 300-540s hunting under `{{RUN}}/.pi/**`; the prose guardrail was
+   * unenforceable, so the boundary now lives in the kernel jail.
+   */
+  readDeny?: string[];
+  readDenyExcept?: string[];
   outputDir: string;
   workdir: string;
   /**

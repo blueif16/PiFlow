@@ -153,6 +153,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `fdc76dd` 2026-07-06 — merge main — pick up tools.defs schema + 40 upstream commits (worktree base predated the tool-wiring overhaul)
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
 - `3efb62d` 2026-07-07 — fix(core): resolve tokens in promote `from` so file-sourced promotes work
+- `c23aa8e` 2026-07-09 — fix(runner): stamp a retried node's TRUE wall-clock span, not the winning attempt
 
 ### Lessons — memory cluster
 
@@ -198,6 +199,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[node-illustration-pipeline]]
+- [[npm-run-is-system-contract]]
 - [[observe-single-data-path]]
 - [[okf-coverage-boundary]]
 - [[omniscience-piflow-setup]]
@@ -217,10 +219,12 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-template-authoring-constraints]]
 - [[piflowctl-bin-rename]]
 - [[playbook-skills-depth-over-budget]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
+- [[run-level-blame-design]]
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[site-piflow-no-unrequested-chrome]]
@@ -233,10 +237,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `CHECK_KINDS` (packages/core/src/checks.ts:62) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
 - `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
-- `evaluateChecks` (packages/core/src/checks.ts:117) — 5 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
+- `evaluateChecks` (packages/core/src/checks.ts:117) — 2 callers in `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-09 · arc=90 commits · files=8 · lessons=73</sub>
+<sub>derived 2026-07-10 · arc=91 commits · files=8 · lessons=76</sub>
 <!-- okf:auto-end -->

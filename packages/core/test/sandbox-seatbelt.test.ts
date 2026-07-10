@@ -146,6 +146,32 @@ describe('SeatbeltSandbox — read-scope EPERM enforcement (darwin)', () => {
     expect(profile).not.toContain('/x/owns/*');
   });
 
+  it('bookkeeping DENY: renders a trailing read-deny + re-allow, and is a no-op when unset (run 260710-02)', () => {
+    // With readDeny set, the profile carves the runner's .pi/** out of the (workdir-wide) read grant and
+    // re-allows the node's own staged inputs — placed AFTER the scope allows so SBPL last-match-wins makes
+    // the deny override the broad grant and the exception override the deny.
+    const denied = buildSeatbeltProfile({
+      workdir: '/tmp/piflow-run',
+      readScope: ['/tmp/piflow-run'],
+      readDeny: ['/tmp/piflow-run/.pi'],
+      readDenyExcept: ['/tmp/piflow-run/.pi/staged/n1', '/tmp/piflow-run/.pi/skills'],
+    });
+    expect(denied).toContain('(deny file-read*'); // the read-deny layer exists (distinct from the base deny)
+    expect(denied).toContain('(subpath "/tmp/piflow-run/.pi")'); // the bookkeeping tree is denied
+    expect(denied).toContain('(subpath "/tmp/piflow-run/.pi/staged/n1")'); // …the node's own staged dir re-allowed
+    expect(denied).toContain('(subpath "/tmp/piflow-run/.pi/skills")');
+    // Ordering is load-bearing: the re-allow of the staged dir must come AFTER the .pi deny (last match wins).
+    expect(denied.lastIndexOf('/tmp/piflow-run/.pi/staged/n1')).toBeGreaterThan(denied.indexOf('/tmp/piflow-run/.pi"'));
+    expect(denied).not.toContain('@READ_DENY@'); // the token was substituted
+
+    // With NO readDeny, the token substitutes to empty — byte-identical to before (only the base deny-all).
+    const plain = buildSeatbeltProfile({ workdir: '/tmp/piflow-run', readScope: ['/tmp/piflow-run'] });
+    expect(plain).not.toContain('@READ_DENY@');
+    expect(plain).not.toContain('/tmp/piflow-run/.pi'); // no deny layer emitted
+    // Exactly one file-read deny (the base line), no injected bookkeeping deny.
+    expect(plain.match(/\(deny file-read\*/g)?.length).toBe(1);
+  });
+
   it('grants execCwd as a read subpath + a getcwd literal, and execReads as read subpaths (E10)', () => {
     // A node whose build runs from a PROJECT ROOT outside the run dir (execCwd) and imports a SIBLING kit
     // (execReads) needs: (1) execCwd readable AND granted as a (literal) so the build child's getcwd/uv_cwd
@@ -196,6 +222,46 @@ describe('SeatbeltSandbox — read-scope EPERM enforcement (darwin)', () => {
       } finally {
         await sb.dispose();
         await fs.rm(scratch, { recursive: true, force: true });
+      }
+    },
+    20000,
+  );
+
+  darwinIt(
+    'bookkeeping DENY: EPERMs a read of the run .pi internals but allows the node OWN staged dir (run 260710-02)',
+    async () => {
+      // The run dir (= the workdir, granted wholesale) also holds the runner's OWN .pi/** bookkeeping. A
+      // node was able to `find`/`cat` those internals (300-540s wasted on run 260710-02). With readDeny set,
+      // reading .pi/nodes/** EPERMs, while the node's own .pi/staged/<id>/** stays readable (re-allowed).
+      const run = await homeScratch('sb-pi-deny');
+      const internal = path.join(run, '.pi', 'nodes', 'w4', 'events.jsonl');
+      const ownStaged = path.join(run, '.pi', 'staged', 'n1', 'prompt.md');
+      await fs.mkdir(path.dirname(internal), { recursive: true });
+      await fs.mkdir(path.dirname(ownStaged), { recursive: true });
+      await fs.writeFile(internal, 'RUNNER_SECRET');
+      await fs.writeFile(ownStaged, 'MY_PROMPT');
+
+      const sb = await SeatbeltSandbox.create({
+        readScope: [run], // the {{RUN}}-wide grant that would otherwise expose .pi/**
+        outputDir: 'out',
+        workdir: run,
+        readDeny: [path.join(run, '.pi')], // deny the whole bookkeeping tree…
+        readDenyExcept: [path.join(run, '.pi', 'staged', 'n1')], // …except the node's OWN staged dir
+      });
+
+      try {
+        // Reading the runner's internal events log is DENIED (kernel EPERM), not a profile parse error.
+        const denied = await sb.exec(`cat ${JSON.stringify(internal)}`);
+        expect(denied.code).not.toBe(0);
+        expect(denied.stderr).not.toMatch(/^sandbox-exec:/m);
+        expect(denied.stdout).not.toContain('RUNNER_SECRET');
+        // The node's OWN staged prompt is still readable (the re-allow overrides the deny — last match wins).
+        const ok = await sb.exec(`cat ${JSON.stringify(ownStaged)}`);
+        expect(ok.code).toBe(0);
+        expect(ok.stdout).toContain('MY_PROMPT');
+      } finally {
+        await sb.dispose();
+        await fs.rm(run, { recursive: true, force: true });
       }
     },
     20000,

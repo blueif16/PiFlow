@@ -59,6 +59,13 @@ export function localJailPlan(
     writeScope?: string[];
     execCwd?: string;
     execReads?: string[];
+    /** Bookkeeping-deny roots (the runner's `.pi/**` internals) — denied AFTER the scope allows so a node
+     * can never read the run's own sessions/nodes/journal. Honored on darwin (seatbelt); the linux (bwrap)
+     * backend does not yet render a deny layer (parity gap — bind-based jails deny by omission, so the
+     * general fix there is to bind ONLY the node's staged dir, tracked separately). */
+    readDeny?: string[];
+    /** Re-allowed exceptions under a denied root (the node's own `.pi/staged/<id>`, `.pi/skills`). */
+    readDenyExcept?: string[];
     profileDir: string;
   },
 ): JailPlan | null {

@@ -37,7 +37,7 @@ PLAN (shared policy + dispatch)
 - `packages/core/src/sandbox/jail.ts:54` — `localJailPlan()` — OS dispatcher: darwin→seatbelt, linux→bwrap, else warn+bare
 - `packages/core/src/sandbox/local.ts:125` — `LocalSandbox.exec` wraps the command in the jail plan (default); `null` ⇒ bare
 ENFORCE (macOS)
-- `packages/core/src/sandbox/seatbelt.ts:217` — `seatbeltExecPlan()` — writes a per-exec `.sb`, returns `sandbox-exec -f <p> sh -c <cmd>`
+- `packages/core/src/sandbox/seatbelt.ts:255` — `seatbeltExecPlan()` — writes a per-exec `.sb`, returns `sandbox-exec -f <p> sh -c <cmd>`
 - `packages/core/src/sandbox/seatbelt.ts:154` — `buildSeatbeltProfile()` — renders read/write roots as SBPL `(subpath …)` allows
 - `packages/core/src/sandbox/read-scope.sb:46` — `(deny file-read*)` … `@SCOPE_ALLOWS@` — the deny-all-then-reallow template
 ENFORCE (linux)
@@ -194,6 +194,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
+- [[npm-run-is-system-contract]]
 - [[op-consumption-two-layer]]
 - [[optimize-substrate-program]]
 - [[per-node-routing-fusion]]
@@ -204,9 +205,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[piflow-template-authoring-constraints]]
 - [[playbook-skills-depth-over-budget]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
+- [[run-level-blame-design]]
 - [[sandbox-readscope-default-on]]
 - [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-legibility-tracks]]
@@ -216,10 +219,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
-- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
+- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 4 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 2 callers in `packages/core/src/sandbox/local.ts`; ⚠ no covering tests found
+- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:255) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-09 · arc=93 commits · files=8 · lessons=46</sub>
+<sub>derived 2026-07-10 · arc=93 commits · files=8 · lessons=49</sub>
 <!-- okf:auto-end -->

@@ -333,6 +333,18 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // the extra read roots the build imports. Resolved above; undefined ⇒ cwd = workdir (unchanged).
       execCwd: node.sandbox.execCwd,
       execReads: node.sandbox.execReads,
+      // (BOOKKEEPING DENY — run 260710-02) A node's read scope is typically `{{RUN}}`-wide, which also
+      // grants the runner's OWN `.pi/**` internals (sessions/nodes/journal/state) — dead ends a node has no
+      // business reading (W4 nodes burned 300-540s running `find` under `{{RUN}}/.pi/**`). DENY that whole
+      // tree in the kernel jail, RE-allowing only the node's own staged inputs (`.pi/staged/<id>` prompt/
+      // extension/mcp) + shared `.pi/skills`. In-place (local) only — cloud/in-memory ignore these; a
+      // `fullAccess` node runs jail-off anyway. The deny is under `ctx.outDir` (the run dir == the in-place
+      // workdir), so it is a no-op for a throwaway provider whose workdir holds no run bookkeeping.
+      readDeny: [path.join(ctx.outDir, '.pi')],
+      readDenyExcept: [
+        path.join(ctx.outDir, '.pi', 'staged', node.id),
+        path.join(ctx.outDir, '.pi', 'skills'),
+      ],
       outputDir: sbLoc.outputDir,
       workdir: sbLoc.workdir,
       image: node.sandbox.image,
