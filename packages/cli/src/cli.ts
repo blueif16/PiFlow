@@ -40,6 +40,7 @@ import {
   runSubstrateVerifyCli,
   runSubstrateFullLoopCli,
   runSubstrateAdoptCli,
+  runSubstrateBlameCli,
 } from './optimize-substrate.js';
 import { runIssuesCli } from './issues.js';
 import { runRunsCli } from './runs.js';
@@ -121,6 +122,16 @@ USAGE
   piflowctl optimize adopt  --node <id> [--issue <name>] [--run <id>]  LAND the staged record(s) onto the live
                                             product (cherry-pick candidateSha + resolve the issue). Omit --issue
                                             to land every staged record. (--manifest <path> is a hidden alias.)
+  piflowctl optimize blame  [<run>] [--latest] [--template <dir>] [--workspace <dir>] [--tier <t>] [--model <m>]
+                                            [--no-verify-round] [--no-memorize] [--watch] [--dry-run]  the
+                                            RUN-LEVEL attribution pass (docs/design/optimize-blame.md): measures
+                                            any node still missing a report (self-sufficient — no prior triage
+                                            needed), folds the run-level hard measure, then judges + verifies the
+                                            FINAL artifact against the template's criteria — writing prose
+                                            <node>.md blame files + the parsed blame.md summary tail under
+                                            <run>/optimize/blame/. <run> is a run dir OR run id/name; omit it (or
+                                            pass --latest) to pick the newest run. Idempotent: a re-run clears
+                                            stale <node>.md files (dissent traces preserved) before rewriting.
   piflowctl logs    [dir|run] [options]     stream / replay / diagnose per-node event archives
   piflowctl model   [list | set <tier> <modelId> [--claude] | activate | deactivate]  the model-tier config
   piflowctl claude-code [connect [--token <t>] | status]  OPTIONAL credential for the claude-code executor
@@ -421,6 +432,7 @@ async function main(): Promise<void> {
         case 'substrate-fix': await runSubstrateFixCli(rest.slice(1)); break;
         case 'substrate-verify': await runSubstrateVerifyCli(rest.slice(1)); break;
         case 'substrate-adopt': await runSubstrateAdoptCli(rest.slice(1)); break;
+        case 'substrate-blame': await runSubstrateBlameCli(rest.slice(1)); break;
         case 'substrate-full': await runSubstrateFullLoopCli(rest); break;
         case 'classic-rounds': await runOptimizeLoopCli(rest); break;
         case 'classic-adopt': await runOptimizeAdoptCli(rest); break;
