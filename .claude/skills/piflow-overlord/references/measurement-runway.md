@@ -43,8 +43,12 @@ need both, layered.
 Do NOT start the automated optimize loop for a node until its runway passes ALL four:
 1. **COVERAGE** — the node has BOTH a hard-measure set AND a soft-measure (criteria) defined. A node with no
    measure is UN-OPTIMIZABLE; name it and author the measure first — that IS the work, not the loop.
-2. **WIRING** — the measures are actually PLUGGED IN: the hard gates run and their verdicts reach triage; the
-   criteria fixture is loaded by the judge. An authored-but-unwired measure is invisible to the loop.
+2. **WIRING** — the measures are actually PLUGGED IN, and triage can even RUN: the hard `optimize.measure` ops
+   run and their verdicts reach triage; the soft `criteria.md` is referenced via the canonical
+   `optimize.criteria` key and loaded by the judge; and `issues/` holds only a `.gitkeep` (a stray `README.md`
+   or any non-issue `.md` makes `listIssues` throw and kills the triage command before any measure runs — see
+   "The runway node-dir layout"). An authored-but-unwired measure is invisible to the loop; a mis-scaffolded
+   `issues/` dir is worse — it's a crash.
 3. **VALIDITY (test-the-measure)** — each measure FIRES and DISCRIMINATES: it FAILS when the artifact is
    wrong. A hard measure that silently SKIPS is worse than none. EVIDENCE: game-omni's blueprint
    schema-compile gate silently skipped on every run (ajv resolved draft-07 vs the schemas' draft-2020-12) →
@@ -72,6 +76,27 @@ a profile. The substrate is out-of-band and non-blocking by construction (§the 
 So "prepare the runway" concretely = author each node's `optimize.measure` op[] + its `criteria.md`/gold IN
 that node's `node.json`, and confirm triage reads their fold — NO profile edit, NO template-gate change, NO
 touch to the run at all.
+
+### The runway node-dir layout — author EXACTLY this (the setup contract)
+A node's runway is FOUR things under `template/nodes/<id>/`, and nothing else. Author each to this shape or the
+loop breaks in a way `piflowctl extract` will NOT catch (extract compiles the DAG; it does not exercise the
+optimize substrate):
+1. **`node.json` → `optimize.measure`** — the HARD op[] (above). Fold nothing new; reuse the shipped signals +
+   a thin deterministic op.
+2. **`node.json` → `optimize.criteria`** — the SOFT pointer, a path to `criteria.md`. **Author the CANONICAL
+   `optimize.criteria` key, NOT `optimize.judge`.** `optimize.judge` resolves only via a back-compat alias
+   (`fix.ts`: `optimize?.criteria ?? optimize?.judge` — criteria wins); authoring the alias is drift, and a
+   node that declares NEITHER makes `buildJudgePrompt` throw and kills the whole triage command.
+3. **`criteria.md` (+ a gold sample)** — the soft oracle. JUDGE-FACING only, never injected into the node prompt.
+4. **`memory.md`** — the Leg-A standing lessons (`memory-slices`).
+5. **`issues/` — scaffold with a `.gitkeep` ONLY. NEVER a `README.md`, and NEVER any other `.md`.** This is the
+   one that bites: issue files are `nodes/<id>/issues/<name>.md` **TOOL-MINTED by `piflowctl optimize triage`,
+   never hand-authored**, and `listIssues` (`optimize/substrate/issues.ts`) is **fail-closed over every `.md`
+   in the dir** — it `readdir().filter(f => f.endsWith('.md'))` and `parseIssueFile` THROWS
+   `'issue file must open with a "---" frontmatter delimiter'` on any file lacking issue frontmatter. So a
+   `README.md` (or any stray `.md`) makes `listIssues` throw → triage dies BEFORE the judge runs. A `.gitkeep`
+   is invisible to the `.md` filter and keeps the empty dir in git. Do not put documentation, notes, or a
+   template issue in `issues/` — that dir belongs to the tool.
 
 **Do NOT confuse this with the profile-stamped gates.** The profile system (`template/profiles/<name>.json`
 `execution`/`agentic` gates) is the NORMAL WORKFLOW's runtime gating — a separate system that blocks or elides
