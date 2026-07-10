@@ -45,12 +45,29 @@
 // a candidate-produced artifact. The candidate never gained a scorer (the fence + diff guard); the live root is
 // never edited (only adopt touches it, by cherry-picking candidateSha). Oracle immutability is mechanical.
 //
-// ── ADOPT = CHERRY-PICK (git-native; WS0) ────────────────────────────────────────────────────────────────
+// ── ADOPT = CHERRY-PICK (git-native; WS0) + the TRAIN (docs/design/optimize-blame.md §6, WS-B5) ───────────────
 // `adoptSubstrateManifest` lands a staged record by `git cherry-pick candidateSha` onto the live branch (the
 // candidate commit already carries the `optimize(<node>): <title>` subject + `Issue:` trailer identity, so
 // cherry-pick preserves it), then stamps the issue (`commit`=the landed sha, `verifiedByRun`) and transitions
-// it → `resolved`. On BASE DRIFT (the live branch moved past baseSha and the pick conflicts) it ABORTS the
-// cherry-pick and SKIPS the record with a clear reason — never a forced/silent wrong-apply.
+// it → `resolved`. On a pick CONFLICT it ABORTS the cherry-pick and SKIPS the record — never a forced apply.
+//
+// The TRAIN adds queue semantics on top (the shipped conflict⇒skip stays as the last resort):
+//   • ORDER — records land in `orderRecords(records, nodeOrder)` order (blame upstream-first, then node asc,
+//     then issue asc). Completion order NEVER dictates landing order (§6 single-writer train).
+//   • STALENESS — per staged record, BEFORE the pick, a PURE verdict over `(baseSha, HEAD, interveningPaths,
+//     closure)` (`assessStaleness`, train.ts): `fresh` (base unmoved) lands as today; `disjoint` (base moved
+//     but provably outside the node's include-closure) lands WITH a base-drift note; `overlap` (moved inside
+//     the closure, or missing evidence) RE-PROVES via the injected `opts.reprove` seam (accept ⇒ land w/ a
+//     re-proved note) or BOUNCES (reject / no seam).
+//   • BOUNCE — a stale-base record is NOT picked: its lifecycle `record.json` is rewritten `discarded` with a
+//     `{category:'stale-base'}` dropback (ONLY when `opts.runDir` is passed — without it the lifecycle dir is
+//     unreachable from a record alone, so the bounce DEGRADES to the issue walk-back + skip reason only), and
+//     the issue is walked back to `open` by the LEGAL edge (guarded by `assertTransition`): `verifying → open`
+//     for a proven candidate, `fix-landed → open` for a skip-proof one — both return the issue to the open pool
+//     re-fixable, never stranded. Only a status with NO legal edge to `open` is LEFT (skip reason carries it).
+//   • BRANCH GC — after a land+resolve, `opts.gcBranches` (default ON) deletes every `refs/heads/optimize/
+//     <node>/<issue>/*` branch (the landed cherry-pick sha in the issue attempt is the durable record). NEVER
+//     on a skip/bounce — an escalation candidate keeps its branch.
 //
 // ── RESTING STATE AFTER THE GATE (the issue's status is never stranded) ──────────────────────────────────
 // The prove path moves the issue to `verifying` before the rerun. After the gate decides, the issue must land
@@ -67,7 +84,8 @@ import { execFileSync } from 'node:child_process';
 
 import type { DefectBucket } from '../types.js';
 import { evaluateGate, type GateVerdict, type LandPolicy } from '../gate.js';
-import { parseIssueFile, stampAttempt, transitionIssue, type VerifyTier } from './issues.js';
+import { parseIssueFile, stampAttempt, transitionIssue, assertTransition, type VerifyTier, type Severity } from './issues.js';
+import { assessStaleness, orderRecords, pathInClosure } from './train.js';
 import {
   inheritedAgentOpts, runBaseAgent,
   type RunBaseAgentOpts, type RunBaseAgentResult, type BaseAgentChildOpts,
@@ -436,6 +454,12 @@ export interface SubstrateManifestRecord {
   candidateRef: string;
   /** the LIVE product root (a git repo) the candidate branched from; adopt cherry-picks `candidateSha` here. */
   liveRoot: string;
+  /** WS-B5/§6 ADOPT-TRAIN ORDERING: the issue's severity + firstSeen, copied off the issue at stage time so the
+   *  adopt train (which reads records off disk via `scanRecords`, NOT the ledger) can land higher-severity /
+   *  older issues FIRST within a node (`orderRecords`). ABSENT on a pre-WS-B5 record ⇒ that record ranks after
+   *  any that declare severity, then falls to issue-name asc (`orderRecords`'s own degrade). */
+  severity?: Severity;
+  firstSeen?: string;
   /** the repo HEAD the candidate branched from — adopt re-verifies against it on base drift. Absent on a
    *  no-worktree path (never reached in practice; a decided record always has a worktree). */
   baseSha?: string;
@@ -448,8 +472,11 @@ export interface SubstrateManifestRecord {
   verifiedByRun: string | null;
   /** human-facing RAW per-key graded delta (empty on the skip path / when unmeasurable). */
   deltaSummary: Record<string, number>;
-  /** SOFT-gate reject only: the drop-back packet (coarse category + steer) for the outer loop's next fixer. */
-  dropback?: { category: GateRejectCategory; steer?: string };
+  /** The drop-back packet (coarse category + steer) for the next fixer. SOFT-gate reject ⇒ a `GateRejectCategory`;
+   *  an adopt-train stale-base BOUNCE (WS-B5) ⇒ the record-level `'stale-base'` category — deliberately widened
+   *  HERE (never into the gate's closed `GateRejectCategory` union, which `parseGateVerdict` validates against,
+   *  so the gate agent can never emit it). Minimal ripple: only this on-disk record carries the wider category. */
+  dropback?: { category: GateRejectCategory | 'stale-base'; steer?: string };
 }
 
 export interface SubstrateManifest {
@@ -852,6 +879,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
       const preRecord: SubstrateManifestRecord = {
         issue: issue.name, issueId: issue.id, node, decision: 'discarded', candidateRef: branch, liveRoot: workspace,
         baseSha, landPolicy: 'stage-for-human', reason: '', verifiedByRun: childId, deltaSummary,
+        severity: issue.severity, firstSeen: issue.firstSeen,
         ...(candidateSha ? { candidateSha } : {}),
       };
       const vs = await verifyStage(lifecycleDir, {
@@ -903,6 +931,8 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
         reason,
         verifiedByRun: childId,
         deltaSummary,
+        severity: issue.severity, // WS-B5/§6: carry the priority so the adopt train orders within a node
+        firstSeen: issue.firstSeen,
         ...(candidateSha ? { candidateSha } : {}),
         ...(dropback ? { dropback } : {}),
       };
@@ -1125,6 +1155,92 @@ export async function verifyStage(
   }
 }
 
+// ── reproveCandidate — the adopt-train re-prove seam's shipped implementation (WS-B5, §6 table row 3) ────────
+// On a closure-OVERLAP staleness verdict the train must RE-PROVE the fix against the MOVED HEAD before landing:
+// REBUILD the candidate on current HEAD (cherry-pick candidateSha into a scratch worktree at HEAD — so the node
+// runs against HEAD+fix, "measure vs fresh base"), re-run the node there, measure the child vs the LIVE root,
+// and gate the fresh graded delta with the SAME foldGradedDelta + evaluateGate rules fixIssue uses. ACCEPT ⇒
+// return the HEAD-rebuilt sha (adopt lands THAT non-stale commit, not the original). FAIL-SAFE: a cherry-pick
+// CONFLICT (the real base-drift collision), a regressed/flat delta, or ANY spawn/measure error ⇒ reject, so the
+// train BOUNCES — this seam can only ever turn a bounce into a proven land, never force-land on error.
+
+export interface ReproveCandidateOpts {
+  /** the product template dir (`nodes/<id>/node.json`; the child run loads the template from here). */
+  templateDir: string;
+  /** the parent run being optimized — the re-prove's baseline graded (`measure.<node>.json`) is read from here,
+   *  and `spawnChildRun` replays the node off it. */
+  parentRunDir: string;
+  /** graded-delta knobs (mirror fixIssue's fold). */
+  tolerance?: number;
+  lowerIsBetter?: (key: string) => boolean;
+  /** test/offline seams (default the real fns; a test injects fakes so the re-prove never live-spawns). */
+  spawnChild?: (parentRunDir: string, nodeId: string, opts: SpawnChildRunOpts) => Promise<SpawnChildRunResult>;
+  measure?: (runDir: string, nodeId: string, opts: RunSubstrateMeasureOpts) => Promise<MeasureReport>;
+}
+
+/** Rebuild a candidate ON current HEAD: a fresh DETACHED worktree at HEAD + `cherry-pick candidateSha`, so the
+ *  re-prove runs the node against HEAD+fix (not the stale-base tree). Aborts + tears down on a cherry-pick
+ *  CONFLICT (a real base-drift collision) then rethrows — the caller fail-safe-bounces. Path is a sibling
+ *  `.piflow-optimize-worktrees/<repo>/<node>/<issue>/reprove`, idempotently reset. */
+async function rebuildOnHeadWorktree(repoRoot: string, node: string, issue: string, candidateSha: string): Promise<{ wtPath: string; sha: string }> {
+  const root = path.resolve(repoRoot);
+  const wtPath = path.join(path.dirname(root), '.piflow-optimize-worktrees', path.basename(root), node, issue, 'reprove');
+  try { git(root, 'worktree', 'remove', '--force', wtPath); } catch { /* none to remove */ }
+  await fs.rm(wtPath, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(wtPath), { recursive: true });
+  git(root, 'worktree', 'add', '--detach', wtPath, 'HEAD');
+  try {
+    git(wtPath, '-c', 'commit.gpgsign=false', '-c', 'user.name=piflow-optimizer', '-c', 'user.email=optimizer@piflow.local', 'cherry-pick', candidateSha);
+  } catch (e) {
+    try { git(wtPath, 'cherry-pick', '--abort'); } catch { /* not mid-pick */ }
+    removeCandidateWorktree(root, wtPath);
+    throw e;
+  }
+  return { wtPath, sha: git(wtPath, 'rev-parse', 'HEAD') };
+}
+
+/**
+ * RE-PROVE a stale-base staged candidate against the moved HEAD (the shipped `AdoptSubstrateManifestOpts.reprove`
+ * default; §6 table row 3). Rebuilds the candidate on HEAD, re-runs the node there, measures vs the LIVE root,
+ * and gates the graded delta. Returns `{ accept, reason, candidateSha }` — on ACCEPT the `candidateSha` is the
+ * HEAD-rebuilt sha so adopt lands it (not the stale one). FAIL-SAFE: conflict / regression / any error ⇒
+ * `{ accept:false }` (the train bounces). Injected spawnChild/measure keep it unit-testable (never live-spawns a test).
+ */
+export async function reproveCandidate(record: SubstrateManifestRecord, opts: ReproveCandidateOpts): Promise<{ accept: boolean; reason: string; candidateSha?: string }> {
+  const candidateSha = record.candidateSha;
+  if (!candidateSha) return { accept: false, reason: 're-prove: record has no candidateSha to rebuild' };
+  const spawnChild = opts.spawnChild ?? spawnChildRun;
+  const measure = opts.measure ?? runSubstrateMeasure;
+  const root = path.resolve(record.liveRoot);
+
+  let rebuilt: { wtPath: string; sha: string };
+  try {
+    rebuilt = await rebuildOnHeadWorktree(root, record.node, record.issue, candidateSha);
+  } catch (e) {
+    return { accept: false, reason: `re-prove could not rebuild on HEAD (cherry-pick conflict / git error): ${(e as Error).message}` };
+  }
+  try {
+    // Re-run the node against the HEAD+fix worktree, then measure the child against the LIVE (pristine) root.
+    const child = await spawnChild(opts.parentRunDir, record.node, {
+      templateDir: opts.templateDir,
+      workspace: rebuilt.wtPath,
+      spawnedBy: { by: 'substrate-reprove', issue: record.issue, issueId: record.issueId },
+    });
+    const childReport = await measure(child.childDir, record.node, { workspace: root });
+    const fold = foldGradedDelta(await readParentGraded(opts.parentRunDir, record.node), childReport.graded, {
+      ...(opts.tolerance !== undefined ? { tolerance: opts.tolerance } : {}),
+      ...(opts.lowerIsBetter ? { lowerIsBetter: opts.lowerIsBetter } : {}),
+    });
+    const verdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base: fold.base, candidate: fold.candidate, editsApplied: 1 });
+    if (!verdict.accept) return { accept: false, reason: `re-prove gate rejected against fresh HEAD: ${verdict.reason}` };
+    return { accept: true, reason: `re-prove gate accepted against fresh HEAD: ${verdict.reason}`, candidateSha: rebuilt.sha };
+  } catch (e) {
+    return { accept: false, reason: `re-prove failed (spawn/measure error): ${(e as Error).message}` };
+  } finally {
+    removeCandidateWorktree(root, rebuilt.wtPath);
+  }
+}
+
 // ── adoptSubstrateManifest — the SEPARATE human ADOPT step, git-native (cherry-pick; WS0) ────────────────────
 
 export interface AdoptSubstrateManifestOpts {
@@ -1133,11 +1249,29 @@ export interface AdoptSubstrateManifestOpts {
   /** ACCEPTED for CLI back-compat but UNUSED by the commit-based landing — git history/reflog is the recovery
    *  path for a cherry-pick (no per-file `.bak` copy, unlike the old file-copy adopt). */
   backupDir?: string;
+  /** WS-B5 TRAIN: the blame-derived upstream-first node order the records land in (before node/issue asc).
+   *  Absent ⇒ pure node-asc then issue-asc — completion order NEVER dictates landing order regardless. */
+  nodeOrder?: string[];
+  /** WS-B5 TRAIN: the parent run dir — needed to locate each issue's lifecycle `record.json` when a stale-base
+   *  BOUNCE must rewrite it (`discarded` + stale-base dropback). ABSENT ⇒ the bounce degrades to the issue
+   *  walk-back + skip reason only (a record alone can't name its lifecycle dir). */
+  runDir?: string;
+  /** WS-B5 TRAIN: the re-prove seam for a `closure-overlap` staleness verdict — spawn a fresh child run against
+   *  the moved HEAD + re-gate. `accept` ⇒ land (with a re-proved note); reject/absent ⇒ BOUNCE. Injected (never
+   *  a live spawn in core): the CLI/product wires it (the shipped default is `reproveCandidate`).
+   *  A re-prove that REBUILT the candidate on the moved HEAD returns that fresh `candidateSha` so adopt lands the
+   *  HEAD-rebuilt (non-stale) commit instead of the original — the accept branch lands `candidateSha ?? the
+   *  original` and re-runs the oracle backstop on any substitute before the pick. */
+  reprove?: (record: SubstrateManifestRecord) => Promise<{ accept: boolean; reason: string; candidateSha?: string }>;
+  /** WS-B5 TRAIN: GC the throwaway `optimize/<node>/<issue>/*` branches after a land+resolve. Default TRUE; the
+   *  CLI `--no-gc` threads false. NEVER GCs a skip/bounce (an escalation candidate keeps its branch). */
+  gcBranches?: boolean;
   onEvent?: SubstrateEventSink;
 }
 
 export interface AdoptSubstrateManifestResult {
-  adopted: { issue: string; node: string; commit: string; files: string[] }[];
+  /** `note` (WS-B5) rides a land under BASE DRIFT: a closure-disjoint drift, or a re-proved-against-HEAD land. */
+  adopted: { issue: string; node: string; commit: string; files: string[]; note?: string }[];
   skipped: { issue: string; reason: string }[];
 }
 
@@ -1153,23 +1287,84 @@ function cherryPickCandidate(liveRoot: string, candidateSha: string): { sha: str
   return { sha, files };
 }
 
+/** WS-B5 branch GC: delete every throwaway `refs/heads/optimize/<node>/<issue>/*` branch on the live repo. The
+ *  landed cherry-pick sha stamped in the issue attempt is the durable record, so this is BEST-EFFORT per branch
+ *  — a branch that will not delete (checked out, already gone, no such repo) never fails the adopt. NEVER called
+ *  on a skip/bounce (an escalation candidate keeps its branch). */
+function gcIssueBranches(repoRoot: string, node: string, issue: string): void {
+  const root = path.resolve(repoRoot);
+  let refs: string[];
+  try {
+    refs = git(root, 'for-each-ref', '--format=%(refname:short)', `refs/heads/optimize/${node}/${issue}/`).split('\n').filter(Boolean);
+  } catch {
+    return; // not a repo / no such refs — nothing to GC
+  }
+  for (const ref of refs) {
+    try { git(root, 'branch', '-D', ref); } catch { /* best-effort: the landed sha is the record, not the branch */ }
+  }
+}
+
+/** The stale-base dropback STEER for the next fixer — names the closure blast so a retry aims at current HEAD.
+ *  Prose only (never machine-read; the `category:'stale-base'` is the typed signal). */
+function staleBaseSteer(overlapCount: number, readableDiff: boolean): string {
+  const blast = readableDiff
+    ? `${overlapCount} intervening change${overlapCount === 1 ? '' : 's'} touching the node closure`
+    : 'its intervening diff could not be read — re-proving conservatively';
+  return `the live baseline moved under this fix (${blast}) — re-fix against current HEAD`;
+}
+
+/** A stale-base BOUNCE (WS-B5): the record is NOT picked. Rewrite its lifecycle `record.json` → `discarded` + a
+ *  `{category:'stale-base'}` dropback (ONLY when `opts.runDir` is known — a record alone can't name its
+ *  lifecycle dir, so without it the bounce DEGRADES to the walk-back + skip reason), then walk the issue back to
+ *  `open` by the LEGAL edge only (guarded by `assertTransition`): `verifying → open` (proven) or `fix-landed →
+ *  open` (skip-proof) — both re-fixable. Only a status with no legal edge to `open` is LEFT (skip reason honest). */
+async function bounceStaleBase(record: SubstrateManifestRecord, opts: AdoptSubstrateManifestOpts, steer: string): Promise<void> {
+  if (opts.runDir) {
+    const dir = issueLifecycleDir(opts.runDir, record.node, record.issue);
+    const bounced: SubstrateManifestRecord = {
+      ...record,
+      decision: 'discarded',
+      reason: 'stale base (closure overlap) — bounced, not landed',
+      dropback: { category: 'stale-base', steer },
+    };
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'record.json'), JSON.stringify(bounced, null, 2));
+  }
+  const issuePath = path.join(opts.templateDir, 'nodes', record.node, 'issues', `${record.issue}.md`);
+  try {
+    const cur = await parseIssueFile(issuePath);
+    let toOpen = false;
+    try { assertTransition(cur.status, 'open'); toOpen = true; } catch { /* no legal edge to open (e.g. fix-landed) */ }
+    if (toOpen) await transitionIssue(issuePath, 'open');
+  } catch {
+    /* unreadable issue file — the record rewrite (if any) + the skip reason already record the bounce */
+  }
+}
+
 /**
  * Adopt every `staged` record of a substrate manifest into the live product by `git cherry-pick candidateSha`
  * onto its `liveRoot` (the candidate commit already carries the subject + `Issue:` trailer identity), then
  * `stampAttempt({commit: the landed sha, verifiedByRun})` and transition the issue → `resolved` (reason
- * `fixed`) — the fix-landed→resolved (skip) or verifying→resolved (prove) edge. On BASE DRIFT (a conflicting
- * pick) the cherry-pick is ABORTED and the record SKIPPED with a clear reason — never a forced/silent apply. A
- * record with no `candidateSha` (a no-edit/oracle-touched discard) is skipped up front; a re-adopt whose changes
- * are already present is an empty pick → aborted + skipped (a natural no-op).
+ * `fixed`) — the fix-landed→resolved (skip) or verifying→resolved (prove) edge. A record with no `candidateSha`
+ * (a no-edit/oracle-touched discard) is skipped up front; a re-adopt whose changes are already present is an
+ * empty pick → aborted + skipped (a natural no-op).
+ *
+ * The WS-B5 TRAIN wraps that core: records land in `orderRecords(records, nodeOrder)` order; each staged record
+ * first passes the pure `assessStaleness` verdict (fresh ⇒ land · disjoint ⇒ land WITH a base-drift note ·
+ * overlap ⇒ re-prove via `opts.reprove` or BOUNCE `verifying → open` with a stale-base dropback); a
+ * conflicting pick still ABORTS + skips (the last resort); and a land+resolve GCs the issue's throwaway
+ * branches unless `opts.gcBranches === false`. Every skip/bounce is written into the record reason + the stream.
  */
 export async function adoptSubstrateManifest(
   manifest: SubstrateManifest,
   opts: AdoptSubstrateManifestOpts,
 ): Promise<AdoptSubstrateManifestResult> {
   const emit = (e: SubstrateEvent): void => safeEmit(opts.onEvent, e);
+  const gcBranches = opts.gcBranches ?? true;
 
   const result: AdoptSubstrateManifestResult = { adopted: [], skipped: [] };
-  for (const record of manifest.records) {
+  // (a) TRAIN order — completion order NEVER dictates landing order (§6): blame node order first, then node/issue asc.
+  for (const record of orderRecords(manifest.records, opts.nodeOrder)) {
     if (record.decision !== 'staged') {
       result.skipped.push({ issue: record.issue, reason: `decision is "${record.decision}" (not staged)` });
       continue;
@@ -1178,18 +1373,63 @@ export async function adoptSubstrateManifest(
       result.skipped.push({ issue: record.issue, reason: 'no candidate commit (candidateSha) to land' });
       continue;
     }
+    const candidateSha = record.candidateSha; // pin a local — never re-narrow the record property across awaits
     // FINAL BACKSTOP (Defect 1): never cherry-pick an oracle-touched candidate into the live product, even if a
-    // stale/tampered staged record slipped past the fixer-side guard + verifyStage.
-    const oracleBaseRef = record.baseSha ?? `${record.candidateSha}~1`;
-    if (await candidateTouchesOracle(opts.templateDir, record.node, record.liveRoot, oracleBaseRef, record.candidateSha)) {
+    // stale/tampered staged record slipped past the fixer-side guard + verifyStage. (Runs BEFORE staleness.)
+    const oracleBaseRef = record.baseSha ?? `${candidateSha}~1`;
+    if (await candidateTouchesOracle(opts.templateDir, record.node, record.liveRoot, oracleBaseRef, candidateSha)) {
       result.skipped.push({ issue: record.issue, reason: 'candidate diff touches an oracle path (optimize.measure/criteria) — refusing to land' });
       continue;
     }
 
     const root = path.resolve(record.liveRoot);
+
+    // (b) STALENESS (WS-B5) — the pure verdict over (baseSha, HEAD, intervening paths, the node closure), BEFORE
+    // the pick. The git reads DEGRADE (an unreadable intervening diff ⇒ undefined ⇒ conservative overlap; an
+    // unreadable node.json ⇒ empty closure), never throw the whole adopt.
+    let headSha: string;
+    try { headSha = git(root, 'rev-parse', 'HEAD'); } catch { headSha = record.baseSha ?? ''; }
+    let interveningPaths: string[] | undefined;
+    if (record.baseSha) {
+      try { interveningPaths = git(root, 'diff', '--name-only', record.baseSha, 'HEAD').split('\n').filter(Boolean); }
+      catch { interveningPaths = undefined; }
+    }
+    let closure: string[] = [];
+    try { ({ include: closure } = await readClosureRefs(opts.templateDir, record.node)); } catch { closure = []; }
+    const verdict = assessStaleness({ baseSha: record.baseSha, headSha, interveningPaths, closure });
+
+    // (c) OVERLAP ⇒ re-prove-or-bounce; disjoint carries a base-drift note; fresh lands clean.
+    let landNote: string | undefined;
+    let landSha = candidateSha; // the sha adopt actually cherry-picks — a re-prove may substitute a HEAD-rebuilt one.
+    if (verdict === 'disjoint') {
+      landNote = 'landed with base drift (closure-disjoint)';
+    } else if (verdict === 'overlap') {
+      const rp = opts.reprove ? await opts.reprove(record) : null;
+      if (!rp || !rp.accept) {
+        const overlap = (interveningPaths ?? []).filter((p) => pathInClosure(p, closure));
+        await bounceStaleBase(record, opts, staleBaseSteer(overlap.length, interveningPaths !== undefined));
+        emit({ type: 'stopped', issue: record.issue, reason: 'bounced (stale base)' });
+        result.skipped.push({ issue: record.issue, reason: 'stale base (closure overlap) — bounced, not landed' });
+        continue;
+      }
+      // A re-prove that REBUILT the candidate on the moved HEAD hands back that fresh sha — land THAT (non-stale)
+      // commit, but only after the SAME oracle backstop clears it (never cherry-pick a rebuilt scorer-tamper).
+      if (rp.candidateSha && rp.candidateSha !== candidateSha) {
+        if (await candidateTouchesOracle(opts.templateDir, record.node, root, `${rp.candidateSha}~1`, rp.candidateSha)) {
+          result.skipped.push({ issue: record.issue, reason: 're-proved candidate touches an oracle path (optimize.measure/criteria) — refusing to land' });
+          continue;
+        }
+        landSha = rp.candidateSha;
+        landNote = `re-proved against ${headSha.slice(0, 7)} (HEAD-rebuilt candidate)`;
+      } else {
+        landNote = `re-proved against ${headSha.slice(0, 7)}`;
+      }
+    }
+
+    // (d) LAND — cherry-pick landSha (the shipped conflict⇒abort+skip stays the last resort).
     let landed: { sha: string; files: string[] };
     try {
-      landed = cherryPickCandidate(root, record.candidateSha);
+      landed = cherryPickCandidate(root, landSha);
     } catch (e) {
       const out = `${(e as { stdout?: Buffer }).stdout ?? ''}${(e as { stderr?: Buffer }).stderr ?? ''}`;
       try { git(root, 'cherry-pick', '--abort'); } catch { /* not mid-pick — nothing to abort */ }
@@ -1206,8 +1446,10 @@ export async function adoptSubstrateManifest(
     const issuePath = path.join(opts.templateDir, 'nodes', record.node, 'issues', `${record.issue}.md`);
     await stampAttempt(issuePath, { commit: landed.sha, verifiedByRun: record.verifiedByRun ?? UNPROVEN_BY_RUN });
     await transitionIssue(issuePath, 'resolved', { reason: 'fixed' }); // fix-landed→resolved | verifying→resolved
-    emit({ type: 'adopted', issue: record.issue, commit: landed.sha, files: landed.files.length });
-    result.adopted.push({ issue: record.issue, node: record.node, commit: landed.sha, files: landed.files });
+    // (e) BRANCH GC (default ON) — only on a successful land+resolve; a skip/bounce keeps its branch.
+    if (gcBranches) gcIssueBranches(root, record.node, record.issue);
+    emit({ type: 'adopted', issue: record.issue, commit: landed.sha, files: landed.files.length, ...(landNote ? { note: landNote } : {}) });
+    result.adopted.push({ issue: record.issue, node: record.node, commit: landed.sha, files: landed.files, ...(landNote ? { note: landNote } : {}) });
   }
   return result;
 }

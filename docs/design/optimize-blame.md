@@ -298,14 +298,14 @@ overlord skill's on-ramp — it already owns the manual version of this loop), a
 
 | WS | what | acceptance (observable) |
 |---|---|---|
-| B0 | `metaSchema` `optimize` extension (mirrors `node.schema.ts:385` precedent) + template runway authoring contract (criteria.md/gold layout; hard slot optional per §2) + pre-flight extension to the overlord reference | `loadTemplate` green on a template carrying the block; pre-flight names run-level gaps on a template without SOFT criteria, and passes on a soft-only template (empty hard slot never halts) |
-| B1 | run-level hard measure: `meta.json` ops + digest fold → `blame/measure.json` (expected-sparse — build the seam, not a measure zoo) | deterministic; unit + mutation tests on the fold (a wrong artifact FAILS it — test-the-measure); an empty op[] folds to a valid empty report |
-| B2 | blame judge + verify round + the roster composition (pure fn off each `node.json`: id · description · produces/owns) + prose blame writers + the summary fenced-tail emit/parse (the ONLY parsed surface) | tail round-trips; a `node.json` edit changes the composed roster with no other change (no manual sync); judge quality proven by EVAL, not unit: a fixture run with a planted upstream fault must blame the decision node (agent-level), and the manifestation-trap self-check must fire on a bait case |
-| B3 | CLI verb `optimize blame <run>` (`<run>` = run dir OR run id/name, plain) `[--latest] [--mode]` + events | verb idempotent; re-run rewrites `blame/`; both arg forms resolve to the same run; events observable on `--watch` |
-| B4 | triage ingest seam (§4.1): `buildJudgePrompt` gains `<blame_context>` + the **piflow-triage SKILL.md update** (corroborate-locally · dissent path · global-brief rules — reconciled with the skill's current hand-adjusted text) + the dissent trace plumbing | triage output unchanged when no blame file exists; with one, the minted issue's brief cites the propagated evidence AND defaults `verify: full`; BAIT EVAL: a planted WRONG attribution is CONTESTED with evidence, not minted |
-| B5 | adopt train: land-order + staleness policy (pure fn, table-tested) + `stale-base` dropback + branch GC + wait-for-order rule | policy table has a failing test per row; bounce lands the issue at `open` with the dropback recorded; adopted branches are gone, escalated ones remain |
-| B6 | blame-memorize into template-root `memory.md` + recurrence read into the next judge (confirm `deriveRecurrence` scope covers template-root lessons; extend if per-node-only) | a second blame pass over a re-observed defect stamps `recurrence:`; memory edits go through the memory-slices contract |
-| B7 | (deferred) `optimize run` generation driver; overlord-skill addendum ships FIRST | addendum: the overlord runs one full generation on game-omni live — the M-numbering precedent: the live demo is the eval |
+| B0 | `metaSchema` `optimize` extension (mirrors `node.schema.ts:385` precedent) + template runway authoring contract (criteria.md/gold layout; hard slot optional per §2) + pre-flight extension to the overlord reference | `loadTemplate` green on a template carrying the block; pre-flight names run-level gaps on a template without SOFT criteria, and passes on a soft-only template (empty hard slot never halts) — **(BUILT `8142307` feat(optimize): add meta.json run-level optimize block)** |
+| B1 | run-level hard measure: `meta.json` ops + digest fold → `blame/measure.json` (expected-sparse — build the seam, not a measure zoo) | deterministic; unit + mutation tests on the fold (a wrong artifact FAILS it — test-the-measure); an empty op[] folds to a valid empty report — **(BUILT `e3ca38b` feat(optimize): run-level hard measure fold — blame/measure.json)** |
+| B2 | blame judge + verify round + the roster composition (pure fn off each `node.json`: id · description · produces/owns) + prose blame writers + the summary fenced-tail emit/parse (the ONLY parsed surface) | tail round-trips; a `node.json` edit changes the composed roster with no other change (no manual sync); judge quality proven by EVAL, not unit: a fixture run with a planted upstream fault must blame the decision node (agent-level), and the manifestation-trap self-check must fire on a bait case — **(BUILT `5297f06` feat(optimize): blame core — composed roster + judge/verify agents + summary tail codec; fenced off `measure.json`/dissent by `683ccf3`). The EVAL half (planted-fault fixture, bait case) is UNBUILT — unit + injected-judge tests only; see Build status below** |
+| B3 | CLI verb `optimize blame <run>` (`<run>` = run dir OR run id/name, plain) `[--latest] [--mode]` + events | verb idempotent; re-run rewrites `blame/`; both arg forms resolve to the same run; events observable on `--watch` — **(BUILT `d21c5cb` feat(optimize): CLI verb `optimize blame <run>`; `--mode topo|train` arg-parsing fixed by `e67a1ce`; the `blame-measured` boundary event added by `72bf602`)** |
+| B4 | triage ingest seam (§4.1): `buildJudgePrompt` gains `<blame_context>` + the **piflow-triage SKILL.md update** (corroborate-locally · dissent path · global-brief rules — reconciled with the skill's current hand-adjusted text) + the dissent trace plumbing | triage output unchanged when no blame file exists; with one, the minted issue's brief cites the propagated evidence AND defaults `verify: full`; BAIT EVAL: a planted WRONG attribution is CONTESTED with evidence, not minted — **(BUILT `204a6e6` feat(optimize): triage ingests run-level blame as a hypothesis). The bait EVAL is UNBUILT — see Build status below** |
+| B5 | adopt train: land-order + staleness policy (pure fn, table-tested) + `stale-base` dropback + branch GC + wait-for-order rule | policy table has a failing test per row; bounce lands the issue at `open` with the dropback recorded; adopted branches are gone, escalated ones remain — **(BUILT `7558f92` feat(optimize): adopt train — staleness policy, stale-base bounce, branch GC, blame landing order; the re-prove seam wired live by `9586ae3`; landing order fixed to severity-desc by `70fc963`; the `fix-landed→open` back-edge for a skip-proof stale-base bounce added by `2300938`)** |
+| B6 | blame-memorize into template-root `memory.md` + recurrence read into the next judge (confirm `deriveRecurrence` scope covers template-root lessons; extend if per-node-only) | a second blame pass over a re-observed defect stamps `recurrence:`; memory edits go through the memory-slices contract — **(BUILT `d5c93a4` feat(optimize): blame-memorize into template-root memory.md; recurrence counting corrected to distinct generations, not memorize invocations, by `ad25115`)** |
+| B7 | (deferred) `optimize run` generation driver; overlord-skill addendum ships FIRST | addendum: the overlord runs one full generation on game-omni live — the M-numbering precedent: the live demo is the eval — **(DEFERRED — not started this build; see Build status below)** |
 
 Ordering: B0→B1→B2→B3 are the blame verb (serial); B4 is independent after B2; B5 is independent of all
 blame work (pure train hardening — can land first); B6 after B2; B7 last. Per test-discipline: pure folds and
@@ -361,3 +361,38 @@ fixture, live generation) — never coverage theater.
 - [ ] Mode was DERIVED from the blame graph (flag only overrides); a MODE P pass logged its reconcile run.
 - [ ] The template runway passed pre-flight before the first generation; a failed pre-flight halted the loop
       with "fix the measure," not a blind lane.
+
+## Build status (2026-07-10)
+
+WS-B0 through WS-B6 are BUILT on `worktree-optimize-blame-build` (main..HEAD, 14 commits — 7 primary + 7
+follow-on fixes; §10 table stamped above with the exact commit per row) and green under `npm run typecheck` +
+`npx vitest run --project default`: the run-level `optimize.{measure,criteria}` schema block (B0), the hard
+measure fold to `blame/measure.json` (B1), the composed roster + judge/verify agents + the summary fenced-tail
+codec (B2), the `optimize blame <run> [--latest] [--mode]` verb + events (B3), the `<blame_context>` triage
+ingest seam and the reconciled `piflow-triage` SKILL.md (B4), the adopt train's staleness policy + stale-base
+bounce + branch GC + severity-ordered landing + the live re-prove seam (B5), and blame-memorize into
+template-root `memory.md` with generation-grained recurrence (B6).
+
+**Deferred — not attempted this build, tracked as follow-on:**
+- **B7, the `optimize run` generation driver.** The design (§8, §10 row B7) explicitly sequences it AFTER an
+  overlord-skill addendum proves the loop by hand; neither the addendum nor the driver were started. The
+  primitives (blame → per-lane triage/fix/verify/train-land → propagation run) all ship as verbs; nothing wires
+  them into one deterministic multi-generation loop yet.
+- **Blame-skill extraction.** §4.1's node-triage rules for `<blame_context>` (corroborate-locally, the dissent
+  path, the global-brief slot) were reconciled directly into the existing `piflow-triage` SKILL.md (WS-B4) —
+  there is no standalone `piflow-blame` skill. Extraction into its own skill was never in scope for B4 and
+  remains a possible follow-on if the blame-side rules grow past what a triage-skill section can hold cleanly.
+- **In-adopt live re-prove wiring beyond the seam.** `reproveCandidate` (`packages/core/src/optimize/substrate/
+  fix.ts`) is real — it rebuilds the candidate on HEAD, spawns a genuine child run, measures, and gates the
+  delta — and it is wired as the adopt train's default (`9586ae3`). But it is proven only up to its injected
+  seam (`spawnChild`/`measure` fakes in `optimize-substrate-train.test.ts`); it has never been exercised
+  against a real product repo with a genuine closure-overlap base-drift. That live proof is open.
+- **The live-eval follow-up (planted-fault eval on game-omni).** §10's B2 and B4 acceptance criteria both call
+  for an EVAL, not a unit test: a fixture run with a PLANTED upstream fault that the judge must attribute to
+  the decision node (not the surfacing node), a manifestation-trap bait case, and a WS-B4 bait case where a
+  deliberately WRONG attribution must be CONTESTED, not minted. None of these fixtures exist yet — the shipped
+  test suites (`optimize-blame-core.test.ts`, `optimize-blame-cli.test.ts`, `optimize-substrate-train.test.ts`,
+  `optimize-blame-memorize.test.ts`) cover the mechanical folds/codec/policy tables and the judge's plumbing
+  against an INJECTED fake judge, never the real judge's attribution QUALITY. Per test-discipline, that
+  quality question is an eval question, not a unit-test question, and it needs a live (or live-fixture) pass on
+  game-omni — the same "the live demo is the eval" bar §10's B7 row already sets for the generation driver.

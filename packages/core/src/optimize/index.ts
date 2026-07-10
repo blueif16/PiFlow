@@ -102,17 +102,24 @@ export type {
 // manifest; ADOPT is the SEPARATE human step (adoptSubstrateManifest → git cherry-pick candidateSha →
 // stampAttempt → status resolved). Its OWN dedicated SubstrateEvent stream + renderSubstrateEvent projection.
 export {
-  fixIssue, verifyStage, adoptSubstrateManifest, prepareCandidateWorktree, removeCandidateWorktree, candidateWorktreeRef,
+  fixIssue, verifyStage, adoptSubstrateManifest, reproveCandidate, prepareCandidateWorktree, removeCandidateWorktree, candidateWorktreeRef,
   commitCandidate, oracleTouchedByDiff, candidateTouchesOracle, nodeHasCriteria, readClosureRefs, foldGradedDelta, collectWorkspaceRefs, buildFixerPrompt,
   readSubstrateManifest, scanRecords, issueLifecycleDir, UNPROVEN_BY_RUN,
 } from './substrate/fix.js';
 export type {
   FixIssueOpts, FixIssueResult, VerifyStageOpts, VerifyStageResult, CandidateWorktree, CommitCandidateResult,
   CommitIssueRef, ClosureRefs, FoldGradedOpts, FoldGradedResult, SubstrateManifest, SubstrateManifestRecord,
-  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, RetryContext,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, ReproveCandidateOpts, RetryContext,
 } from './substrate/fix.js';
 export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
 export type { SubstrateEvent, SubstrateEventSink } from './substrate/events.js';
+
+// The adopt TRAIN's PURE policy (docs/design/optimize-blame.md §6, WS-B5) — the fs/git-free brain
+// `adoptSubstrateManifest` consults: the per-record staleness VERDICT (conservative-on-missing-evidence), the
+// deterministic landing ORDER (completion order never dictates landing order), and the blame graph's
+// upstream-first node order (cycle-safe Kahn). Table-tested in isolation from the impure land.
+export { assessStaleness, pathInClosure, orderRecords, deriveNodeOrder } from './substrate/train.js';
+export type { StalenessVerdict, AssessStalenessInput, OrderableRecord } from './substrate/train.js';
 
 // The OUTER retry loop (docs/design/optimize-verification-loop.md §8) — the bounded, diversifying loop that
 // CONSUMES the gate's soft-gate drop-back: fresh fixer per attempt (own candidate dir + prior-drop-back
@@ -129,3 +136,28 @@ export type {
 // triage` CLI (M5) runs runSubstrateMeasure FIRST, then this — hard-feeds-soft is that verb's contract.
 export { runSubstrateJudge } from './substrate/judge.js';
 export type { SubstrateJudgeOpts, SubstrateJudgeResult } from './substrate/judge.js';
+
+// The run-level BLAME layer (docs/design/optimize-blame.md, WS-B1) — the ONE level up twin of the substrate
+// measurement stage above: `blameDir`/`blameFilePath`/`blameSummaryPath`/`blameMeasurePath`/
+// `blameDissentPath` name every artifact under a run's `optimize/blame/` dir (per-run dispatch, never a
+// template-side copy, no lifecycle/status machine — §1.2/§3); `runBlameMeasure` fires the template's
+// meta-level `optimize.measure` op[] over the run's FINAL artifact + folds a best-effort run digest into
+// `blame/measure.json` — the hard-evidence input the (not-yet-built) blame judge consumes.
+export { blameDir, blameFilePath, blameSummaryPath, blameMeasurePath, blameDissentPath } from './blame/paths.js';
+export { runBlameMeasure } from './blame/measure.js';
+export type { RunBlameMeasureOpts, BlameMeasureReport, BlameDigestSection, BlameDigestNode } from './blame/measure.js';
+// WS-B2 — the blame CORE: the AUTO-COMPOSED responsibility roster (pure fn off each node.json, never hand-
+// synced — §2), the run summary's fenced-tail codec (the ONLY machine-read blame surface, fail-closed both
+// ways — §3), and the blame judge + one verify round (the strong-tier attribution turns, base-agent-shaped
+// like substrate/judge.ts + substrate/gate.ts).
+export { composeRoster, renderRoster } from './blame/roster.js';
+export type { RosterEntry } from './blame/roster.js';
+export { parseBlameSummaryTail, renderBlameSummaryTail } from './blame/summary.js';
+export type { BlameSummary, BlameEntry, BlameSeverity } from './blame/summary.js';
+export { buildBlamePrompt, runBlameJudge } from './blame/judge.js';
+export type { BuildBlamePromptOpts, RunBlameJudgeOpts, RunBlameJudgeResult } from './blame/judge.js';
+// WS-B6 — blame-memorize (§7): distills a finished blame pass into TEMPLATE-ROOT `memory.md` (the FIRST
+// automated writer of that file — node-level MEMORIZE only ever touches `nodes/<id>/memory.md`), so the NEXT
+// blame judge's `<memory>` section (judge.ts) carries cross-run recurrence context.
+export { memorizeBlame } from './blame/memorize.js';
+export type { MemorizeBlameResult } from './blame/memorize.js';

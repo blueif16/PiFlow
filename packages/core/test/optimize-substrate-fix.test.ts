@@ -15,6 +15,7 @@ import { execFileSync } from 'node:child_process';
 import {
   fixIssue,
   adoptSubstrateManifest,
+  reproveCandidate,
   prepareCandidateWorktree,
   removeCandidateWorktree,
   commitCandidate,
@@ -860,6 +861,24 @@ describe('fixIssue — skip-proof path (prove off)', () => {
     expect(res.record?.verifiedByRun).toBeNull();
     expect((await parseIssueFile(issuePath)).status).toBe('fix-landed'); // the skip-proof landing state
   });
+
+  it('the staged record carries the issue severity + firstSeen (so the adopt train can order within a node)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      prove: false,
+      runAgent: editingAgent,
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    // the fixture issue is severity:high, firstSeen:260706-01 — copied onto the record for orderRecords (§6).
+    expect(res.record?.severity).toBe('high');
+    expect(res.record?.firstSeen).toBe('260706-01');
+    // and PERSISTED to record.json on disk (scanRecords → the adopt train reads these, not the ledger).
+    const onDisk = JSON.parse(await fs.readFile(res.manifestPath!, 'utf8'));
+    expect(onDisk.severity).toBe('high');
+    expect(onDisk.firstSeen).toBe('260706-01');
+  });
 });
 
 describe('fixIssue — surfaces the fixer agent\'s runDir (Phase-3 observe wiring)', () => {
@@ -1365,5 +1384,226 @@ describe('adoptSubstrateManifest — cherry-picks candidateSha, commits, stamps 
     // the live product is UNTOUCHED (HEAD unchanged, scorer not tampered).
     expect(headOf(workspace)).toBe(head);
     expect(await fs.readFile(join(workspace, 'eval', 'check.mjs'), 'utf8')).toBe('// scorer\n');
+  });
+
+  // ── WS-B5 the adopt TRAIN: staleness policy · stale-base bounce · branch GC (docs/design/optimize-blame.md §6) ──
+  const branchExists = (repo: string, branch: string): boolean => {
+    try {
+      execFileSync('git', ['-C', repo, 'rev-parse', '--verify', `refs/heads/${branch}`], { stdio: ['ignore', 'pipe', 'pipe'] });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  const commitAll = (repo: string, msg: string): void => {
+    execFileSync('git', ['-C', repo, 'add', '-A'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    execFileSync('git', ['-C', repo, 'commit', '-qm', msg], { stdio: ['ignore', 'pipe', 'pipe'] });
+  };
+
+  /** stageOne's richer twin: a node.json declaring `contract.readScope` (so `readClosureRefs` yields a real
+   *  include-closure), plus an OUTSIDE-closure file — the staleness policy needs a real closure to assess. */
+  async function stageWithClosure(opts: { issueStatus: Issue['status'] }) {
+    const workspace = await scratch('piflow-repo-');
+    await fs.mkdir(join(workspace, 'templates'), { recursive: true });
+    await fs.writeFile(join(workspace, 'templates', 'level.json'), '{"v":1}\n');
+    await fs.writeFile(join(workspace, 'README.md'), 'readme\n'); // OUTSIDE the closure
+    seedGitRepo(workspace);
+
+    const templateDir = await scratch('piflow-tpl-');
+    const nodeDir = join(templateDir, 'nodes', 'gameplay');
+    await fs.mkdir(join(nodeDir, 'issues'), { recursive: true });
+    await fs.writeFile(join(nodeDir, 'node.json'), JSON.stringify({ contract: { readScope: ['{{WORKSPACE}}/templates'] } }));
+    const issuePath = join(nodeDir, 'issues', 'soggy-crust.md');
+    const issue = makeIssue({ status: opts.issueStatus });
+    await writeIssueFile(issuePath, issue);
+
+    const { baseSha, candidateSha, branch } = await makeCandidate(workspace, issue, async (wtDir) => {
+      await fs.writeFile(join(wtDir, 'templates', 'level.json'), '{"v":2,"fixed":true}\n');
+    });
+    const record: SubstrateManifestRecord = {
+      issue: 'soggy-crust', issueId: issue.id, node: 'gameplay', decision: 'staged',
+      candidateRef: branch, liveRoot: workspace, baseSha, candidateSha,
+      landPolicy: 'stage-for-human', reason: 'staged', verifiedByRun: 'tS2.gameplay', deltaSummary: {},
+    };
+    return { workspace, templateDir, issuePath, record, branch };
+  }
+
+  it('FRESH (base unmoved) lands, and GC deletes the attempt branch after resolve', async () => {
+    const { workspace, templateDir, issuePath, record, branch } = await stageWithClosure({ issueStatus: 'verifying' });
+    expect(branchExists(workspace, branch)).toBe(true); // present before adopt
+    const res = await adoptSubstrateManifest({ records: [record] }, { templateDir });
+    expect(res.adopted).toHaveLength(1);
+    expect(res.adopted[0].note).toBeUndefined(); // fresh → no base-drift note
+    expect((await parseIssueFile(issuePath)).status).toBe('resolved');
+    expect(branchExists(workspace, branch)).toBe(false); // GC'd after a successful land
+  });
+
+  it('DISJOINT (base moved OUTSIDE the closure) lands WITH a base-drift note; the adopted event carries it', async () => {
+    const { workspace, templateDir, issuePath, record } = await stageWithClosure({ issueStatus: 'verifying' });
+    await fs.writeFile(join(workspace, 'README.md'), 'unrelated change\n');
+    commitAll(workspace, 'drift outside closure');
+    const events: SubstrateEvent[] = [];
+    const res = await adoptSubstrateManifest({ records: [record] }, { templateDir, onEvent: (e) => events.push(e) });
+    expect(res.adopted).toHaveLength(1);
+    expect(res.adopted[0].note).toMatch(/closure-disjoint|base drift/i);
+    const adopted = events.find((e) => e.type === 'adopted');
+    expect(adopted && adopted.type === 'adopted' ? adopted.note : undefined).toMatch(/closure-disjoint|base drift/i);
+    expect((await parseIssueFile(issuePath)).status).toBe('resolved');
+  });
+
+  it('OVERLAP (base moved INSIDE the closure), no reprove ⇒ BOUNCE: not picked, issue → open, record discarded w/ stale-base, branch KEPT', async () => {
+    const { workspace, templateDir, issuePath, record, branch } = await stageWithClosure({ issueStatus: 'verifying' });
+    const runDir = await scratch('piflow-run-');
+    // drift INSIDE the closure but a DIFFERENT file → no textual conflict; the bounce is the POLICY, not a pick conflict.
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    const driftHead = headOf(workspace);
+
+    const res = await adoptSubstrateManifest({ records: [record] }, { templateDir, runDir });
+    expect(res.adopted).toEqual([]);
+    expect(res.skipped).toHaveLength(1);
+    expect(res.skipped[0].reason).toMatch(/stale base|closure overlap|bounced/i);
+    expect(headOf(workspace)).toBe(driftHead); // NOT picked — live HEAD unchanged
+    expect((await parseIssueFile(issuePath)).status).toBe('open'); // verifying → open walk-back
+    const rec = JSON.parse(await fs.readFile(join(runDir, 'optimize', 'issues', 'gameplay', 'soggy-crust', 'record.json'), 'utf8'));
+    expect(rec.decision).toBe('discarded');
+    expect(rec.dropback.category).toBe('stale-base');
+    expect(rec.dropback.steer).toMatch(/re-fix against current HEAD/);
+    expect(branchExists(workspace, branch)).toBe(true); // NEVER GC a bounce — the escalation candidate keeps its branch
+  });
+
+  it('OVERLAP with reprove ACCEPT lands (re-proved note); the reprove seam is passed the record', async () => {
+    const { workspace, templateDir, issuePath, record } = await stageWithClosure({ issueStatus: 'verifying' });
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    let seenRecordIssue = '';
+    const res = await adoptSubstrateManifest({ records: [record] }, {
+      templateDir,
+      reprove: async (r) => { seenRecordIssue = r.issue; return { accept: true, reason: 'fresh replay still green' }; },
+    });
+    expect(seenRecordIssue).toBe('soggy-crust');
+    expect(res.adopted).toHaveLength(1);
+    expect(res.adopted[0].note).toMatch(/re-proved against/i);
+    expect((await parseIssueFile(issuePath)).status).toBe('resolved');
+  });
+
+  it('OVERLAP reprove ACCEPT with a HEAD-rebuilt candidateSha lands the REBUILT commit, not the stale one', async () => {
+    const { workspace, templateDir, issuePath, record } = await stageWithClosure({ issueStatus: 'verifying' });
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    // a REAL fresh candidate on the moved HEAD (attempt-2 branch, distinct sha + distinct content) the reprove hands back.
+    const wt2 = await prepareCandidateWorktree(workspace, { node: 'gameplay', issue: 'soggy-crust', attempt: 2 });
+    await fs.writeFile(join(wt2.worktreeDir, 'templates', 'level.json'), '{"v":3,"rebuilt":true}\n');
+    const rebuilt = commitCandidate(wt2.worktreeDir, wt2.baseSha, { node: 'gameplay', name: 'soggy-crust', id: record.issueId, title: 'rebuilt' });
+    removeCandidateWorktree(workspace, wt2.worktreeDir);
+
+    const res = await adoptSubstrateManifest({ records: [record] }, {
+      templateDir,
+      reprove: async () => ({ accept: true, reason: 'rebuilt + re-proved', candidateSha: rebuilt.candidateSha }),
+    });
+    expect(res.adopted).toHaveLength(1);
+    expect(res.adopted[0].note).toMatch(/re-proved|rebuilt/i);
+    expect(res.adopted[0].commit).not.toBe(record.candidateSha); // the landed commit is the REBUILT one
+    expect((await parseIssueFile(issuePath)).status).toBe('resolved');
+    // the REBUILT content landed on disk — not the stale candidate's {"v":2}.
+    expect(await fs.readFile(join(workspace, 'templates', 'level.json'), 'utf8')).toContain('rebuilt');
+  });
+
+  it('reproveCandidate ACCEPT: rebuilds on HEAD, re-runs the node vs the fresh base, gates → HEAD-rebuilt sha', async () => {
+    const { workspace, templateDir, record } = await stageWithClosure({ issueStatus: 'verifying' });
+    const parentRunDir = await scratch('piflow-run-');
+    await fs.mkdir(join(parentRunDir, 'optimize', 'substrate'), { recursive: true });
+    await fs.writeFile(join(parentRunDir, 'optimize', 'substrate', 'measure.gameplay.json'), JSON.stringify({ graded: { score: 0.5 } }));
+    // drift INSIDE the closure but a DIFFERENT file → the candidate cherry-picks clean onto HEAD (no conflict).
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    const headBefore = headOf(workspace);
+
+    let seenWorkspace = '';
+    const res = await reproveCandidate(record, {
+      templateDir, parentRunDir,
+      spawnChild: async (_p, _n, o) => { seenWorkspace = o.workspace ?? ''; return childResult('rp-child', await scratch()); },
+      measure: async () => measureReport({ score: 0.9 }), // improved vs the parent baseline 0.5
+    });
+
+    expect(res.accept).toBe(true);
+    expect(res.candidateSha).toBeDefined();
+    expect(res.candidateSha).not.toBe(record.candidateSha); // a HEAD-rebuilt commit, not the stale one
+    expect(seenWorkspace).toMatch(/reprove/); // the node ran against the HEAD+fix scratch worktree
+    expect(headOf(workspace)).toBe(headBefore); // re-prove NEVER touches the live branch
+  });
+
+  it('reproveCandidate REJECT: a regressed replay ⇒ bounce, no substitute sha', async () => {
+    const { workspace, templateDir, record } = await stageWithClosure({ issueStatus: 'verifying' });
+    const parentRunDir = await scratch('piflow-run-');
+    await fs.mkdir(join(parentRunDir, 'optimize', 'substrate'), { recursive: true });
+    await fs.writeFile(join(parentRunDir, 'optimize', 'substrate', 'measure.gameplay.json'), JSON.stringify({ graded: { score: 0.5 } }));
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    const res = await reproveCandidate(record, {
+      templateDir, parentRunDir,
+      spawnChild: async () => childResult('rp-child', await scratch()),
+      measure: async () => measureReport({ score: 0.3 }), // regressed vs 0.5
+    });
+    expect(res.accept).toBe(false);
+    expect(res.candidateSha).toBeUndefined();
+  });
+
+  it('reproveCandidate FAIL-SAFE: a spawnChild error bounces (never force-lands)', async () => {
+    const { workspace, templateDir, record } = await stageWithClosure({ issueStatus: 'verifying' });
+    const parentRunDir = await scratch('piflow-run-');
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    const res = await reproveCandidate(record, {
+      templateDir, parentRunDir,
+      spawnChild: async () => { throw new Error('pi spawn exploded'); },
+      measure: async () => measureReport({ score: 0.9 }),
+    });
+    expect(res.accept).toBe(false);
+  });
+
+  it('OVERLAP with reprove REJECT ⇒ bounce (not landed)', async () => {
+    const { workspace, templateDir, issuePath, record } = await stageWithClosure({ issueStatus: 'verifying' });
+    const runDir = await scratch('piflow-run-');
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    const res = await adoptSubstrateManifest({ records: [record] }, {
+      templateDir, runDir, reprove: async () => ({ accept: false, reason: 'fresh replay regressed' }),
+    });
+    expect(res.adopted).toEqual([]);
+    expect(res.skipped).toHaveLength(1);
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
+  });
+
+  it('BOUNCE of a fix-landed (skip-proof) issue walks it back to OPEN — re-fixable, never stranded', async () => {
+    const { workspace, templateDir, issuePath, record } = await stageWithClosure({ issueStatus: 'fix-landed' });
+    const runDir = await scratch('piflow-run-');
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    const res = await adoptSubstrateManifest({ records: [record] }, { templateDir, runDir });
+    expect(res.skipped).toHaveLength(1);
+    // the skip-proof bounce now rides the legal fix-landed → open back-edge — the issue returns to the open pool.
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
+    const rec = JSON.parse(await fs.readFile(join(runDir, 'optimize', 'issues', 'gameplay', 'soggy-crust', 'record.json'), 'utf8'));
+    expect(rec.decision).toBe('discarded');
+    expect(rec.dropback.category).toBe('stale-base');
+    // follow-on: the bounced issue is genuinely re-fixable (open → active is legal) — not the permanent dead state.
+    await expect(transitionIssue(issuePath, 'active')).resolves.toBeDefined();
+  });
+
+  it('BOUNCE without opts.runDir ⇒ walk-back still happens, but no record.json is rewritten (documented degrade)', async () => {
+    const { workspace, templateDir, issuePath, record } = await stageWithClosure({ issueStatus: 'verifying' });
+    await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
+    commitAll(workspace, 'drift inside closure');
+    const res = await adoptSubstrateManifest({ records: [record] }, { templateDir }); // no runDir
+    expect(res.skipped).toHaveLength(1);
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
+  });
+
+  it('gcBranches:false preserves the attempt branch even on a successful land', async () => {
+    const { workspace, templateDir, record, branch } = await stageWithClosure({ issueStatus: 'verifying' });
+    const res = await adoptSubstrateManifest({ records: [record] }, { templateDir, gcBranches: false });
+    expect(res.adopted).toHaveLength(1);
+    expect(branchExists(workspace, branch)).toBe(true); // --no-gc → branch preserved
   });
 });

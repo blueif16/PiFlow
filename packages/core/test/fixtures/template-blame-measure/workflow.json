@@ -1,0 +1,18 @@
+{
+  "id": "template-blame-measure",
+  "meta": {
+    "name": "template-blame-measure",
+    "description": "Single-node fixture (WS-B1) exercising runBlameMeasure's meta-level op[] read + report write + determinism."
+  },
+  "stages": [
+    [
+      "build"
+    ]
+  ],
+  "nodes": {
+    "build": {
+      "phase": "build",
+      "deps": []
+    }
+  }
+}

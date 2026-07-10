@@ -22,9 +22,11 @@ import { existsSync, readdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import {
   runSubstrateMeasure, runSubstrateJudge, fixIssue, fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
-  verifyStage, scanRecords, adoptSubstrateManifest, listIssues, renderSubstrateEvent, nodeHasCriteria,
+  verifyStage, scanRecords, adoptSubstrateManifest, reproveCandidate, listIssues, renderSubstrateEvent, nodeHasCriteria,
+  runBlameMeasure, runBlameJudge, blameDir, blameSummaryPath, parseBlameSummaryTail, deriveNodeOrder,
+  memorizeBlame,
   type SubstrateEvent, type FixIssueResult, type IssueRecord, type Status, type SubstrateManifest,
-  type SubstrateManifestRecord, type VerifyTier,
+  type SubstrateManifestRecord, type VerifyTier, type BlameSummary, type AdoptSubstrateManifestOpts,
 } from '@piflow/core';
 
 /** The valid per-issue verify tiers (WS3) — the `--verify` override guard. */
@@ -38,6 +40,7 @@ import { scanRunsHome, nodeRanFresh, parseNodeRef, type ScanRunsHomeDeps, type N
 /** Which handler `piflowctl optimize <rest…>` routes to. `classic-*` = the shipped routing loop, byte-unchanged. */
 export type OptimizeRoute =
   | 'substrate-triage' | 'substrate-fix' | 'substrate-verify' | 'substrate-adopt' | 'substrate-full'
+  | 'substrate-blame'
   | 'classic-rounds' | 'classic-adopt' | 'classic-fix' | 'classic';
 
 /** Value-taking flags across BOTH the substrate + classic optimize surfaces — so `firstPositional` can tell a
@@ -45,7 +48,7 @@ export type OptimizeRoute =
 const OPTIMIZE_VALUE_FLAGS = new Set([
   '--archetype', '--node', '--run', '--topk', '--template', '--workspace', '--cap', '--tolerance',
   '--tier', '--model', '--status', '--issue', '--staging-dir', '--backup-dir', '--manifest', '--since',
-  '--edit-budget', '--token-budget', '--fix-cycle-ceiling', '--binding', '--verify',
+  '--edit-budget', '--token-budget', '--fix-cycle-ceiling', '--binding', '--verify', '--mode',
 ]);
 
 /** The FIRST bare positional (a `<rundir>`) in `argv`, skipping every `--flag` and its consumed value, or
@@ -75,6 +78,14 @@ export function routeOptimize(rest: string[]): OptimizeRoute {
   if (rest[0] === 'verify' && rest.includes('--node')) return 'substrate-verify';
   // adopt is uniform now: `--manifest <path>` (hidden back-compat) OR `--node [--issue]` (the WS2 regrammar).
   if (rest[0] === 'adopt' && (rest.includes('--manifest') || rest.includes('--node'))) return 'substrate-adopt';
+  // blame (docs/design/optimize-blame.md WS-B3): unlike triage/fix/verify/adopt, blame has no required companion
+  // flag (`--node`/`--manifest`) — its `<run>` positional is itself OPTIONAL (`--latest`/no-positional both
+  // resolve to the newest run). So the gate is `rest.length > 1`: a BARE `optimize blame` (nothing else) is
+  // indistinguishable from the classic `optimize <rundir>` where the rundir happens to be literally named
+  // "blame" — back-compat wins that one case; ANY companion token (a run positional, `--latest`, any flag) picks
+  // the subverb. Gated BEFORE the classic `--rounds`/`--adopt`/`--fix` flag checks below (same reason every other
+  // substrate subverb is gated first: a classic invocation must never be able to trip a substrate route).
+  if (rest[0] === 'blame' && rest.length > 1) return 'substrate-blame';
   if (rest.includes('--rounds')) return 'classic-rounds';
   if (rest.includes('--adopt')) return 'classic-adopt';
   if (rest.includes('--fix')) return 'classic-fix';
@@ -161,6 +172,13 @@ export function judgeAgentOutDir(runDir: string, node: string): string {
  *  path would have the second fixer spawn silently overwrite the first's observe dir. */
 export function fixerAgentOutDir(parentRunDir: string, node: string, issue: string): string {
   return path.join(parentRunDir, 'optimize', 'substrate', 'agents', `fix.${node}.${issue}`);
+}
+
+/** The blame judge/verify spawn's PERSISTENT run dir for `runDir` (docs/design/optimize-blame.md §4; mirrors
+ *  `judgeAgentOutDir`/`fixerAgentOutDir` above) — one per blamed RUN, never node/issue-qualified: a run's blame
+ *  pass is a run-level singleton (both the judge AND verify turns land here, sequentially). */
+export function blameAgentOutDir(runDir: string): string {
+  return path.join(runDir, 'optimize', 'substrate', 'agents', 'blame');
 }
 
 // ── arg parsing ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -295,6 +313,9 @@ export interface SubstrateAdoptArgs {
   issue?: string;
   template?: string;
   backupDir?: string;
+  /** WS-B5 TRAIN: `--no-gc` ⇒ do NOT delete the throwaway `optimize/<node>/<issue>/*` branches after a land
+   *  (default is to GC them; the landed cherry-pick sha in the attempt is the durable record). */
+  noGc?: boolean;
   watch: boolean;
   watchJson: boolean;
 }
@@ -309,8 +330,56 @@ export function parseSubstrateAdoptArgs(argv: string[]): SubstrateAdoptArgs {
     else if (k === '--issue') out.issue = argv[++i];
     else if (k === '--template') out.template = argv[++i];
     else if (k === '--backup-dir') out.backupDir = argv[++i];
+    else if (k === '--no-gc') out.noGc = true;
     else if (k === '--watch') out.watch = true;
     else if (k === '--watch-json') { out.watch = true; out.watchJson = true; }
+  }
+  return out;
+}
+
+/** `optimize blame <run> [--latest] [flags]` (docs/design/optimize-blame.md §4/§10 WS-B3) — the RUN-LEVEL
+ *  attribution pass. Unlike the per-node subverbs, `<run>` itself is OPTIONAL: omitting it (or passing
+ *  `--latest`) resolves the newest run under the discovered template. */
+export interface SubstrateBlameArgs {
+  /** the `<run>` positional — a run dir path OR a run id/name (resolveNodeRunDir). Absent ⇒ resolve latest. */
+  run?: string;
+  /** `--latest` — explicitly resolve the newest run (also the default behaviour when `run` is absent). */
+  latest: boolean;
+  /** `--mode topo|train` (design §5) — the ordering-mode OVERRIDE. Absent ⇒ the mode is DERIVED from the blame
+   *  graph's edges at schedule time (the default). Parsed + VALIDATED here so its value is never misread as the
+   *  `<run>` positional; the scheduler (the adopt train's `deriveNodeOrder`) is where a set mode is honored. */
+  mode?: 'topo' | 'train';
+  template?: string;
+  workspace?: string;
+  tier?: string;
+  model?: string;
+  /** `--no-verify-round` turns OFF the judge's single §4-step-4 re-check pass. Default `true`. */
+  verifyRound: boolean;
+  /** `--no-memorize` turns OFF the blame-memorize step (WS-B6). Default `true`. */
+  memorize: boolean;
+  watch: boolean;
+  watchJson: boolean;
+  /** `--dry-run`: compose the judge spawn and PRINT it — write/spawn NOTHING (the base agent's preview seam). */
+  dryRun?: boolean;
+}
+
+export function parseSubstrateBlameArgs(argv: string[]): SubstrateBlameArgs {
+  const out: SubstrateBlameArgs = { latest: false, verifyRound: true, memorize: true, watch: false, watchJson: false };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--latest') out.latest = true;
+    else if (k === '--mode') { const v = argv[++i]; if (v === 'topo' || v === 'train') out.mode = v; } // value flag; invalid ignored (never a run)
+    else if (k === '--template') out.template = argv[++i];
+    else if (k === '--workspace') out.workspace = argv[++i];
+    else if (k === '--tier') out.tier = argv[++i];
+    else if (k === '--model') out.model = argv[++i];
+    else if (k === '--no-verify-round') out.verifyRound = false;
+    else if (k === '--no-memorize') out.memorize = false;
+    else if (k === '--watch') out.watch = true;
+    else if (k === '--watch-json') { out.watch = true; out.watchJson = true; }
+    else if (k === '--dry-run') out.dryRun = true;
+    else if (!k.startsWith('-') && out.run === undefined) out.run = k; // the ONE positional
+    // unknown flags ignored.
   }
   return out;
 }
@@ -381,6 +450,20 @@ export interface SubstrateCliDeps {
   fixIssue?: typeof fixIssue;
   verifyStage?: typeof verifyStage;
   adoptManifest?: typeof adoptSubstrateManifest;
+  /** WS-B5/§6 adopt-train re-prove seam (design §6 table row 3): the closure-overlap re-prove the adopt verb
+   *  wires into `adoptSubstrateManifest`. Default = a closure that `reproveCandidate`s the record against the
+   *  moved HEAD; a test/overlord injects its own. Without this wired, a closure-overlap record could only ever
+   *  BOUNCE — the re-prove branch was dead in the shipped verb. */
+  reprove?: AdoptSubstrateManifestOpts['reprove'];
+  /** the run-level hard-measure fold (WS-B1). Default `runBlameMeasure`. */
+  blameMeasure?: typeof runBlameMeasure;
+  /** the blame judge + verify round (WS-B2). Default `runBlameJudge`. */
+  blameJudge?: typeof runBlameJudge;
+  /** blame-memorize into template-root `memory.md` (WS-B6). Default `(rd, opts) => memorizeBlame(rd, opts.templateDir)`
+   *  — the CLI's `{workspace, summary}` fields are surplus to the core fn (it re-reads the summary off disk
+   *    itself, the same fail-closed law `runBlameJudge` holds), kept on this seam only so a test/future caller
+   *    can inject a richer memorizer without a signature change. */
+  blameMemorize?: (runDir: string, opts: { templateDir: string; workspace: string; summary: BlameSummary }) => Promise<unknown>;
 }
 
 const stdout = (s: string): void => void process.stdout.write(s + '\n');
@@ -824,8 +907,22 @@ export async function runSubstrateAdoptCli(argv: string[], deps: SubstrateCliDep
       print(`optimize adopt: no staged record${a.issue ? ` "${a.issue}"` : ''} to land for node "${node}".`);
       return;
     }
+    // WS-B5 TRAIN: land upstream-first using the run's blame graph when present. BEST-EFFORT — a run with no
+    // blame summary (or a malformed tail) degrades to the default node/issue-asc landing order (any throw ignored).
+    let nodeOrder: string[] | undefined;
+    try {
+      nodeOrder = deriveNodeOrder(parseBlameSummaryTail(await fs.readFile(blameSummaryPath(parentRunDir), 'utf8')));
+    } catch { /* no readable blame summary — default order */ }
+    // WS-B5/§6 row 3: WIRE the re-prove seam so a closure-overlap record RE-PROVES against the moved HEAD before
+    // landing (was dead in the shipped verb — always bounced). Default = reproveCandidate off this run's parent;
+    // a test/overlord injects its own. FAIL-SAFE inside reproveCandidate: any error/conflict/regression bounces.
+    const reprove = deps.reprove ?? ((rec: SubstrateManifestRecord) => reproveCandidate(rec, { templateDir, parentRunDir }));
     const result = await adopt({ records }, {
       templateDir,
+      runDir: parentRunDir,
+      gcBranches: !a.noGc,
+      reprove,
+      ...(nodeOrder ? { nodeOrder } : {}),
       ...(a.backupDir ? { backupDir: path.resolve(cwd, a.backupDir) } : {}),
       ...(onEvent ? { onEvent } : {}),
     });
@@ -865,8 +962,160 @@ export async function runSubstrateAdoptCli(argv: string[], deps: SubstrateCliDep
 
   const result = await adopt(manifest, {
     templateDir,
+    // Path B (the hidden --manifest alias) has no clean parent run dir to build a default re-prove against, so it
+    // wires ONLY an INJECTED reprove — an un-injected overlap still bounces (unchanged back-compat behavior).
+    ...(deps.reprove ? { reprove: deps.reprove } : {}),
     ...(a.backupDir ? { backupDir: path.resolve(cwd, a.backupDir) } : {}),
     ...(onEvent ? { onEvent } : {}),
   });
   printAdoptSummary(result, print);
+}
+
+// ── blame (docs/design/optimize-blame.md §4/§10 WS-B3) — the RUN-LEVEL attribution verb ───────────────────────
+// `piflowctl optimize blame <run> [--latest]` measures every node the run is missing a report for (blame is
+// SELF-SUFFICIENT — it never requires a prior `optimize triage` pass), folds the run-level hard measure, then
+// runs the judge + verify round and writes prose `<node>.md` blame files + the parsed `blame.md` summary tail
+// under `<runDir>/optimize/blame/`. Idempotent: a re-run clears stale `<node>.md` files (never `dissent.*.md`,
+// which is TRIAGE-owned — §4.1) before the judge writes fresh ones.
+
+/** Every node id under `<templateDir>/nodes/` (dirs only), sorted — the plain id LIST step 1 needs BEFORE the
+ *  judge composes the responsibility roster off the same dirs (roster.ts's own discovery, duplicated here since
+ *  this module needs just the ids, not the full entries). Missing/unreadable `nodes/` degrades to `[]`, never
+ *  throws — mirrors every other best-effort fs read in this file. */
+function discoverNodeIds(templateDir: string): string[] {
+  try {
+    return readdirSync(path.join(templateDir, 'nodes'), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+/** Idempotent rewrite (§1.2 decision 2 / §4 step 5): delete every PREVIOUSLY-GENERATED `*.md` under
+ *  `<runDir>/optimize/blame/` before a fresh judge spawn, so a node blamed last pass but NOT this pass can never
+ *  linger as a stale attribution. `dissent.<node>.md` is the node-triage seam's contest trace (§4.1) — TRIAGE-
+ *  owned, NEVER cleared here. A missing blame dir (first-ever pass) is a no-op, never a throw. */
+async function clearStaleBlameFiles(runDir: string): Promise<void> {
+  const dir = blameDir(runDir);
+  let names: string[];
+  try {
+    names = await fs.readdir(dir);
+  } catch {
+    return; // no blame dir yet — nothing stale
+  }
+  await Promise.all(
+    names
+      .filter((f) => f.endsWith('.md') && !f.startsWith('dissent.'))
+      .map((f) => fs.rm(path.join(dir, f), { force: true })),
+  );
+}
+
+/**
+ * `piflowctl optimize blame <run> [--latest] [flags]` — the run-level BLAME pass over one finished run.
+ *   1. measure (mechanical): every node under the template missing a `measure.<node>.json` report gets one
+ *      (`runSubstrateMeasure`) — blame is self-sufficient, it never assumes a prior `optimize triage`.
+ *   2. the run-level hard-measure fold (mechanical): `runBlameMeasure` → `blame/measure.json`.
+ *   3. the judge + one verify round (`runBlameJudge`, PERSISTED to `blameAgentOutDir`) — writes the prose
+ *      `<node>.md` files + the parsed `blame.md` summary tail. Idempotent: stale `<node>.md` files from a PRIOR
+ *      pass are cleared first (never on `--dry-run` — a preview writes/deletes nothing).
+ *   4. blame-memorize (WS-B6, unless `--no-memorize`) — an ADVISORY step: `deps.blameMemorize` defaults to
+ *      the real `memorizeBlame` (core), and any throw is caught + reported, never aborting a landed blame pass.
+ *   5. print the blamed nodes (w/ severity), edges, unattributed count, files written, and an observe hint.
+ * Resolution: an explicit `<run>` positional resolves directly (`resolveNodeRunDir`); `--latest` (or no
+ * positional at all) resolves the template first (`--template` > single-workflow discovery), then the newest
+ * run under it (`scanRunsHome`, newest-first) — exit 2 with an actionable message when there is none.
+ */
+export async function runSubstrateBlameCli(argv: string[], deps: SubstrateCliDeps = {}): Promise<void> {
+  const a = parseSubstrateBlameArgs(argv);
+  const print = deps.print ?? stdout;
+  const printErr = deps.printErr ?? stderr;
+  const cwd = deps.cwd ?? process.cwd();
+
+  let runDir: string;
+  let templateDir: string;
+  try {
+    if (a.run && !a.latest) {
+      const resolve = deps.resolveRunDir ?? ((run, c) => resolveNodeRunDir({ run, cwd: c }));
+      runDir = resolve(a.run, cwd);
+      templateDir = a.template ? path.resolve(cwd, a.template) : templateDirFor(runDir);
+    } else {
+      // `--latest` (or NO positional): resolve the template first (--template > single-workflow discovery),
+      // then the newest run under it.
+      const sel = (deps.resolveScope ?? resolveSubstrateScope)({ template: a.template, cwd });
+      const summaries = await scanRunsHome(sel.runsHome, deps.scan); // newest-first
+      if (summaries.length === 0) {
+        printErr(`piflowctl optimize blame: no runs found under ${sel.runsHome} — run the workflow first, then 'optimize blame --latest'.`);
+        process.exitCode = 2;
+        return;
+      }
+      templateDir = sel.templateDir;
+      runDir = summaries[0].runDir;
+    }
+  } catch (e) {
+    printErr((e as Error).message);
+    process.exitCode = 2;
+    return;
+  }
+
+  const workspace = a.workspace ? path.resolve(cwd, a.workspace) : cwd;
+  // The `--watch` sink is built BEFORE the measure fold so its phase boundary (`blame-measured`) reaches the
+  // stream too — the judge/verify boundaries alone would leave the mechanical fold silently unannounced.
+  const onEvent = watchSink(a.watch, a.watchJson, print);
+
+  // (1) measure — every node the run is missing a report for (mechanical, free; self-sufficient).
+  const measure = deps.measure ?? runSubstrateMeasure;
+  for (const node of discoverNodeIds(templateDir)) {
+    const reportPath = path.join(runDir, 'optimize', 'substrate', `measure.${node}.json`);
+    if (!existsSync(reportPath)) await measure(runDir, node, { workspace });
+  }
+
+  // (2) the run-level hard-measure fold (mechanical, free) — announce its boundary on the stream (§4 step 1).
+  const blameMeasure = deps.blameMeasure ?? runBlameMeasure;
+  await blameMeasure(runDir, { workspace });
+  onEvent?.({ type: 'blame-measured' });
+
+  // Idempotent rewrite — clear stale per-node blame files BEFORE the judge spawn, never on a --dry-run preview
+  // (a preview writes/deletes nothing). Dissent traces are always preserved (clearStaleBlameFiles's own law).
+  if (!a.dryRun) await clearStaleBlameFiles(runDir);
+
+  // (3) the judge + one verify round.
+  const outDir = blameAgentOutDir(runDir);
+  const blameJudge = deps.blameJudge ?? runBlameJudge;
+  const result = await blameJudge(runDir, {
+    templateDir, workspace, outDir,
+    verifyRound: a.verifyRound,
+    ...(onEvent ? { onEvent } : {}),
+    ...(a.tier ? { tier: a.tier } : {}),
+    ...(a.model ? { model: a.model } : {}),
+    ...(a.dryRun ? { dryRun: true } : {}),
+  });
+
+  if (a.dryRun) {
+    if (result.dryRun) printSubstrateDryRun(`optimize blame[${path.basename(runDir)}]`, result.dryRun, print);
+    return; // a preview composed the judge spawn and wrote/spawned NOTHING — no memorize, no tally to print.
+  }
+
+  // (4) blame-memorize (WS-B6) — advisory: a throw is reported and the blame pass still stands as landed.
+  // Default = the real core `memorizeBlame` (it re-derives the summary itself off `blame/blame.md`, the same
+  // file `result.summary` was just parsed from — `--no-memorize` is the only way to skip it).
+  if (a.memorize) {
+    const blameMemorize = deps.blameMemorize ?? ((rd, opts) => memorizeBlame(rd, opts.templateDir));
+    try {
+      await blameMemorize(runDir, { templateDir, workspace, summary: result.summary });
+    } catch (e) {
+      printErr(`optimize blame: blame-memorize failed (advisory — the blame pass itself still landed): ${(e as Error).message}`);
+    }
+  }
+
+  // (5) print.
+  const bySeverity = result.summary.blamed.length
+    ? result.summary.blamed.map((b) => `${b.node}[${b.severity}]`).join(', ')
+    : '(none)';
+  print(`optimize blame[${path.basename(runDir)}]: ${result.summary.blamed.length} node(s) blamed — ${bySeverity}`);
+  print(`  edges: ${result.summary.edges.length ? result.summary.edges.map(([o, d]) => `${o}→${d}`).join(', ') : '(none)'}`);
+  print(`  unattributed: ${result.summary.unattributed.length}`);
+  print(`  files: ${result.files.length ? result.files.map((f) => path.basename(f)).join(', ') : '(none)'}`);
+  print(`observe: piflowctl telemetry ${outDir}`);
 }

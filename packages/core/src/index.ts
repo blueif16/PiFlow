@@ -561,14 +561,39 @@ export type {
 export {
   listIssues, parseIssueFile, writeIssueFile, transitionIssue, reopen, stampAttempt, computeIssueId, assertTransition, ALLOWED_TRANSITIONS,
   runSubstrateMeasure, runSubstrateJudge,
-  fixIssue, verifyStage, adoptSubstrateManifest, readSubstrateManifest, scanRecords, issueLifecycleDir,
+  fixIssue, verifyStage, adoptSubstrateManifest, reproveCandidate, readSubstrateManifest, scanRecords, issueLifecycleDir,
   nodeHasCriteria, renderSubstrateEvent, UNPROVEN_BY_RUN,
   fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
+  // The adopt TRAIN's pure policy (WS-B5) — the staleness verdict + landing order + blame node order the
+  // `optimize adopt` CLI needs off the package's only public entry (deriveNodeOrder folds the blame tail).
+  assessStaleness, pathInClosure, orderRecords, deriveNodeOrder,
 } from './optimize/index.js';
 export type {
   Issue, Severity, Status, Reason, VerifyTier, Attempt, IssueRecord, ListIssuesOpts,
   RunSubstrateMeasureOpts, MeasureReport, SubstrateJudgeOpts, SubstrateJudgeResult,
   FixIssueOpts, FixIssueResult, VerifyStageOpts, VerifyStageResult, SubstrateManifest, SubstrateManifestRecord,
-  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, ReproveCandidateOpts, SubstrateEvent, SubstrateEventSink,
   FixWithRetriesOpts, FixWithRetriesResult, RetryAttemptRecord, RetryEscalationPacket, RetryStopReason, RetryContext,
+  StalenessVerdict, AssessStalenessInput, OrderableRecord,
 } from './optimize/index.js';
+
+// The run-level BLAME layer (docs/design/optimize-blame.md, WS-B1) — the ONE level up twin of the OPTIMIZE
+// SUBSTRATE block above: same lift-to-root rationale (a future `piflowctl optimize blame` verb, packages/cli,
+// needs this off the package's only public entry). `blame*Path` name every artifact under a run's
+// `optimize/blame/` dir (per-run dispatch, born archived, no lifecycle/status machine); `runBlameMeasure` is
+// the run-level hard-measure fold — the meta-level twin of `runSubstrateMeasure` above. Pure re-export of the
+// optimize facade; core holds no judge/prose/roster logic yet (that is WS-B2, unbuilt).
+export { blameDir, blameFilePath, blameSummaryPath, blameMeasurePath, blameDissentPath, runBlameMeasure } from './optimize/index.js';
+export type { RunBlameMeasureOpts, BlameMeasureReport, BlameDigestSection, BlameDigestNode } from './optimize/index.js';
+// WS-B2 — the blame CORE (roster composition + the fenced-tail codec + the blame judge/verify agents),
+// lifted to the package's only public entry so the `optimize blame` CLI verb (packages/cli, WS-B3) reaches it.
+export { composeRoster, renderRoster, parseBlameSummaryTail, renderBlameSummaryTail, buildBlamePrompt, runBlameJudge } from './optimize/index.js';
+export type {
+  RosterEntry, BlameSummary, BlameEntry, BlameSeverity, BuildBlamePromptOpts, RunBlameJudgeOpts, RunBlameJudgeResult,
+} from './optimize/index.js';
+// WS-B6 — blame-memorize (docs/design/optimize-blame.md §7): distills a finished blame pass into
+// TEMPLATE-ROOT `memory.md` (the cross-run recurrence trail the blame judge's `<memory>` section reads).
+// Lifted to the root so the `optimize blame` CLI verb's default `deps.blameMemorize` wiring (packages/cli)
+// reaches it off the package's only public entry.
+export { memorizeBlame } from './optimize/index.js';
+export type { MemorizeBlameResult } from './optimize/index.js';

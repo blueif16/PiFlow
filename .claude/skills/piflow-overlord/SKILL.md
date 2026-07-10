@@ -360,6 +360,8 @@ These endpoints are the map, not the manual — to go deeper on any one, run `pi
 - **Observe a run:** `piflowctl status <rundir>` · `watch <rundir>` · `telemetry <rundir> [nodeId] [--watch]` ·
   `trace <rundir> [nodeId]` · `logs <rundir>` → detail in **piflow-inspect**.
 - **Optimize loop (name → solve → judge → land):** `piflowctl optimize <rundir>` (read-only score+triage) ·
+  `piflowctl optimize blame <run> [--latest] [--mode]` (run-level attribution → prose `blame/` files, one per
+  blamed node — the on-ramp for a multi-node pass; feeds `<blame_context>` into that node's next `triage`) ·
   `piflowctl optimize triage --node <id>` (→ tool-stamped issue files; **piflow-triage**) · `piflowctl optimize
   fix --node <id> [--issue <name>] [--watch]` (candidate copy → fixer → gate → STAGE a manifest;
   **piflow-fixer**) · `piflowctl optimize gate --node <id>` (independent judge; **piflow-gate**) · `piflowctl
