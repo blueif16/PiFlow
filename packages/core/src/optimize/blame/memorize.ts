@@ -21,6 +21,13 @@
 // lifts the first defect line as the symptom and slugifies it. The deep root/prevention prose stays the honest
 // `(pending)` placeholder until the generation loop (§8) confirms or refutes the attribution against a fresh
 // baseline — filling it is NOT this module's job.
+//
+// RECURRENCE COUNTS GENERATIONS, NOT INVOCATIONS (§7: the block stores "run id + owner + defect"). Each block
+// carries a `runs:` line listing the DISTINCT run ids that exhibited the defect, and `recurrence:` is the SIZE
+// of that set. Blame is idempotent/re-runnable (`optimize blame <run>` / `--latest` may run twice in a session),
+// so a re-memorize of the SAME run must NOT bump recurrence — otherwise the §7 cross-generation escalation
+// signal (recurring ≥N generations → ARCH) is corrupted by mere invocation count. The `runs:` line is invisible
+// to `deriveRecurrence` (recurrence.ts parses only `sig:`/`recurrence:`/lesson lines), so no reader changes.
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -51,9 +58,9 @@ export interface MemorizeBlameResult {
  *   4. for each `dissent.<node>.md` actually on disk (§4.1's node-triage contest trace — NOT the summary,
  *      since a contest may name a node the summary itself never blamed), append/update a
  *      `sig: blame-dissent:<node>::<tag>` block recording the contested attribution.
- * Idempotent: a second call over the SAME summary + the SAME per-node/dissent files bumps every block's
- * `recurrence:` by one and writes NO new block (UPDATE-IN-PLACE-BY-SIG — the same law `memorize.ts`'s
- * `writeLesson` holds one grain down).
+ * Idempotent BY GENERATION: a second call over the SAME run (same `runDir` basename) is a NO-OP — it writes no
+ * new block AND does not bump `recurrence:`, because recurrence counts DISTINCT runs, not memorize invocations
+ * (§7). A later run that re-observes the defect adds its run id and bumps recurrence by one (UPDATE-IN-PLACE-BY-SIG).
  */
 export async function memorizeBlame(runDir: string, templateDir: string): Promise<MemorizeBlameResult> {
   // (1) the summary is the caller's proof a blame pass ran on THIS run — HARD-THROW if absent/malformed.
@@ -74,6 +81,10 @@ export async function memorizeBlame(runDir: string, templateDir: string): Promis
   const wfId = await readWorkflowId(templateDir);
   const { path: file } = await seedSystemMemory(templateDir, wfId);
 
+  // The GENERATION identity: recurrence counts distinct runs, so the run dir's own id is what a re-memorize of
+  // the SAME run dedups against (basename of the canonical `.piflow/<wf>/runs/<id>` run dir).
+  const runId = path.basename(path.resolve(runDir));
+
   let written = 0;
   let updated = 0;
 
@@ -82,8 +93,8 @@ export async function memorizeBlame(runDir: string, templateDir: string): Promis
     const body = await readFileMaybe(blameFilePath(runDir, entry.node));
     const symptom = extractSymptom(body, entry.node);
     const sig = `blame:${entry.node}::${slugify(symptom)}`;
-    const action = await writeBlameLesson(file, symptom, sig);
-    if (action === 'append') written++; else updated++;
+    const action = await writeBlameLesson(file, symptom, sig, runId);
+    if (action === 'append') written++; else if (action === 'update') updated++;
   }
 
   // (4) one lesson block per DISSENT trace actually on disk (§4.1) — scanned off `blame/`, not the summary:
@@ -92,8 +103,8 @@ export async function memorizeBlame(runDir: string, templateDir: string): Promis
     const body = await readFileMaybe(blameDissentPath(runDir, node));
     const symptom = extractSymptom(body, node);
     const sig = `blame-dissent:${node}::${slugify(symptom)}`;
-    const action = await writeBlameLesson(file, symptom, sig);
-    if (action === 'append') written++; else updated++;
+    const action = await writeBlameLesson(file, symptom, sig, runId);
+    if (action === 'append') written++; else if (action === 'update') updated++;
   }
 
   return { written, updated, file };
@@ -167,21 +178,40 @@ function slugify(text: string): string {
 // a separate implementation: those helpers are module-private and this module's identity key differs) ──────
 
 /**
- * Append a NEW lesson block at `sig` (recurrence 1), or — when a block with that `sig:` already exists — bump
- * its `recurrence:` line by one and leave the rest alone. UPDATE-IN-PLACE-BY-SIG: a re-run over the same
- * (symptom, sig) pair never duplicates.
+ * Append a NEW lesson block at `sig` (recurrence 1, `runs: <runId>`), or — when a block with that `sig:`
+ * already exists — add `runId` to its `runs:` set and set `recurrence:` to the new set size. GENERATION-KEYED
+ * IDEMPOTENCE: a re-memorize of a run ALREADY in the `runs:` set is a no-op (`'noop'` — recurrence unchanged),
+ * so recurrence counts distinct GENERATIONS, never memorize invocations. UPDATE-IN-PLACE-BY-SIG: never duplicates.
  */
-async function writeBlameLesson(file: string, symptom: string, sig: string): Promise<'append' | 'update'> {
+async function writeBlameLesson(file: string, symptom: string, sig: string, runId: string): Promise<'append' | 'update' | 'noop'> {
   const body = await fs.readFile(file, 'utf8');
   const lines = body.split('\n');
 
   const block = findBlockBySig(lines, sig);
   if (block) {
+    const runsIdx = findFieldLine(lines, block.start, block.end, 'runs');
+    const runs = runsIdx >= 0 ? parseRunIds(lines[runsIdx]) : [];
+    if (runs.includes(runId)) return 'noop'; // this generation already counted — a re-run is not a re-observation
+
     const recIdx = findRecurrenceLine(lines, block.start, block.end);
-    const current = recIdx >= 0 ? Number.parseInt(lines[recIdx].split(':')[1]?.trim() ?? '', 10) : Number.NaN;
-    const next = Number.isFinite(current) ? current + 1 : 2; // an unreadable/absent count still advances the trail
-    if (recIdx >= 0) lines[recIdx] = `recurrence: ${next}`;
-    else lines.splice(block.start + 1, 0, `recurrence: ${next}`);
+    // The prior generation count: the runs-set size when present (this module's invariant recurrence == |runs|),
+    // else the legacy `recurrence:` number (a pre-fix block carried a count but no run set) — advance it by one.
+    const priorCount = runsIdx >= 0
+      ? runs.length
+      : (recIdx >= 0 ? (Number.parseInt(lines[recIdx].split(':')[1]?.trim() ?? '', 10) || 0) : 0);
+    const nextRuns = [...runs, runId];
+    const nextRec = priorCount + 1;
+
+    if (recIdx >= 0) lines[recIdx] = `recurrence: ${nextRec}`;
+    if (runsIdx >= 0) {
+      lines[runsIdx] = `runs: ${nextRuns.join(', ')}`;
+    } else {
+      // legacy/no-runs block — seed the runs line (and a recurrence line if even that was absent) right after
+      // the heading; the recurrence line was already updated in place above when it existed.
+      const insertAt = recIdx >= 0 ? recIdx : block.start + 1;
+      lines.splice(insertAt, 0, `runs: ${nextRuns.join(', ')}`);
+      if (recIdx < 0) lines.splice(insertAt + 1, 0, `recurrence: ${nextRec}`);
+    }
     await fs.writeFile(file, lines.join('\n'), 'utf8');
     return 'update';
   }
@@ -189,6 +219,7 @@ async function writeBlameLesson(file: string, symptom: string, sig: string): Pro
   const newBlock = [
     `### ${symptom}`,
     `sig: ${sig}`,
+    `runs: ${runId}`,
     'recurrence: 1',
     '**Root:** (pending — filled as generations confirm)',
     '**Prevention:** (pending)',
@@ -197,6 +228,24 @@ async function writeBlameLesson(file: string, symptom: string, sig: string): Pro
   lines.splice(insertAt, 0, '', ...newBlock);
   await fs.writeFile(file, lines.join('\n'), 'utf8');
   return 'append';
+}
+
+/** The DISTINCT run ids listed on a `runs: r1, r2, …` line (order-preserving, de-duped, blanks dropped). */
+function parseRunIds(line: string): string[] {
+  const after = line.slice(line.indexOf(':') + 1);
+  const out: string[] = [];
+  for (const raw of after.split(',')) {
+    const id = raw.trim();
+    if (id && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+/** The index of the first `<field>:` line within [start,end), or -1 (the SAME span scan as findRecurrenceLine). */
+function findFieldLine(lines: string[], start: number, end: number, field: string): number {
+  const prefix = `${field}:`;
+  for (let i = start; i < end; i++) if (lines[i].trim().startsWith(prefix)) return i;
+  return -1;
 }
 
 /**

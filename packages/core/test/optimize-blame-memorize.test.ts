@@ -85,7 +85,7 @@ describe('memorizeBlame — writer/reader round-trip', () => {
     expect(hit?.[1].count).toBe(1);
   });
 
-  it('a SECOND memorizeBlame over the SAME summary bumps recurrence to 2 with NO duplicate block', async () => {
+  it('a SECOND memorizeBlame over the SAME RUN is idempotent — recurrence STAYS 1 (generations, not invocations), NO duplicate block', async () => {
     const dir = await scratch();
     const runDir = join(dir, 'run');
     const templateDir = join(dir, 'template');
@@ -95,14 +95,45 @@ describe('memorizeBlame — writer/reader round-trip', () => {
 
     const first = await memorizeBlame(runDir, templateDir);
     expect(first.written).toBe(1);
+    // blame is idempotent/re-runnable — re-memorizing the SAME run is NOT a second observation of the defect.
     const second = await memorizeBlame(runDir, templateDir);
     expect(second.written).toBe(0);
-    expect(second.updated).toBe(1);
+    expect(second.updated).toBe(0); // same generation → NO recurrence bump
 
     const body = await fs.readFile(second.file, 'utf8');
     const occurrences = body.split('sig: blame:gameplay::').length - 1;
     expect(occurrences).toBe(1); // never duplicated
+    expect(body).toContain('recurrence: 1'); // STILL one generation, not two
+
+    const index = deriveRecurrence({ templateDir, nodes: [] });
+    const hit = [...index.entries()].find(([sig]) => sig.startsWith('blame:gameplay::'));
+    expect(hit?.[1].count).toBe(1);
+  });
+
+  it('the SAME defect re-observed in a DIFFERENT run bumps recurrence to 2 (one block, two run ids)', async () => {
+    const dir = await scratch();
+    const runDir1 = join(dir, 'gen1');
+    const runDir2 = join(dir, 'gen2');
+    const templateDir = join(dir, 'template');
+    await fs.mkdir(templateDir, { recursive: true });
+    const blamed: BlameSummary = { blamed: [{ node: 'gameplay', severity: 'high', observedAt: ['gameplay'] }], edges: [], unattributed: [] };
+    const defect = 'The combat loop drops enemy hits below the 3-hit combo threshold.';
+
+    await writeSummary(runDir1, blamed);
+    await writeBlameFile(runDir1, 'gameplay', defect);
+    expect((await memorizeBlame(runDir1, templateDir)).written).toBe(1);
+
+    // the SAME defect (same symptom → same sig) exhibited by a SEPARATE run = a new generation.
+    await writeSummary(runDir2, blamed);
+    await writeBlameFile(runDir2, 'gameplay', defect);
+    const second = await memorizeBlame(runDir2, templateDir);
+    expect(second.written).toBe(0);
+    expect(second.updated).toBe(1); // a distinct generation → recurrence bumps
+
+    const body = await fs.readFile(second.file, 'utf8');
+    expect(body.split('sig: blame:gameplay::').length - 1).toBe(1); // ONE block
     expect(body).toContain('recurrence: 2');
+    expect(body).toMatch(/runs: gen1, gen2/); // both generations recorded
 
     const index = deriveRecurrence({ templateDir, nodes: [] });
     const hit = [...index.entries()].find(([sig]) => sig.startsWith('blame:gameplay::'));
