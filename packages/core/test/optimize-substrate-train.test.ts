@@ -113,6 +113,43 @@ describe('orderRecords — deterministic landing order (completion order never d
   });
 });
 
+// ── orderRecords — WITHIN a node: severity-desc, then firstSeen-asc (§5 MODE P / §6) ─────────────────────────
+describe('orderRecords — within a node the HIGHER severity lands first (priority, not name)', () => {
+  it('a critical issue lands before a low one on the SAME node, regardless of issue NAME', () => {
+    const recs = [
+      { node: 'N', issue: 'aaa', severity: 'low' as const },
+      { node: 'N', issue: 'zzz', severity: 'critical' as const },
+    ];
+    // name-asc would land 'aaa' first (the priority INVERSION); severity-desc lands 'zzz' (critical) first.
+    expect(orderRecords(recs).map((r) => r.issue)).toEqual(['zzz', 'aaa']);
+  });
+
+  it('SAME severity ⇒ firstSeen-asc (oldest first), then issue-name asc as the deterministic tail', () => {
+    const recs = [
+      { node: 'N', issue: 'b', severity: 'high' as const, firstSeen: '260709-02' },
+      { node: 'N', issue: 'a', severity: 'high' as const, firstSeen: '260709-01' },
+    ];
+    expect(orderRecords(recs).map((r) => r.issue)).toEqual(['a', 'b']); // firstSeen 01 before 02
+  });
+
+  it('a record with NO severity ranks LAST within a node (never jumps a declared one)', () => {
+    const recs = [
+      { node: 'N', issue: 'aaa' },                            // undeclared
+      { node: 'N', issue: 'bbb', severity: 'low' as const },  // declared low
+    ];
+    expect(orderRecords(recs).map((r) => r.issue)).toEqual(['bbb', 'aaa']);
+  });
+
+  it('severity ranking never leaks ACROSS nodes — nodeOrder still dominates', () => {
+    const recs = [
+      { node: 'author', issue: 'x', severity: 'critical' as const },
+      { node: 'render', issue: 'y', severity: 'low' as const },
+    ];
+    // render is ranked first by nodeOrder even though its issue is lower-severity than author's.
+    expect(orderRecords(recs, ['render', 'author']).map((r) => r.node)).toEqual(['render', 'author']);
+  });
+});
+
 // ── deriveNodeOrder — upstream-first Kahn over the blame edges, CYCLE-SAFE ───────────────────────────────────
 describe('deriveNodeOrder — the upstream-first topological order over the blame graph (cycle-safe)', () => {
   const summary = (blamed: string[], edges: [string, string][]): BlameSummary => ({

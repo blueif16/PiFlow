@@ -55,18 +55,35 @@ export function assessStaleness(input: AssessStalenessInput): StalenessVerdict {
   return interveningPaths.some((p) => pathInClosure(p, closure)) ? 'overlap' : 'disjoint';
 }
 
+/** The severity spelling `orderRecords` ranks within a node (mirrors issues.ts `Severity`, duplicated so this
+ *  policy module imports no fs-bound type — see `OrderableRecord`). */
+export type OrderableSeverity = 'critical' | 'high' | 'medium' | 'low';
+
 /** The minimal record shape `orderRecords` needs — kept structural (NOT `SubstrateManifestRecord`) so this
  *  policy module imports no fs-bound type and stays independently table-testable. */
 export interface OrderableRecord {
   node: string;
   issue: string;
+  /** §5 MODE P / §6 within-node ordering: HIGHER severity lands first (severity-desc). Absent ⇒ ranked LOWEST,
+   *  so a record that declares no severity never jumps ahead of one that does. */
+  severity?: OrderableSeverity;
+  /** §5 MODE P / §6 within-node, within-severity tiebreak: OLDEST firstSeen lands first (firstSeen-asc). Absent
+   *  ⇒ falls through to the deterministic issue-name asc tail. */
+  firstSeen?: string;
+}
+
+/** Severity as a sortable rank; an ABSENT/unknown severity is 0 (lands last within a node, after any declared). */
+const SEVERITY_RANK: Record<OrderableSeverity, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+function severityRank(s: OrderableSeverity | undefined): number {
+  return s ? SEVERITY_RANK[s] : 0;
 }
 
 /**
  * Deterministic LANDING ORDER over staged records: nodes named in `nodeOrder` first, IN that order (the blame
- * upstream-first schedule); every other node after, node asc; issues asc within a node. PURE — returns a NEW
- * array, never mutates. Completion order is irrelevant here BY DESIGN (§6): the train lands in this order no
- * matter which candidate finished first.
+ * upstream-first schedule); every other node after, node asc; then WITHIN a node the §5 MODE P / §6 priority —
+ * severity-DESC (higher lands first), firstSeen-ASC (older first), and issue-name asc as the deterministic tail.
+ * PURE — returns a NEW array, never mutates. Completion order is irrelevant here BY DESIGN (§6): the train lands
+ * in this order no matter which candidate finished first.
  */
 export function orderRecords<T extends OrderableRecord>(records: readonly T[], nodeOrder: string[] = []): T[] {
   const rank = (node: string): number => {
@@ -78,7 +95,13 @@ export function orderRecords<T extends OrderableRecord>(records: readonly T[], n
     const rb = rank(b.node);
     if (ra !== rb) return ra - rb;
     if (a.node !== b.node) return a.node < b.node ? -1 : 1; // same rank but different (unranked) nodes → node asc
-    if (a.issue !== b.issue) return a.issue < b.issue ? -1 : 1; // same node → issue asc
+    // WITHIN a node (§5/§6): severity-desc, then firstSeen-asc, then issue-name asc (the deterministic tail).
+    const bySeverity = severityRank(b.severity) - severityRank(a.severity);
+    if (bySeverity !== 0) return bySeverity;
+    if (a.firstSeen !== undefined && b.firstSeen !== undefined && a.firstSeen !== b.firstSeen) {
+      return a.firstSeen < b.firstSeen ? -1 : 1;
+    }
+    if (a.issue !== b.issue) return a.issue < b.issue ? -1 : 1; // same node/severity/firstSeen → issue asc
     return 0;
   });
 }

@@ -84,7 +84,7 @@ import { execFileSync } from 'node:child_process';
 
 import type { DefectBucket } from '../types.js';
 import { evaluateGate, type GateVerdict, type LandPolicy } from '../gate.js';
-import { parseIssueFile, stampAttempt, transitionIssue, assertTransition, type VerifyTier } from './issues.js';
+import { parseIssueFile, stampAttempt, transitionIssue, assertTransition, type VerifyTier, type Severity } from './issues.js';
 import { assessStaleness, orderRecords, pathInClosure } from './train.js';
 import {
   inheritedAgentOpts, runBaseAgent,
@@ -454,6 +454,12 @@ export interface SubstrateManifestRecord {
   candidateRef: string;
   /** the LIVE product root (a git repo) the candidate branched from; adopt cherry-picks `candidateSha` here. */
   liveRoot: string;
+  /** WS-B5/§6 ADOPT-TRAIN ORDERING: the issue's severity + firstSeen, copied off the issue at stage time so the
+   *  adopt train (which reads records off disk via `scanRecords`, NOT the ledger) can land higher-severity /
+   *  older issues FIRST within a node (`orderRecords`). ABSENT on a pre-WS-B5 record ⇒ that record ranks after
+   *  any that declare severity, then falls to issue-name asc (`orderRecords`'s own degrade). */
+  severity?: Severity;
+  firstSeen?: string;
   /** the repo HEAD the candidate branched from — adopt re-verifies against it on base drift. Absent on a
    *  no-worktree path (never reached in practice; a decided record always has a worktree). */
   baseSha?: string;
@@ -873,6 +879,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
       const preRecord: SubstrateManifestRecord = {
         issue: issue.name, issueId: issue.id, node, decision: 'discarded', candidateRef: branch, liveRoot: workspace,
         baseSha, landPolicy: 'stage-for-human', reason: '', verifiedByRun: childId, deltaSummary,
+        severity: issue.severity, firstSeen: issue.firstSeen,
         ...(candidateSha ? { candidateSha } : {}),
       };
       const vs = await verifyStage(lifecycleDir, {
@@ -924,6 +931,8 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
         reason,
         verifiedByRun: childId,
         deltaSummary,
+        severity: issue.severity, // WS-B5/§6: carry the priority so the adopt train orders within a node
+        firstSeen: issue.firstSeen,
         ...(candidateSha ? { candidateSha } : {}),
         ...(dropback ? { dropback } : {}),
       };

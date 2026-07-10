@@ -860,6 +860,24 @@ describe('fixIssue — skip-proof path (prove off)', () => {
     expect(res.record?.verifiedByRun).toBeNull();
     expect((await parseIssueFile(issuePath)).status).toBe('fix-landed'); // the skip-proof landing state
   });
+
+  it('the staged record carries the issue severity + firstSeen (so the adopt train can order within a node)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      prove: false,
+      runAgent: editingAgent,
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    // the fixture issue is severity:high, firstSeen:260706-01 — copied onto the record for orderRecords (§6).
+    expect(res.record?.severity).toBe('high');
+    expect(res.record?.firstSeen).toBe('260706-01');
+    // and PERSISTED to record.json on disk (scanRecords → the adopt train reads these, not the ledger).
+    const onDisk = JSON.parse(await fs.readFile(res.manifestPath!, 'utf8'));
+    expect(onDisk.severity).toBe('high');
+    expect(onDisk.firstSeen).toBe('260706-01');
+  });
 });
 
 describe('fixIssue — surfaces the fixer agent\'s runDir (Phase-3 observe wiring)', () => {
