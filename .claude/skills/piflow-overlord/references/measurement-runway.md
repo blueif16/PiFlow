@@ -82,7 +82,16 @@ A node's runway is FOUR things under `template/nodes/<id>/`, and nothing else. A
 loop breaks in a way `piflowctl extract` will NOT catch (extract compiles the DAG; it does not exercise the
 optimize substrate):
 1. **`node.json` → `optimize.measure`** — the HARD op[] (above). Fold nothing new; reuse the shipped signals +
-   a thin deterministic op.
+   a thin deterministic op. **NEVER put a literal `{{arg.*}}` in ANY field of a measure op — not a path arg,
+   and not even a `note`/comment string.** `runSubstrateMeasure` `resolveDeep`s the WHOLE op (every string,
+   including `note`), and a token it can't resolve makes it DROP the entire op (recorded in `ops.rejected`, not
+   run) — so a single `{{arg.lessonId}}` anywhere silently turns that node's floor DARK. And it WILL be
+   unresolvable on most runs: run args are only persisted on runs created after arg-persistence shipped, so
+   every historical `run.json` has `args:null`. The robust pattern (what the working nodes do): pass ONLY
+   `{{RUN}}`/`{{WORKSPACE}}` to the op, and have the script DERIVE the lessonId in-script from the run's
+   `.pi/run.json` artifact paths. Verify a measure op actually RUNS by executing `runSubstrateMeasure` against a
+   real (argless) run and confirming `ops.runs`/`ops.checks` are non-empty for it — a script that fires when you
+   call it directly proves nothing about whether the WIRED op runs during triage.
 2. **`node.json` → `optimize.criteria`** — the SOFT pointer, a path to `criteria.md`. **Author the CANONICAL
    `optimize.criteria` key, NOT `optimize.judge`.** `optimize.judge` resolves only via a back-compat alias
    (`fix.ts`: `optimize?.criteria ?? optimize?.judge` — criteria wins); authoring the alias is drift, and a
