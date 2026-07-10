@@ -187,6 +187,15 @@ export type ActionBody =
        *   the build-spec §Self-correction. Owned by SA-D + the memory system. NOT YET IMPLEMENTED.
        */
       scope?: 'feedback' | 'fix';
+      /**
+       * (P2 · unified gate policy) RESUME(warm) vs RERUN(cold) — threaded from `GatePolicy.session` by
+       * `makeRetryAction`. `'warm'` (default) RESUMES the node's pi session with a FEEDBACK-ONLY turn;
+       * `'cold'` RERUNS fresh — no session resume, the full resolved prompt re-sent with the critique
+       * prefix. `runNodeWithRetries` reads THIS (not the mere presence of the action) to pick warm/cold, so
+       * a cold feedback retry is now requestable. Absent ⇒ warm (byte-identical to pre-P2). Orthogonal to
+       * `scope` (which corrective LANE) — `session` is only which SESSION.
+       */
+      session?: 'warm' | 'cold';
     }
   | { kind: 'escalate'; via: string; evidence?: string[] }
   | { kind: 'notify'; channel: string; payload?: string[] }
@@ -470,6 +479,60 @@ export interface EscalateSpec {
   tier?: string;
   /** Only escalate when the derived class is in this set. Undefined ⇒ every escalable class. */
   on?: FailureClass[];
+}
+
+/**
+ * (P2 · unified gate policy) The ONE on-fail vocabulary EVERY gate kind shares — the deterministic
+ * (floor/execution) gate, the agentic judge gate, and the hitl gate all carry a `GatePolicy`. It unifies
+ * what were three overlapping dialects into one superset AND adds the net-new RESUME(warm)/RERUN(cold)
+ * `session` knob, DECOUPLED from "a retry action exists" (pre-P2 a cold feedback retry was unrequestable).
+ * Canonical home = this spine; referenced by `workflow/gate-authoring.ts` (re-export), `workflow/gate-list.ts`,
+ * `NodeIntent.judgeGate.policy`, and mirrored by the node/gate-entry JSON schemas. All fields optional/
+ * additive: an omitted policy defaults to `onFail:'block'`.
+ */
+export interface GatePolicy {
+  /**
+   * On-fail action — the UNIFIED superset. Deterministic consequences: `'block'` (fail the node + halt
+   * before the next stage; the DEFAULT), `'warn'` (record a non-fatal issue), `'stop'` (the documented
+   * `block` alias). Correction lanes: `'retry'` (re-run the producer — the `session` knob picks warm/cold),
+   * `'reroute'` (re-enter a strict-ancestor `target`, default the producer — the judge-gate spelling P1
+   * wired), `'escalate'` (re-run on a stronger model — see `escalate`). Terminal: `'halt'` (refuse to spin
+   * — a missing upstream input; lowers to the `stop` alias) and `'accept'` (accept the non-pass output — a
+   * non-fatal warn). Default `'block'`. `'block'`/`'warn'`/`'stop'` keep their exact pre-P2 meaning.
+   */
+  onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'reroute' | 'escalate' | 'halt' | 'accept';
+  /**
+   * (retry only) RESUME vs RERUN — the net-new knob. `'warm'` (DEFAULT for the feedback path) RESUMES the
+   * producer's own pi session with a FEEDBACK-ONLY turn (the critique alone; the original prompt already
+   * lives in the resumed session tree). `'cold'` RERUNS fresh: no session resume, the full resolved prompt
+   * is re-sent with the critique prepended. Independent of whether a retry action exists. Honored only on a
+   * warm-eligible (in-place/local) provider; a cloud/inmemory node stays cold regardless.
+   */
+  session?: 'warm' | 'cold';
+  /**
+   * (reroute only) The strict-ANCESTOR label to re-enter on fail. Default: the producer (the classic
+   * judge→producer loop P1 wired). A non-ancestor target is a loud `RerouteConfigError` (`expandReroute`).
+   */
+  target?: string;
+  /** Extra attempts after the first (the retry/reroute budget). The canonical spelling of `retryMax`. */
+  max?: number;
+  /**
+   * (escalate) The stronger target + when — the same shape as `NodeIO.escalate`. TYPE/VOCABULARY only in
+   * P2: the escalate LOWERING still reads `io.escalate` (`runNodeWithRetries` is kept as-is), so a
+   * `policy.escalate` is not yet consumed — the field completes the unified vocabulary (the `retryScope:'fix'`
+   * stub precedent). Wiring is a follow-up.
+   */
+  escalate?: EscalateSpec;
+
+  // ── BACK-COMPAT ALIASES (accepted verbatim; mapped to the canonical fields above — never emitted anew) ──
+  /** @deprecated Alias for `max` (the retry/reroute budget). Read only when `max` is absent. */
+  retryMax?: number;
+  /**
+   * @deprecated The pre-P2 correction scope. `'feedback'` (L1) and `'fix'` (L2 stub) BOTH map to
+   * `session:'warm'` (the default), so an existing `{retryScope:'feedback'|'fix'}` still lowers to a warm
+   * feedback retry unchanged; the L2 `'fix'` routing stub is preserved on the lowered action's `scope`.
+   */
+  retryScope?: 'feedback' | 'fix';
 }
 
 // 3 ── HOOK (deterministic; never an LLM) ──────────────────────────────────────
@@ -1032,7 +1095,9 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
     judgeTier: string;
     rubric: string;
     threshold?: string;
-    policy?: { onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'escalate'; retryMax?: number; retryScope?: 'feedback' | 'fix' };
+    /** The UNIFIED on-fail policy (P2). `onFail:'reroute'` + `target` (default the producer) is the
+     *  canonical spelling of the judge-fail loop; the budget is `max` (or its `retryMax` alias). */
+    policy?: GatePolicy;
   };
 };
 

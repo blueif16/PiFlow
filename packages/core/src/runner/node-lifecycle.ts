@@ -1035,7 +1035,11 @@ export function summarizeGates(node: NodeSpec): GateSummary | undefined {
     } else if (op.action) {
       const a = op.action;
       if (a.kind === 'rerouteTo') entries.push({ kind: 'reroute', label: `reroute→${a.node}${a.max ? ` ×${a.max}` : ''}`, when });
-      else if (a.kind === 'retry') entries.push({ kind: 'retry', label: `retry${a.max ? ` ×${a.max}` : ''}${a.scope ? ` (${a.scope})` : ''}`, when });
+      else if (a.kind === 'retry') {
+        // (P2) surface the corrective lane (`scope`) AND the RESUME/RERUN knob (`session`) minimally: `retry ×1 (feedback·warm)`.
+        const tags = [a.scope, a.session].filter(Boolean).join('·');
+        entries.push({ kind: 'retry', label: `retry${a.max ? ` ×${a.max}` : ''}${tags ? ` (${tags})` : ''}`, when });
+      }
       else if (a.kind === 'escalate') entries.push({ kind: 'escalate', label: `escalate: ${a.via}`, when });
       else if (a.kind === 'notify') entries.push({ kind: 'notify', label: `notify: ${a.channel}`, when });
     }

@@ -20,29 +20,14 @@
 // or catalog/*. The runner reads only the emitted `OpSpec[]` and the materialized judge node —
 // zero new runtime code.
 
-import type { OpSpec, GateBody, CheckKind } from '../types.js';
+import type { OpSpec, GateBody, CheckKind, OnFailure, ActionBody, GatePolicy } from '../types.js';
 
 // ── 1 · AUTHORING SHAPES ─────────────────────────────────────────────────────
 
-/**
- * Policy carried on a gate — WHAT happens when the verdict is non-pass.
- * Uses the existing `PolicyAction` vocabulary; 'retry' on a gate ALWAYS carries `scope` (default
- * 'feedback') and a `max` budget.
- */
-export interface GatePolicy {
-  /** On-fail action. Default 'block'. Must be a valid PolicyAction. */
-  onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'escalate';
-  /**
-   * Retry budget — extra attempts after the first. Only meaningful when `onFail:'retry'`.
-   * Omit to use a single attempt (max:1 default).
-   */
-  retryMax?: number;
-  /**
-   * Correction scope for retries. `'feedback'` (DEFAULT, L1) = warm-resume with gate critique.
-   * `'fix'` (L2) = STUB — see ActionBody.scope JSDoc for the full contract.
-   */
-  retryScope?: 'feedback' | 'fix';
-}
+// (P2 · unified gate policy) `GatePolicy` — the ONE on-fail vocabulary every gate kind shares — now lives
+// on the spine (types.ts). Re-exported here so existing `import { GatePolicy } from './gate-authoring'`
+// sites (gate-list.ts, index.ts) are unchanged. See `types.ts` for the field docs + the back-compat aliases.
+export type { GatePolicy };
 
 // ── Gate kinds ────────────────────────────────────────────────────────────────
 
@@ -279,7 +264,8 @@ export function lowerGate(gate: GateAuthorSpec, producer: string): LowerGateResu
         threshold,
         agentType: 'judge',
       };
-      const retryMax = gate.policy?.retryMax ?? 1;
+      // (P2) The reroute budget: the canonical `max`, or its back-compat `retryMax` alias. Default 1.
+      const retryMax = gate.policy?.max ?? gate.policy?.retryMax ?? 1;
       const ops: OpSpec[] = [
         {
           when: 'on-failure',
@@ -345,22 +331,40 @@ export function lowerGates(
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-/** Map a gate policy to the `OnFailure` value the OpSpec carries. Default 'block'. */
-function resolveOnFailure(policy: GatePolicy | undefined): import('../types.js').OnFailure {
-  const action = policy?.onFail ?? 'block';
-  // 'retry' on the gate level is expressed via a separate action op; the op's own onFailure stays
-  // 'block' (the retry action fires AFTER the block signals the failure). This mirrors how the
-  // existing checks+policy lower to op[]: the policy is the ACTION, not the op's own onFailure
-  // when retry is involved.
-  return (action === 'retry' ? 'block' : action) as import('../types.js').OnFailure;
+/**
+ * Map a unified gate policy's `onFail` (the P2 superset) down to the `OnFailure` value the OpSpec's own
+ * consequence carries. `'block'`/`'warn'`/`'stop'`/`'escalate'` pass through unchanged (pre-P2 meaning).
+ * `'retry'` and `'reroute'` block the op FIRST — the retry rides a separate retry action op (below); the
+ * reroute rides the judge's `reroute` field / a `rerouteTo` action, never the op's own onFailure. `'halt'`
+ * is the documented `stop` alias (refuse to proceed); `'accept'` is a non-fatal `warn` (record, don't fail).
+ * Default 'block'.
+ */
+function resolveOnFailure(policy: GatePolicy | undefined): OnFailure {
+  switch (policy?.onFail ?? 'block') {
+    case 'retry':
+    case 'reroute':
+      return 'block';
+    case 'halt':
+      return 'stop';
+    case 'accept':
+      return 'warn';
+    default:
+      return (policy?.onFail ?? 'block') as OnFailure; // 'block' | 'warn' | 'stop' | 'escalate'
+  }
 }
 
-/** Emit a retry action op from a gate policy. */
+/**
+ * Emit a retry action op from a gate policy. The budget is the canonical `max` (or its `retryMax` alias);
+ * `scope` keeps the L1/L2 corrective LANE (default 'feedback'); `session` carries the P2 RESUME(warm)/
+ * RERUN(cold) knob — default 'warm', so an existing policy that named only `retryScope:'feedback'|'fix'`
+ * still lowers to a warm feedback retry unchanged (byte-identical to pre-P2 for those callers).
+ */
 function makeRetryAction(policy: GatePolicy): OpSpec {
-  const retryAction: Extract<import('../types.js').ActionBody, { kind: 'retry' }> = {
+  const retryAction: Extract<ActionBody, { kind: 'retry' }> = {
     kind: 'retry',
-    max: policy.retryMax ?? 1,
-    ...(policy.retryScope ? { scope: policy.retryScope } : { scope: 'feedback' as const }),
+    max: policy.max ?? policy.retryMax ?? 1,
+    scope: policy.retryScope ?? 'feedback',
+    session: policy.session ?? 'warm',
   };
   return { when: 'on-failure', action: retryAction };
 }

@@ -36,17 +36,18 @@ export async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope:
   // per-node `io.retry`/`io.retries` budget with the gate's feedback-aware semantics.
   //
   // L1 (scope:'feedback', DEFAULT, BUILD): on each failed attempt, inject the gate's critique — the
-  // EMPIRICAL failure evidence (`consultPreamble`) — as a `promptPrefix` into the NEXT cold re-invocation.
-  // This is Reflexion / Self-Refine semantics: the producer receives its failure reason and is asked to
-  // fix it in a FRESH pi process (NOT a warm session resume — that infra is absent on this branch; see the
-  // flag below). The feedback MUST reach the retry attempt; a blind same-input retry is the WRONG default.
+  // EMPIRICAL failure evidence (`consultPreamble`) — into the retry attempt. This is Reflexion / Self-Refine
+  // semantics: the producer receives its failure reason and is asked to fix it. The feedback MUST reach the
+  // retry attempt; a blind same-input retry is the WRONG default.
   //
-  // NOTE: TRUE WARM-RESUME is not available here. `pi` is invoked with `--no-session` (command.ts:71);
-  // there is no `--resume-session`/`--session-id`/`--mode rpc` on this branch. The control-session /
-  // companion work (pi rpc-mode, session continuation) likely lives on main. When that infra merges, the
-  // warm-resume path here should: (a) persist the session id from the first invocation's event stream,
-  // (b) invoke pi with `--resume <sessionId>` + the feedback as an appended message, NOT a fresh @prompt.
-  // FLAG: search for TODO[warm-resume] to find the exact point to upgrade.
+  // (P2 · unified gate policy) The retry action carries a `session` knob (`GatePolicy.session`) that picks
+  // HOW the feedback is delivered, DECOUPLED from the mere presence of the action:
+  //   • warm (DEFAULT — RESUME): resume the per-node pi session (id = the node id) so the producer continues
+  //     its OWN conversation, the critique delivered as the next turn (`resumeSessionId` → `--session <id>` +
+  //     a FEEDBACK-ONLY prompt). Warm is HONORED only where the session dir persists across attempts (in-place/
+  //     local); on every other provider `runNode` ignores it and stays cold.
+  //   • cold (RERUN): a fresh pi process, the full resolved prompt re-sent with the critique PREPENDED (no
+  //     `resumeSessionId`). This is the only path pre-P2 offered; it is now selectable independently.
   //
   // L2 (scope:'fix') — STUB. When the gate emits `scope:'fix'`, the intended behavior is:
   //   1. Infer the problem class from the failure signals (classifyFailure already does this).
@@ -99,22 +100,30 @@ export async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope:
       retriesLeft--;
       attemptsRun++;
       if (l1Active) {
-        // L1 — scope:'feedback': inject the gate critique as a promptPrefix on the cold re-invocation.
-        // This is the FEEDBACK-INJECTED cold path (not warm-resume; see TODO[warm-resume] above).
-        // consultPreamble builds a DRIVER-VERIFIED evidence block (missing artifacts, schema errors,
-        // failed checks, stderr tail, watchdog kills) — NEVER a model self-score. The producer sees
-        // EXACTLY what failed and is asked to fix it. This is the Reflexion / Self-Refine pattern.
+        // L1 — scope:'feedback': inject the gate critique into the retry. consultPreamble builds a
+        // DRIVER-VERIFIED evidence block (missing artifacts, schema errors, failed checks, stderr tail,
+        // watchdog kills) — NEVER a model self-score. The producer sees EXACTLY what failed and is asked to
+        // fix it. This is the Reflexion / Self-Refine pattern.
         //
-        // L2 NOTE: if retryAction.scope === 'fix', the fix memory lookup would happen HERE before
-        // invoking runNode — patch the node's prompt/tool-wiring, then call runNode with the patched
-        // node. The stub falls through to feedback (same cold re-invocation, same evidence prefix).
-        // (warm-resume) WARM the SAME-MODEL L1 retry: resume the per-node session (id = the node id) so the
-        // producer continues its OWN conversation, with the feedback delivered as the next turn (NOT a cold
-        // re-run). `resumeSessionId` makes `runNode` emit `--session <id>` + a FEEDBACK-ONLY prompt. The warm
-        // path is HONORED only where the session dir persists across attempts (in-place/local); on every other
-        // provider `runNode` ignores it and stays cold (`--no-session`) — so this is safe to set unconditionally.
+        // L2 NOTE: if retryAction.scope === 'fix', the fix memory lookup would happen HERE before invoking
+        // runNode — patch the node's prompt/tool-wiring, then call runNode with the patched node. The stub
+        // falls through to feedback (same evidence prefix); `scope` is orthogonal to the `session` knob below.
+        //
+        // (P2 · unified gate policy) RESUME(warm) vs RERUN(cold) is chosen from the retry action's `session`
+        // knob — NOT the mere PRESENCE of the action (the pre-P2 conflation made "cold + feedback" unrequestable).
+        //   • warm (DEFAULT, RESUME): set `resumeSessionId` = the node id → `runNode` emits `--session <id>` and a
+        //     FEEDBACK-ONLY prompt; the producer continues its OWN conversation (§4c). Preserves pre-P2 behavior
+        //     (an authored retry action with no `session` defaults warm here via `!== 'cold'`).
+        //   • cold (RERUN): leave `resumeSessionId` unset → `runNode` re-runs fresh, the full resolved prompt
+        //     re-sent with the critique PREPENDED (a new session, not a resume).
+        // The warm path is HONORED only where the session dir persists across attempts (in-place/local); on every
+        // other provider `runNode` ignores `resumeSessionId` and stays cold (`--no-session`) regardless.
         // Escalation (the branch below) NEVER sets it, so a model swap stays cold (§4d).
-        rec = await runNode(ctx, node, scope, { promptPrefix: consultPreamble(sig), resumeSessionId: node.id });
+        const warm = retryAction?.session !== 'cold';
+        rec = await runNode(ctx, node, scope, {
+          promptPrefix: consultPreamble(sig),
+          ...(warm ? { resumeSessionId: node.id } : {}),
+        });
       } else {
         // Same-model retry: a FRESH attempt (re-seed + re-exec), no consult prefix, the node's own model.
         rec = await runNode(ctx, node, scope);

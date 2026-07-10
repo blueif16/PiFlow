@@ -147,7 +147,9 @@ export interface TemplateNode {
     judgeTier: string;
     rubric: string;
     threshold?: string;
-    policy?: { onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'escalate'; retryMax?: number; retryScope?: 'feedback' | 'fix' };
+    /** The UNIFIED on-fail policy (P2 · types.ts `GatePolicy`) — `onFail:'reroute'` + `target` (default the
+     *  producer) is the canonical judge-fail spelling; budget = `max` (or its `retryMax` alias). */
+    policy?: import('../../types.js').GatePolicy;
   };
   /**
    * (G9) Subworkflow activation → intent `subworkflow`, consumed by `expandSubworkflow` before compile/

@@ -10,14 +10,33 @@
 // point of the strict node.json gate). An `execution` entry is deterministic and carries EXACTLY ONE of a
 // `check` predicate (schema-style) or a `cmd` script (the inner `oneOf`).
 
-/** The on-fail policy an entry may carry (the existing `GatePolicy` vocabulary). Inlined (no `$ref`). */
-const gatePolicy = {
+/** The UNIFIED on-fail policy an entry may carry (P2 · the one `GatePolicy` vocabulary). Inlined (no `$ref`)
+ *  so the fragment stays self-contained + embeddable; mirrors `types.ts` `GatePolicy`. */
+export const gatePolicy = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    onFail: { enum: ['block', 'warn', 'stop', 'retry', 'escalate'], description: "On-fail action. Default 'block'." },
-    retryMax: { type: 'integer', minimum: 0, description: 'Extra attempts after the first (retry only).' },
-    retryScope: { enum: ['feedback', 'fix'], description: "Correction scope for retries (default 'feedback')." },
+    onFail: {
+      enum: ['block', 'warn', 'stop', 'retry', 'reroute', 'escalate', 'halt', 'accept'],
+      description: "On-fail action (superset). block (default) | warn | stop | retry | reroute | escalate | halt | accept.",
+    },
+    session: { enum: ['warm', 'cold'], description: "retry only: RESUME(warm, default) vs RERUN(cold)." },
+    target: { type: 'string', minLength: 1, description: 'reroute only: a strict-ancestor label to re-enter (default: the producer).' },
+    max: { type: 'integer', minimum: 0, description: 'Extra attempts after the first (retry/reroute budget).' },
+    escalate: {
+      type: 'object',
+      additionalProperties: false,
+      description: 'escalate target + when (same shape as io.escalate). Vocabulary only in P2 (not yet lowered).',
+      properties: {
+        tier: { type: 'string', minLength: 1 },
+        model: { type: 'string', minLength: 1 },
+        after: { type: 'integer', minimum: 0 },
+        on: { type: 'array', items: { type: 'string' } },
+      },
+    },
+    // ── back-compat aliases ──
+    retryMax: { type: 'integer', minimum: 0, description: 'Alias for `max` (read when `max` is absent).' },
+    retryScope: { enum: ['feedback', 'fix'], description: "Legacy correction scope → session:'warm'. Default 'feedback'." },
   },
 } as const;
 

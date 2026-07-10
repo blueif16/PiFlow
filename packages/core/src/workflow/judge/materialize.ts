@@ -133,12 +133,13 @@ function buildJudge(producer: NodeIntent): NodeIntent {
       returnMode: 'required',
     },
     // BUG A + BUG B: the judge-fail loop lives HERE, on the judge (V), as a `reroute` field `expandReroute`
-    // consumes — NOT a dead producer-side op. `onFail:producer` unrolls `[producer … judge]` into a bounded
-    // producer re-run (the producer is a strict ancestor of the judge via the reads/dependsOn edge, so the
-    // ancestor-strict guard passes). `passSentinel` makes the existence gate stat the ACCEPT-only sentinel
-    // (not the always-written verdict), so a REJECT actually re-runs; `evidence:[verdict]` feeds the judge's
-    // critique to the re-entered producer clone.
-    reroute: { onFail: producer.label, max: retryMax, evidence: [verdict], passSentinel },
+    // consumes — NOT a dead producer-side op. `onFail` unrolls `[target … judge]` into a bounded re-run; the
+    // DEFAULT target is the producer (a strict ancestor of the judge via the reads/dependsOn edge, so the
+    // ancestor-strict guard passes). (P2) a policy `target` re-points the loop further back to a named
+    // strict-ancestor label (a non-ancestor is a loud RerouteConfigError in expandReroute). `passSentinel`
+    // makes the existence gate stat the ACCEPT-only sentinel (not the always-written verdict), so a REJECT
+    // actually re-runs; `evidence:[verdict]` feeds the judge's critique to the re-entered clone.
+    reroute: { onFail: gate.policy?.target ?? producer.label, max: retryMax, evidence: [verdict], passSentinel },
     sandbox: {
       // Read the run dir (where the producer's artifacts live); write only its own verdict namespace.
       read: producedByProducer.length ? [...producedByProducer] : [],

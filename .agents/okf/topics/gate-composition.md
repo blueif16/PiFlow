@@ -30,7 +30,7 @@ runtime by the [[node-action-protocol]] engine — that is the terminal seam, ow
 # Anchors
 DECLARE (the authored surface)
 - `packages/core/src/workflow/template/schema/node.schema.ts:330` — `gates` — the authored `gates[]` field on node.json (fanned out at load)
-- `packages/core/src/workflow/template/schema/gate-entry.schema.ts:25` — `gateEntrySchema` — the SHARED `oneOf(execution|agentic|hitl)` fragment (embedded by both node.schema + profile.schema under `$defs.gateEntry`)
+- `packages/core/src/workflow/template/schema/gate-entry.schema.ts:44` — `gateEntrySchema` — the SHARED `oneOf(execution|agentic|hitl)` fragment (embedded by both node.schema + profile.schema under `$defs.gateEntry`)
 - `packages/core/src/workflow/gate-list.ts:33` — `GateEntry` — the discriminated-union TS twin of the schema (execution|agentic|hitl)
 FANOUT (per node, at load — inside toNodeIntent)
 - `packages/core/src/workflow/template/loader.ts:139` — `fanoutGates(n.def.gates, n.def.id)` — the per-node fan-out call, BEFORE `materializeJudgeNodes`
@@ -38,8 +38,8 @@ FANOUT (per node, at load — inside toNodeIntent)
 - `packages/core/src/workflow/gate-list.ts:91` — `executionToAuthorSpec` — maps an `execution` entry → a `floor`/`execution` `GateAuthorSpec`
 LOWER (one entry → op[]/judge/checkpoint)
 - `packages/core/src/workflow/gate-authoring.ts:235` — `lowerGate` — one `GateAuthorSpec` → `OpSpec[]` (+ `judgeNode`/`checkpointPatch`); pure, author-time only
-- `packages/core/src/workflow/gate-authoring.ts:144` — `GateAuthorSpec` — the `ExecutionGate|FloorGate|JudgeGate|HumanGate` union `lowerGate` speaks
-- `packages/core/src/workflow/gate-authoring.ts:165` — `costLadderOrder` — stable sort: deterministic(0) → judge(1) → human(2)
+- `packages/core/src/workflow/gate-authoring.ts:129` — `GateAuthorSpec` — the `ExecutionGate|FloorGate|JudgeGate|HumanGate` union `lowerGate` speaks
+- `packages/core/src/workflow/gate-authoring.ts:150` — `costLadderOrder` — stable sort: deterministic(0) → judge(1) → human(2)
 - `packages/core/src/workflow/gate-authoring.ts:32` — `GatePolicy` — per-gate `onFail`/`retryMax`/`retryScope` carried through the lowering
 SEAM (terminal — the emitted op[] is consumed elsewhere)
 - `packages/core/src/workflow/gate-list.ts:166` — `gatesFromOp(ops).post` — execution gates' POST `Check[]` re-derived into `io.checks` (→ [[node-action-protocol]])
@@ -74,6 +74,7 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - `52f05ec` 2026-06-28 — feat(core): gate authoring → op[] lowering + retry.scope (SA-B)
 - `2e125ad` 2026-07-06 — feat(core): schema + types for the additive gate list and profile overlay
 - `e9c58ee` 2026-07-06 — feat(core): gate-list fan-out + profile-overlay loader modules
+- `df59fb0` 2026-07-09 — fix(core): make a judge gate's REJECT actually re-run its producer
 
 ### Lessons — memory cluster
 
@@ -98,11 +99,11 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 
 ### Code anchors / blast radius (codegraph)
 
-- `lowerGates` (packages/core/src/workflow/gate-authoring.ts:323) — 6 callers in `packages/core/src/workflow/agent-base.ts`, `packages/core/src/workflow/judge/materialize.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-authoring.test.ts`
+- `lowerGates` (packages/core/src/workflow/gate-authoring.ts:309) — 2 callers in `packages/core/src/workflow/judge/materialize.ts`; ⚠ no covering tests found
 - `fanoutGates` (packages/core/src/workflow/gate-list.ts:122) — 3 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `lowerGate` (packages/core/src/workflow/gate-authoring.ts:235) — 5 callers in `packages/core/src/workflow/gate-authoring.ts`, `packages/core/src/workflow/gate-list.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-authoring.test.ts`
-- `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:144) — 12 callers in `packages/core/src/workflow/agent-base.ts`, `packages/core/src/workflow/gate-list.ts`, `packages/core/src/workflow/judge/materialize.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/gate-authoring.test.ts`
-- `GatePolicy` (packages/core/src/workflow/gate-authoring.ts:32) — 10 callers in `packages/core/src/workflow/gate-list.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-authoring.ts`; ⚠ no covering tests found
+- `lowerGate` (packages/core/src/workflow/gate-authoring.ts:220) — 4 callers in `packages/core/src/workflow/gate-authoring.ts`; tests: `packages/core/test/gate-policy-session.test.ts`
+- `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:129) — 6 callers in `packages/core/src/workflow/judge/materialize.ts`, `packages/core/src/workflow/gate-authoring.ts`; ⚠ no covering tests found
+- `GateListError` (packages/core/src/workflow/gate-list.ts:25) — 5 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-list.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=3 commits · files=3 · lessons=17</sub>
+<sub>derived 2026-07-10 · arc=4 commits · files=3 · lessons=17</sub>
 <!-- okf:auto-end -->
