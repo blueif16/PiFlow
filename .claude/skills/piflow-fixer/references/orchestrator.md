@@ -3,6 +3,16 @@
 Open this when: a run verdict has returned and you own the cycle · you are writing a dispatch packet ·
 choosing a model lane · a fix loop is stalling, oscillating, or blowing its budget · deciding when to escalate.
 
+> **SHIPPED substrate mechanism vs the aspirational orchestration below.** What `optimize fix --node` actually
+> runs: issues are processed **sequentially** (`for (const rec of records)`), each through `fixIssueWithRetries`
+> (per-issue bounded retry, default 3, with in-attempt dropback threading the prior reject's `{category,steer}`),
+> under ONE system-wide net — the consecutive-exhausted `--breaker` (default 3 → HALT the pass with an
+> architecture signal). That is the whole automated loop. The richer machinery in §1/§5 below — parallel
+> per-issue subagent dispatch, a batched frozen verify run, cross-cycle STALL/OSCILLATION detection, the
+> DEAD-lever ledger, 2-3-candidate fan-out — is **NOT built into the substrate loop**; it is the OVERLORD's
+> manual judgment applied across `optimize fix` invocations, or future work. Treat §1/§5 as the discipline, not
+> a runtime you can assume fires.
+
 ## 1 · The cycle
 ```
 verdict returns

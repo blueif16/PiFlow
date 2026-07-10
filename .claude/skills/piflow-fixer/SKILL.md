@@ -3,19 +3,22 @@ name: piflow-fixer
 description: >-
   Pi Flow · FIXER — the default playbook staged into EVERY substrate fixer spawn, the human-facing fix
   protocol, and the orchestrator contract for a whole feedback cycle; it turns one assigned issue + an
-  isolated candidate copy of its node into a landed, gate-proven repair. LOAD/FOLLOW when: you are the fixer
-  agent handed a `nodes/<node>/issues/<name>.md` dispatch; you are the ONE agent running a full cycle over
+  isolated candidate git worktree of its node into a staged, gate-proven repair. LOAD/FOLLOW when: you are the
+  fixer agent handed a `nodes/<node>/issues/<name>.md` dispatch; you are the ONE agent running a full cycle over
   returned run feedback; or a human repairing one node's defect asks "how do I route this fix", "why did my
-  guidance get ignored", "did the fix actually move anything". The spine is the issue lifecycle open→closed;
+  guidance get ignored", "did the fix actually move anything". The spine is the issue lifecycle
+  open→active→fix-landed→verifying (only `optimize adopt` lands it to `resolved`);
   per-stage depth lives in references/ (triage · demand-levers · verification · orchestrator ·
   playbook-maintenance). This is the fixer's procedure — NOT the enhance/hermes triad (disabled on this path).
 ---
 
 # Pi Flow · FIXER — compile quality into the node's harness; do not hand-write the answer
 
-You are handed ONE issue (`nodes/<node>/issues/<name>.md`) and an ISOLATED candidate copy of that node's read
-closure. Your turn walks the issue **open → closed**: triage it, route it, compile the smallest repair, let the
-gate prove it, leave the ledger honest. You never self-certify — a separate re-run gate decides your fate
+You are handed ONE issue (`nodes/<node>/issues/<name>.md`) and an ISOLATED candidate git worktree of that node's
+read closure (a throwaway branch/commit; only `candidateSha` persists after your turn). Your turn walks the
+issue **open → active → fix-landed → verifying**: triage it, route it, compile the smallest repair, let the gate
+prove it, leave the ledger honest. Your fix only ever reaches `verifying` (staged); a separate human `optimize
+adopt` step cherry-picks it to `resolved`. You never self-certify — a separate re-run gate decides your fate
 (intrinsic self-correction without an external gate makes output WORSE, not better — the gate is not optional).
 
 ## Reference map — open the file when you hit the stage or the condition
@@ -124,8 +127,9 @@ split across cycles.
 | the fixer "understood deeply" but committed no edit | a failed attempt — judge fixers by edits landed + gates passed, never diagnosis eloquence |
 
 ## Verify — the GATE decides, not your confidence `[[outcome-gated-accept]]`
-You do not judge your own fix. Leave the edits on disk; the harness re-runs the node **`--from` this node on
-FROZEN upstream** (upstream reports `reused`, not re-run) and re-judges blind `[[run-variance-discipline]]`:
+You do not judge your own fix. Leave the edits committed on the candidate worktree; the harness PROVES it with a
+**single-node replay** (`spawnChildRun` pins a `from:<node> until:<node>` window — only this node re-runs;
+everything else, upstream AND downstream, is reused) and re-judges blind `[[run-variance-discipline]]`:
 - The verdict is your **pre-registered signal**. A mechanism flip with a named cause is honest at N=1; a
   LEVEL claim (score / tokens / wall) needs **N≥3 as a floor** — and N sized to the effect: a small delta
   needs more replicates than a large one before "improved" is honest.
@@ -134,11 +138,13 @@ FROZEN upstream** (upstream reports `reused`, not re-run) and re-judges blind `[
 - **Gate cheap→expensive:** deterministic checks (compile/lint/schema) → the pre-registered target signal →
   the blind whole-board judge. A green target signal is necessary, never sufficient — read the whole board
   for cross-axis regressions before calling it landed.
-- Orthogonal issues may share ONE frozen verify run when signals are DISJOINT — each gates on its own signal.
-  A branch-conditional fix (menu kind, route) is verified only by a run that TOOK the branch; off-path counts
-  neither way. Pin the branch for the gating run where the harness allows.
-- Across retry iterations keep the BEST-scoring candidate, not the last — iterative refinement is
-  non-monotonic and can regress past its peak.
+- In the substrate loop each issue is proved and gated INDEPENDENTLY — its own candidate worktree + its own
+  single-node replay (no shared/batched verify run). A branch-conditional fix (menu kind, route) is verified
+  only by a replay that TOOK the branch; off-path counts neither way. Pin the branch where the harness allows.
+- Iterative refinement is non-monotonic — a later attempt can regress past its peak. NOTE the harness
+  reality: `fixIssueWithRetries` on exhaustion keeps the LAST (most-steered) candidate as `best`, flagged
+  `bestIsHeuristic:true` — NOT a true score-and-keep-best. So on an escalation packet review ALL preserved
+  `candidateSha`s, don't trust `best`; a real best-of selection is future work.
 - A NEW failure kind post-fix is DISCOVERY (a watch-item), never a regression. `editsApplied < 1` auto-discards.
 Full protocol — pre-registration template, frozen-rerun recipe, N/power table, judge cautions, the two-front
 report shape: `references/verification.md`.
@@ -157,7 +163,16 @@ recurrence ≥2 makes a lesson. Raw run evidence stays first-class — a lesson 
 You do not write git; landing into the live product is a separate, human-gated step.
 
 ## Operating model — ONE orchestrator per feedback cycle
-ONE agent owns each returned verdict's whole cycle — route, dispatch, gate, improve the playbook; never fix in-line:
+> **How this maps to the SHIPPED substrate loop:** the "orchestrator" is the `optimize fix --node` CLI, which
+> iterates the selected issues **SEQUENTIALLY** (`for (const rec of records)`), one `fixIssueWithRetries` at a
+> time (per-issue bounded retry, default `--max-attempts 3`), with ONE system-wide net: the consecutive-exhausted
+> `--breaker` (default 3 → HALT the pass). There is NO automated agent-orchestrator dispatching subagents in
+> parallel, NO batched cross-issue verify, and NO built stall/oscillation detection or 2-3-candidate fan-out —
+> those (steps 5-6 below) are the OVERLORD's manual judgment or aspirational, not code the loop runs for you.
+> Read this section as the discipline a human/overlord applies ACROSS `optimize fix` invocations, not a runtime.
+
+ONE owner (the overlord or you) drives each returned verdict's whole cycle — route, dispatch, gate, improve the
+playbook; never fix in-line:
 1. **Read two-front** — agentic (tokens, calls, errors, think) AND quality (judge marks) — never one alone.
 2. **Enumerate issues** — each born with its detector + artifact/trace line, or it is not an issue. Run the
    LAPSE gate on each before anything else.
@@ -174,7 +189,8 @@ ONE agent owns each returned verdict's whole cycle — route, dispatch, gate, im
    no git). **Model lanes by JOB SHAPE, not prestige** `[[fixer-model-tiering]]`: bounded edit-committing jobs
    → a mid tier that reliably ACTS; open-ended root-causing → the deep tier; forensics/recon → cheap tier.
    Audit the routing by edits-landed + gates-passed, never by how smart the diagnosis reads.
-5. **Gate in one batch:** ONE frozen-input verify run; each issue gates on its own signal.
+5. **Gate per issue, independently:** in the substrate loop each issue gets its OWN candidate worktree +
+   single-node replay + gate (no batched cross-issue verify run); each gates on its own pre-registered signal.
 6. **Loop invariants:** a circuit breaker independent of per-round caps; stall detection (two consecutive
    cycles with no mechanism signal moved ⇒ stop and re-question the approach); oscillation detection (a fix
    re-introducing what a prior fix removed ⇒ halt, escalate). When one fix is stuck, fan out 2–3 DIVERSE

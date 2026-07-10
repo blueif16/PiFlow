@@ -42,14 +42,16 @@ delta inside the band is a draw. Same judge, same calibration, blind to provenan
   whole-board judge. Pay each stage only after the previous passes. A green target signal is necessary, never
   sufficient: read the WHOLE board — cross-axis regressions (a quality win that bloats cost; a cost win that
   kills a mark) are common and the reason both fronts are always reported.
-- **Batch:** orthogonal issues share ONE frozen verify run when their signals are DISJOINT (no shared artifact
-  region, no shared mechanism); each issue still gates only on its own signal. Signals that could interact →
-  separate runs.
+- **Per-issue proving (substrate):** each issue gets its OWN candidate worktree + single-node replay + gate —
+  there is no shared/batched frozen verify run in the shipped loop; each gates only on its own signal. (The
+  batch-share optimization is only relevant to a hand-driven multi-issue verify, not `optimize fix`.)
 - **Branch-conditional fixes:** verified only by a run that TOOK the branch. Off-path runs count neither way.
   Pin the branch for the gating run where the harness allows (seed the menu selection, fix the route); where
   it doesn't, the issue stays open-conditional and says so — do not let an off-path "pass" close it.
-- **Candidate selection across retries:** iterative refinement is non-monotonic — score every candidate and
-  keep the BEST, not the last (Self-Refine, arXiv 2303.17651).
+- **Candidate selection across retries:** iterative refinement is non-monotonic (Self-Refine, arXiv 2303.17651),
+  so best-of would beat last. The shipped `fixIssueWithRetries` does NOT do that yet — on exhaustion it keeps
+  the LAST (most-steered) candidate as `best` (`bestIsHeuristic:true`). Review ALL preserved `candidateSha`s on
+  the escalation packet rather than trusting `best`; a true score-and-keep-best is future work.
 
 ## 5 · Judge cautions `[[judge-reliability]]`
 - The judge never sees provenance (which arm/model produced the artifact) — blind or void.

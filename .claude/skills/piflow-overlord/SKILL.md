@@ -48,12 +48,23 @@ Two entry points, by what you're taking the seat over:
   which node/stage) → `piflowctl telemetry <rundir> --watch` (streams the run fold live, then prints the
   record) — this IS your run WAKE SOURCE (§"The invariant you sit on"). To dig into one node,
   **piflow-inspect** owns the full routing table (`telemetry <rundir> <nodeId>`, `trace`, `logs`).
-- **An optimize round** — `piflowctl optimize triage --node <id>` (spawns **piflow-triage**: measures then
-  judges the node's finished run(s) → issue files) THEN `piflowctl optimize fix --node <id>` (spawns
-  **piflow-fixer**: candidate copy → fix → gate → STAGE a manifest) — or the bare `piflowctl optimize --node
-  <id>` for both phases in one call (the default full loop). Once a manifest gates ACCEPT, land it yourself
-  with `piflowctl optimize adopt --manifest <path>` — a separate, explicit step, never a side effect of `fix`.
-  `--node` also takes a dotted `<run>.<id>` ref to pin one run.
+- **An optimize round (the SUBSTRATE loop — four manual steps, run in order)** — this is the loop you drive:
+  1. `piflowctl optimize triage --node <id>` — spawns **piflow-triage**: measures then judges the node's
+     finished run(s) → issue `.md` files (`status: open`).
+  2. `piflowctl optimize fix --node <id> [--issue <name>]` — spawns **piflow-fixer**: mints a candidate git
+     worktree/commit → fixer edits → commits (`candidateSha`) → proves (single-node replay) → gates; writes
+     `record.json` (`decision: staged|discarded`) and walks the issue `open→active→fix-landed→verifying`. On
+     the full-tier soft path it runs the gate agent INLINE. **Nothing lands here** (`fix.ts:39`).
+  3. `piflowctl optimize verify --node <id> [--issue <name>]` — the standalone gate-only re-check (no fixer, no
+     re-prove); a reject walks `verifying→open`. Needed to re-gate after a criteria edit, or for a tier `fix`
+     skipped (`rerun` stays numeric even when criteria exist).
+  4. `piflowctl optimize adopt --node <id> [--issue <name>]` — **the ONLY step that lands**: `git cherry-pick`s
+     each `staged` `candidateSha` onto the live product and walks the issue `verifying→resolved`. A separate,
+     explicit step, never a side effect of `fix`.
+  The bare `piflowctl optimize --node <id>` auto-chains ONLY steps 1→2 (triage→fix) — it is NOT the full loop;
+  verify and adopt stay manual. `--node` also takes a dotted `<run>.<id>` ref to pin one run. (The classic
+  binding-driven engine — `optimize --fix --binding` with `adopt --manifest` — is a SEPARATE system this seat
+  does not use for per-node work; everything above is the substrate engine.)
 - **Before the loop — is the RUNWAY ready?** (phase 0, do this FIRST). The loop is only as good as the
   MEASURES it optimizes against, so before starting triage confirm each node's hard measures (deterministic
   gates — the floor) + soft measures (the criteria/judge — quality above the floor) EXIST, are wired into
@@ -132,13 +143,21 @@ The stream surfaces, and what to key on:
   The SAME fold also emits `node-close` on EVERY node's terminal transition, healthy or not (`telemetry.ts:342`,
   fired once per node at `:451-455`) — this is the SDK's native node-lifecycle signal, not a new stream. A
   `node-finished` wake predicate keys directly on it (profile-conditional — see below).
-- **Optimize / fix** — the `OptimizeEventSink` (`optimize --fix --watch`). The typed `OptimizeEvent` union
-  carries a **first-class `fixer-aborted{node, reason}`** — the PORTABLE watchdog/timeout cutoff signal, read
-  from the fixer stage's TYPED return (`CandidateEdit.aborted`), NOT the opaque payload — so key your ABORT
-  rows on it directly. (Legacy fallback for a binding that hasn't adopted the structured return: the same
-  reason still rides in an OPAQUE `fixer-trace` `payload = {type:'watchdog_abort', reason, …}` and in the
-  `fixer-done` summary prefix `[watchdog abort: <reason>]`.) The other typed reason is
-  `stopped{'complete'|'edit-budget'|'token-budget'}`.
+- **Optimize / fix — SUBSTRATE engine (the one you drive; `optimize fix|verify|adopt --node --watch`).** The
+  `SubstrateEventSink` emits the `SubstrateEvent` union (`substrate/events.ts:14-24`), also folded per-issue
+  into `log.jsonl`. Ten members, one per phase boundary: `issue-activated` · `candidate-prepared{included,
+  excluded}` · `fixer-started` · `fixer-done{editsApplied}` · `prove-started{childId}` · `measured{sharedKeys}`
+  · **`gated{accept:boolean, reason}`** (a reject is `accept:false`, NOT a `reject` discriminant) ·
+  **`staged{decision:'staged'|'discarded', manifestPath}`** (`manifestPath` = the per-issue `record.json`) ·
+  `adopted{commit, files}` · `stopped{reason}` (FREE-TEXT per issue, e.g. `discarded (<gate reason>)`). Key
+  your rows on these. ⚠️ A soft-gate discard that walked the issue back to `open` still fires `staged` — the
+  rewind shows ONLY in the `stopped` free-text, so any wake policy MUST watch `stopped`, not just `gated`/`staged`.
+  There is NO `fixer-aborted` / `fix-cycle-ceiling` / `loop-stopped` in this union — a runaway substrate fixer
+  surfaces only as the underlying run's node-timeout.
+- **Optimize / fix — CLASSIC engine (separate system; `optimize --fix --binding --watch`).** The
+  `OptimizeEventSink` / `OptimizeEvent` union carries `fixer-aborted{node, reason}` (from `CandidateEdit.aborted`),
+  `scored`, `fix-cycle-ceiling`, `loop-stopped`, and `stopped{'complete'|'edit-budget'|'token-budget'}`. NONE of
+  these reach the substrate loop above — do not key a substrate wake on them.
 - **Per-agent inside a node** — the streamed `stream-json` (`fixer.trace.jsonl`): every `tool_use`, result,
   `rate_limit_event`. This is how you SEE behaviour (the M3 fixer's 40 tool-calls / 0 edits — a pre-tuning
   run; the game-omni default now trips at 22 — was read from here).
@@ -157,11 +176,22 @@ re-implement them in prose.
      (`status.ts`).
    - Bounded retry + escalation ladder by failure-class (`retry.ts` `runNodeWithRetries`, `escalate.after`).
    - `policy.fail: block|warn|stop|retry|escalate` (`checks.ts`).
-   - Optimize `editBudget` / `tokenBudget` → `stoppedReason`, dead-edit buffer (`optimize/driver.ts`).
+   - Optimize (CLASSIC engine only) `editBudget` / `tokenBudget` → `stoppedReason`, dead-edit buffer
+     (`optimize/driver.ts`).
+   - Optimize (SUBSTRATE engine — the one you drive): a per-issue attempt ceiling `--max-attempts` (default 3,
+     `retry-loop.ts:150`) inside `fixIssueWithRetries`, plus a system-wide `--breaker` (default 3 CONSECUTIVE
+     exhausted issues → HALT the whole `optimize fix` pass with an architecture-signal message,
+     `retry-loop.ts:196-218`). ESCALATE reads that HALT message; do NOT hand-roll retry counting. Note: the
+     retry loop's wall-clock/token caps exist but are NOT wired to the CLI today — only `--max-attempts` + the
+     breaker are load-bearing, backed by the generic 30-min node timeout.
    - Known GAP: SDK-level bounded self-fix cycle counter (today node-self-managed `.fixcycles-*.json`).
 2. **In-node behavioural watchdog (the reflex, finer than a seam) — a PRODUCT-BINDING concern, not an SDK
-   primitive.** The core runner reflex knows only `timeout`/`stall` (above); the *behavioural* triggers live in
-   the product binding (game-omni `optimize/binding-live.mjs`): `repro-probe` (`node -e`), `dep-rabbit-hole`
+   primitive. ⚠️ CLASSIC ENGINE ONLY — this has ZERO effect on the substrate `optimize fix --node` fixer.** The
+   substrate fixer spawns through `runBaseAgent → runFromConfig → runner.ts` and gets only the generic runner
+   reflex (`nodeTimeoutMs` default 30 min, `stallMs` off, `toolLoopLimit` 10) — the `GAME_OMNI_FIXER_*` /
+   `noEditToolBudget` / `depReadBudget` knobs below do NOT exist for it (zero hits in `packages/`). The
+   *behavioural* triggers described here live in the CLASSIC binding-driven engine's
+   product binding (game-omni `optimize/binding-live.mjs`): `repro-probe` (`node -e`), `dep-rabbit-hole`
    (node_modules reads, default `depReadBudget:3`), `no-progress` (N tool-calls / 0 edits, default
    `noEditToolBudget:22`), tuned via `GAME_OMNI_FIXER_*`. It aborts a corrupting *candidate/control* agent
    mid-stream, SIGTERMs, and emits its reason into the `fixer-trace.payload` (above). You tune its thresholds
@@ -213,10 +243,12 @@ will not thrash you.
   passive **only where a deterministic gate already stands in for you**. Where none does, staying passive on a
   landed artifact would mean nothing checks it at all, so the same posture that keeps you off a gated run keeps
   you on a gateless one.
-- **OPTIMIZE-LOOP policy (FINE)** — the fixer edits a **disposable candidate off the critical path**, so every
-  decision-grade boundary is a legal action point:
-  `optimize:fixer-aborted,fix-cycle-ceiling,stopped,loop-stopped` · `gated:reject`.
-  Each maps to a first-class typed `OptimizeEvent` the driver already emits.
+- **OPTIMIZE-LOOP policy (FINE)** — the fixer edits a **disposable candidate off the critical path** (a git
+  worktree/commit), so every decision-grade boundary is a legal action point. Key on the SUBSTRATE union:
+  `gated{accept:false}` · `staged{decision:'discarded'}` · `stopped` (its free-text carries the terminal
+  reason, incl. a walk-back-to-`open`). Each is a first-class `SubstrateEvent` the fix/verify stages already
+  emit (`substrate/events.ts`). (The classic engine's `fixer-aborted,fix-cycle-ceiling,loop-stopped,gated:reject`
+  belong to a labeled classic-only policy — they never fire on the substrate loop.)
 
 The asymmetry is the point: the live policy is COARSE (you can only act at seams) while the optimize policy is
 FINE (every candidate boundary is a legal action point).
@@ -268,11 +300,11 @@ Every row keys on something you can read off the stream/artifacts. No row keys o
 | Decision | Fires when (observable) | Action |
 |---|---|---|
 | **CONTINUE** | converging: edits landing / score moving toward desired / no anomaly | observe only |
-| **ABORT** | corruption on an OFF-CRITICAL-PATH agent: `fixer-aborted` (rabbit-hole / repro-probe / no-progress) | SIGTERM the candidate (the watchdog already does; you confirm) — **never** a live producer mid-run |
+| **ABORT** | corruption on an OFF-CRITICAL-PATH agent. SUBSTRATE has NO `fixer-aborted` signal — a runaway substrate fixer surfaces only as the run's node-timeout; on the CLASSIC engine key on `fixer-aborted` (rabbit-hole / repro-probe / no-progress) | let the timeout SIGKILL it; you confirm — **never** a live producer mid-run |
 | **RERUN** | recoverable miss: rate-limit / transient / a *fixable* steer was missing | rerun with ONE thing changed (a budget, evidence, a steer). **Identical rerun is forbidden** — it just re-loops |
-| **NUDGE** | the agent is on the right trail but won't commit (diagnoses-forever) | abort + `claude --resume`/`--continue` with a sharp steer ("stop — the fix is at X; edit now") |
+| **NUDGE** | the agent is on the right trail but won't commit (diagnoses-forever) | re-run `optimize fix --node <id> --issue <name>` — the retry loop auto-spawns a FRESH candidate worktree and threads the prior reject's `{category,steer}` into the next attempt (`retry-loop.ts:182-184`); no `--resume` surface on the substrate fixer (that is classic-only) |
 | **ESCALATE** | architectural / ambiguous / failed after the management plane's bound (N retries, run-count) | HALT, hand to the human WITH evidence. Never invent a fix beyond the node's scope |
-| **LAND** | the gate records a strict-improvement ACCEPT, verified against the held-out outcome | stage / adopt per the land policy (adopt is a separate, explicit step) |
+| **LAND** | the gate ACCEPTs (a `gated{accept:true}` on the substrate soft path, or a numeric strict-improvement), verified against the proved candidate — the issue sits at `verifying` with a `staged` record | run `piflowctl optimize adopt --node <id> [--issue <name>]` yourself — it cherry-picks `candidateSha` and walks the issue `verifying→resolved`. A separate, explicit step; `fix`/`verify` NEVER land |
 
 **Seam-gating the table (cross-wire with the seam law below).** A wake fires freely; the ACTION is gated by
 which seam you're at. On a **LIVE PRODUCER**, a RERUN / NUDGE / re-plan is **queued until the next
@@ -307,11 +339,12 @@ as a claim to be checked.
 You act ONLY through the SDK CLI + skills, never ad-hoc bash. Run & monitor → **piflow-start** (`piflowctl run …
 --from/--until`, `watch`, `status`, `logs`). Optimize/fix (the classic binding-driven loop) → `piflowctl
 optimize --fix --binding … --node … --watch` with `--edit-budget`/`--token-budget` and the watchdog env knobs
-(`GAME_OMNI_FIXER_*`). Name + solve a node's issue (the per-node substrate loop) → **piflow-triage**
-(`piflowctl optimize triage --node <id>`) then **piflow-fixer** (`piflowctl optimize fix --node <id>`; bare
-`piflowctl optimize --node <id>` runs both phases) — land a gated manifest with `piflowctl optimize adopt
---manifest <path>`, a separate, explicit step never a side effect of `fix`. You DECIDE which loop and when;
-those skills hold the canonical command.
+(`GAME_OMNI_FIXER_*`). Name + solve a node's issue (the per-node SUBSTRATE loop — the one you drive) → **piflow-triage**
+(`piflowctl optimize triage --node <id>`) → **piflow-fixer** (`piflowctl optimize fix --node <id> [--issue
+<name>]`; bare `piflowctl optimize --node <id>` runs ONLY triage→fix) → **piflow-gate** as the standalone
+re-check (`piflowctl optimize verify --node <id>`) → land with `piflowctl optimize adopt --node <id> [--issue
+<name>]` (cherry-picks `candidateSha`), a separate, explicit step never a side effect of `fix`. You DECIDE which
+loop and when; those skills hold the canonical command. (`adopt --manifest` is a dead pre-WS1 alias — do not use it.)
 Your WAKE sources are `telemetry --watch` (run fold) and `optimize --fix --watch` (optimize stream), armed with
 a `--wake-on` policy (§"The declarative wake-seam"); `watch --notify` is a terminal liveness ping only — never
 your decision surface.
@@ -365,6 +398,11 @@ These endpoints are the map, not the manual — to go deeper on any one, run `pi
 - ❌ Inventing a fix the node should make. ✅ Nudge the node, or escalate to the human.
 
 ## Worked example — the fixer overlord (the live M3 case)
+> ⚠️ This example is on the **classic** binding-driven engine (its `fixer-trace` stream + the game-omni
+> `GAME_OMNI_FIXER_*` watchdog). On the **substrate** loop the same story reads: `fixer-started` →
+> `fixer-done{editsApplied:0}` → `gated{accept:false, reason}` → `staged{decision:'discarded'}` → `stopped`,
+> with NO tunable watchdog (only the 30-min node timeout), and you NUDGE by re-running `optimize fix --issue`.
+
 Goal (desired): the optimize gate records a strict-improvement ACCEPT on milestone M3.
 1. **Observe** the `--watch` stream: `fixer-started` → 40 `fixer-trace` tool-calls (a pre-tuning run; the
    game-omni default now trips `no-progress` at 22), `fixer-done edits=0`, `gated reject (no edit applied)`.

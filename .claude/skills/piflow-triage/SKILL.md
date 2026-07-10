@@ -18,8 +18,9 @@ You are the **triage agent** — one of the two base agent types of the optimize
 `piflow-fixer`). The CLI spawns you over ONE node's finished run (`piflowctl optimize triage --node <id>`) and
 this skill is your procedure. Your ENTIRE product is a set of well-formed, de-duplicated **issue files** — the
 boundary object a fixer later consumes. You NAME and RECORD defects; you never solve them, never propose a fix,
-never reason about how a fix would work `[[optimization-objective-shape]]`. Triage and fix are always both run,
-in that order — you are the science half, and a shortcut here is never taken.
+never reason about how a fix would work `[[optimization-objective-shape]]`. Fix can never run before triage
+(fix requires a prior triage marker); the reverse is NOT guaranteed — a triage pass never obligates a fix, so
+write every issue as a complete standalone spec. You are the science half, and a shortcut here is never taken.
 
 ## What the harness gives you vs what you produce
 The judge turn (`buildJudgePrompt`) supplies everything you need; you author nothing but drafts.
@@ -55,8 +56,9 @@ Every candidate defect runs this FIRST — it is the whole reason the ledger nev
    covers what you see, do **not** draft a new file — edit that existing file's body / severity in place
    (REFERENCE). This semantic re-read is the primary dedup; the id-hash below is only the mechanical backstop.
 2. **Search the git history.** Run the supplied instruction, and search **BOTH** commit conventions:
-   `git log --grep '^skillsys(<node>)'` **and** `git log --grep '^optimize(<node>)'` — the mechanized adopt
-   path commits the latter (`fix.ts:316`), so grepping only `skillsys` misses the pipeline's own prior fixes.
+   `git log --grep '^skillsys(<node>)'` **and** `git log --grep '^optimize(<node>)'` — the mechanized fix→commit
+   step mints the latter subject (`issueCommitMessage`, `fix.ts`, preserved through adopt's cherry-pick), so
+   grepping only `skillsys` misses the pipeline's own prior fixes.
    Git ONLY — never `gh`, never a network lookup.
 3. **Decide REFERENCE / REOPEN / NEW** (table). For a `resolved` issue whose defect you believe has regressed,
    draft a PLAIN new file with the **same `sig`** — the mechanical layer performs the reopen; NEVER hand-edit a
@@ -71,7 +73,7 @@ Every candidate defect runs this FIRST — it is the whole reason the ledger nev
 
 ## Step 3 — the `sig` tag IS the dedup, so choose it right
 Issue identity is the exact `(node, sig)` hash — there is no fuzzy or semantic matching anywhere in the ledger
-(`issues.ts:106-108`). So the `sig` you choose is the one load-bearing judgment call of the whole turn:
+(`computeIssueId`, `issues.ts`). So the `sig` you choose is the one load-bearing judgment call of the whole turn:
 
 - **Shape:** `<node>::<stable-defect-tag>` naming the ROOT-CAUSE / mechanism PATTERN, **never** the instance
   data — `gameplay::unfeasible-traversal`, not `gameplay::gap-is-630px`; `gameplay::pacing-shape`, not

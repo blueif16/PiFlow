@@ -42,7 +42,7 @@ Default TOPOLOGICAL. Reach for PARALLEL only under an explicit time crunch or a 
 ## Propagate = output-of-k becomes input-of-(k+1)  [the mechanism]
 After a node's fix ADOPTS, re-materialize the next node's input by re-running the slice from the
 improved node — the SAME `--from`/`--until` seam the overlord already uses:
-1. optimize node A on baseline run R0 → `piflowctl optimize --node R0.A` → gate → `piflowctl optimize adopt --manifest <…>`
+1. optimize node A on baseline run R0 → `piflowctl optimize --node R0.A` (triage→fix) → `piflowctl optimize verify --node R0.A` → `piflowctl optimize adopt --node R0.A`
 2. propagate → `piflowctl run <tpl> --from A --until B` → new run R1 (reuses R0's pre-A upstream, re-runs A with the adopted template, so B now consumes A's IMPROVED output)
 3. optimize node B on the fresh input → `piflowctl optimize --node R1.B` → adopt
 4. repeat down the DAG (B→C→…). Each node is captured ONCE, after all its upstream is final.
