@@ -8,7 +8,7 @@ import type { RunContext } from './run-context.js';
 import { classifyFailure, consultPreamble, legacyRetry } from '../checks.js';
 import { resolveNodeModel, type EffectiveModel } from './model-routing.js';
 import { actionsFromOp } from './op-dispatch.js';
-import type { NodeStatusRecord } from './status.js';
+import { writeStatus, type NodeStatusRecord } from './status.js';
 import { runNode } from './node-lifecycle.js';
 
 /**
@@ -71,7 +71,17 @@ export async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope:
   const l1Active = retryAction !== undefined && (retryAction.scope === 'feedback' || retryAction.scope === undefined || retryAction.scope === 'fix');
   // ── end SA-D wiring header ─────────────────────────────────────────────────────────────────────────
 
+  // (TRUTHFUL DURATION — run 260710-02) Every `runNode` call re-stamps `rec.startedAt`/`durationMs` to its
+  // OWN attempt, so a node that CRASHED-then-RECOVERED reports only its LAST attempt's time — silently
+  // dropping every earlier (crashed) attempt's wall-clock from run.json and thus from telemetry/optimize/
+  // triage (gameplay recorded 1147s of a real 3204s span; w4-m2 512s of 1019s). Capture the node's TRUE
+  // start before ANY attempt and, IFF more than one attempt runs, re-stamp the terminal record to the true
+  // span (first attempt's start → now, INCLUDING backoff/recovery between attempts). Single-attempt nodes
+  // are byte-identical (the guard below never fires), so the happy path is untouched.
+  const nodeT0 = Date.now();
+
   let rec = await runNode(ctx, node, scope);
+  const firstStartedAt = rec.startedAt;
   let retriesLeft = opRetryMax !== undefined ? effectiveRetryMax : Math.max(0, retry.max);
   let escalatedYet = false;
   // `escalate.after` (default: after the retry budget is spent) gates how many same-model attempts run
@@ -127,6 +137,16 @@ export async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope:
     } else {
       break; // budget spent and no escalation applies — the failed record stands.
     }
+  }
+
+  // (TRUTHFUL DURATION) The node needed a retry/escalate — the terminal `rec` carries only the WINNING
+  // attempt's startedAt/durationMs. Re-stamp it to the node's true wall-clock (first attempt → now) so the
+  // crashed attempts' time is never invisible, then persist so run.json + every downstream instrument read
+  // the honest number. Guarded on >1 attempt: a clean single-attempt node keeps its exact prior record.
+  if (attemptsRun > 1) {
+    if (firstStartedAt) rec.startedAt = firstStartedAt;
+    rec.durationMs = Date.now() - nodeT0;
+    await writeStatus(ctx.outDir, ctx.status);
   }
   return rec;
 }
