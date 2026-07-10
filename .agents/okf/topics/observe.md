@@ -235,6 +235,7 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-template-authoring-constraints]]
 - [[playbook-skills-depth-over-budget]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
@@ -259,5 +260,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `RunView` (packages/core/src/observe/runView.ts:135) — 4 callers in `packages/core/src/observe/index.ts`, `packages/core/src/index.ts`, `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `RunView` (gui/src/data/runView.ts:153) — 8 callers in `gui/src/data/runView.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=91 commits · files=13 · lessons=66</sub>
+<sub>derived 2026-07-10 · arc=91 commits · files=13 · lessons=67</sub>
 <!-- okf:auto-end -->

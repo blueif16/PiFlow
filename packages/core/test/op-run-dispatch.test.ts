@@ -126,3 +126,38 @@ describe('run op spawn error — the errno surfaces in the op-failure detail (no
     );
   });
 });
+
+describe('run op token resolution — {{RUN}}/{{WORKSPACE}} in cmd/args/cwd resolve at dispatch', () => {
+  it('a post run op with a tokened cwd executes there instead of ENOENT-ing on the literal token path', async () => {
+    // merge ops (node-lifecycle resolveDeep at the merges loop) and promotes resolve their specs at dispatch;
+    // the run-op dispatch passed body.{cmd,args,cwd} RAW, so a cwd of "{{RUN}}" joined literally under the
+    // project base — a nonexistent dir — and spawnSync reported ENOENT (live: w3a's freeze-check op, whose
+    // cwd is {{WORKSPACE}}/remotion-svg-primitives, on count-three-e2e-1). RED without the dispatch resolve.
+    const node: NodeIntent = {
+      label: 'gen',
+      programmatic: true,
+      tools: {},
+      io: {
+        reads: ['src.json'],
+        produces: ['out.json'],
+        externalInputs: ['src.json'],
+        artifacts: [{ path: 'out.json' }],
+      },
+      op: [
+        { when: 'pre', writes: ['out.json'], transform: { kind: 'seed', from: '{{RUN}}/src.json' } },
+        // `node -e` writes proof.txt into its cwd — the file lands in outDir ONLY if {{RUN}} resolved.
+        {
+          when: 'post',
+          run: { cmd: 'node', args: ['-e', "require('fs').writeFileSync('proof.txt','ran')"], cwd: '{{RUN}}' },
+          onFailure: 'block',
+        },
+      ],
+    };
+    const outDir = await tmpOut();
+    await fs.writeFile(path.join(outDir, 'src.json'), '{"v":1}');
+    const { status } = await runWorkflow(compile(wf([node])), { run: 'runtok', outDir });
+    expect(status.nodes.gen.status, 'the tokened-cwd run op must execute, not block').toBe('ok');
+    const proof = await fs.readFile(path.join(outDir, 'proof.txt'), 'utf8');
+    expect(proof, 'the op ran in the RESOLVED cwd').toBe('ran');
+  });
+});

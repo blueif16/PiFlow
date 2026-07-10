@@ -139,6 +139,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
 - `df59fb0` 2026-07-09 — fix(core): make a judge gate's REJECT actually re-run its producer
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
+- `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 
 ### Lessons — memory cluster
 
@@ -195,7 +196,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 1 caller; tests: `packages/core/test/gate-list-profiles.test.ts`
-- `NodeSpec` (packages/core/src/types.ts:17) — 22 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/retry.ts` +1 more; tests: `packages/core/test/inline-hitl-gate.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 27 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; tests: `packages/core/test/inline-hitl-gate.test.ts`
 
-<sub>derived 2026-07-10 · arc=83 commits · files=5 · lessons=45</sub>
+<sub>derived 2026-07-10 · arc=84 commits · files=5 · lessons=45</sub>
 <!-- okf:auto-end -->

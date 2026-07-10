@@ -223,6 +223,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `c7a6ade` 2026-07-08 — feat(optimize): WS2 — decouple the gate stage + uniform per-issue CLI
 - `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
 - `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
+- `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 
 ### Lessons — memory cluster
 
@@ -316,5 +317,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-10 · arc=163 commits · files=8 · lessons=80</sub>
+<sub>derived 2026-07-10 · arc=164 commits · files=8 · lessons=80</sub>
 <!-- okf:auto-end -->

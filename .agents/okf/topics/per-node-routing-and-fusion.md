@@ -126,6 +126,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 - `c23aa8e` 2026-07-09 — fix(runner): stamp a retried node's TRUE wall-clock span, not the winning attempt
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
+- `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 
 ### Lessons — memory cluster
 
@@ -190,5 +191,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=53 commits · files=10 · lessons=51</sub>
+<sub>derived 2026-07-10 · arc=54 commits · files=10 · lessons=51</sub>
 <!-- okf:auto-end -->

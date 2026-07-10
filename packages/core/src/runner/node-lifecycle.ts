@@ -669,7 +669,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // route a non-zero exit through the op's `onFailure` (default 'block').
       const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
       for (const { body, onFailure } of runOps.runnable) {
-        const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
+        // The body resolves at dispatch like the sibling merge/promote specs — merge.ts's own sub() handles
+        // only {project}, so a raw {{WORKSPACE}} cwd joins literally under the project base → spawnSync ENOENT.
+        const rb = resolveDeep({ cmd: body.cmd, args: body.args, cwd: body.cwd }, resolveCtx) as { cmd: string; args?: string[]; cwd?: string };
+        const r = await applyMergeOp({ run: rb }, ctx.outDir);
         if (r.failed) {
           // include r.skipped — the spawn-error branch (res.error: ENOENT/EAGAIN/EPERM) reports THERE, not in
           // exit/stderr; without it the issue reads a causeless "run npm failed" (live: w3a count-three-e2e-1)

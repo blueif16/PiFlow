@@ -158,6 +158,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `02a626d` 2026-07-09 — fix(core): pre-gate check paths resolve {{WORKSPACE}}/{{arg.*}} tokens before evaluation
 - `df59fb0` 2026-07-09 — fix(core): make a judge gate's REJECT actually re-run its producer
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
+- `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
+- `77b527c` 2026-07-10 — fix(core): op-failure detail carries the spawn-error message (r.skipped)
 
 ### Lessons — memory cluster
 
@@ -242,8 +244,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
-- `evaluateChecks` (packages/core/src/checks.ts:117) — 2 callers in `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
+- `evaluateChecks` (packages/core/src/checks.ts:117) — 4 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-10 · arc=95 commits · files=8 · lessons=76</sub>
+<sub>derived 2026-07-10 · arc=97 commits · files=8 · lessons=76</sub>
 <!-- okf:auto-end -->

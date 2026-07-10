@@ -366,7 +366,10 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // effect step. Reuse the merge executor's `run` impl, then route a non-zero exit through `onFailure`.
     const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
     for (const { body, onFailure } of runOps.runnable) {
-      const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
+      // The body resolves at dispatch like the sibling merge/promote specs — merge.ts's own sub() handles
+      // only {project}, so a raw {{WORKSPACE}} cwd joins literally under the project base → spawnSync ENOENT.
+      const rb = resolveDeep({ cmd: body.cmd, args: body.args, cwd: body.cwd }, resolveCtx) as { cmd: string; args?: string[]; cwd?: string };
+      const r = await applyMergeOp({ run: rb }, ctx.outDir);
       if (r.failed) {
         // include r.skipped — the spawn-error branch (res.error) reports THERE, not in exit/stderr
         opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure });

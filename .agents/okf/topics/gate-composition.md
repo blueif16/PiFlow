@@ -76,6 +76,7 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - `e9c58ee` 2026-07-06 — feat(core): gate-list fan-out + profile-overlay loader modules
 - `df59fb0` 2026-07-09 — fix(core): make a judge gate's REJECT actually re-run its producer
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
+- `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 
 ### Lessons — memory cluster
 
@@ -94,6 +95,7 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-overlord-control-plane]]
+- [[piflow-template-authoring-constraints]]
 - [[sandbox-readscope-default-on]]
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
@@ -106,5 +108,5 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:129) — 7 callers in `packages/core/src/workflow/gate-list.ts`, `packages/core/src/workflow/gate-authoring.ts`; tests: `packages/core/test/gate-authoring.test.ts`
 - `GateListError` (packages/core/src/workflow/gate-list.ts:25) — 5 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/workflow/gate-list.ts`; tests: `packages/core/test/inline-hitl-fanout.test.ts`
 
-<sub>derived 2026-07-10 · arc=5 commits · files=3 · lessons=17</sub>
+<sub>derived 2026-07-10 · arc=6 commits · files=3 · lessons=18</sub>
 <!-- okf:auto-end -->
