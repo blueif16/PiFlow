@@ -22,11 +22,11 @@ import { existsSync, readdirSync } from 'node:fs';
 import { promises as fs } from 'node:fs';
 import {
   runSubstrateMeasure, runSubstrateJudge, fixIssue, fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
-  verifyStage, scanRecords, adoptSubstrateManifest, listIssues, renderSubstrateEvent, nodeHasCriteria,
+  verifyStage, scanRecords, adoptSubstrateManifest, reproveCandidate, listIssues, renderSubstrateEvent, nodeHasCriteria,
   runBlameMeasure, runBlameJudge, blameDir, blameSummaryPath, parseBlameSummaryTail, deriveNodeOrder,
   memorizeBlame,
   type SubstrateEvent, type FixIssueResult, type IssueRecord, type Status, type SubstrateManifest,
-  type SubstrateManifestRecord, type VerifyTier, type BlameSummary,
+  type SubstrateManifestRecord, type VerifyTier, type BlameSummary, type AdoptSubstrateManifestOpts,
 } from '@piflow/core';
 
 /** The valid per-issue verify tiers (WS3) — the `--verify` override guard. */
@@ -450,6 +450,11 @@ export interface SubstrateCliDeps {
   fixIssue?: typeof fixIssue;
   verifyStage?: typeof verifyStage;
   adoptManifest?: typeof adoptSubstrateManifest;
+  /** WS-B5/§6 adopt-train re-prove seam (design §6 table row 3): the closure-overlap re-prove the adopt verb
+   *  wires into `adoptSubstrateManifest`. Default = a closure that `reproveCandidate`s the record against the
+   *  moved HEAD; a test/overlord injects its own. Without this wired, a closure-overlap record could only ever
+   *  BOUNCE — the re-prove branch was dead in the shipped verb. */
+  reprove?: AdoptSubstrateManifestOpts['reprove'];
   /** the run-level hard-measure fold (WS-B1). Default `runBlameMeasure`. */
   blameMeasure?: typeof runBlameMeasure;
   /** the blame judge + verify round (WS-B2). Default `runBlameJudge`. */
@@ -908,10 +913,15 @@ export async function runSubstrateAdoptCli(argv: string[], deps: SubstrateCliDep
     try {
       nodeOrder = deriveNodeOrder(parseBlameSummaryTail(await fs.readFile(blameSummaryPath(parentRunDir), 'utf8')));
     } catch { /* no readable blame summary — default order */ }
+    // WS-B5/§6 row 3: WIRE the re-prove seam so a closure-overlap record RE-PROVES against the moved HEAD before
+    // landing (was dead in the shipped verb — always bounced). Default = reproveCandidate off this run's parent;
+    // a test/overlord injects its own. FAIL-SAFE inside reproveCandidate: any error/conflict/regression bounces.
+    const reprove = deps.reprove ?? ((rec: SubstrateManifestRecord) => reproveCandidate(rec, { templateDir, parentRunDir }));
     const result = await adopt({ records }, {
       templateDir,
       runDir: parentRunDir,
       gcBranches: !a.noGc,
+      reprove,
       ...(nodeOrder ? { nodeOrder } : {}),
       ...(a.backupDir ? { backupDir: path.resolve(cwd, a.backupDir) } : {}),
       ...(onEvent ? { onEvent } : {}),
@@ -952,6 +962,9 @@ export async function runSubstrateAdoptCli(argv: string[], deps: SubstrateCliDep
 
   const result = await adopt(manifest, {
     templateDir,
+    // Path B (the hidden --manifest alias) has no clean parent run dir to build a default re-prove against, so it
+    // wires ONLY an INJECTED reprove — an un-injected overlap still bounces (unchanged back-compat behavior).
+    ...(deps.reprove ? { reprove: deps.reprove } : {}),
     ...(a.backupDir ? { backupDir: path.resolve(cwd, a.backupDir) } : {}),
     ...(onEvent ? { onEvent } : {}),
   });

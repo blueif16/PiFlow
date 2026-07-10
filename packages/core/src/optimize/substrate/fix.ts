@@ -1155,6 +1155,92 @@ export async function verifyStage(
   }
 }
 
+// ── reproveCandidate — the adopt-train re-prove seam's shipped implementation (WS-B5, §6 table row 3) ────────
+// On a closure-OVERLAP staleness verdict the train must RE-PROVE the fix against the MOVED HEAD before landing:
+// REBUILD the candidate on current HEAD (cherry-pick candidateSha into a scratch worktree at HEAD — so the node
+// runs against HEAD+fix, "measure vs fresh base"), re-run the node there, measure the child vs the LIVE root,
+// and gate the fresh graded delta with the SAME foldGradedDelta + evaluateGate rules fixIssue uses. ACCEPT ⇒
+// return the HEAD-rebuilt sha (adopt lands THAT non-stale commit, not the original). FAIL-SAFE: a cherry-pick
+// CONFLICT (the real base-drift collision), a regressed/flat delta, or ANY spawn/measure error ⇒ reject, so the
+// train BOUNCES — this seam can only ever turn a bounce into a proven land, never force-land on error.
+
+export interface ReproveCandidateOpts {
+  /** the product template dir (`nodes/<id>/node.json`; the child run loads the template from here). */
+  templateDir: string;
+  /** the parent run being optimized — the re-prove's baseline graded (`measure.<node>.json`) is read from here,
+   *  and `spawnChildRun` replays the node off it. */
+  parentRunDir: string;
+  /** graded-delta knobs (mirror fixIssue's fold). */
+  tolerance?: number;
+  lowerIsBetter?: (key: string) => boolean;
+  /** test/offline seams (default the real fns; a test injects fakes so the re-prove never live-spawns). */
+  spawnChild?: (parentRunDir: string, nodeId: string, opts: SpawnChildRunOpts) => Promise<SpawnChildRunResult>;
+  measure?: (runDir: string, nodeId: string, opts: RunSubstrateMeasureOpts) => Promise<MeasureReport>;
+}
+
+/** Rebuild a candidate ON current HEAD: a fresh DETACHED worktree at HEAD + `cherry-pick candidateSha`, so the
+ *  re-prove runs the node against HEAD+fix (not the stale-base tree). Aborts + tears down on a cherry-pick
+ *  CONFLICT (a real base-drift collision) then rethrows — the caller fail-safe-bounces. Path is a sibling
+ *  `.piflow-optimize-worktrees/<repo>/<node>/<issue>/reprove`, idempotently reset. */
+async function rebuildOnHeadWorktree(repoRoot: string, node: string, issue: string, candidateSha: string): Promise<{ wtPath: string; sha: string }> {
+  const root = path.resolve(repoRoot);
+  const wtPath = path.join(path.dirname(root), '.piflow-optimize-worktrees', path.basename(root), node, issue, 'reprove');
+  try { git(root, 'worktree', 'remove', '--force', wtPath); } catch { /* none to remove */ }
+  await fs.rm(wtPath, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(wtPath), { recursive: true });
+  git(root, 'worktree', 'add', '--detach', wtPath, 'HEAD');
+  try {
+    git(wtPath, '-c', 'commit.gpgsign=false', '-c', 'user.name=piflow-optimizer', '-c', 'user.email=optimizer@piflow.local', 'cherry-pick', candidateSha);
+  } catch (e) {
+    try { git(wtPath, 'cherry-pick', '--abort'); } catch { /* not mid-pick */ }
+    removeCandidateWorktree(root, wtPath);
+    throw e;
+  }
+  return { wtPath, sha: git(wtPath, 'rev-parse', 'HEAD') };
+}
+
+/**
+ * RE-PROVE a stale-base staged candidate against the moved HEAD (the shipped `AdoptSubstrateManifestOpts.reprove`
+ * default; §6 table row 3). Rebuilds the candidate on HEAD, re-runs the node there, measures vs the LIVE root,
+ * and gates the graded delta. Returns `{ accept, reason, candidateSha }` — on ACCEPT the `candidateSha` is the
+ * HEAD-rebuilt sha so adopt lands it (not the stale one). FAIL-SAFE: conflict / regression / any error ⇒
+ * `{ accept:false }` (the train bounces). Injected spawnChild/measure keep it unit-testable (never live-spawns a test).
+ */
+export async function reproveCandidate(record: SubstrateManifestRecord, opts: ReproveCandidateOpts): Promise<{ accept: boolean; reason: string; candidateSha?: string }> {
+  const candidateSha = record.candidateSha;
+  if (!candidateSha) return { accept: false, reason: 're-prove: record has no candidateSha to rebuild' };
+  const spawnChild = opts.spawnChild ?? spawnChildRun;
+  const measure = opts.measure ?? runSubstrateMeasure;
+  const root = path.resolve(record.liveRoot);
+
+  let rebuilt: { wtPath: string; sha: string };
+  try {
+    rebuilt = await rebuildOnHeadWorktree(root, record.node, record.issue, candidateSha);
+  } catch (e) {
+    return { accept: false, reason: `re-prove could not rebuild on HEAD (cherry-pick conflict / git error): ${(e as Error).message}` };
+  }
+  try {
+    // Re-run the node against the HEAD+fix worktree, then measure the child against the LIVE (pristine) root.
+    const child = await spawnChild(opts.parentRunDir, record.node, {
+      templateDir: opts.templateDir,
+      workspace: rebuilt.wtPath,
+      spawnedBy: { by: 'substrate-reprove', issue: record.issue, issueId: record.issueId },
+    });
+    const childReport = await measure(child.childDir, record.node, { workspace: root });
+    const fold = foldGradedDelta(await readParentGraded(opts.parentRunDir, record.node), childReport.graded, {
+      ...(opts.tolerance !== undefined ? { tolerance: opts.tolerance } : {}),
+      ...(opts.lowerIsBetter ? { lowerIsBetter: opts.lowerIsBetter } : {}),
+    });
+    const verdict = evaluateGate({ bucket: SUBSTRATE_GATE_BUCKET, base: fold.base, candidate: fold.candidate, editsApplied: 1 });
+    if (!verdict.accept) return { accept: false, reason: `re-prove gate rejected against fresh HEAD: ${verdict.reason}` };
+    return { accept: true, reason: `re-prove gate accepted against fresh HEAD: ${verdict.reason}`, candidateSha: rebuilt.sha };
+  } catch (e) {
+    return { accept: false, reason: `re-prove failed (spawn/measure error): ${(e as Error).message}` };
+  } finally {
+    removeCandidateWorktree(root, rebuilt.wtPath);
+  }
+}
+
 // ── adoptSubstrateManifest — the SEPARATE human ADOPT step, git-native (cherry-pick; WS0) ────────────────────
 
 export interface AdoptSubstrateManifestOpts {
@@ -1172,8 +1258,11 @@ export interface AdoptSubstrateManifestOpts {
   runDir?: string;
   /** WS-B5 TRAIN: the re-prove seam for a `closure-overlap` staleness verdict — spawn a fresh child run against
    *  the moved HEAD + re-gate. `accept` ⇒ land (with a re-proved note); reject/absent ⇒ BOUNCE. Injected (never
-   *  a live spawn in core): the CLI/product wires it. */
-  reprove?: (record: SubstrateManifestRecord) => Promise<{ accept: boolean; reason: string }>;
+   *  a live spawn in core): the CLI/product wires it (the shipped default is `reproveCandidate`).
+   *  A re-prove that REBUILT the candidate on the moved HEAD returns that fresh `candidateSha` so adopt lands the
+   *  HEAD-rebuilt (non-stale) commit instead of the original — the accept branch lands `candidateSha ?? the
+   *  original` and re-runs the oracle backstop on any substitute before the pick. */
+  reprove?: (record: SubstrateManifestRecord) => Promise<{ accept: boolean; reason: string; candidateSha?: string }>;
   /** WS-B5 TRAIN: GC the throwaway `optimize/<node>/<issue>/*` branches after a land+resolve. Default TRUE; the
    *  CLI `--no-gc` threads false. NEVER GCs a skip/bounce (an escalation candidate keeps its branch). */
   gcBranches?: boolean;
@@ -1311,6 +1400,7 @@ export async function adoptSubstrateManifest(
 
     // (c) OVERLAP ⇒ re-prove-or-bounce; disjoint carries a base-drift note; fresh lands clean.
     let landNote: string | undefined;
+    let landSha = candidateSha; // the sha adopt actually cherry-picks — a re-prove may substitute a HEAD-rebuilt one.
     if (verdict === 'disjoint') {
       landNote = 'landed with base drift (closure-disjoint)';
     } else if (verdict === 'overlap') {
@@ -1322,13 +1412,24 @@ export async function adoptSubstrateManifest(
         result.skipped.push({ issue: record.issue, reason: 'stale base (closure overlap) — bounced, not landed' });
         continue;
       }
-      landNote = `re-proved against ${headSha.slice(0, 7)}`;
+      // A re-prove that REBUILT the candidate on the moved HEAD hands back that fresh sha — land THAT (non-stale)
+      // commit, but only after the SAME oracle backstop clears it (never cherry-pick a rebuilt scorer-tamper).
+      if (rp.candidateSha && rp.candidateSha !== candidateSha) {
+        if (await candidateTouchesOracle(opts.templateDir, record.node, root, `${rp.candidateSha}~1`, rp.candidateSha)) {
+          result.skipped.push({ issue: record.issue, reason: 're-proved candidate touches an oracle path (optimize.measure/criteria) — refusing to land' });
+          continue;
+        }
+        landSha = rp.candidateSha;
+        landNote = `re-proved against ${headSha.slice(0, 7)} (HEAD-rebuilt candidate)`;
+      } else {
+        landNote = `re-proved against ${headSha.slice(0, 7)}`;
+      }
     }
 
-    // (d) LAND — cherry-pick candidateSha (the shipped conflict⇒abort+skip stays the last resort).
+    // (d) LAND — cherry-pick landSha (the shipped conflict⇒abort+skip stays the last resort).
     let landed: { sha: string; files: string[] };
     try {
-      landed = cherryPickCandidate(root, candidateSha);
+      landed = cherryPickCandidate(root, landSha);
     } catch (e) {
       const out = `${(e as { stdout?: Buffer }).stdout ?? ''}${(e as { stderr?: Buffer }).stderr ?? ''}`;
       try { git(root, 'cherry-pick', '--abort'); } catch { /* not mid-pick — nothing to abort */ }

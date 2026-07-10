@@ -561,7 +561,7 @@ export type {
 export {
   listIssues, parseIssueFile, writeIssueFile, transitionIssue, reopen, stampAttempt, computeIssueId, assertTransition, ALLOWED_TRANSITIONS,
   runSubstrateMeasure, runSubstrateJudge,
-  fixIssue, verifyStage, adoptSubstrateManifest, readSubstrateManifest, scanRecords, issueLifecycleDir,
+  fixIssue, verifyStage, adoptSubstrateManifest, reproveCandidate, readSubstrateManifest, scanRecords, issueLifecycleDir,
   nodeHasCriteria, renderSubstrateEvent, UNPROVEN_BY_RUN,
   fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
   // The adopt TRAIN's pure policy (WS-B5) — the staleness verdict + landing order + blame node order the
@@ -572,7 +572,7 @@ export type {
   Issue, Severity, Status, Reason, VerifyTier, Attempt, IssueRecord, ListIssuesOpts,
   RunSubstrateMeasureOpts, MeasureReport, SubstrateJudgeOpts, SubstrateJudgeResult,
   FixIssueOpts, FixIssueResult, VerifyStageOpts, VerifyStageResult, SubstrateManifest, SubstrateManifestRecord,
-  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, ReproveCandidateOpts, SubstrateEvent, SubstrateEventSink,
   FixWithRetriesOpts, FixWithRetriesResult, RetryAttemptRecord, RetryEscalationPacket, RetryStopReason, RetryContext,
   StalenessVerdict, AssessStalenessInput, OrderableRecord,
 } from './optimize/index.js';

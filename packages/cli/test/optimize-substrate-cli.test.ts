@@ -366,6 +366,8 @@ describe('runSubstrateAdoptCli — adopt by --node/--issue resolves staged recor
     });
     expect(defOpts?.gcBranches).toBe(true);
     expect(defOpts?.runDir).toBe(parent);
+    // WS-B5/§6 row 3: the re-prove seam is WIRED (a closure-overlap record re-proves, never dead-bounces).
+    expect(typeof defOpts?.reprove).toBe('function');
 
     let noGcOpts: typeof defOpts;
     await runSubstrateAdoptCli(['--node', 'gameplay', '--no-gc'], {
@@ -374,6 +376,22 @@ describe('runSubstrateAdoptCli — adopt by --node/--issue resolves staged recor
       print: () => {},
     });
     expect(noGcOpts?.gcBranches).toBe(false);
+  });
+
+  it('an INJECTED reprove overrides the default and is threaded verbatim into adoptSubstrateManifest', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'cand-1' });
+    const injected: NonNullable<Parameters<typeof runSubstrateAdoptCli>[1]['reprove']> = async () => ({ accept: false, reason: 'injected' });
+    let seenReprove: unknown;
+    await runSubstrateAdoptCli(['--node', 'gameplay'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      reprove: injected,
+      adoptManifest: async (_m, opts) => { seenReprove = opts.reprove; return { adopted: [], skipped: [] }; },
+      print: () => {},
+    });
+    expect(seenReprove).toBe(injected); // the injected seam wins over the reproveCandidate default
   });
 
   it('--node with NO --issue adopts ALL staged records (a discarded record is not handed to adopt)', async () => {

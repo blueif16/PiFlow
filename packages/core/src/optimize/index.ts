@@ -102,14 +102,14 @@ export type {
 // manifest; ADOPT is the SEPARATE human step (adoptSubstrateManifest → git cherry-pick candidateSha →
 // stampAttempt → status resolved). Its OWN dedicated SubstrateEvent stream + renderSubstrateEvent projection.
 export {
-  fixIssue, verifyStage, adoptSubstrateManifest, prepareCandidateWorktree, removeCandidateWorktree, candidateWorktreeRef,
+  fixIssue, verifyStage, adoptSubstrateManifest, reproveCandidate, prepareCandidateWorktree, removeCandidateWorktree, candidateWorktreeRef,
   commitCandidate, oracleTouchedByDiff, candidateTouchesOracle, nodeHasCriteria, readClosureRefs, foldGradedDelta, collectWorkspaceRefs, buildFixerPrompt,
   readSubstrateManifest, scanRecords, issueLifecycleDir, UNPROVEN_BY_RUN,
 } from './substrate/fix.js';
 export type {
   FixIssueOpts, FixIssueResult, VerifyStageOpts, VerifyStageResult, CandidateWorktree, CommitCandidateResult,
   CommitIssueRef, ClosureRefs, FoldGradedOpts, FoldGradedResult, SubstrateManifest, SubstrateManifestRecord,
-  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, RetryContext,
+  AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, ReproveCandidateOpts, RetryContext,
 } from './substrate/fix.js';
 export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
 export type { SubstrateEvent, SubstrateEventSink } from './substrate/events.js';
