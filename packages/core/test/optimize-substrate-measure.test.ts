@@ -120,10 +120,14 @@ describe('runSubstrateMeasure — op[] execution + report shape + determinism', 
 
 // A measure op[] may reference the RUN's args via `{{arg.<key>}}` (e.g. `{{arg.lessonId}}`). The substrate is
 // external to the runner, so it must LOAD those args from the finished run's persisted `.pi/run.json` and
-// thread them into the `ResolveCtx` — otherwise `resolveDeep` throws `MissingArgError` and crashes measurement
-// for the whole node. This block pins BOTH halves of that seam: (1) the runner PERSISTS the run's args into
-// `.pi/run.json`, and (2) `runSubstrateMeasure` LOADS + THREADS them — while KEEPING the loud discipline
-// (a referenced-but-absent arg still throws; a run.json with no args degrades to `{}`, never throws at load).
+// thread them into the `ResolveCtx` so a RESOLVABLE `{{arg.*}}` resolves against the SAME args the run ran
+// under. This block pins BOTH halves of that seam: (1) the runner PERSISTS the run's args into `.pi/run.json`,
+// and (2) `runSubstrateMeasure` LOADS + THREADS them. It ALSO pins the OUT-OF-BAND degrade contract: an
+// UNRESOLVABLE `{{arg.*}}`/`{{state.*}}` token in a measure op (existing runs predate arg-persistence; some
+// have an empty state.json) must NOT crash the node's measurement over a finished run — the offending op is
+// DROPPED from execution and RECORDED in `ops.rejected` with its reason, while every OTHER op + the detectors
+// still run. The resolver keeps its LOUD discipline on the RUN path (a missing arg/channel throws there) —
+// that is pinned by resolver.test.ts, NOT here; this seam is the deliberate exception for finished-run measure.
 describe('runSubstrateMeasure — run-arg ({{arg.*}}) threading from .pi/run.json', () => {
   let tmpRoot: string;
   let templateDir: string;
@@ -154,7 +158,8 @@ describe('runSubstrateMeasure — run-arg ({{arg.*}}) threading from .pi/run.jso
       ],
     },
   };
-  // A measure-only node whose op references an arg the run NEVER supplied — resolving it MUST throw.
+  // A measure-only node whose op references an arg the run NEVER supplied — resolving it degrades (the op is
+  // dropped + recorded), never throws out of the substrate.
   const ARGMISSING = {
     id: 'argmissing',
     optimize: {
@@ -165,6 +170,41 @@ describe('runSubstrateMeasure — run-arg ({{arg.*}}) threading from .pi/run.jso
           writes: ['{{RUN}}/optimize/substrate/nope.txt'],
           run: { cmd: 'node', args: ['-e', "require('fs').writeFileSync('nope.txt','{{arg.nope}}')"] },
         },
+      ],
+    },
+  };
+  // A measure-only node that MIXES an unresolvable op with a resolvable one: op (A) references
+  // `{{arg.lessonId}}` (unresolvable over a no-args run), op (B) is arg-free + writes a numeric report, op (C)
+  // gates B's output. The per-op degrade must drop ONLY (A) and still run (B) + (C) + the detectors.
+  const ARGMIXED = {
+    id: 'argmixed',
+    optimize: {
+      measure: [
+        {
+          id: 'needs-lesson',
+          when: 'post',
+          writes: ['{{RUN}}/optimize/substrate/lesson.txt'],
+          run: {
+            cmd: 'node',
+            args: [
+              '-e',
+              "const fs=require('fs');const dir='{{RUN}}/optimize/substrate';fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(dir+'/lesson.txt','{{arg.lessonId}}')",
+            ],
+          },
+        },
+        {
+          id: 'ok-report',
+          when: 'post',
+          writes: ['{{RUN}}/optimize/substrate/ok-report.json'],
+          run: {
+            cmd: 'node',
+            args: [
+              '-e',
+              "const fs=require('fs');const dir='{{RUN}}/optimize/substrate';fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(dir+'/ok-report.json',JSON.stringify({metric:1}))",
+            ],
+          },
+        },
+        { id: 'ok-parses', when: 'post', gate: { kind: 'json-parses', path: '{{RUN}}/optimize/substrate/ok-report.json' } },
       ],
     },
   };
@@ -190,7 +230,7 @@ describe('runSubstrateMeasure — run-arg ({{arg.*}}) threading from .pi/run.jso
 
     // (2) add the two MEASURE-only nodes AFTER the run (readMeasureOps reads their node.json straight off disk;
     // they are never part of the compiled DAG, so loadTemplate above never saw them).
-    for (const n of [ARGNODE, ARGMISSING]) {
+    for (const n of [ARGNODE, ARGMISSING, ARGMIXED]) {
       const dir = path.join(templateDir, 'nodes', n.id);
       await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(path.join(dir, 'node.json'), JSON.stringify(n, null, 2));
@@ -233,12 +273,53 @@ describe('runSubstrateMeasure — run-arg ({{arg.*}}) threading from .pi/run.jso
     expect(captured).toBe('L-42');
   });
 
-  it('loud discipline preserved — a referenced-but-ABSENT arg still throws MissingArgError', async () => {
-    // run.json HAS args, but not the `nope` key the op references — the resolver must throw, never silent ''.
+  it('degrades (never throws) on a referenced-but-ABSENT arg — the op is DROPPED and RECORDED in ops.rejected', async () => {
+    // run.json HAS args, but not the `nope` key the op references. The OUT-OF-BAND substrate must NOT crash the
+    // node's measurement over a finished run — the offending op is dropped from execution and recorded with its
+    // reason (so triage sees WHY it could not run), never a silent pass. The resolver keeps its loud discipline
+    // on the RUN path — that a missing arg still throws THERE is pinned by resolver.test.ts, not here.
     const rd = await handRun('run-absent-arg', { run: 'run-absent-arg', done: true, ok: true, nodes: {}, args: { lessonId: 'L-42' } });
-    await expect(runSubstrateMeasure(rd, 'argmissing', { workspace: templateDir })).rejects.toThrow(
-      /unresolved run arg "nope"/,
-    );
+    const report = await runSubstrateMeasure(rd, 'argmissing', { workspace: templateDir });
+
+    // did NOT throw — a report came back, and the one measure op ran NOTHING (dropped before execution).
+    expect(report.node).toBe('argmissing');
+    expect(report.ops.runs).toEqual([]);
+    // the drop is RECORDED with the op id + the unresolved-arg reason.
+    expect(report.ops.rejected).toHaveLength(1);
+    expect(report.ops.rejected[0]).toMatch(/needs-nope/);
+    expect(report.ops.rejected[0]).toMatch(/unresolved run arg "nope"/);
+    // the op never executed ⇒ its declared output was never written.
+    await expect(fs.readFile(path.join(rd, 'nope.txt'), 'utf8')).rejects.toThrow();
+  });
+
+  it('per-op degrade: an UNRESOLVABLE op is dropped+recorded while a RESOLVABLE op + gate + detectors still run', async () => {
+    // A finished run whose run.json has NO args at all (existing runs predate arg-persistence). The node MIXES
+    // an op referencing {{arg.lessonId}} (unresolvable) with a valid arg-free op + a gate on its output. TODAY
+    // resolveDeep throws over the WHOLE op[] tree and takes the node's measurement down; after the fix ONLY the
+    // bad op is dropped (recorded), and the good op + its gate + the trace detectors STILL produce output.
+    const rd = await handRun('run-mixed-noargs', { run: 'run-mixed-noargs', done: true, ok: true, nodes: {} });
+    const report = await runSubstrateMeasure(rd, 'argmixed', { workspace: templateDir });
+
+    // (A) the unresolvable op was dropped + recorded (never a crash, never a silent pass).
+    expect(report.ops.rejected).toHaveLength(1);
+    expect(report.ops.rejected[0]).toMatch(/needs-lesson/);
+    expect(report.ops.rejected[0]).toMatch(/unresolved run arg "lessonId"/);
+    // it never executed ⇒ its output was never written.
+    await expect(fs.readFile(path.join(rd, 'optimize', 'substrate', 'lesson.txt'), 'utf8')).rejects.toThrow();
+
+    // (B) the RESOLVABLE run-op STILL ran and (C) its gate STILL passed — one bad op did not take the rest down.
+    expect(report.ops.runs).toHaveLength(1);
+    expect(report.ops.runs[0].wrote).toBe(true);
+    expect(report.ops.runs[0].failed).toBe(false);
+    expect(report.ops.checks).toHaveLength(1);
+    expect(report.ops.checks.every((c) => c.verdict === 'pass')).toBe(true);
+    // its numeric report leaf was still graded.
+    expect(report.graded['ok-report.metric']).toBe(1);
+
+    // the trace detectors STILL produced their (empty — this stub run has no events) report; the drop of (A)
+    // did not short-circuit the detector/digest stages.
+    expect(report.detectors.thinkingSpans).toEqual([]);
+    expect(report.detectors.truncatedLines).toBe(0);
   });
 
   it('degrades gracefully — a run.json with NO args key measures a no-arg node without throwing', async () => {

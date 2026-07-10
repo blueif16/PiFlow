@@ -61,7 +61,9 @@ export interface OpRunResult {
 export interface MeasureOpsSection {
   checks: CheckResult[];
   runs: OpRunResult[];
-  /** detail strings for a `run` op the runner has no executor for (fail-loud, never silently dropped). */
+  /** detail strings for measure ops that could NOT run — a `run` op the runner has no executor for, OR an op
+   *  whose `{{arg.*}}`/`{{state.*}}` tokens don't resolve over this finished run (dropped + recorded, never a
+   *  silent pass and never a crash). */
   rejected: string[];
 }
 
@@ -140,11 +142,27 @@ export async function runSubstrateMeasure(
 
   const state = await loadState(runDir);
   // Load the run's persisted args so a measure op's `{{arg.<key>}}` token resolves against the SAME args the
-  // run ran under (best-effort; absent ⇒ `{}` — see readRunArgs). Without this, any `{{arg.*}}` measure op
-  // throws `MissingArgError` and crashes measurement for the whole node.
+  // run ran under (best-effort; absent ⇒ `{}` — see readRunArgs).
   const args = await readRunArgs(runDir);
   const resolveCtx: ResolveCtx = { run: runDir, workspace: opts.workspace, state, args };
-  const resolvedOps = resolveDeep(rawOps, resolveCtx);
+  // Resolve the op[] PER-OP, not the whole tree at once. `resolveDeep` keeps its LOUD discipline (a missing
+  // `{{arg.*}}`/`{{state.*}}` throws `MissingArgError`/`MissingChannelError`) — CORRECT on the RUN path, where
+  // a real misconfiguration must fail loud. But this substrate is OUT-OF-BAND over a FINISHED run: existing
+  // runs predate arg-persistence (`args:{}`) and some have an empty state.json, so an op referencing such a
+  // token would otherwise crash the WHOLE node's measurement — the other ops, the detectors, and the digest
+  // with it — violating this module's degrade-not-throw contract. So an op that can't resolve is DROPPED from
+  // execution and RECORDED in `ops.rejected` with its reason (triage sees WHY it could not run, never a silent
+  // pass and never a crash); every OTHER op + the detectors + the digest still run.
+  const resolvedOps: OpSpec[] = [];
+  const resolveRejected: string[] = [];
+  for (const rawOp of rawOps) {
+    try {
+      resolvedOps.push(resolveDeep(rawOp, resolveCtx));
+    } catch (err) {
+      const opRef = rawOp.id ? `measure op '${rawOp.id}'` : 'a measure op';
+      resolveRejected.push(`${opRef} could not run: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // (1) runnable `run` ops FIRST — same node-lifecycle.ts:588 pattern (`{run}` wrapped for applyMergeOp).
   const { runnable, rejected } = runOpsFromOp(resolvedOps);
@@ -197,7 +215,7 @@ export async function runSubstrateMeasure(
   const report: MeasureReport = {
     node: nodeId,
     generatedAt: new Date().toISOString(),
-    ops: { checks, runs, rejected: rejected.map((r) => r.detail) },
+    ops: { checks, runs, rejected: [...resolveRejected, ...rejected.map((r) => r.detail)] },
     detectors,
     digestAnomalies,
     graded,
