@@ -48,7 +48,7 @@ export type OptimizeRoute =
 const OPTIMIZE_VALUE_FLAGS = new Set([
   '--archetype', '--node', '--run', '--topk', '--template', '--workspace', '--cap', '--tolerance',
   '--tier', '--model', '--status', '--issue', '--staging-dir', '--backup-dir', '--manifest', '--since',
-  '--edit-budget', '--token-budget', '--fix-cycle-ceiling', '--binding', '--verify',
+  '--edit-budget', '--token-budget', '--fix-cycle-ceiling', '--binding', '--verify', '--mode',
 ]);
 
 /** The FIRST bare positional (a `<rundir>`) in `argv`, skipping every `--flag` and its consumed value, or
@@ -345,6 +345,10 @@ export interface SubstrateBlameArgs {
   run?: string;
   /** `--latest` — explicitly resolve the newest run (also the default behaviour when `run` is absent). */
   latest: boolean;
+  /** `--mode topo|train` (design §5) — the ordering-mode OVERRIDE. Absent ⇒ the mode is DERIVED from the blame
+   *  graph's edges at schedule time (the default). Parsed + VALIDATED here so its value is never misread as the
+   *  `<run>` positional; the scheduler (the adopt train's `deriveNodeOrder`) is where a set mode is honored. */
+  mode?: 'topo' | 'train';
   template?: string;
   workspace?: string;
   tier?: string;
@@ -364,6 +368,7 @@ export function parseSubstrateBlameArgs(argv: string[]): SubstrateBlameArgs {
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--latest') out.latest = true;
+    else if (k === '--mode') { const v = argv[++i]; if (v === 'topo' || v === 'train') out.mode = v; } // value flag; invalid ignored (never a run)
     else if (k === '--template') out.template = argv[++i];
     else if (k === '--workspace') out.workspace = argv[++i];
     else if (k === '--tier') out.tier = argv[++i];

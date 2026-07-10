@@ -71,6 +71,16 @@ describe('parseSubstrateBlameArgs', () => {
     expect(parseSubstrateBlameArgs(['--watch-json'])).toMatchObject({ watch: true, watchJson: true });
     expect(parseSubstrateBlameArgs(['--dry-run']).dryRun).toBe(true);
   });
+  it('--mode topo|train is a value flag (design §5 override) — its value is NEVER swallowed as the <run> positional', () => {
+    // the regression: `--mode train` used to fall through, leaving `train` captured as the run positional.
+    const train = parseSubstrateBlameArgs(['--mode', 'train']);
+    expect(train.mode).toBe('train');
+    expect(train.run).toBeUndefined();
+    expect(parseSubstrateBlameArgs(['--mode', 'topo', 'myrun'])).toMatchObject({ mode: 'topo', run: 'myrun' });
+    // an invalid mode is ignored (never captured as the run), like every other unknown flag value.
+    expect(parseSubstrateBlameArgs(['--mode', 'bogus']).mode).toBeUndefined();
+    expect(parseSubstrateBlameArgs(['--mode', 'bogus']).run).toBeUndefined();
+  });
 });
 
 // ── runSubstrateBlameCli — orchestration ───────────────────────────────────────────────────────────────────
