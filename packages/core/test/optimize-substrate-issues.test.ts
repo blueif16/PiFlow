@@ -313,6 +313,7 @@ describe('status machine — assertTransition throws on any edge outside the doc
     ['active', 'fix-landed'],
     ['fix-landed', 'verifying'],
     ['fix-landed', 'resolved'], // the skip-proof path
+    ['fix-landed', 'open'], // the adopt-train stale-base BOUNCE of a skip-proof fix (re-fixable, never stranded)
     ['verifying', 'resolved'],
     ['verifying', 'open'], // TASK 0: a proven-REJECT walks the candidate back to open (nothing landed)
     ['resolved', 'regressed'],

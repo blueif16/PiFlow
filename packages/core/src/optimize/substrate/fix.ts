@@ -62,8 +62,9 @@
 //   • BOUNCE — a stale-base record is NOT picked: its lifecycle `record.json` is rewritten `discarded` with a
 //     `{category:'stale-base'}` dropback (ONLY when `opts.runDir` is passed — without it the lifecycle dir is
 //     unreachable from a record alone, so the bounce DEGRADES to the issue walk-back + skip reason only), and
-//     the issue is walked `verifying → open` by the LEGAL edge (guarded by `assertTransition`; a `fix-landed`
-//     skip-proof issue has NO edge to `open`, so its status is LEFT and the skip reason carries the honesty).
+//     the issue is walked back to `open` by the LEGAL edge (guarded by `assertTransition`): `verifying → open`
+//     for a proven candidate, `fix-landed → open` for a skip-proof one — both return the issue to the open pool
+//     re-fixable, never stranded. Only a status with NO legal edge to `open` is LEFT (skip reason carries it).
 //   • BRANCH GC — after a land+resolve, `opts.gcBranches` (default ON) deletes every `refs/heads/optimize/
 //     <node>/<issue>/*` branch (the landed cherry-pick sha in the issue attempt is the durable record). NEVER
 //     on a skip/bounce — an escalation candidate keeps its branch.
@@ -1216,9 +1217,9 @@ function staleBaseSteer(overlapCount: number, readableDiff: boolean): string {
 
 /** A stale-base BOUNCE (WS-B5): the record is NOT picked. Rewrite its lifecycle `record.json` → `discarded` + a
  *  `{category:'stale-base'}` dropback (ONLY when `opts.runDir` is known — a record alone can't name its
- *  lifecycle dir, so without it the bounce DEGRADES to the walk-back + skip reason), then walk the issue
- *  `verifying → open` by the LEGAL edge only (guarded by `assertTransition`; a `fix-landed` skip-proof issue has
- *  NO edge to `open`, so its status is LEFT and the skip reason carries the honesty). */
+ *  lifecycle dir, so without it the bounce DEGRADES to the walk-back + skip reason), then walk the issue back to
+ *  `open` by the LEGAL edge only (guarded by `assertTransition`): `verifying → open` (proven) or `fix-landed →
+ *  open` (skip-proof) — both re-fixable. Only a status with no legal edge to `open` is LEFT (skip reason honest). */
 async function bounceStaleBase(record: SubstrateManifestRecord, opts: AdoptSubstrateManifestOpts, steer: string): Promise<void> {
   if (opts.runDir) {
     const dir = issueLifecycleDir(opts.runDir, record.node, record.issue);

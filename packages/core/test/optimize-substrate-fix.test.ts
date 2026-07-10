@@ -1481,18 +1481,20 @@ describe('adoptSubstrateManifest — cherry-picks candidateSha, commits, stamps 
     expect((await parseIssueFile(issuePath)).status).toBe('open');
   });
 
-  it('BOUNCE of a fix-landed (skip-proof) issue: no legal edge to open ⇒ status LEFT, record still discarded (honest degrade)', async () => {
+  it('BOUNCE of a fix-landed (skip-proof) issue walks it back to OPEN — re-fixable, never stranded', async () => {
     const { workspace, templateDir, issuePath, record } = await stageWithClosure({ issueStatus: 'fix-landed' });
     const runDir = await scratch('piflow-run-');
     await fs.writeFile(join(workspace, 'templates', 'other.json'), '{"drift":true}\n');
     commitAll(workspace, 'drift inside closure');
     const res = await adoptSubstrateManifest({ records: [record] }, { templateDir, runDir });
     expect(res.skipped).toHaveLength(1);
-    // fix-landed → open is NOT a legal edge; the issue is LEFT (never a forced illegal transition), skip reason honest.
-    expect((await parseIssueFile(issuePath)).status).toBe('fix-landed');
+    // the skip-proof bounce now rides the legal fix-landed → open back-edge — the issue returns to the open pool.
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
     const rec = JSON.parse(await fs.readFile(join(runDir, 'optimize', 'issues', 'gameplay', 'soggy-crust', 'record.json'), 'utf8'));
     expect(rec.decision).toBe('discarded');
     expect(rec.dropback.category).toBe('stale-base');
+    // follow-on: the bounced issue is genuinely re-fixable (open → active is legal) — not the permanent dead state.
+    await expect(transitionIssue(issuePath, 'active')).resolves.toBeDefined();
   });
 
   it('BOUNCE without opts.runDir ⇒ walk-back still happens, but no record.json is rewritten (documented degrade)', async () => {

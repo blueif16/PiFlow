@@ -32,6 +32,12 @@
 // STATUS MACHINE (guards throw on any edge outside this graph — piflow-memory-v1.5 grilling, contract lane):
 //   open → active → fix-landed → verifying → resolved         (the full fix cycle)
 //                     fix-landed ────────────→ resolved        (skip-proof path, proving configured off)
+//                     fix-landed ────────────→ open            (adopt-train stale-base BOUNCE of a skip-proof
+//                                                                fix: the candidate never landed, so the issue
+//                                                                returns to the open pool re-fixable — the
+//                                                                skip-proof twin of the verifying→open back-edge.
+//                                                                Without it a bounced skip-proof issue would be
+//                                                                STRANDED at fix-landed: no re-adopt, no re-fix.)
 //                                  verifying ──→ open           (proven-REJECT: the prove-rerun's candidate did
 //                                                                NOT improve — walk back to `open`, reason null,
 //                                                                NO attempt stamped: nothing landed. Re-attemptable.)
@@ -327,7 +333,9 @@ export async function reopen(file: string, opts: { run: string }): Promise<Issue
 export const ALLOWED_TRANSITIONS: Readonly<Record<Status, readonly Status[]>> = {
   open: ['active'],
   active: ['fix-landed'],
-  'fix-landed': ['verifying', 'resolved'], // the skip-proof path when proving is configured off
+  // verifying/resolved are the skip-proof forward edges; `open` is the adopt-train stale-base BOUNCE back-edge
+  // (a skip-proof fix that never landed returns to the open pool re-fixable — else it is stranded at fix-landed).
+  'fix-landed': ['verifying', 'resolved', 'open'],
   verifying: ['resolved', 'open'], // resolved on adopt; back to `open` when the prove-rerun REJECTED the candidate
 
   resolved: ['regressed'],
