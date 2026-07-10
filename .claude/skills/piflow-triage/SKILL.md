@@ -82,6 +82,37 @@ Issue identity is the exact `(node, sig)` hash — there is no fuzzy or semantic
   reuse that exact string. A near-miss tag mints a new id and silently defeats the backstop — a differently
   worded rediscovery next run must hash to the SAME tag, or dedup fails.
 
+## The <blame_context> section — upstream blame is a hypothesis
+Some runs hand you one extra harness section, `<blame_context>`: the RUN-level judge's attribution for THIS
+node, written after it viewed the FINAL artifact from the global standpoint. It is authoritative-sounding by
+construction — and it is a **hypothesis, not a detector**. It changes what you CONSIDER, never what you may
+mint. Three rules, no exceptions:
+
+- **Corroborate locally before you mint.** A blame attribution earns an issue only when it survives Step 1
+  UNCHANGED — you can fill **detector · evidence line · mechanism sketch** from NODE-LOCAL evidence (this
+  node's own artifact / measure report), reading the blame's citations only as a pointer to WHERE to look.
+  Run-level say-so is never a detector. Blame never skips Step 2 (recurrence) or Step 3 (`sig`) either: a
+  corroborated blame defect that matches a ledger entry or a `memory.md` lesson is a REFERENCE / RE-SEEN like
+  any other, deduped on the same `sig`.
+- **A corroborated attribution rides the brief globally.** When node-local evidence DOES confirm it, fill the
+  body's **why it matters downstream** with the RUN-level defect and its propagated evidence — where it
+  SURFACED vs where it ORIGINATED — so the fixer aims at the end-to-end outcome, not this node's score alone.
+  Set **`verify: full`** in the draft frontmatter (the one optional key beyond the required subset — a
+  blame-sourced fix must face the gate agent), and you may RAISE severity by run-level impact, citing the
+  blame's evidence for the bump. The template `criteria.md` still never enters an issue.
+- **Dissent is a first-class output — contest, never rubber-stamp.** When node-local evidence CONTRADICTS an
+  attribution, or you simply cannot corroborate it, do NOT draft an issue to be agreeable and do NOT silently
+  drop it. Say so in your final message inside a fenced `dissent` block, quoting the contradicting node-local
+  evidence (the artifact line / measure number the attribution fails against):
+
+  ```dissent
+  compose() is blamed for the pacing gap, but this node's measure shows fill=92% and the win-path is
+  completable — the defect did not originate here.
+  ```
+
+  The harness records it beside your output so the NEXT blame pass re-attributes with your contest in context.
+  An uncorroborated attribution has exactly two honest fates: a corroborated draft, or a dissent fence.
+
 ## The bar — what a GOOD issue is (checkable properties of the ISSUE, not adjectives)
 Required, every drafted issue:
 - **One issue = one defect a fixer could land on its own.** Two symptoms of ONE root are ONE issue; two
@@ -108,4 +139,5 @@ tool-stamped field · resurrect a `resolved` issue by hand.
 Confirm, one line per drafted issue: **detector + evidence line cited** · **recurrence search run** (ledger +
 BOTH commit prefixes) · **`sig` names the root-cause pattern and reuses an existing tag if one matched** ·
 **one defect, one issue** · **no fix proposed, no criteria / gold leaked** · **only draft fields authored**.
+When a `<blame_context>` was present: **every attribution was either corroborated into a draft or contested in a `dissent` fence — none silently ignored.**
 If any is No, you are not done.

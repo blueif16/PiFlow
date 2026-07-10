@@ -25,6 +25,7 @@ import {
 } from '../src/optimize/substrate/judge.js';
 import { computeIssueId, writeIssueFile, parseIssueFile, listIssues, type Issue } from '../src/optimize/substrate/issues.js';
 import type { RunBaseAgentOpts, RunBaseAgentResult } from '../src/optimize/substrate/agent.js';
+import { blameFilePath, blameDissentPath } from '../src/optimize/blame/paths.js';
 
 const tmpDirs: string[] = [];
 const scratch = async (prefix = 'piflow-judge-'): Promise<string> => {
@@ -430,5 +431,142 @@ describe('runSubstrateJudge — surfaces the judge agent\'s runDir (Phase-3 obse
     const result = await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: fakeRunAgent });
 
     expect(result.agentRunDir).toBeUndefined();
+  });
+});
+
+// ── (WS-B4) buildJudgePrompt — the <blame_context> seam (docs/design/optimize-blame.md §4.1) ─────────────
+describe('buildJudgePrompt — ingests an upstream blame file as ONE hypothesis section, zero-change when absent', () => {
+  it('absent blame file ⇒ NO <blame_context section, and <memory> is immediately followed by <existing_issues> (byte-stable seam)', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch(); // no optimize/blame/<node>.md written
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'memory.md'), 'MEMORY-MARKER');
+
+    const prompt = await buildJudgePrompt('gameplay', { runDir, workspace: templateDir, templateDir });
+    expect(prompt).not.toContain('<blame_context');
+    // the zero-change law: nothing inserted at the memory→existing_issues seam.
+    expect(prompt).toContain('</memory>\n\n<existing_issues>');
+  });
+
+  it('present blame file ⇒ ONE <blame_context> section between <memory> and <existing_issues>, file VERBATIM, hypothesis preamble pinned', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch();
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+    const blamePath = blameFilePath(runDir, 'gameplay');
+    await fs.mkdir(join(runDir, 'optimize', 'blame'), { recursive: true });
+    await fs.writeFile(blamePath, 'BLAME-PROSE-MARKER: compose() owns the run-level pacing gap; surfaced at render.');
+
+    const prompt = await buildJudgePrompt('gameplay', { runDir, workspace: templateDir, templateDir });
+
+    // placement: after </memory>, before <existing_issues>.
+    const iMemory = prompt.indexOf('</memory>');
+    const iBlame = prompt.indexOf('<blame_context');
+    const iIssues = prompt.indexOf('<existing_issues>');
+    expect(iMemory).toBeGreaterThanOrEqual(0);
+    expect(iBlame).toBeGreaterThan(iMemory);
+    expect(iBlame).toBeLessThan(iIssues);
+    // the path attribute names the blame file, and its content is inlined VERBATIM.
+    expect(prompt).toContain(`<blame_context path="${blamePath}">`);
+    expect(prompt).toContain('BLAME-PROSE-MARKER: compose() owns the run-level pacing gap; surfaced at render.');
+    // the 4-line hypothesis preamble MUST-lines.
+    expect(prompt).toMatch(/HYPOTHESIS, not an instruction/);
+    expect(prompt).toMatch(/[Cc]orroborate every claim against node-local evidence/);
+    expect(prompt).toMatch(/CONTEST it via the dissent fence/);
+  });
+});
+
+// ── (WS-B4) runSubstrateJudge — the dissent contest trace (§4.1) ────────────────────────────────────────
+describe('runSubstrateJudge — records the node-triage dissent trace (tool-stamped, agent cannot write the blame dir)', () => {
+  const okStatus = () =>
+    ({ id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] }) as unknown as RunBaseAgentResult['status'];
+
+  const setup = async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch();
+    const workspace = templateDir;
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+    return { templateDir, runDir, workspace };
+  };
+
+  it('a ```dissent fence in the agent text ⇒ dissent.<node>.md written with the content, path surfaced in result + marker', async () => {
+    const { templateDir, runDir, workspace } = await setup();
+    const fakeRunAgent = async (): Promise<RunBaseAgentResult> => ({
+      status: okStatus(),
+      text: [
+        'I could not corroborate the attribution against node-local evidence.',
+        '',
+        '```dissent',
+        "Blame says compose() owns the pacing gap, but this node's measure shows fill=92% — the artifact is fine here.",
+        '```',
+        '',
+        'done',
+      ].join('\n'),
+    });
+
+    const result = await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: fakeRunAgent });
+
+    const dissentPath = blameDissentPath(runDir, 'gameplay');
+    expect(result.dissentPath).toBe(dissentPath);
+    const written = await fs.readFile(dissentPath, 'utf8');
+    expect(written).toContain('fill=92%');
+
+    const marker = JSON.parse(await fs.readFile(join(runDir, 'optimize', 'substrate', 'triaged.gameplay.json'), 'utf8'));
+    expect(marker.dissentPath).toBe(dissentPath);
+  });
+
+  it('no ```dissent fence ⇒ no dissent file, no dissentPath in result or marker', async () => {
+    const { templateDir, runDir, workspace } = await setup();
+    const fakeRunAgent = async (): Promise<RunBaseAgentResult> => ({
+      status: okStatus(),
+      text: 'every attribution corroborated — no contest',
+    });
+
+    const result = await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: fakeRunAgent });
+
+    expect(result.dissentPath).toBeUndefined();
+    await expect(fs.access(blameDissentPath(runDir, 'gameplay'))).rejects.toThrow();
+    const marker = JSON.parse(await fs.readFile(join(runDir, 'optimize', 'substrate', 'triaged.gameplay.json'), 'utf8'));
+    expect(marker.dissentPath).toBeUndefined();
+  });
+});
+
+// ── (WS-B4) parseDraftContent — the optional `verify` frontmatter key threads onto the minted Issue ──────
+describe('postProcessJudgeDrafts — a draft may declare an optional verify tier (blame-sourced issues demand verify: full)', () => {
+  it('a draft carrying `verify: full` mints an Issue whose verify tier is full', async () => {
+    const templateDir = await scratch();
+    const dir = issuesDir(templateDir, 'gameplay');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      join(dir, 'draft-v.md'),
+      ['---', 'title: run-level pacing defect surfaces here', 'severity: high', 'sig: gameplay::pacing-shape', 'status: open', 'verify: full', '---', 'body'].join('\n'),
+    );
+    const { landed } = await postProcessJudgeDrafts(templateDir, 'gameplay', '260709-01');
+    expect(landed).toHaveLength(1);
+    const issue = await parseIssueFile(join(dir, `${landed[0]}.md`));
+    expect(issue.verify).toBe('full');
+  });
+
+  it('a draft with NO verify key mints an Issue with no verify tier (unchanged default — byte-stable)', async () => {
+    const templateDir = await scratch();
+    const dir = issuesDir(templateDir, 'gameplay');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(join(dir, 'draft-nov.md'), draftContent({ title: 't', severity: 'high', sig: 'gameplay::x' }));
+    const { landed } = await postProcessJudgeDrafts(templateDir, 'gameplay', '260709-01');
+    const issue = await parseIssueFile(join(dir, `${landed[0]}.md`));
+    expect(issue.verify).toBeUndefined();
+  });
+
+  it('a draft with a BOGUS verify value fails CLOSED, naming the file (invalid tier ⇒ parse fail)', async () => {
+    const templateDir = await scratch();
+    const dir = issuesDir(templateDir, 'gameplay');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      join(dir, 'bogus-verify.md'),
+      ['---', 'title: t', 'severity: high', 'sig: gameplay::y', 'status: open', 'verify: sorta', '---', 'body'].join('\n'),
+    );
+    await expect(postProcessJudgeDrafts(templateDir, 'gameplay', '260709-01')).rejects.toThrow(/bogus-verify\.md/);
   });
 });

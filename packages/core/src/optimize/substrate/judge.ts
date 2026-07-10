@@ -2,19 +2,22 @@
 // layers, kept separately testable:
 //   • `buildJudgePrompt`   — pure(-ish) prompt ASSEMBLY: the node's `optimize.judge` file (token-resolved;
 //     HALT if declared but missing) + the M3 measure report (embedded VERBATIM as opaque text — never
-//     imported/typed here; a clear marker when absent) + memory.md (best-effort) + the existing-issues
-//     ledger (so the agent reopens-over-creates) + a git-only history-search instruction + the SEPARATION
-//     LAW (identify + contextualize ONLY — zero fix proposals; criteria/gold are judging references, never
-//     injected into the worker node's own prompt).
+//     imported/typed here; a clear marker when absent) + memory.md (best-effort) + the run's per-node
+//     `<blame_context>` (best-effort; a HYPOTHESIS fenced by a 4-line preamble — ABSENT ⇒ byte-identical to
+//     the pre-blame prompt, §4.1) + the existing-issues ledger (so the agent reopens-over-creates) + a
+//     git-only history-search instruction + the SEPARATION LAW (identify + contextualize ONLY — zero fix
+//     proposals; criteria/gold are judging references, never injected into the worker node's own prompt).
 //   • `postProcessJudgeDrafts` — the MECHANICAL, tool-side post-processor: an agent-authored DRAFT (the
-//     minimal title/severity/sig/status:open + body subset — id/name/dates are NEVER agent-authored, per
-//     substrate/issues.ts's header) is identity-stamped into a full `Issue`; a sig-hash collision against an
-//     existing issue MERGES (reopen when `resolved`, a plain `lastSeen` bump otherwise) instead of minting a
-//     duplicate; a per-pass cap keeps the N most-severe NEW issues and reports the rest untouched for a later
-//     pass; a file that is neither a valid full Issue nor a valid draft fails CLOSED, naming itself.
+//     minimal title/severity/sig/status:open + body subset, plus an OPTIONAL `verify` tier — id/name/dates
+//     are NEVER agent-authored, per substrate/issues.ts's header) is identity-stamped into a full `Issue`; a
+//     sig-hash collision against an existing issue MERGES (reopen when `resolved`, a plain `lastSeen` bump
+//     otherwise) instead of minting a duplicate; a per-pass cap keeps the N most-severe NEW issues and reports
+//     the rest untouched for a later pass; a file that is neither a valid full Issue nor a valid draft fails
+//     CLOSED, naming itself.
 //   • `runSubstrateJudge` — wires (1) build the prompt, (2) spawn ONE judge turn via `substrate/agent.ts`
 //     (readScope = [runDir, templateDir, workspace]; owns = the node's `issues/` dir), (3) post-process,
-//     (4) write the analyzed marker `<runDir>/optimize/substrate/triaged.<node>.json`.
+//     (4) TOOL-stamp any `dissent.<node>.md` contest of an ingested blame attribution (§4.1 — the agent
+//     cannot write the read-only blame dir), (5) write the marker `.../triaged.<node>.json`.
 //
 // The measure report is read as OPAQUE TEXT on purpose (never `JSON.parse`d, never a shared type with M3) —
 // the plan's own law: this module must not couple to M3's report shape, only to its file's EXISTENCE.
@@ -24,12 +27,13 @@ import path from 'node:path';
 import { resolveTokens } from '../../workflow/resolver.js';
 import {
   computeIssueId, listIssues, parseIssueFile, reopen, writeIssueFile,
-  type Issue, type IssueRecord, type Severity,
+  type Issue, type IssueRecord, type Severity, type VerifyTier,
 } from './issues.js';
 import {
   inheritedAgentOpts, runBaseAgent,
   type RunBaseAgentResult, type BaseAgentChildOpts,
 } from './agent.js';
+import { blameFilePath, blameDissentPath } from '../blame/paths.js';
 import { generateRunName } from '../../names/generator.js';
 
 /** Default cap on brand-new issues a single judge pass may land (the plan's documented default). Overridable
@@ -104,6 +108,17 @@ const GIT_HISTORY_INSTRUCTION = [
   'scope to see prior fixes/discussion for this node, and avoid re-flagging something already reasoned about.',
 ].join(' ');
 
+// The 4-line preamble that fronts an ingested `<blame_context>` (docs/design/optimize-blame.md §4.1). Blame is
+// the RUN-level judge's attribution, authoritative-sounding by construction — so it is fenced as a HYPOTHESIS
+// the node's own evidence must confirm (echo-chamber guard, §11): corroborate via the skill's Step 1 before
+// any draft, and CONTEST (never silently drop) an attribution node-local evidence cannot support.
+const BLAME_PREAMBLE = [
+  "This is the RUN-LEVEL judge's attribution for THIS node over THIS run.",
+  'It is a HYPOTHESIS, not an instruction.',
+  'Corroborate every claim against node-local evidence per your Step 1 before drafting.',
+  'If the evidence contradicts or fails to corroborate, CONTEST it via the dissent fence instead of drafting.',
+].join('\n');
+
 const OUTPUT_SPEC = [
   'For a NEW issue, write a markdown file under the issues directory with EXACTLY this frontmatter subset —',
   'do NOT author `id`/`name`/`firstSeen`/`lastSeen`/`attempts`/`reason` (those are tool-stamped):',
@@ -115,8 +130,9 @@ const OUTPUT_SPEC = [
 /**
  * Assemble the judge agent's FULL prompt for `(nodeId)` under `opts`. Reads the node's declared
  * `optimize.judge` file (token-resolved; HALTS if the field is absent OR the resolved file is missing), the
- * M3 measure report (opaque text; a clear marker on absence), `memory.md` (best-effort), and the existing
- * issue ledger. Never spawns anything — pure assembly over the filesystem.
+ * M3 measure report (opaque text; a clear marker on absence), `memory.md` (best-effort), the run's per-node
+ * `<blame_context>` (best-effort; ABSENT ⇒ the prompt is byte-identical to the pre-blame assembly — the
+ * zero-change law, §4.1), and the existing issue ledger. Never spawns anything — pure assembly over the fs.
  */
 export async function buildJudgePrompt(nodeId: string, opts: BuildJudgePromptOpts): Promise<string> {
   const { runDir, workspace, templateDir } = opts;
@@ -146,28 +162,49 @@ export async function buildJudgePrompt(nodeId: string, opts: BuildJudgePromptOpt
 
   const existingIssues = await listIssues(templateDir, { node: nodeId });
 
-  return [
+  // The run-level blame file for THIS node, best-effort (a run with no blame pass — or a node the pass did not
+  // blame — has none). ABSENT ⇒ nothing is inserted, so the seam `</memory>\n\n<existing_issues>` stays exactly
+  // as it was before blame existed (zero-change law). PRESENT ⇒ the hypothesis preamble + the file VERBATIM,
+  // placed between <memory> and <existing_issues> — one more harness-supplied section, never an instruction.
+  const blamePath = blameFilePath(runDir, nodeId);
+  const blameContent = await readFileMaybe(blamePath);
+
+  const sections = [
     `<role>You are the SOFT JUDGE for the "${nodeId}" node — the substrate's quality-defect identifier.</role>`,
     `<separation_law>${SEPARATION_LAW}</separation_law>`,
     `<judge_instructions>\n${judgeContent}\n</judge_instructions>`,
     `<measure_report path="${measurePath}">\n${measureSection}\n</measure_report>`,
     `<memory path="${memoryPath}">\n${memorySection}\n</memory>`,
+  ];
+  if (blameContent !== null) {
+    sections.push(`<blame_context path="${blamePath}">\n${BLAME_PREAMBLE}\n\n${blameContent}\n</blame_context>`);
+  }
+  sections.push(
     `<existing_issues>\n${renderExistingIssues(existingIssues)}\n</existing_issues>`,
     `<git_history_instruction>${GIT_HISTORY_INSTRUCTION}</git_history_instruction>`,
     `<output_spec>\n${OUTPUT_SPEC}\n</output_spec>`,
-  ].join('\n\n');
+  );
+  return sections.join('\n\n');
 }
 
 // ── (2) postProcessJudgeDrafts — the mechanical, fail-closed post-processor ─────────────────────────────
 
 const DRAFT_KEYS = ['title', 'severity', 'sig', 'status'] as const;
+// OPTIONAL draft keys — allowed but never required (a pre-blame draft omits them). `verify` lets the skill
+// stamp a blame-sourced issue's proof tier (§4.1: blame-sourced issues default `verify: full`); it threads
+// straight onto the minted Issue's own optional `verify` field (issues.ts) — an invalid value fails CLOSED
+// like any other malformed frontmatter, so the tier can never be silently coerced.
+const DRAFT_OPTIONAL_KEYS = ['verify'] as const;
 const DRAFT_SEVERITIES: readonly Severity[] = ['critical', 'high', 'medium', 'low'];
+const DRAFT_VERIFY_TIERS: readonly VerifyTier[] = ['none', 'rerun', 'full'];
 const SEVERITY_RANK: Record<Severity, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 interface Draft {
   title: string;
   severity: Severity;
   sig: string;
+  /** OPTIONAL per-issue verify tier — threaded verbatim onto the minted Issue when present (§4.1). */
+  verify?: VerifyTier;
   body: string;
 }
 
@@ -192,10 +229,11 @@ function parseDraftContent(raw: string): Draft {
 
   const missing = DRAFT_KEYS.filter((k) => !(k in map));
   if (missing.length) throw new Error(`draft frontmatter missing required key(s): ${missing.join(', ')}`);
-  const extra = Object.keys(map).filter((k) => !(DRAFT_KEYS as readonly string[]).includes(k));
+  const known = [...DRAFT_KEYS, ...DRAFT_OPTIONAL_KEYS] as readonly string[];
+  const extra = Object.keys(map).filter((k) => !known.includes(k));
   if (extra.length) {
     throw new Error(
-      `draft frontmatter has unknown key(s): ${extra.join(', ')} (a draft may declare only ${DRAFT_KEYS.join('/')} — id/name/dates are tool-stamped)`,
+      `draft frontmatter has unknown key(s): ${extra.join(', ')} (a draft may declare only ${DRAFT_KEYS.join('/')} plus the optional ${DRAFT_OPTIONAL_KEYS.join('/')} — id/name/dates are tool-stamped)`,
     );
   }
   const severity = map.severity as Severity;
@@ -207,7 +245,14 @@ function parseDraftContent(raw: string): Draft {
   }
   if (!map.title || map.title.includes('\n')) throw new Error('draft title must be a non-empty single line');
   if (!map.sig || map.sig.includes('\n')) throw new Error('draft sig must be a non-empty single line');
-  return { title: map.title, severity, sig: map.sig, body };
+  let verify: VerifyTier | undefined;
+  if ('verify' in map) {
+    if (!DRAFT_VERIFY_TIERS.includes(map.verify as VerifyTier)) {
+      throw new Error(`draft verify must be one of ${DRAFT_VERIFY_TIERS.join('|')} when present, got ${JSON.stringify(map.verify)}`);
+    }
+    verify = map.verify as VerifyTier;
+  }
+  return { title: map.title, severity, sig: map.sig, ...(verify ? { verify } : {}), body };
 }
 
 export interface PostProcessOpts {
@@ -311,7 +356,11 @@ export async function postProcessJudgeDrafts(
     existingNames.add(name);
     const issue: Issue = {
       id, name, title: draft.title, severity: draft.severity, status: 'open', reason: null,
-      sig: draft.sig, firstSeen: run, lastSeen: run, attempts: [], body: draft.body,
+      sig: draft.sig, firstSeen: run, lastSeen: run, attempts: [],
+      // OPTIONAL — the tier the skill stamped on a blame-sourced draft rides straight through to the issue;
+      // omitted when unset so a non-blame draft round-trips byte-identically to a pre-WS-B4 issue.
+      ...(draft.verify ? { verify: draft.verify } : {}),
+      body: draft.body,
     };
     const dest = path.join(dir, `${name}.md`);
     await writeIssueFile(dest, issue);
@@ -320,6 +369,20 @@ export async function postProcessJudgeDrafts(
     landed.push(name);
   }
   return { landed, capped };
+}
+
+// ── dissent extraction — the node-triage contest trace (§4.1) ───────────────────────────────────────────
+
+/** Pull every fenced ```dissent block out of the judge agent's final text and join their trimmed contents
+ *  (blank/whitespace-only fences are ignored). `null` when none — the "no fence ⇒ no file" law. This is the
+ *  ONLY read of the agent's free text for control flow: a contest of an ingested blame attribution the harness
+ *  records so the NEXT blame pass re-attributes with it (never a silent drop of an uncorroborated attribution). */
+function extractDissent(text: string | undefined): string | null {
+  if (!text) return null;
+  const blocks = [...text.matchAll(/```dissent\s*([\s\S]*?)```/g)]
+    .map((m) => m[1].trim())
+    .filter((s) => s.length > 0);
+  return blocks.length ? blocks.join('\n\n') : null;
 }
 
 // ── (3) runSubstrateJudge — the full pass ───────────────────────────────────────────────────────────────
@@ -345,6 +408,11 @@ export interface SubstrateJudgeResult {
   issues: string[];
   /** Basenames of draft files left unlanded by the cap this pass. Empty on a dry-run. */
   capped: string[];
+  /** Present ONLY when the judge CONTESTED an ingested blame attribution: the path of the tool-stamped
+   *  `dissent.<node>.md` trace under the run's blame dir (§4.1). The blame dir stays agent-read-only — the
+   *  TOOL writes the contest here (the agent's `owns` is the issues dir), so the next blame pass can
+   *  re-attribute with the dissent in context. Absent when no `dissent` fence was emitted, and on a dry-run. */
+  dissentPath?: string;
   /** The judge agent's parsed final text (debugging/telemetry — never re-parsed for control flow). Absent on a dry-run. */
   agentText?: string;
   /** The judge agent's full node status record. Absent on a dry-run. */
@@ -361,7 +429,8 @@ export interface SubstrateJudgeResult {
 /**
  * Run ONE full judge pass over `(runDir, nodeId)`: build the prompt, spawn the judge agent (readScope =
  * `[runDir, templateDir, workspace]`, owns = the node's `issues/` dir), mechanically post-process whatever
- * it wrote, and stamp the analyzed marker `<runDir>/optimize/substrate/triaged.<node>.json`.
+ * it wrote, stamp any `dissent.<node>.md` contest trace (§4.1), and write the analyzed marker
+ * `<runDir>/optimize/substrate/triaged.<node>.json`.
  */
 export async function runSubstrateJudge(runDir: string, nodeId: string, opts: SubstrateJudgeOpts): Promise<SubstrateJudgeResult> {
   const { workspace, templateDir } = opts;
@@ -391,13 +460,28 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
   const run = path.basename(path.resolve(runDir));
   const { landed, capped } = await postProcessJudgeDrafts(templateDir, nodeId, run, { cap: opts.cap });
 
+  // Contest trace (§4.1): if the judge dissented from an ingested blame attribution, the TOOL stamps it beside
+  // the triage output — the blame dir is agent-read-only (the agent's `owns` is the issues dir), so a contest
+  // could never be self-written there. `null` ⇒ nothing written and the field stays off both the marker and
+  // the result, keeping a no-dissent pass byte-identical to the pre-blame marker.
+  const dissent = extractDissent(agentResult.text);
+  let dissentPath: string | undefined;
+  if (dissent !== null) {
+    dissentPath = blameDissentPath(runDir, nodeId);
+    await fs.mkdir(path.dirname(dissentPath), { recursive: true });
+    await fs.writeFile(dissentPath, dissent + '\n');
+  }
+
   const markerDir = path.join(runDir, 'optimize', 'substrate');
   await fs.mkdir(markerDir, { recursive: true });
   const when = new Date().toISOString();
-  await fs.writeFile(path.join(markerDir, `triaged.${nodeId}.json`), JSON.stringify({ when, issues: landed }, null, 2) + '\n');
+  await fs.writeFile(
+    path.join(markerDir, `triaged.${nodeId}.json`),
+    JSON.stringify({ when, issues: landed, ...(dissentPath ? { dissentPath } : {}) }, null, 2) + '\n',
+  );
 
   return {
-    when, issues: landed, capped,
+    when, issues: landed, capped, ...(dissentPath ? { dissentPath } : {}),
     agentText: agentResult.text, agentStatus: agentResult.status, agentRunDir: agentResult.runDir,
   };
 }
