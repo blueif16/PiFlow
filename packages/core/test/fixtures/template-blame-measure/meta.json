@@ -1,0 +1,32 @@
+{
+  "id": "template-blame-measure",
+  "name": "template-blame-measure",
+  "description": "Single-node fixture (WS-B1) exercising runBlameMeasure's meta-level op[] read + report write + determinism.",
+  "phases": ["build"],
+  "optimize": {
+    "measure": [
+      {
+        "id": "write-report",
+        "when": "post",
+        "writes": ["{{RUN}}/optimize/blame/check-report.json"],
+        "run": {
+          "cmd": "node",
+          "args": [
+            "-e",
+            "const fs=require('fs'); const dir='{{RUN}}/optimize/blame'; fs.mkdirSync(dir,{recursive:true}); fs.writeFileSync(dir+'/check-report.json', JSON.stringify({fillRatio:0.6,spanMs:900}))"
+          ]
+        }
+      },
+      {
+        "id": "out-non-empty",
+        "when": "post",
+        "gate": { "kind": "non-empty", "path": "{{RUN}}/out.txt" }
+      },
+      {
+        "id": "report-parses",
+        "when": "post",
+        "gate": { "kind": "json-parses", "path": "{{RUN}}/optimize/blame/check-report.json" }
+      }
+    ]
+  }
+}

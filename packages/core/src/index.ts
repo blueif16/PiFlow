@@ -572,3 +572,12 @@ export type {
   AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,
   FixWithRetriesOpts, FixWithRetriesResult, RetryAttemptRecord, RetryEscalationPacket, RetryStopReason, RetryContext,
 } from './optimize/index.js';
+
+// The run-level BLAME layer (docs/design/optimize-blame.md, WS-B1) — the ONE level up twin of the OPTIMIZE
+// SUBSTRATE block above: same lift-to-root rationale (a future `piflowctl optimize blame` verb, packages/cli,
+// needs this off the package's only public entry). `blame*Path` name every artifact under a run's
+// `optimize/blame/` dir (per-run dispatch, born archived, no lifecycle/status machine); `runBlameMeasure` is
+// the run-level hard-measure fold — the meta-level twin of `runSubstrateMeasure` above. Pure re-export of the
+// optimize facade; core holds no judge/prose/roster logic yet (that is WS-B2, unbuilt).
+export { blameDir, blameFilePath, blameSummaryPath, blameMeasurePath, blameDissentPath, runBlameMeasure } from './optimize/index.js';
+export type { RunBlameMeasureOpts, BlameMeasureReport, BlameDigestSection, BlameDigestNode } from './optimize/index.js';

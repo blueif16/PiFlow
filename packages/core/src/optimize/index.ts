@@ -129,3 +129,13 @@ export type {
 // triage` CLI (M5) runs runSubstrateMeasure FIRST, then this — hard-feeds-soft is that verb's contract.
 export { runSubstrateJudge } from './substrate/judge.js';
 export type { SubstrateJudgeOpts, SubstrateJudgeResult } from './substrate/judge.js';
+
+// The run-level BLAME layer (docs/design/optimize-blame.md, WS-B1) — the ONE level up twin of the substrate
+// measurement stage above: `blameDir`/`blameFilePath`/`blameSummaryPath`/`blameMeasurePath`/
+// `blameDissentPath` name every artifact under a run's `optimize/blame/` dir (per-run dispatch, never a
+// template-side copy, no lifecycle/status machine — §1.2/§3); `runBlameMeasure` fires the template's
+// meta-level `optimize.measure` op[] over the run's FINAL artifact + folds a best-effort run digest into
+// `blame/measure.json` — the hard-evidence input the (not-yet-built) blame judge consumes.
+export { blameDir, blameFilePath, blameSummaryPath, blameMeasurePath, blameDissentPath } from './blame/paths.js';
+export { runBlameMeasure } from './blame/measure.js';
+export type { RunBlameMeasureOpts, BlameMeasureReport, BlameDigestSection, BlameDigestNode } from './blame/measure.js';
