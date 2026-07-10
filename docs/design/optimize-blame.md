@@ -34,81 +34,103 @@ files. Chain of responsibility, one markdown boundary object per seam:
 
 ## 1. Decisions (locked in the 2026-07-09 sync)
 
-1. **Template-level runway**: `meta.json` `optimize.{measure, criteria}` + template-root `criteria.md`
-   (+ gold sample) + template-root `memory.md`. Read straight off disk by the substrate, never loaded onto the
-   runtime spec — the exact precedent of `node.schema.ts:385`. ⚠ `meta.schema.ts` is
-   `additionalProperties:false`, so this is an explicit schema extension (WS-B0), not a free-rider key.
+1. **Template-level runway, same syntax as the node level**: `meta.json` `optimize.{measure, criteria}` +
+   template-root `criteria.md` (+ gold sample) + template-root `memory.md`. Read straight off disk by the
+   substrate, never loaded onto the runtime spec — the exact precedent of `node.schema.ts:385`. ⚠
+   `meta.schema.ts` is `additionalProperties:false`, so this is an explicit schema extension (WS-B0), not a
+   free-rider key. The HARD slot is **expected-sparse** at run level and the per-node responsibility roster
+   is **auto-composed from each `node.json`**, never hand-synced (§2 — user call 2026-07-10).
 2. **Blame files are per-run dispatch artifacts**: `<runDir>/optimize/blame/<node>.md`. Born in the run dir —
    born archived, immutable, no relocation step ever. They are **NOT lifecycle objects**: no status machine,
-   no `sig`/dedup, no reopen (reconciliation vs the issue ledger: §7, §9).
+   no `sig`/dedup, no reopen (reconciliation vs the issue ledger: §7, §9). And they are **PROSE, not schema**
+   — the consumer is the node-triage LLM; the only machine-read surface is the run summary's fenced tail (§3).
 3. **The node-loop delta is ONE seam**: node triage ingests the blame file as one extra context section.
    Nothing else in triage/fix/verify/adopt changes.
 4. **Cross-run blame recurrence rides template-root `memory.md`** via memorize + a recurrence read — no new
    store. The node-issue ledger's hash recurrence is a different grain and stays untouched (§7).
-5. **`piflowctl optimize blame <rundir>`** is a first-class verb, sibling of `triage`; idempotent (re-running
-   rewrites that run's `blame/` dir); `--latest` resolves the newest run.
+5. **`piflowctl optimize blame <run>`** is a first-class verb, sibling of `triage`, with a PLAIN argument:
+   `<run>` accepts a run dir path OR a run id/name (resolved through the product's runs, the same lookup the
+   other observe verbs ride); idempotent (re-running rewrites that run's `blame/` dir); `--latest` resolves
+   the newest run.
 6. **Two ordering modes** (§5), selected mechanically from the blame output, overridable by flag.
 7. **Adopt gains train semantics** (§6): blame-ordered landing, a staleness policy, bounce-to-open, branch GC.
 8. A template-side "current blame" pointer file is **deferred** — "latest" is resolve-at-read (`--latest`);
    add a pointer only when a skill needs a hardcodable path.
 
-## 2. The template-level runway (phase 0 — nothing runs without it)
+## 2. The template-level runway (phase 0 — same syntax as a node, different weight distribution)
 
-- **HARD** — `meta.json` `optimize.measure` op[]: deterministic checks over the run's FINAL artifact plus the
-  run-digest's cross-node facts (failed/truncated nodes, retries, token/cost vs budget). Folded to
-  `<runDir>/optimize/blame/measure.json` by a run-level twin of `runNodeMeasure`. Reuses the op/check grammar;
-  runs POST-run over the finished run; blocks nothing (substrate law — never a profile gate).
-- **SOFT** — template-root `criteria.md` + gold, referenced from `meta.json` `optimize.criteria`. The blame
-  judge's oracle: "would a senior ship this end product." JUDGE-facing only — never injected into any node's
-  runtime prompt, never shown to fixers (§11 Goodhart fence).
-- **Pre-flight** — the measurement-runway gate applies verbatim at this level: COVERAGE (both measures exist) ·
-  WIRING (blame reads them) · VALIDITY (each fails on a wrong run — test-the-measure) · GROUNDING (observable
-  output only). A run-level judge with no hard floor under it blames vibes. Authoring the template runway is
-  the first workstream, and "the runway isn't ready" is a legitimate blame-pass verdict.
+One grammar, two levels: the template's runway uses the EXACT `optimize.{measure, criteria}` structure a node
+uses. But the weight flips at run level:
 
-## 3. The blame file — the dispatch contract
+- **HARD — the slot exists, and is EXPECTED-SPARSE.** `meta.json` `optimize.measure` op[] over the run's
+  FINAL artifact, folded to `<runDir>/optimize/blame/measure.json` (same op/check grammar; POST-run; blocks
+  nothing — never a profile gate). Author one only when the product has a REAL end-to-end invariant (an e2e
+  build/smoke of the final artifact); most templates will leave it empty — a run-level deterministic check is
+  usually too general to surface anything real, and forcing one manufactures noise. The run's mechanical
+  floor does NOT depend on this slot: the evidence pack (§4) already aggregates every node's OWN hard report
+  plus the digest — the node-level floors ARE the run-level floor.
+- **SOFT — the load-bearing half.** Template-root `criteria.md` + gold, referenced from `meta.json`
+  `optimize.criteria`: the FINAL-ARTIFACT bar, in prose — final artifacts vary the most across workflows, so
+  this is where the per-template variety lives, and it is where the blame guidance lives ("judge the end
+  product a user actually receives; attribute what falls short"). JUDGE-facing only — never injected into any
+  node's runtime prompt, never shown to fixers (§11 Goodhart fence).
+- **The responsibility roster is COMPOSED, never authored.** "What is each node responsible for" is the map
+  the judge attributes against — and it is NOT hand-written into `criteria.md`. The blame verb auto-composes
+  it at judge time from each node's OWN declarations (`node.json`: id · description · `contract` produces/
+  owns, i.e. the same fields the DAG already compiles from), so editing a node updates the roster on the next
+  pass with zero manual sync — resolve-at-read, the same pointer-not-copy law as the memory-leg join.
+  `criteria.md` stays purely the final-artifact bar; the roster rides beside it in the judge context.
+- **Pre-flight (adjusted for the weight flip)** — the measurement-runway gate applies with one amendment:
+  COVERAGE at run level requires the SOFT criteria (+ gold); the hard op[] is OPTIONAL and its absence never
+  halts the loop. WIRING · VALIDITY · GROUNDING apply to whatever exists — in particular the soft criteria
+  must DISCRIMINATE (fail a known-bad final artifact), and a hard op that is authored must pass
+  test-the-measure. "The runway isn't ready" remains a legitimate blame-pass verdict.
 
-`<runDir>/optimize/blame/<node>.md`, one per blamed node, strict minimal frontmatter (parse/render codec pair
-mirroring `issues.ts` style, but a deliberately different species — a parser that sees a `status:` key REJECTS
-the file):
+## 3. The blame file — a prose dispatch, not a schema
+
+`<runDir>/optimize/blame/<node>.md`, one per blamed node. **Plain markdown, no frontmatter, no codec.** The
+only consumers are the node's triage agent (an LLM) and a human — so the file is prose-first by design:
+structure taxes a reasoning consumer, and the schema boundary belongs at the LAST parser, not on an
+intermediate another model thinks over. What matters is that the judge TELLS the mistakes it saw viewing the
+final artifact from the global standpoint, in the node's direction. Convention, not schema:
 
 ```markdown
----
-run: <run id>
-node: <node id>          # the OWNING node (where the fix belongs)
-severity: critical|high|medium|low   # max over attributions; maps to lane priority
----
-## Attributions
-- defect: <one-line end-to-end defect, observable>
-  observedAt: <node where it SURFACED — may differ from the owner>
-  evidence: <artifact path(s) · measure key(s) · the failure-onset chain hop(s)>
-  role: decision|execution   # blame the node that DECIDED, not the one that executed (CAR)
-  jointWith: <other node id(s), optional>   # joint causes allowed — never forced-single ownership
-  recurrence: <optional, from memory.md — e.g. "3rd consecutive generation">
-## Context brief
-<~30 lines for the node's triage: what surfaced downstream, why this node owns it, what the
-propagated evidence looks like. Attribution context, NOT fix instructions.>
+# blame — <node> @ <run id>
+
+<Prose, ~30–60 lines: what is wrong with the FINAL artifact, which part of that this node owns
+and why, where the defect SURFACED vs where it originated, and what the propagated evidence
+looks like. The run-level judge speaking to this node's triage. Attribution context, never fix
+instructions. Evidence pointers (artifact paths · measure keys · failure-onset hops) cited
+inline where each claim is made.>
 ```
 
-Contract rules (the bar, observable):
-- Every attribution MUST cite evidence a reader can open: an artifact path, a measure key, or a hop of the
-  digest's failure-onset chain. An attribution whose only evidence is "the defect is visible in this node's
-  output" FAILS the blame self-check — that is the manifestation trap (§12: AgentTrace, 47.4% of LLM
-  attributions pick the surfacing node, not the root).
-- `role` biases the owner to the DECISION point over the execution point (§12: CAR — "the step that executes
-  the harmful action is usually not the step that decided on it"). Our input-cause gate, now recorded.
-- One defect MAY appear in two nodes' files with `jointWith` cross-refs. Joint causes are real; forcing a
-  single owner corrupts the schedule (§12: CAR's Shapley framing — we take the qualitative rule, not the
-  Monte-Carlo machinery).
-- A defect the judge cannot attribute with evidence goes to the run summary as `unattributed` (an ARCH
-  signal), never onto a node "to have an owner."
-- Blame files carry evidence and defect descriptions, NEVER the template `criteria.md` content — the same
-  Goodhart fence as issues never carrying the gate rubric (`optimize-verification-loop.md` §8).
-- Downstream, a blame file is a **HYPOTHESIS, not an instruction**: the owning node's triage must corroborate
+The discipline that an earlier draft encoded as fields is JUDGE discipline — enforced by the blame prompt's
+self-check (§4), not by a parser:
+- every claim cites OPENABLE evidence inline (a path, a measure key, an onset hop). "The defect is visible in
+  this node's output" alone FAILS — that is the manifestation trap (§12: AgentTrace, 47.4% of LLM
+  attributions pick the surfacing node, not the root);
+- blame the DECISION point over the execution point (§12: CAR — "the step that executes the harmful action is
+  usually not the step that decided on it"); when causes are genuinely joint, say so in BOTH nodes' files,
+  cross-referenced in prose — never force a single owner;
+- recurrence context from `memory.md` is stated where relevant ("3rd consecutive generation");
+- a defect the judge cannot attribute WITH evidence goes to the run summary as unattributed (an ARCH signal),
+  never onto a node "to have an owner";
+- blame files carry evidence and defect descriptions, NEVER the template `criteria.md` content — the same
+  Goodhart fence as issues never carrying the gate rubric (`optimize-verification-loop.md` §8);
+- downstream, a blame file is a **HYPOTHESIS, not an instruction**: the owning node's triage must corroborate
   it against node-local evidence before any issue exists, and may CONTEST it (§4.1).
 
-Alongside the per-node files: `<runDir>/optimize/blame/blame.md` — the run-level summary (mode decision §5,
-unattributed defects, the one-glance surface for the overlord/human).
+**The run summary is the ONE parser boundary.** `<runDir>/optimize/blame/blame.md` — the run-level prose
+summary (the one-glance surface for the overlord/human: the global verdict, unattributed defects, the mode
+decision) ending in a small fenced JSON tail carrying the ONLY machine-read fields:
+
+```json
+{ "blamed": [{ "node": "...", "severity": "high", "observedAt": ["..."] }],
+  "edges": [["owner", "observedAt"]], "unattributed": ["..."] }
+```
+
+— exactly what the scheduler (§5) and lane priority need, nothing more. Per-node blame files are NEVER
+machine-parsed; nothing in the codebase reads them but the triage prompt assembly (verbatim inject) and eyes.
 
 ## 4. The verb — `piflowctl optimize blame <rundir>`
 
@@ -121,14 +143,16 @@ Pipeline (evidence-first, judge-second — the verdict-ladder rationing applied 
    `projectRunDigest` / file-flow onset walk, `telemetry.ts:250-291`) + the compiled DAG's data-flow edges.
    The judge CONSUMES the backward walk; it does not re-derive causality from vibes.
 3. **Judge (model, blind).** Fresh out-of-band context; inputs = evidence pack + per-node measure reports +
-   template `criteria.md`/gold + template-root `memory.md` (recurrence context). Proposes attributions per §3.
-   Judges artifacts and measures — never a node's self-narrated success (§12: judge-gaming; the overlord's
-   "verify, don't trust" law applied to attribution).
+   template `criteria.md`/gold + the AUTO-COMPOSED responsibility roster (§2) + template-root `memory.md`
+   (recurrence context). Proposes attributions per §3's judge discipline. Judges artifacts and measures —
+   never a node's self-narrated success (§12: judge-gaming; the overlord's "verify, don't trust" law applied
+   to attribution).
 4. **Verify round (model, one re-check).** A single-pass judge is measurably worse than judge+re-check (§12:
    RAFFLES). One round: for each proposed attribution, confirm the cited evidence actually supports the owner
    (open the artifact/measure/chain hop; manifestation-trap check; decision-vs-execution check). Drop or
    downgrade what fails; do NOT iterate further (rationing — replay is the real falsifier, §8).
-5. **Write.** Blame files + `blame.md` summary + events. Idempotent rewrite of `blame/`.
+5. **Write.** Prose blame files + the `blame.md` summary (prose + the fenced tail) + events. Idempotent
+   rewrite of `blame/`.
 
 Model routing: the judge/verify turns run on the strong judge tier (product-injected, same seam as the gate
 agent); the measure steps are code.
@@ -163,8 +187,9 @@ for it:
 
 ## 5. The two ordering modes — and the mode is DERIVED, not guessed
 
-Build the **blame graph**: every attribution with `owner ≠ observedAt` adds an edge `owner → observedAt`
-over the blamed nodes (direction: fixes flow downstream).
+Build the **blame graph** from the summary tail's `edges` (§3 — the one parsed surface): every attribution
+with `owner ≠ observedAt` is an edge `owner → observedAt` over the blamed nodes (direction: fixes flow
+downstream).
 
 - **MODE T — TOPOLOGICAL (chains).** Any connected component with edges is scheduled upstream-first, exactly
   per `optimization-ordering.md`: fix the owner, adopt, **propagate** (`run --from <owner> --until <next>`),
@@ -257,7 +282,8 @@ overlord skill's on-ramp — it already owns the manual version of this loop), a
 - **Blame ≠ issue.** | | issue | blame | — durable template-side lifecycle work item with status machine +
   identity/dedup + attempts, vs. run-scoped immutable attribution dispatch with neither. A blame file never
   transitions; it is consumed and superseded by the next run's blame. Readers of the substrate plan should
-  expect the DIFFERENCE, and the codec enforces it (a `status:` key is a parse error).
+  expect the DIFFERENCE, and the fence is structural: per-node blame files have no parser at all (only the
+  summary's fenced tail is machine-read), so there is nothing to mistake for a lifecycle object.
 - **Pareto multi-candidate fixing** (`optimize-verification-loop.md` SOTA item 2, deferred) is orthogonal: it
   proposes several candidates for ONE issue and gates a front; the train still receives exactly one winning
   candidate per issue. Lane linearity is unaffected.
@@ -272,10 +298,10 @@ overlord skill's on-ramp — it already owns the manual version of this loop), a
 
 | WS | what | acceptance (observable) |
 |---|---|---|
-| B0 | `metaSchema` `optimize` extension (mirrors `node.schema.ts:385` precedent) + template runway authoring contract (criteria.md/gold layout, pre-flight extension to the overlord reference) | `loadTemplate` green on a template carrying the block; pre-flight names run-level gaps on a template without one |
-| B1 | run-level hard measure: `meta.json` ops + digest fold → `blame/measure.json` | deterministic; unit + mutation tests on the fold (a wrong artifact FAILS it — test-the-measure) |
-| B2 | blame judge + verify round + blame-file codec (parse/render pair; `status:` rejected) | codec round-trips byte-stable; judge quality proven by EVAL, not unit: a fixture run with a planted upstream fault must blame the decision node (agent-level), and the manifestation-trap self-check must fire on a bait case |
-| B3 | CLI verb `optimize blame <rundir> [--latest] [--mode]` + events + `blame.md` summary | verb idempotent; re-run rewrites `blame/`; events observable on `--watch` |
+| B0 | `metaSchema` `optimize` extension (mirrors `node.schema.ts:385` precedent) + template runway authoring contract (criteria.md/gold layout; hard slot optional per §2) + pre-flight extension to the overlord reference | `loadTemplate` green on a template carrying the block; pre-flight names run-level gaps on a template without SOFT criteria, and passes on a soft-only template (empty hard slot never halts) |
+| B1 | run-level hard measure: `meta.json` ops + digest fold → `blame/measure.json` (expected-sparse — build the seam, not a measure zoo) | deterministic; unit + mutation tests on the fold (a wrong artifact FAILS it — test-the-measure); an empty op[] folds to a valid empty report |
+| B2 | blame judge + verify round + the roster composition (pure fn off each `node.json`: id · description · produces/owns) + prose blame writers + the summary fenced-tail emit/parse (the ONLY parsed surface) | tail round-trips; a `node.json` edit changes the composed roster with no other change (no manual sync); judge quality proven by EVAL, not unit: a fixture run with a planted upstream fault must blame the decision node (agent-level), and the manifestation-trap self-check must fire on a bait case |
+| B3 | CLI verb `optimize blame <run>` (`<run>` = run dir OR run id/name, plain) `[--latest] [--mode]` + events | verb idempotent; re-run rewrites `blame/`; both arg forms resolve to the same run; events observable on `--watch` |
 | B4 | triage ingest seam (§4.1): `buildJudgePrompt` gains `<blame_context>` + the **piflow-triage SKILL.md update** (corroborate-locally · dissent path · global-brief rules — reconciled with the skill's current hand-adjusted text) + the dissent trace plumbing | triage output unchanged when no blame file exists; with one, the minted issue's brief cites the propagated evidence AND defaults `verify: full`; BAIT EVAL: a planted WRONG attribution is CONTESTED with evidence, not minted |
 | B5 | adopt train: land-order + staleness policy (pure fn, table-tested) + `stale-base` dropback + branch GC + wait-for-order rule | policy table has a failing test per row; bounce lands the issue at `open` with the dropback recorded; adopted branches are gone, escalated ones remain |
 | B6 | blame-memorize into template-root `memory.md` + recurrence read into the next judge (confirm `deriveRecurrence` scope covers template-root lessons; extend if per-node-only) | a second blame pass over a re-observed defect stamps `recurrence:`; memory edits go through the memory-slices contract |
@@ -299,8 +325,8 @@ fixture, live generation) — never coverage theater.
 - **Attribution echo chamber** (node triage rubber-stamping whatever blame asserts — upstream context is
   authoritative-sounding by construction): the §4.1 corroborate-locally rule + the dissent path + the WS-B4
   bait eval (a wrong attribution must be contested, and the eval fails if it is minted).
-- **Species confusion** (blame read as issue): loud §9 table, distinct dir, codec-enforced absence of
-  lifecycle keys.
+- **Species confusion** (blame read as issue): loud §9 table, distinct dir, and no per-node blame parser at
+  all — only the summary tail is machine-read, so nothing can misread a blame file as a lifecycle object.
 - **Stale blame consumed by a pinned-run triage**: impossible by construction — triage reads blame from the
   SAME run dir it triages; there is no "latest" copy to go stale.
 
@@ -324,7 +350,8 @@ fixture, live generation) — never coverage theater.
 
 ## Self-check (for whoever implements or extends this)
 
-- [ ] Blame files live ONLY under `<runDir>/optimize/blame/` — no template-side copy, no `status:` key anywhere.
+- [ ] Blame files live ONLY under `<runDir>/optimize/blame/` — no template-side copy, no frontmatter/schema;
+      the summary's fenced tail is the ONLY machine-read surface.
 - [ ] Every attribution in a shipped blame file cites openable evidence; the manifestation-trap check fired.
 - [ ] The node loop changed at exactly ONE seam (triage context ingest) — fix/verify/adopt untouched by blame.
 - [ ] Every blame-sourced issue was corroborated by node-local evidence; every uncorroborated attribution left
