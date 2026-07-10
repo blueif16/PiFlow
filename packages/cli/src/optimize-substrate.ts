@@ -24,6 +24,7 @@ import {
   runSubstrateMeasure, runSubstrateJudge, fixIssue, fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
   verifyStage, scanRecords, adoptSubstrateManifest, listIssues, renderSubstrateEvent, nodeHasCriteria,
   runBlameMeasure, runBlameJudge, blameDir, blameSummaryPath, parseBlameSummaryTail, deriveNodeOrder,
+  memorizeBlame,
   type SubstrateEvent, type FixIssueResult, type IssueRecord, type Status, type SubstrateManifest,
   type SubstrateManifestRecord, type VerifyTier, type BlameSummary,
 } from '@piflow/core';
@@ -448,8 +449,10 @@ export interface SubstrateCliDeps {
   blameMeasure?: typeof runBlameMeasure;
   /** the blame judge + verify round (WS-B2). Default `runBlameJudge`. */
   blameJudge?: typeof runBlameJudge;
-  /** blame-memorize into template-root `memory.md` (WS-B6 — NOT YET BUILT). Default `undefined`: the verb works
-   *  end-to-end before that lane ships; B6 sets the real default import here, decoupling the two lanes. */
+  /** blame-memorize into template-root `memory.md` (WS-B6). Default `(rd, opts) => memorizeBlame(rd, opts.templateDir)`
+   *  — the CLI's `{workspace, summary}` fields are surplus to the core fn (it re-reads the summary off disk
+   *    itself, the same fail-closed law `runBlameJudge` holds), kept on this seam only so a test/future caller
+   *    can inject a richer memorizer without a signature change. */
   blameMemorize?: (runDir: string, opts: { templateDir: string; workspace: string; summary: BlameSummary }) => Promise<unknown>;
 }
 
@@ -1000,7 +1003,7 @@ async function clearStaleBlameFiles(runDir: string): Promise<void> {
  *      `<node>.md` files + the parsed `blame.md` summary tail. Idempotent: stale `<node>.md` files from a PRIOR
  *      pass are cleared first (never on `--dry-run` — a preview writes/deletes nothing).
  *   4. blame-memorize (WS-B6, unless `--no-memorize`) — an ADVISORY step: `deps.blameMemorize` defaults to
- *      `undefined` (not yet wired), and any throw is caught + reported, never aborting a landed blame pass.
+ *      the real `memorizeBlame` (core), and any throw is caught + reported, never aborting a landed blame pass.
  *   5. print the blamed nodes (w/ severity), edges, unattributed count, files written, and an observe hint.
  * Resolution: an explicit `<run>` positional resolves directly (`resolveNodeRunDir`); `--latest` (or no
  * positional at all) resolves the template first (`--template` > single-workflow discovery), then the newest
@@ -1074,9 +1077,12 @@ export async function runSubstrateBlameCli(argv: string[], deps: SubstrateCliDep
   }
 
   // (4) blame-memorize (WS-B6) — advisory: a throw is reported and the blame pass still stands as landed.
-  if (a.memorize && deps.blameMemorize) {
+  // Default = the real core `memorizeBlame` (it re-derives the summary itself off `blame/blame.md`, the same
+  // file `result.summary` was just parsed from — `--no-memorize` is the only way to skip it).
+  if (a.memorize) {
+    const blameMemorize = deps.blameMemorize ?? ((rd, opts) => memorizeBlame(rd, opts.templateDir));
     try {
-      await deps.blameMemorize(runDir, { templateDir, workspace, summary: result.summary });
+      await blameMemorize(runDir, { templateDir, workspace, summary: result.summary });
     } catch (e) {
       printErr(`optimize blame: blame-memorize failed (advisory — the blame pass itself still landed): ${(e as Error).message}`);
     }

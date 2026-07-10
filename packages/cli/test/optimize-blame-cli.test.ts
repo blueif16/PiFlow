@@ -279,6 +279,61 @@ describe('runSubstrateBlameCli', () => {
     expect(called).toBe(false);
   });
 
+  it('DEFAULT (no injected blameMemorize): the REAL core memorizeBlame runs — template-root memory.md gets a lesson block (WS-B6 wiring)', async () => {
+    const dir = await tmp();
+    const templateDir = path.join(dir, 'template');
+    const runsHome = path.join(dir, 'runs');
+    const runDir = await seedRun(runsHome, 'r1', '2026-07-09T00:00:00Z');
+    const blameDirPath = path.join(runDir, 'optimize', 'blame');
+    await fs.mkdir(blameDirPath, { recursive: true });
+    await fs.mkdir(templateDir, { recursive: true });
+    const summary: BlameSummary = { blamed: [{ node: 'gameplay', severity: 'high', observedAt: ['gameplay'] }], edges: [], unattributed: [] };
+
+    await runSubstrateBlameCli(['r1'], {
+      resolveRunDir: () => runDir,
+      resolveScope: () => ({ templateDir, runsHome }),
+      measure: async () => okMeasure(),
+      blameMeasure: async () => okBlameMeasure(),
+      // simulate the REAL judge's write side-effect: the fenced tail + a per-node prose blame file —
+      // memorizeBlame reads BOTH straight off disk, it never trusts the returned `summary` object alone.
+      blameJudge: async () => {
+        await fs.writeFile(path.join(blameDirPath, 'blame.md'), `# summary\n\n\`\`\`json\n${JSON.stringify(summary)}\n\`\`\`\n`);
+        await fs.writeFile(path.join(blameDirPath, 'gameplay.md'), '# blame — gameplay @ r1\n\nThe combo counter drops silently mid-fight.\n');
+        return judged(summary);
+      },
+      print: () => {},
+      // NO blameMemorize injected — proves the CLI's DEFAULT falls back to the real `memorizeBlame` (core).
+    });
+
+    const body = await fs.readFile(path.join(templateDir, 'memory.md'), 'utf8');
+    expect(body).toMatch(/sig: blame:gameplay::/);
+    expect(body).toContain('recurrence: 1');
+  });
+
+  it('--no-memorize skips the REAL memorizeBlame too (no injection at all): no template-root memory.md is written', async () => {
+    const dir = await tmp();
+    const templateDir = path.join(dir, 'template');
+    const runsHome = path.join(dir, 'runs');
+    const runDir = await seedRun(runsHome, 'r1', '2026-07-09T00:00:00Z');
+    const blameDirPath = path.join(runDir, 'optimize', 'blame');
+    await fs.mkdir(blameDirPath, { recursive: true });
+    await fs.mkdir(templateDir, { recursive: true });
+
+    await runSubstrateBlameCli(['r1', '--no-memorize'], {
+      resolveRunDir: () => runDir,
+      resolveScope: () => ({ templateDir, runsHome }),
+      measure: async () => okMeasure(),
+      blameMeasure: async () => okBlameMeasure(),
+      blameJudge: async () => {
+        await fs.writeFile(path.join(blameDirPath, 'blame.md'), '# summary\n\n```json\n{"blamed":[],"edges":[],"unattributed":[]}\n```\n');
+        return judged(emptySummary);
+      },
+      print: () => {},
+    });
+
+    await expect(fs.access(path.join(templateDir, 'memory.md'))).rejects.toThrow();
+  });
+
   it('an UNRESOLVABLE template exits 2 cleanly (no thrown stack)', async () => {
     const errs: string[] = [];
     await expect(runSubstrateBlameCli(['--latest'], {

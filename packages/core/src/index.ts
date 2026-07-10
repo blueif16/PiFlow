@@ -591,3 +591,9 @@ export { composeRoster, renderRoster, parseBlameSummaryTail, renderBlameSummaryT
 export type {
   RosterEntry, BlameSummary, BlameEntry, BlameSeverity, BuildBlamePromptOpts, RunBlameJudgeOpts, RunBlameJudgeResult,
 } from './optimize/index.js';
+// WS-B6 — blame-memorize (docs/design/optimize-blame.md §7): distills a finished blame pass into
+// TEMPLATE-ROOT `memory.md` (the cross-run recurrence trail the blame judge's `<memory>` section reads).
+// Lifted to the root so the `optimize blame` CLI verb's default `deps.blameMemorize` wiring (packages/cli)
+// reaches it off the package's only public entry.
+export { memorizeBlame } from './optimize/index.js';
+export type { MemorizeBlameResult } from './optimize/index.js';

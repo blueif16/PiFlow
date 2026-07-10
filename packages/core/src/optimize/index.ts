@@ -156,3 +156,8 @@ export { parseBlameSummaryTail, renderBlameSummaryTail } from './blame/summary.j
 export type { BlameSummary, BlameEntry, BlameSeverity } from './blame/summary.js';
 export { buildBlamePrompt, runBlameJudge } from './blame/judge.js';
 export type { BuildBlamePromptOpts, RunBlameJudgeOpts, RunBlameJudgeResult } from './blame/judge.js';
+// WS-B6 — blame-memorize (§7): distills a finished blame pass into TEMPLATE-ROOT `memory.md` (the FIRST
+// automated writer of that file — node-level MEMORIZE only ever touches `nodes/<id>/memory.md`), so the NEXT
+// blame judge's `<memory>` section (judge.ts) carries cross-run recurrence context.
+export { memorizeBlame } from './blame/memorize.js';
+export type { MemorizeBlameResult } from './blame/memorize.js';
