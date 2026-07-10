@@ -37,6 +37,23 @@ distillation seam that appends per-node lessons to `memory.md` (`fillLessonProse
 root/prevention prose, model-injected), and `compactMemory` (compact.ts) is the ACE cap/retire pass that bounds
 that file — while `deriveRecurrence` (recurrence.ts) reads it back to flip a recurring LAPSE→SKILL in `triage`.
 `runLongHorizon` (long-horizon.ts) is the outer-loop STOP: the redesign-next-workflow seam beyond per-node fix.
+Above all of this sits **BLAME** (`optimize/blame/`, `docs/design/optimize-blame.md`): the run-level twin of the
+per-node loop, same `optimize.{measure,criteria}` grammar one level up, at template scope. `piflowctl optimize
+blame <run>` folds every node's hard measure (`runBlameMeasure` → `blame/measure.json`, expected-sparse) into an
+evidence pack, auto-composes a per-node responsibility roster off each `node.json` (`composeRoster` — never
+hand-synced), then runs a blind judge + one verify round (`buildBlamePrompt`/`runBlameJudge`) that writes prose
+`<node>.md` attribution files plus one parsed surface, `blame.md`'s fenced tail (`parseBlameSummaryTail`) — the
+ONLY machine-read output; per-node blame files are pure prose, never schema. That tail's `edges` derive the
+ordering mode (MODE T topological chains vs MODE P independent train lanes) the adopt train lands by. A blame
+file is a HYPOTHESIS, never an instruction: it reaches node `triage` as exactly one more context section
+(`<blame_context>`), which must corroborate it against NODE-LOCAL evidence before minting an issue, or record a
+dissent — never mint to be agreeable. `memorizeBlame` distills each attribution into template-root `memory.md`
+(run/blame grain, deliberately separate from the issue ledger's hash-recurrence grain) so the next judge sees
+`recurrence:` across generations. The adopt train (`substrate/train.ts`) gained land-order + staleness semantics
+to carry this at scale: `orderRecords` lands blame-upstream-first then severity-desc within a node, and
+`assessStaleness` classifies each staged record at land time (`baseSha==HEAD` land · disjoint-closure land+log ·
+closure-overlap re-prove-then-gate · conflict bounce) — a bounce walks the issue back to `open` with a
+`stale-base` dropback, never a silent skip.
 
 # Anchors
 SCORE
@@ -74,6 +91,16 @@ STREAM (`--fix --watch`)
 - `packages/core/src/optimize/events.ts:31` — `OptimizeEventSink` — the sink signature `(event: OptimizeEvent) => void`; the `--watch` UI subscribes to it
 - `packages/core/src/optimize/events.ts:37` — `renderOptimizeEvent` — one event → a human `--watch` line
 - `packages/core/src/optimize/driver.ts:170` — `safeEmit` — the driver's guarded emit point; wraps `onEvent` and re-emits the fixer's OPAQUE sub-trace as a `fixer-trace` event
+BLAME (`docs/design/optimize-blame.md` — the run-level attribution layer over this per-node loop)
+- `packages/core/src/optimize/blame/measure.ts:133` — `runBlameMeasure` — the run-level hard-measure fold (expected-sparse) → `blame/measure.json`
+- `packages/core/src/optimize/blame/roster.ts:61` — `composeRoster` — pure fn off each `node.json` (id · description · produces/owns) → the auto-composed responsibility roster, never hand-synced
+- `packages/core/src/optimize/blame/judge.ts:140` — `buildBlamePrompt` — assembles the evidence pack + roster + criteria/gold + `memory.md` recurrence into the blind judge's prompt
+- `packages/core/src/optimize/blame/judge.ts:244` — `runBlameJudge` — judge + one verify round → prose `<node>.md` blame files + the `blame.md` summary
+- `packages/core/src/optimize/blame/summary.ts:42` — `parseBlameSummaryTail` — the ONLY machine-read surface: `blame.md`'s fenced JSON tail (`blamed`/`edges`/`unattributed`) round-trips with `renderBlameSummaryTail`
+- `packages/core/src/optimize/blame/memorize.ts:65` — `memorizeBlame` — blame-memorize: distills each attribution into template-root `memory.md` (run/blame grain, separate from the issue ledger)
+- `packages/core/src/optimize/substrate/train.ts:51` — `assessStaleness` — pure fn over `(baseSha, HEAD, changedPaths, closure)` → `fresh | disjoint | overlap`, the adopt train's per-record land-time policy
+- `packages/core/src/optimize/substrate/train.ts:88` — `orderRecords` — blame-upstream-first, then severity-desc within a node; landing order ≠ completion order
+- `packages/cli/src/optimize-substrate.ts:1030` — `runSubstrateBlameCli` — the CLI verb: `piflowctl optimize blame <run> [--latest] [--mode topo|train]`
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the live binding (product oracle + fixer) is NOT in this repo — it is dynamic-imported from a game-omni-side module via `--binding` (validated only by a LIVE run, never CI) — so CORE does not fix the fixer's MODEL either; the product binding chooses it (game-omni runs the fixer as Claude Code on a deep-tier model). `criteria.ts`/`parseCriteria` + `events.ts` exist in the dir but are not load-bearing on the core path (criteria is a future SKILL signal; events is the `--watch` projection).
@@ -177,6 +204,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-rollout-enablement]]
 - [[playbook-skills-depth-over-budget]]
 - [[roadmap-bookkeeping-linear]]
+- [[run-level-blame-design]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
@@ -190,5 +218,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-09 · arc=28 commits · files=19 · lessons=42</sub>
+<sub>derived 2026-07-10 · arc=28 commits · files=19 · lessons=43</sub>
 <!-- okf:auto-end -->
