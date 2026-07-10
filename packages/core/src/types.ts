@@ -926,6 +926,14 @@ export interface RerouteSpec {
   evidence?: string[];
   /** The final clone's consequence — `'block'` (default) or its documented alias `'stop'` (design §2.4). */
   onFailure?: 'block' | 'stop';
+  /**
+   * The reroute EXISTENCE-GATE's pass-signal, when V's FIRST `io.produces` is NOT itself a pass/fail signal.
+   * A JUDGE writes its required artifact (`verdict.json`) on BOTH accept AND reject — the outcome lives in the
+   * CONTENT — so its mere existence is NOT a "prior attempt passed". This names a SEPARATE file V writes ONLY
+   * on PASS (e.g. `_judge/<producer>/pass.ok`): the gate stat()'s THIS (not `priorV[0]`), so a reject (no
+   * sentinel) actually re-runs the producer clone. MUST be one of V's `io.produces` (so it namespaces per
+   * attempt). Absent ⇒ the classic existence gate over V's first produced artifact (author-direct reroute). */
+  passSentinel?: string;
 }
 
 /**
@@ -939,7 +947,9 @@ export interface RerouteSpec {
  * runs exactly as before.
  */
 export interface RerouteGate {
-  /** The prior attempt's canonical verify artifact; its presence ⇒ the prior attempt PASSED ⇒ short-circuit. */
+  /** The prior attempt's PASS-SIGNAL file; its presence ⇒ the prior attempt PASSED ⇒ short-circuit. Usually
+   *  V's canonical verify artifact; for a judge (writes its artifact on BOTH outcomes) it is the accept-only
+   *  pass-sentinel (`RerouteSpec.passSentinel`) instead. */
   artifact: string;
   /** On a pass, COPY the passing artifact forward to these dests (the next downstream reads them). */
   copyTo: string[];

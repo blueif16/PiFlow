@@ -182,6 +182,11 @@ function expandNode(spec: WorkflowSpec, v: NodeIntent): { generated: NodeIntent[
     // (the forward edge the re-entry root reads, so the gate orders BEFORE the clones).
     const priorV = prevProduces.get(v.label) ?? vCanonical;
     const thisV = (v.io.produces ?? []).map(remap);
+    // The pass-SIGNAL: by default V's first produced artifact (existence ⇒ prior passed). When `passSentinel`
+    // is set (a judge writes its required artifact on BOTH outcomes), the signal is that accept-only file
+    // INSTEAD — indexed positionally so its per-attempt namespaced path tracks `prevProduces`. copyTo then
+    // carries ONLY the sentinel forward (so the NEXT gate finds it), never the verdict path.
+    const sentinelIdx = r.passSentinel ? (v.io.produces ?? []).indexOf(r.passSentinel) : -1;
     const gate: NodeIntent & { rerouteGate: RerouteGate } = {
       label: `${v.label}__r${i}__gate`,
       prompt: '', // never spawns pi
@@ -192,7 +197,10 @@ function expandNode(spec: WorkflowSpec, v: NodeIntent): { generated: NodeIntent[
         externalInputs: [...priorV], // a missing prior output is the gate's own concern, not a missing-producer error
         artifacts: [{ path: `${attemptDir}/gate.ok` }],
       },
-      rerouteGate: { artifact: priorV[0] ?? '', copyTo: thisV, skip: cloneIds },
+      rerouteGate:
+        sentinelIdx >= 0
+          ? { artifact: priorV[sentinelIdx] ?? '', copyTo: [thisV[sentinelIdx]].filter(Boolean), skip: cloneIds }
+          : { artifact: priorV[0] ?? '', copyTo: thisV, skip: cloneIds },
     };
     generated.push(gate, ...cloneNodes);
 

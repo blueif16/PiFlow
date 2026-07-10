@@ -8,16 +8,18 @@
 //
 //   1. RE-USES the SA-B lowering (`lowerGates([gate], producerId)`) — never reinvents the prompt/reroute math;
 //   2. INSERTS a real `<producer>__judge` NodeIntent — agentType:'judge', tier=judgeTier, prompt=the rubric,
-//      `io.reads` = the producer's produced artifacts, `io.produces` = a verdict artifact (so the
-//      reads⋈produces join orders it AFTER the producer);
-//   3. ATTACHES the producer-side `rerouteTo(producer, max)` op (the judge-fail loop) onto the producer's `op[]`;
+//      `io.reads` = the producer's produced artifacts, `io.produces` = a verdict artifact + an accept-only
+//      pass-sentinel (so the reads⋈produces join orders it AFTER the producer);
+//   3. SETS the judge's `reroute` FIELD (`{onFail:producer, max, evidence:[verdict], passSentinel}`) — the
+//      bounded judge-fail loop that `expandReroute` UNROLLS into a re-run of the producer at RUN time. (Not a
+//      producer-side op: that op was DEAD — nothing read it, and `expandReroute` only consumes `node.reroute`.)
 //   4. RE-POINTS the producer's downstream CONSUMERS to also depend on the judge (via `io.dependsOn`), so the
 //      judge GATES the hand-off — a consumer never runs before the verdict exists;
 //   5. GUARDS the design invariant: the judge tier MUST DIFFER from the producer's tier (no self-judging —
 //      self-verifiers false-accept per TeamBench). A same-tier judge is a loud `JudgeConfigError`.
 //
 // Runs at LOAD time (in `loadTemplate`, before the spec is returned) — NOT a workflow.json mutation. The
-// runner needs ZERO changes: the judge is a normal pi node and `rerouteTo` is an existing dispatched action.
+// runner needs ZERO changes: the judge is a normal pi node and the reroute is `expandReroute`'s existing unroll.
 //
 // FILE FENCE: additive; consumes gate-authoring.ts (`lowerGates`) + types.ts. Does NOT touch the runner,
 // the CLI, or index.ts.
@@ -26,7 +28,7 @@ import type { WorkflowSpec, NodeIntent } from '../../types.js';
 import { lowerGates } from '../gate-authoring.js';
 import type { GateAuthorSpec } from '../gate-authoring.js';
 import { slugify } from '../../dag.js';
-import { insertNodeAfter, rewireDownstream, attachRerouteLoop } from '../graph-rewrite.js';
+import { insertNodeAfter, rewireDownstream } from '../graph-rewrite.js';
 
 /** Thrown when a judge gate is unbuildable (the judge tier equals the producer tier). Loud, never silent. */
 export class JudgeConfigError extends Error {
@@ -41,14 +43,37 @@ function verdictPath(producerLabel: string): string {
   return `_judge/${producerLabel}/verdict.json`;
 }
 
+/** The accept-only PASS-SENTINEL a materialized judge writes ONLY when it accepts (the reroute existence
+ *  gate's signal — see `RerouteSpec.passSentinel`). One per producer, in the judge's verdict namespace. */
+function passPath(producerLabel: string): string {
+  return `_judge/${producerLabel}/pass.ok`;
+}
+
+/**
+ * The concrete OUTPUT-FILE contract appended to the judge prompt (the run-relative paths are only known at
+ * materialize time). Two files, one rule each — authored per agentic-prompt-design (observable, motivated):
+ * the verdict file exists on EVERY outcome (the re-run's evidence); the pass-sentinel exists ONLY on accept
+ * (its mere existence is what releases the workflow vs. re-running the producer — never create it on a fail).
+ */
+function judgeOutputContract(verdictFile: string, passSentinelFile: string): string {
+  return `
+
+## Output files (REQUIRED — the run reads these, not your chat)
+
+- ALWAYS write your full verdict JSON (the same object as the fenced block above) to \`${verdictFile}\`. This
+  file MUST exist on every outcome; on "fail" it MUST contain the actionable critique — it is the re-run's evidence.
+- ONLY when your verdict is "pass" (ACCEPT), ALSO create \`${passSentinelFile}\` (contents irrelevant — its
+  EXISTENCE is the accept signal). On "fail", do NOT create it: its absence is what re-runs the producer. Never
+  create it for a failing verdict.`;
+}
+
 /**
  * Build the materialized judge `NodeIntent` for one producer carrying a `judgeGate`.
- * REUSES `lowerGates` for the prompt + threshold (never reinvents the math). The caller wires consumers.
- *
- * @returns `{ judge, retryMax }` — the judge node to insert + the producer-side reroute retry budget the
- *   caller attaches via `attachRerouteLoop` (the shared graph-rewrite primitive).
+ * REUSES `lowerGates` for the prompt + threshold (never reinvents the math). The judge carries its OWN
+ * judge-fail loop as a `reroute` FIELD (consumed by `expandReroute` at run time); the caller only wires
+ * consumers. @returns the judge node to insert after the producer.
  */
-function buildJudge(producer: NodeIntent): { judge: NodeIntent; retryMax: number } {
+function buildJudge(producer: NodeIntent): NodeIntent {
   const gate = producer.judgeGate!;
   // GUARD the design invariant up front (a same-tier judge is forbidden — self-judging false-accepts).
   if (producer.tier !== undefined && producer.tier === gate.judgeTier) {
@@ -68,41 +93,59 @@ function buildJudge(producer: NodeIntent): { judge: NodeIntent; retryMax: number
   };
   const lowered = lowerGates([authored], producer.label);
   const jn = lowered.judgeNode!; // a judge gate always materializes a judgeNode (gate-authoring.ts)
-  // The lowered judge gate carries a `rerouteTo(producer, retryMax)` op; lift its budget — the caller
-  // re-builds the identical op via the shared `attachRerouteLoop` primitive (the producer-side judge-fail loop).
+  // The lowered judge gate carries a `rerouteTo(producer, retryMax)` op; lift ONLY its retry BUDGET — the
+  // judge-fail loop itself is expressed as the judge's `reroute` field below (what `expandReroute` consumes),
+  // not the lowered op (that op is dead: nothing at runtime reads a producer-side judge rerouteTo).
   const rerouteOp = lowered.ops.find((o) => (o.action as { kind?: string } | undefined)?.kind === 'rerouteTo')!;
   const retryMax = (rerouteOp.action as { kind: 'rerouteTo'; node: string; max: number }).max;
 
   const producedByProducer = producer.io.produces ?? [];
   const verdict = verdictPath(producer.label);
+  const passSentinel = passPath(producer.label);
 
   const judge: NodeIntent = {
     label: `${producer.label}__judge`,
-    prompt: jn.prompt,
+    // The reasoning/verdict contract (rubric + bar + verdict schema) from `lowerGates`, PLUS the concrete
+    // output-file contract only known here (the run-relative paths): the verdict file is written on BOTH
+    // outcomes (the re-run evidence); the pass-sentinel is created ONLY on accept (the gate's release signal).
+    prompt: `${jn.prompt}${judgeOutputContract(verdict, passSentinel)}`,
     agentType: 'judge',
     tier: jn.tier,
-    tools: {},
+    // INHERIT the producer's tools so the judge can WRITE its verdict + pass-sentinel (the fusion-judge
+    // precedent, fusion/expand.ts). Its sandbox jails writes to the verdict namespace regardless.
+    tools: { ...(producer.tools ?? {}) },
     phase: producer.phase,
     io: {
       // READ the producer's produced artifact(s) → the reads⋈produces join orders the judge AFTER the producer.
       reads: [...producedByProducer],
-      // PRODUCE a verdict artifact → a real output the downstream consumers gate on.
-      produces: [verdict],
+      // PRODUCE the verdict artifact FIRST (produces[0] — the downstream/evidence pointer), THEN the
+      // accept-only pass-sentinel. The sentinel is a `produces` entry so `expandReroute` namespaces it per
+      // attempt, but NOT a required artifact (below) — a REJECT legitimately writes no sentinel and must not block.
+      produces: [verdict, passSentinel],
       externalInputs: [],
       // Explicit dep on the producer too, so a producer with zero declared artifacts still orders correctly.
       // `dependsOn` resolves against SLUG ids (dag.ts), so reference the producer by its slug id.
       dependsOn: [slugify(producer.label, 0)],
+      // ONLY the verdict is REQUIRED — the pass-sentinel is conditional (accept-only), so it stays OUT of the
+      // contract (an artifact here would block the judge on every reject).
       artifacts: [{ path: verdict }],
       // The judge is a zero-artifact-gate-ish node: it MUST return a verdict (the runner enforces a return).
       returnMode: 'required',
     },
+    // BUG A + BUG B: the judge-fail loop lives HERE, on the judge (V), as a `reroute` field `expandReroute`
+    // consumes — NOT a dead producer-side op. `onFail:producer` unrolls `[producer … judge]` into a bounded
+    // producer re-run (the producer is a strict ancestor of the judge via the reads/dependsOn edge, so the
+    // ancestor-strict guard passes). `passSentinel` makes the existence gate stat the ACCEPT-only sentinel
+    // (not the always-written verdict), so a REJECT actually re-runs; `evidence:[verdict]` feeds the judge's
+    // critique to the re-entered producer clone.
+    reroute: { onFail: producer.label, max: retryMax, evidence: [verdict], passSentinel },
     sandbox: {
       // Read the run dir (where the producer's artifacts live); write only its own verdict namespace.
       read: producedByProducer.length ? [...producedByProducer] : [],
-      write: [verdict],
+      write: [verdict, passSentinel],
     },
   };
-  return { judge, retryMax };
+  return judge;
 }
 
 /**
@@ -125,22 +168,20 @@ export function materializeJudgeNodes(spec: WorkflowSpec): WorkflowSpec {
   let out = spec;
   for (const producerLabel of judgedProducers) {
     const producer = out.nodes.find((n) => n.label === producerLabel)!;
-    const { judge, retryMax } = buildJudge(producer);
+    const judge = buildJudge(producer);
 
     // (1) INSERT the materialized judge after the producer (its io.reads ⋈ produces orders it after).
     out = insertNodeAfter(out, producerLabel, judge);
 
-    // (2) The producer itself: strip the consumed `judgeGate` + ATTACH the producer-side reroute judge-fail
-    //     loop via the shared primitive (the identical op `lowerGates` emitted, rebuilt here).
+    // (2) The producer itself: just STRIP the consumed `judgeGate`. The judge-fail loop lives on the JUDGE's
+    //     `reroute` field (set in buildJudge), consumed by `expandReroute` at run time — the producer carries
+    //     NO reroute op (that op was dead: `expandReroute` reads only `node.reroute`, and nothing else read it).
     out = {
       ...out,
       nodes: out.nodes.map((n) => {
         if (n.label !== producerLabel) return n;
         const { judgeGate: _drop, ...rest } = n;
-        // Thread the judge's VERDICT artifact as the reroute EVIDENCE: on a judge-fail re-entry the producer
-        // reads `_judge/<producer>/verdict.json` to learn WHAT failed (mirrors the hand-authored verify nodes'
-        // `evidence:[…report…]`). Without it the re-entered producer is blind to the judge's critique.
-        return attachRerouteLoop(rest as NodeIntent, producerLabel, retryMax, [verdictPath(producerLabel)]);
+        return rest as NodeIntent;
       }),
     };
 

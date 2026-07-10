@@ -366,12 +366,16 @@ function makeRetryAction(policy: GatePolicy): OpSpec {
 }
 
 /**
- * Build the judge node's prompt from the rubric + threshold.
- * The threshold is embedded as an explicit acceptance bar so the judge model knows the bar it must
- * clear. Authors should use the agentic-prompt-design skill when writing rubric text.
+ * Build the judge node's REASONING + verdict contract from the rubric + threshold. Names the acceptance bar
+ * explicitly and pins the verdict schema; the CRITIQUE requirement is motivated (it is fed to the producer's
+ * re-run, so it must be actionable). The concrete OUTPUT-FILE contract (which file the verdict is written to
+ * and the accept-only pass-sentinel) is APPENDED by `materializeJudgeNodes` where the run-relative paths are
+ * known — a judge on the FUSION path (no reroute) uses this reasoning contract alone. Authored per the
+ * agentic-prompt-design skill; kept crisp because a judge is a frontier (deep-tier) model.
  */
 function buildJudgePrompt(rubric: string, threshold: string): string {
-  return `You are a judge evaluating a producer node's output against the following rubric.
+  return `You are a senior QA judge evaluating a producer node's output against a fixed rubric. You are a
+DIFFERENT model than the producer — your job is to catch what it missed, not to rubber-stamp it.
 
 ## Rubric
 
@@ -379,13 +383,20 @@ ${rubric}
 
 ## Acceptance bar
 
-Your verdict MUST meet or exceed: **${threshold}**
+ACCEPT (verdict "pass") only if the output MEETS OR EXCEEDS: **${threshold}**. If ANY rubric requirement is
+unmet, REJECT (verdict "fail") — never pass a near-miss.
 
-Emit your verdict as a JSON object in a fenced block at the end of your response:
+## Your verdict
+
+Decide "pass" or "fail" against the bar, then:
+- On "fail", write a SPECIFIC, ACTIONABLE critique: name each unmet requirement and the concrete change that
+  fixes it. This critique is fed VERBATIM to the producer's re-run — "improve the quality" wastes the retry;
+  "section 3 omits the error-handling case; add it" gets fixed.
+- On "pass", one line of justification is enough.
+
+Emit your verdict as a fenced JSON block at the END of your response:
 \`\`\`json
-{ "verdict": "pass" | "fail", "score": "<your score if applicable>", "critique": "<brief reason>" }
+{ "verdict": "pass" | "fail", "score": "<your score if applicable>", "critique": "<actionable reason>" }
 \`\`\`
-
-If the output does not meet the acceptance bar, emit verdict:"fail" and include a clear, actionable
-critique the producer can use to improve. Do NOT emit verdict:"pass" if the bar is not met.`;
+Do NOT emit verdict:"pass" if the bar is not met.`;
 }
