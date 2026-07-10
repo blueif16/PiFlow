@@ -114,6 +114,13 @@ export type {
 export { renderSubstrateEvent, safeEmit as safeEmitSubstrate } from './substrate/events.js';
 export type { SubstrateEvent, SubstrateEventSink } from './substrate/events.js';
 
+// The adopt TRAIN's PURE policy (docs/design/optimize-blame.md §6, WS-B5) — the fs/git-free brain
+// `adoptSubstrateManifest` consults: the per-record staleness VERDICT (conservative-on-missing-evidence), the
+// deterministic landing ORDER (completion order never dictates landing order), and the blame graph's
+// upstream-first node order (cycle-safe Kahn). Table-tested in isolation from the impure land.
+export { assessStaleness, pathInClosure, orderRecords, deriveNodeOrder } from './substrate/train.js';
+export type { StalenessVerdict, AssessStalenessInput, OrderableRecord } from './substrate/train.js';
+
 // The OUTER retry loop (docs/design/optimize-verification-loop.md §8) — the bounded, diversifying loop that
 // CONSUMES the gate's soft-gate drop-back: fresh fixer per attempt (own candidate dir + prior-drop-back
 // context, never the rubric), a triple cap (attempts · wall · token), keep-best + a closed escalation menu on

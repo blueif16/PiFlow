@@ -352,6 +352,30 @@ describe('runSubstrateAdoptCli — adopt by --node/--issue resolves staged recor
     expect(lines.join('\n')).toMatch(/1 issue\(s\) landed/);
   });
 
+  it('WS-B5: default threads gcBranches:true + runDir=parentRunDir; --no-gc threads gcBranches:false', async () => {
+    const dir = await tmp();
+    const runsHome = path.join(dir, 'runs');
+    const parent = await seedRun(runsHome, 'tS2', { node: 'gameplay', startedAt: '2026-07-06T00:00:00Z', triaged: true });
+    await seedRecord(parent, 'gameplay', 'soggy-crust', { decision: 'staged', candidateSha: 'cand-1' });
+
+    let defOpts: Parameters<NonNullable<Parameters<typeof runSubstrateAdoptCli>[1]['adoptManifest']>>[1] | undefined;
+    await runSubstrateAdoptCli(['--node', 'gameplay'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      adoptManifest: async (_m, opts) => { defOpts = opts; return { adopted: [], skipped: [] }; },
+      print: () => {},
+    });
+    expect(defOpts?.gcBranches).toBe(true);
+    expect(defOpts?.runDir).toBe(parent);
+
+    let noGcOpts: typeof defOpts;
+    await runSubstrateAdoptCli(['--node', 'gameplay', '--no-gc'], {
+      resolveScope: () => scope(path.join(dir, 'template'), runsHome),
+      adoptManifest: async (_m, opts) => { noGcOpts = opts; return { adopted: [], skipped: [] }; },
+      print: () => {},
+    });
+    expect(noGcOpts?.gcBranches).toBe(false);
+  });
+
   it('--node with NO --issue adopts ALL staged records (a discarded record is not handed to adopt)', async () => {
     const dir = await tmp();
     const runsHome = path.join(dir, 'runs');

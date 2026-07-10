@@ -564,6 +564,9 @@ export {
   fixIssue, verifyStage, adoptSubstrateManifest, readSubstrateManifest, scanRecords, issueLifecycleDir,
   nodeHasCriteria, renderSubstrateEvent, UNPROVEN_BY_RUN,
   fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
+  // The adopt TRAIN's pure policy (WS-B5) — the staleness verdict + landing order + blame node order the
+  // `optimize adopt` CLI needs off the package's only public entry (deriveNodeOrder folds the blame tail).
+  assessStaleness, pathInClosure, orderRecords, deriveNodeOrder,
 } from './optimize/index.js';
 export type {
   Issue, Severity, Status, Reason, VerifyTier, Attempt, IssueRecord, ListIssuesOpts,
@@ -571,6 +574,7 @@ export type {
   FixIssueOpts, FixIssueResult, VerifyStageOpts, VerifyStageResult, SubstrateManifest, SubstrateManifestRecord,
   AdoptSubstrateManifestOpts, AdoptSubstrateManifestResult, SubstrateEvent, SubstrateEventSink,
   FixWithRetriesOpts, FixWithRetriesResult, RetryAttemptRecord, RetryEscalationPacket, RetryStopReason, RetryContext,
+  StalenessVerdict, AssessStalenessInput, OrderableRecord,
 } from './optimize/index.js';
 
 // The run-level BLAME layer (docs/design/optimize-blame.md, WS-B1) — the ONE level up twin of the OPTIMIZE

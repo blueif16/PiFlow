@@ -23,7 +23,7 @@ import { promises as fs } from 'node:fs';
 import {
   runSubstrateMeasure, runSubstrateJudge, fixIssue, fixIssueWithRetries, makeConsecutiveExhaustedBreaker,
   verifyStage, scanRecords, adoptSubstrateManifest, listIssues, renderSubstrateEvent, nodeHasCriteria,
-  runBlameMeasure, runBlameJudge, blameDir,
+  runBlameMeasure, runBlameJudge, blameDir, blameSummaryPath, parseBlameSummaryTail, deriveNodeOrder,
   type SubstrateEvent, type FixIssueResult, type IssueRecord, type Status, type SubstrateManifest,
   type SubstrateManifestRecord, type VerifyTier, type BlameSummary,
 } from '@piflow/core';
@@ -312,6 +312,9 @@ export interface SubstrateAdoptArgs {
   issue?: string;
   template?: string;
   backupDir?: string;
+  /** WS-B5 TRAIN: `--no-gc` ⇒ do NOT delete the throwaway `optimize/<node>/<issue>/*` branches after a land
+   *  (default is to GC them; the landed cherry-pick sha in the attempt is the durable record). */
+  noGc?: boolean;
   watch: boolean;
   watchJson: boolean;
 }
@@ -326,6 +329,7 @@ export function parseSubstrateAdoptArgs(argv: string[]): SubstrateAdoptArgs {
     else if (k === '--issue') out.issue = argv[++i];
     else if (k === '--template') out.template = argv[++i];
     else if (k === '--backup-dir') out.backupDir = argv[++i];
+    else if (k === '--no-gc') out.noGc = true;
     else if (k === '--watch') out.watch = true;
     else if (k === '--watch-json') { out.watch = true; out.watchJson = true; }
   }
@@ -890,8 +894,17 @@ export async function runSubstrateAdoptCli(argv: string[], deps: SubstrateCliDep
       print(`optimize adopt: no staged record${a.issue ? ` "${a.issue}"` : ''} to land for node "${node}".`);
       return;
     }
+    // WS-B5 TRAIN: land upstream-first using the run's blame graph when present. BEST-EFFORT — a run with no
+    // blame summary (or a malformed tail) degrades to the default node/issue-asc landing order (any throw ignored).
+    let nodeOrder: string[] | undefined;
+    try {
+      nodeOrder = deriveNodeOrder(parseBlameSummaryTail(await fs.readFile(blameSummaryPath(parentRunDir), 'utf8')));
+    } catch { /* no readable blame summary — default order */ }
     const result = await adopt({ records }, {
       templateDir,
+      runDir: parentRunDir,
+      gcBranches: !a.noGc,
+      ...(nodeOrder ? { nodeOrder } : {}),
       ...(a.backupDir ? { backupDir: path.resolve(cwd, a.backupDir) } : {}),
       ...(onEvent ? { onEvent } : {}),
     });
