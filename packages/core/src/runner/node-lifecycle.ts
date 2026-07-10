@@ -66,6 +66,7 @@ import {
 } from './env-staging.js';
 import type { RunContext } from './run-context.js';
 import { readHostFile, stageHostPathIntoSandbox } from './run-context.js';
+import { runInlineCheckpoint } from './inline-checkpoint.js';
 
 /**
  * (G12 — M4) A per-attempt OVERRIDE for an ESCALATION/CONSULT re-run: prepend the verified-evidence
@@ -920,6 +921,27 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     if (skillMissing) issues.push(skillMissing);
     if (parsed?.issues?.length) issues.push(...parsed.issues);
 
+    // (P3 · MUST-2 — INLINE HITL GATE) A producer with an inline human gate ran its MODEL above; PAUSE for a
+    // human NOW — after the verdict settles and issues are appended, but BEFORE the success POST-hooks /
+    // promote fire (so no success side-effect publishes for a node about to be rejected). Only gate an
+    // otherwise-`ok` node (deterministic gates already had their say). On REJECT set `st='error'` — NOT
+    // 'blocked': `classifyFailure` routes a `(blocked|gap)` whose reason text matches "missing input" to
+    // `halt` (no retry), and a free-text human reason could trip that; `error` classifies as a retryable
+    // quality-gap. The `st!=='ok'` capture below then feeds `ctx.failureSignals` (with `rejectReason`/
+    // `humanReject`), so `runNodeWithRetries` re-enters WARM and the reviewer's reason reaches the re-run via
+    // `consultPreamble`. `humanReject` also forces that re-attempt RETRY-ONLY (never escalate — H1).
+    let humanRejected = false;
+    let rejectReason: string | undefined;
+    if (st === 'ok' && node.gate?.checkpoint) {
+      const decision = await runInlineCheckpoint(ctx, node, node.gate.checkpoint);
+      if (!decision.accept) {
+        st = 'error';
+        humanRejected = true;
+        rejectReason = decision.reason;
+        issues.push(`human reviewer REJECTED the output${decision.reason ? `: ${decision.reason}` : ''}`);
+      }
+    }
+
     // POST hooks — fire with the node's outcome; a blocking failure downgrades the node to error.
     try {
       await runHooks(node.hooks?.post, hookCtx, { outcome: st === 'ok' ? 'success' : 'failure' });
@@ -979,6 +1001,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         exitCode: result.code,
         stderrTail: (result.stderr || '').slice(-400),
         parsedOk: parsed != null,
+        // (P3 · inline hitl) A human rejection at the inline gate — the reviewer's WHY (→ consultPreamble on
+        // the warm re-run) + the discriminator that forces the re-attempt retry-only (never escalate, H1).
+        ...(humanRejected ? { humanReject: true } : {}),
+        ...(rejectReason !== undefined ? { rejectReason } : {}),
       });
     }
 
@@ -1045,10 +1071,14 @@ export function summarizeGates(node: NodeSpec): GateSummary | undefined {
     }
     // transform ops are plumbing (derive/seed/merge/promote) — never a gate; skipped.
   }
+  // (H3) The human gate is visible whether it is a STANDALONE checkpoint node (`node.checkpoint`) or an
+  // INLINE post-model gate on a producer (`node.gate.checkpoint`, P3) — read BOTH so the inline gate stays
+  // legible in the GateSummary/observe path. A node carries at most one (the loader forbids both).
   let checkpoint: GateSummary['checkpoint'];
-  if (node.checkpoint) {
-    checkpoint = node.checkpoint.kind;
-    entries.push({ kind: 'human', label: node.checkpoint.kind, when: 'post' });
+  const humanCheckpoint = node.checkpoint ?? node.gate?.checkpoint;
+  if (humanCheckpoint) {
+    checkpoint = humanCheckpoint.kind;
+    entries.push({ kind: 'human', label: humanCheckpoint.kind, when: 'post' });
   }
   if (entries.length === 0) return undefined;
   return { entries, ...(checkpoint ? { checkpoint } : {}) };

@@ -76,6 +76,16 @@ export interface NodeSpec {
    */
   checkpoint?: CheckpointSpec;
   /**
+   * 6b. (P3 — INLINE HITL) An inline human gate on a PRODUCER node. UNLIKE `checkpoint` (which routes the
+   * node to the no-pi lane BEFORE any model runs), `gate.checkpoint` is INVISIBLE to that dispatch: the node
+   * runs its model normally, and only AFTER its verdict settles `ok` — before the success POST-hooks /
+   * promote — does the runner PAUSE for a human. On REJECT the producer re-runs through the retry engine
+   * (default warm), carrying the reviewer's reason. `policy` is the hitl GatePolicy (reject budget/session).
+   * Additive: a node with no `gate` behaves exactly as before. Authored via a `hitl` gate entry (fanned by
+   * the loader), never hand-written in node.json. See `NodeGate`.
+   */
+  gate?: NodeGate;
+  /**
    * 7. (G12 — M3) When present, this is a GENERATED reroute existence-gate node: it spawns NO `pi`, stat()s
    * the prior attempt's verify output, and (on a pass) copies it forward + marks the cloned re-entry body
    * `reused` so it never spawns (#17). NOT author-reachable — `expandReroute` emits it pre-compile. Optional/
@@ -229,6 +239,20 @@ export interface CheckpointSpec {
    * attended run). On elapse the `headless` policy fires. A tiny value drives the headless path in tests.
    */
   timeoutMs?: number;
+}
+
+/**
+ * (P3 — INLINE HITL) The inline-gate carrier on a producer node: a human checkpoint that fires AFTER the
+ * node's model runs (a post-model approve/reject), plus its policy (the reject budget/session). Held on
+ * `NodeSpec.gate` — a DISTINCT field from `NodeSpec.checkpoint` (the standalone no-pi human NODE) precisely
+ * so the runner's checkpoint dispatch (which keys off `node.checkpoint`) never short-circuits an
+ * inline-gated producer before its model runs.
+ */
+export interface NodeGate {
+  /** The human checkpoint fired AFTER the producer's model settles `ok` (before the success hooks/promote). */
+  checkpoint?: CheckpointSpec;
+  /** The hitl policy — the reject budget (`max`) + session (warm/cold) the reject re-run uses. */
+  policy?: GatePolicy;
 }
 
 // 1 ── SANDBOX ────────────────────────────────────────────────────────────────
@@ -1061,6 +1085,8 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
   op?: NodeSpec['op'];
   /** (G5) A human checkpoint on this node — carried verbatim onto the dense NodeSpec. */
   checkpoint?: NodeSpec['checkpoint'];
+  /** (P3 — INLINE HITL) An inline (post-model) human gate — carried verbatim onto the dense NodeSpec (`node.gate`). */
+  gate?: NodeSpec['gate'];
   /** (G12 — M3) A generated reroute existence-gate marker — carried verbatim onto the dense NodeSpec. */
   rerouteGate?: NodeSpec['rerouteGate'];
   /** (PROGRAMMATIC NODE) Marks this node no-pi: it runs its declarative ops deterministically, spawning no `pi`. */

@@ -48,7 +48,7 @@ FUSION — config + expand
 FUSION — expand-then-compile (terminal)
 - `packages/core/src/runner/entry.ts:64` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromConfig path)
 - `packages/core/src/runner/entry.ts:67` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromTemplate path)
-- `packages/core/src/dag.ts:206` — `compile` — folds the expanded siblings+judge into stages/edges (the DAG the author never wrote)
+- `packages/core/src/dag.ts:212` — `compile` — folds the expanded siblings+judge into stages/edges (the DAG the author never wrote)
 
 # Freshness (anti-drift)
 anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an `effectiveModel` front door — there is none, the single resolver is `resolveNodeModel`) · scope = the seeds above · re-derive when `model-routing.ts`'s precedence or `expand.ts`'s shape changes. DRIFT NOTE: precedence is resolved in ONE place per concern (`model-routing.ts` for routing; `expand.ts`/`fusion-config.ts` for fusion params) — the spec (`docs/specs/per-node-routing-and-fusion.md` §2) is the override contract. Fusion is a PORT of the DAG-expansion idea, not the vendor `pi-fusion`. `FUSION_PRESETS` (presets.ts:24) is shared with the `base-agent-types` slice (preset SHAPE) — this slice owns the EXPANSION, that one owns the preset lifecycle. The CLI dry-run also calls `expandFusion` (`packages/cli/src/run.ts:436`) so previews show the real expanded DAG + resolved models.
@@ -125,6 +125,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
 - `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 - `c23aa8e` 2026-07-09 — fix(runner): stamp a retried node's TRUE wall-clock span, not the winning attempt
+- `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 
 ### Lessons — memory cluster
 
@@ -189,5 +190,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=52 commits · files=10 · lessons=51</sub>
+<sub>derived 2026-07-10 · arc=53 commits · files=10 · lessons=51</sub>
 <!-- okf:auto-end -->

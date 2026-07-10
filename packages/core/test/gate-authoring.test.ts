@@ -183,10 +183,15 @@ describe('lowerGate — floor', () => {
 // ── 6 · Human gate lowering ───────────────────────────────────────────────────
 
 describe('lowerGate — human', () => {
-  it('lowers to a checkpointPatch and NO op[] entries (human gate = G5 checkpoint)', () => {
+  it('lowers to a checkpointPatch AND a warm reject `retry` op-action (P3 — hitl inlines + re-runs on reject)', () => {
+    // (P3 · MUST-2) A hitl gate now INLINES on the producer: it emits ONE op — the reject retry action
+    // (default warm) — so a rejected producer re-runs through the SAME P2 retry engine. The behavior
+    // DELIBERATELY changed from pre-P3 `ops:[]` (a human gate was a pure standalone checkpoint, no re-run).
     const gate: HumanGate = { kind: 'human', question: 'Does this output meet the bar?', checkpointKind: 'confirm' };
     const { ops, judgeNode, checkpointPatch } = lowerGate(gate, 'producer');
-    expect(ops).toHaveLength(0);
+    expect(ops).toHaveLength(1);
+    expect(ops[0].action?.kind).toBe('retry');
+    expect((ops[0].action as { session?: string }).session).toBe('warm');
     expect(judgeNode).toBeUndefined();
     expect(checkpointPatch).toBeDefined();
     expect(checkpointPatch!.kind).toBe('confirm');

@@ -95,8 +95,13 @@ export async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope:
     const cls = classifyFailure(sig);
     if (cls === 'halt') break; // a missing upstream input — refuse to spin a retry/escalate.
 
+    // (P3 · H1) A human REJECTION is a QUALITY call, never a capability gap — force the reject re-attempt
+    // RETRY-ONLY: gate the escalate lane against the reject signal so a producer with an `escalate` config
+    // never silently swaps to a stronger model on a human "no". For every non-reject failure `canEscalate`
+    // is byte-identical to `escalate && escAllows(cls)` (so this changes nothing off the hitl path).
+    const canEscalate = escalate !== undefined && escAllows(cls) && sig.humanReject !== true;
     const afterReached = escalate?.after !== undefined ? attemptsRun >= escalate.after : retriesLeft <= 0;
-    if (retriesLeft > 0 && retryAllows(cls) && !(escalate && afterReached && escAllows(cls))) {
+    if (retriesLeft > 0 && retryAllows(cls) && !(canEscalate && afterReached)) {
       retriesLeft--;
       attemptsRun++;
       if (l1Active) {
@@ -128,7 +133,7 @@ export async function runNodeWithRetries(ctx: RunContext, node: NodeSpec, scope:
         // Same-model retry: a FRESH attempt (re-seed + re-exec), no consult prefix, the node's own model.
         rec = await runNode(ctx, node, scope);
       }
-    } else if (escalate && !escalatedYet && escAllows(cls)) {
+    } else if (canEscalate && !escalatedYet) {
       // Cross-family CONSULT: resolve the stronger target through model-routing, prepend the verified
       // evidence. ONE escalation only (a second would just re-spend on the same class).
       escalatedYet = true;

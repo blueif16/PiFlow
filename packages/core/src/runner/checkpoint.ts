@@ -37,6 +37,13 @@ export interface CheckpointReply {
   /** Echoed marker hash — a reply for a DIFFERENT (re-asked/stale) question no longer matches → rejected. */
   hash: string;
   value: unknown;
+  /**
+   * (P3 · inline hitl) The rejecting human's FREE-TEXT reason. For a `confirm` reject (`value:false`) the
+   * boolean carries no words, so the WHY rides here and is fed VERBATIM to the producer's warm re-run
+   * (`consultPreamble`). Ignored on an accept; for `input`/`select` the reply `value` already IS the text,
+   * so `reason` is optional there. NOT part of `validateReply` (it validates the decision `value`, not prose).
+   */
+  reason?: string;
   by?: string;
   at?: string;
 }
@@ -104,6 +111,55 @@ export function validateReply(marker: CheckpointMarker, reply: CheckpointReply):
     }
     default:
       return { ok: false, reason: `unknown checkpoint kind: ${String(marker.kind)}` };
+  }
+}
+
+// ── (P3 · inline hitl) reply → accept/reject DECISION (pure) ────────────────────────────────────────
+// The INLINE gate (a producer that ran its model, then pauses for a human) needs an ACCEPT/REJECT verdict
+// + a reason to feed a rejected re-run — NOT the standalone checkpoint's "resolve ok carrying the value".
+// This is that interpretation, kept pure + here next to `validateReply` (a courier decides, this decides).
+
+/** The inline hitl gate's verdict on a human reply: promote the producer, or send it back with a reason. */
+export interface InlineCheckpointDecision {
+  /** true ⇒ the producer's output is accepted (the node promotes); false ⇒ re-run carrying `reason`. */
+  accept: boolean;
+  /** The resolved reply value (the boolean / string / choice) — recorded for observe. */
+  value?: unknown;
+  /** On a REJECT, the WHY handed to the warm re-run's consult preamble. Absent on an accept. */
+  reason?: string;
+}
+
+/** Words a free-text (`input`/`select`) reply may use to APPROVE — everything else is a revision request. */
+const ACCEPT_TOKENS = new Set(['approve', 'accept', 'ok', 'yes', 'pass', 'lgtm', 'confirm', 'y']);
+const isAcceptToken = (v: unknown): boolean =>
+  typeof v === 'string' && ACCEPT_TOKENS.has(v.trim().toLowerCase());
+
+/**
+ * Interpret a resolved checkpoint reply value into an inline-gate accept/reject DECISION. PURE.
+ *  - `confirm` — the boolean IS the verdict: `true` accepts; `false` REJECTS, carrying the human's free-text
+ *    `reason` (or a default, so a rejected re-run is never fed an empty critique).
+ *  - `input` / `select` — an ACCEPT-token value (approve/ok/…) accepts; ANY other value is a revision request
+ *    → REJECT, with that value text AS the reason (a `select` names the chosen option). So every kind has an
+ *    accept path, and `confirm` is the primary approve/reject interaction.
+ */
+export function interpretCheckpointReply(
+  spec: CheckpointSpec,
+  value: unknown,
+  reason?: string,
+): InlineCheckpointDecision {
+  switch (spec.kind) {
+    case 'confirm':
+      return value === true
+        ? { accept: true, value }
+        : { accept: false, value, reason: reason ?? 'the human reviewer rejected the output (no reason given)' };
+    case 'input':
+    case 'select': {
+      if (isAcceptToken(value)) return { accept: true, value };
+      const text = typeof value === 'string' && value.length ? value : reason;
+      return { accept: false, value, reason: text ?? 'the human reviewer requested a revision' };
+    }
+    default:
+      return { accept: false, value, reason: reason ?? 'the human reviewer rejected the output' };
   }
 }
 

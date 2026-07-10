@@ -286,10 +286,19 @@ export function lowerGate(gate: GateAuthorSpec, producer: string): LowerGateResu
     }
 
     case 'human': {
-      // Human (HITL) gate → G5 checkpoint patch on the producer node.
-      // NOT an op[] entry — the checkpoint is a separate authoring-layer field (types.ts:168).
+      // Human (HITL) gate → the producer's `checkpoint` patch PLUS a reject `retry` op-action (P3).
+      // (P3 · MUST-2) A hitl gate INLINES on the producer: the producer runs its model, then this gate
+      // pauses for a human; on REJECT it re-runs the producer through the SAME retry engine an execution
+      // gate uses. So we emit `makeRetryAction` (default warm — a reject RESUMES the producer's own session
+      // carrying the human's reason) UNLESS the author set an explicit non-retry consequence
+      // (onFail:'block' ⇒ a reject just blocks the node, no re-run). The checkpoint patch itself still rides
+      // the separate authoring-layer field (fanned onto `node.gate.checkpoint`, NOT an op[] entry).
+      const ops: OpSpec[] =
+        gate.policy?.onFail === 'retry' || gate.policy?.onFail === undefined
+          ? [makeRetryAction(gate.policy ?? {})]
+          : [];
       return {
-        ops: [], // no op[] entries for a human gate
+        ops,
         checkpointPatch: {
           kind: gate.checkpointKind ?? 'confirm',
           prompt: gate.question,

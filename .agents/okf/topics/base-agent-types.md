@@ -202,6 +202,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `e9c123e` 2026-07-08 — feat(optimize): WS3 — per-issue verify tier + optimize.criteria rename (judge alias)
 - `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
 - `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
+- `02a626d` 2026-07-09 — fix(core): pre-gate check paths resolve {{WORKSPACE}}/{{arg.*}} tokens before evaluation
+- `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 
 ### Lessons — memory cluster
 
@@ -229,5 +231,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=142 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-10 · arc=144 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

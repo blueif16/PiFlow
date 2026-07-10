@@ -226,15 +226,23 @@ function toNodeIntent(n: LoadedNode, templateDir: string): NodeIntent {
   if (n.def.tier) intent.tier = n.def.tier;
   // Per-node reasoning cap → NodeSpec.thinking → `pi --thinking` (command.ts). Operator-free over-think guard.
   if (n.def.thinking) intent.thinking = n.def.thinking;
-  // (G5 / gate-list §a) Carry the HUMAN CHECKPOINT: a fanned `hitl` gate OR a directly-authored `checkpoint`.
-  // A node has ONE checkpoint slot — both at once is a LOUD conflict (never a silent last-wins drop).
+  // (G5 / gate-list §a / P3) Carry the HUMAN CHECKPOINT to ONE of TWO DISTINCT destinations:
+  //   • a DIRECTLY-authored `checkpoint` (node.json, no prompt/model) → `intent.checkpoint` → the no-pi lane
+  //     (a standalone human NODE that spawns no model), UNCHANGED.
+  //   • a FANNED `hitl` gate → `intent.gate.checkpoint` (+ policy) → the INLINE lane: the producer runs its
+  //     model, THEN pauses for the human (the node-lifecycle post-model seam). Kept OFF `node.checkpoint` so
+  //     the runner's checkpoint dispatch (runner.ts) never short-circuits the producer before its model.
+  // A node cannot be BOTH — a standalone checkpoint has no model, an inline gate needs one — so both at once
+  // is a LOUD conflict (never a silent drop).
   if (fan?.checkpoint && n.def.checkpoint) {
     throw new GateListError(
-      `node "${n.def.id}": a hitl gate conflicts with a directly-authored checkpoint — a node has ONE checkpoint slot`,
+      `node "${n.def.id}": a hitl gate conflicts with a directly-authored checkpoint — a node is EITHER a standalone checkpoint OR an inline-gated producer, never both`,
     );
   }
-  const checkpoint = fan?.checkpoint ?? n.def.checkpoint;
-  if (checkpoint) intent.checkpoint = checkpoint;
+  if (n.def.checkpoint) intent.checkpoint = n.def.checkpoint;
+  if (fan?.checkpoint) {
+    intent.gate = { checkpoint: fan.checkpoint, ...(fan.hitlPolicy ? { policy: fan.hitlPolicy } : {}) };
+  }
   // (PROGRAMMATIC NODE) Carry the no-pi marker verbatim onto the intent → the dense NodeSpec (the runner
   // dispatches it to the declarative-ops lane). Additive: a node with none spawns `pi` exactly as before.
   if (n.def.programmatic) intent.programmatic = true;

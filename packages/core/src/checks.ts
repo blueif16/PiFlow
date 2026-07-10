@@ -188,6 +188,15 @@ export interface FailureSignals {
   stderrTail: string;
   /** Whether a return-protocol block parsed from stdout. */
   parsedOk: boolean;
+  /**
+   * (P3 · inline hitl) A human reviewer REJECTED this node at its inline checkpoint — set the node `error`.
+   * `rejectReason` is the reviewer's free-text WHY, surfaced by `consultPreamble` so the warm re-run fixes
+   * EXACTLY what the human flagged. `humanReject` is the discriminator the retry engine reads to force the
+   * re-attempt RETRY-ONLY (never escalate to a stronger model — a human "no" is a quality call, not a
+   * capability gap). Both absent on every non-hitl failure (byte-identical classification there).
+   */
+  rejectReason?: string;
+  humanReject?: boolean;
 }
 
 /** Tighten the issues+summary text the upstream/missing-input HALT guard matches against. */
@@ -231,6 +240,9 @@ export function classifyFailure(n: FailureSignals): FailureClass {
 export function consultPreamble(n: FailureSignals): string {
   const cls = classifyFailure(n);
   const ev: string[] = [];
+  // (P3 · inline hitl) A human REJECTION is the primary signal when present — surface the reviewer's WHY
+  // FIRST so the warm re-run addresses exactly what the human flagged (never an empty critique).
+  if (n.rejectReason) ev.push(`a human reviewer REJECTED the output: ${n.rejectReason}`);
   if (n.missing && n.missing.length) ev.push(`missing required artifact(s): ${n.missing.join(', ')}`);
   if (n.schemaInvalid && n.schemaInvalid.length) ev.push(`artifact(s) violate the declared schema: ${n.schemaInvalid.map((x) => `${x.path} [${(x.errors || []).slice(0, 3).join('; ')}]`).join(' | ')}`);
   if (n.returnSchemaInvalid && n.returnSchemaInvalid.length) ev.push(`return violates the declared returnSchema: ${n.returnSchemaInvalid.slice(0, 3).join('; ')}`);

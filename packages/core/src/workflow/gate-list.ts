@@ -83,8 +83,10 @@ export interface GateFanout {
   checks: Check[];
   /** (≤1) The agentic entry, as a `judgeGate` — consumed later by `materializeJudgeNodes`. */
   judgeGate?: FanoutJudgeGate;
-  /** (≤1) The hitl entry, as a `checkpoint`. */
+  /** (≤1) The hitl entry, as a `checkpoint`. INLINED onto `node.gate.checkpoint` by the loader (P3). */
   checkpoint?: FanoutCheckpoint;
+  /** (P3) The hitl entry's policy — carried to `node.gate.policy` for observe + the reject budget. */
+  hitlPolicy?: GatePolicy;
 }
 
 /** Map one deterministic `execution` entry → the existing author-spec (`floor` for a check, `execution` for a cmd). */
@@ -123,12 +125,16 @@ export function fanoutGates(gates: GateEntry[], nodeId: string): GateFanout {
   const ops: OpSpec[] = [];
   let judgeGate: FanoutJudgeGate | undefined;
   let checkpoint: FanoutCheckpoint | undefined;
+  let hitlPolicy: GatePolicy | undefined;
+  let hasHitl = false;
+  let execRetry = false; // an execution gate lowered its OWN reject retry action (its own budget)
 
   for (const g of gates) {
     switch (g.type) {
       case 'execution': {
         const lowered = lowerGate(executionToAuthorSpec(g, nodeId), nodeId);
         ops.push(...lowered.ops);
+        if (g.policy?.onFail === 'retry') execRetry = true;
         break;
       }
       case 'agentic': {
@@ -151,18 +157,44 @@ export function fanoutGates(gates: GateEntry[], nodeId: string): GateFanout {
             `node "${nodeId}": a node may carry at most ONE hitl gate (a single checkpoint slot) — a second was authored`,
           );
         }
-        checkpoint = {
-          kind: g.checkpointKind ?? 'confirm',
-          prompt: g.question,
-          ...(g.choices !== undefined ? { choices: g.choices } : {}),
-        };
+        hasHitl = true;
+        // (P3 · MUST-2) A hitl gate INLINES on the producer: lower it through the SAME `lowerGate` human case
+        // so the reject `retry` op-action rides `ops` (default warm) alongside the checkpoint patch. The
+        // checkpoint + its policy travel on the fanout for the loader to attach to `node.gate` (NOT
+        // `node.checkpoint` — that would route the producer to the no-pi lane before its model ever ran).
+        const lowered = lowerGate(
+          {
+            kind: 'human',
+            question: g.question,
+            ...(g.checkpointKind !== undefined ? { checkpointKind: g.checkpointKind } : {}),
+            ...(g.choices !== undefined ? { choices: g.choices } : {}),
+            ...(g.policy !== undefined ? { policy: g.policy } : {}),
+          },
+          nodeId,
+        );
+        ops.push(...lowered.ops);
+        // lowerGate's human case always returns a checkpointPatch (kind/prompt/choices).
+        checkpoint = lowered.checkpointPatch!;
+        if (g.policy !== undefined) hitlPolicy = g.policy;
         break;
       }
     }
   }
 
+  // (P3 · H2 — separate budget) A hitl gate emits its OWN reject `retry` action; an execution retry-gate
+  // emits ANOTHER. But `runNodeWithRetries` reads ONE `retryAction` and decrements ONE shared `retriesLeft`,
+  // so the two budgets would collide (the execution's check-retries and the human's reject-retries drawing
+  // down one counter, and only the FIRST action's config honored). Forbid the combination LOUDLY rather than
+  // silently merge them — split the gates across nodes, or drop one gate's retry consequence.
+  if (hasHitl && execRetry) {
+    throw new GateListError(
+      `node "${nodeId}": a hitl gate and an execution gate with onFail:'retry' cannot share ONE node — ` +
+        `their retry budgets would collide on a single retriesLeft counter. Split them across nodes, or drop one gate's retry.`,
+    );
+  }
+
   // The execution gates' POST predicates feed `io.checks` (the two-layer post engine) — re-derived from the
   // lowered ops via the same `gatesFromOp` the loader's `collectChecks` uses for directly-authored op gates.
   const checks = gatesFromOp(ops).post;
-  return { ops, checks, judgeGate, checkpoint };
+  return { ops, checks, judgeGate, checkpoint, ...(hitlPolicy !== undefined ? { hitlPolicy } : {}) };
 }

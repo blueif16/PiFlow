@@ -120,6 +120,8 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `e4905f3` 2026-07-06 — feat(core): deterministic tool-loop circuit breaker on the run plane
 - `3efb62d` 2026-07-07 — fix(core): resolve tokens in promote `from` so file-sourced promotes work
 - `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
+- `02a626d` 2026-07-09 — fix(core): pre-gate check paths resolve {{WORKSPACE}}/{{arg.*}} tokens before evaluation
+- `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 
 ### Lessons — memory cluster
 
@@ -165,5 +167,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=47 commits · files=5 · lessons=32</sub>
+<sub>derived 2026-07-10 · arc=49 commits · files=5 · lessons=32</sub>
 <!-- okf:auto-end -->
