@@ -392,7 +392,9 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // ran before the model. Here a blocking pre-gate failure fails the node WITHOUT ever spawning pi — the
     // real firing site #11 needs. Each gate's `onFailure` (default 'block') gives its consequence; an
     // `advisory`/`warn` gate is recorded but does not block. Reads the host run dir (= the staged inputs).
-    const preChecks = gatesFromOp(node.op).pre; // (C2) the SINGLE gate→Check reconstruction (was inlined here).
+    // Gate paths resolve like io.checks paths do at staging — an unresolved `{{WORKSPACE}}/…` reads a
+    // literal path under outDir and fails a VALID input (the merge/promote resolve-fix class).
+    const preChecks = gatesFromOp(node.op).pre.map((c) => (c.path ? { ...c, path: resolveTokens(c.path, resolveCtx) } : c));
     if (preChecks.length) {
       const preReadBytes = (rel: string): FileBytes => {
         try {

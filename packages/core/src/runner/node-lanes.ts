@@ -300,7 +300,9 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // PRE-GATE — fire the node's `when:'pre'` gate ops over the staged inputs (mirrors runNode's #11 block).
     // A blocking pre-gate failure fails the node here. Each gate's `onFailure` (default 'block') decides;
     // an `advisory`/`warn` gate records but does not block.
-    const preChecks = gatesFromOp(node.op).pre; // (C2) the SINGLE gate→Check reconstruction (was inlined here).
+    // Gate paths resolve like io.checks paths do at staging — an unresolved `{{WORKSPACE}}/…` reads a
+    // literal path under outDir and fails a VALID input (the merge/promote resolve-fix class).
+    const preChecks = gatesFromOp(node.op).pre.map((c) => (c.path ? { ...c, path: resolveTokens(c.path, resolveCtx) } : c));
     if (preChecks.length) {
       const preReadBytes = (rel: string): FileBytes => {
         try {
