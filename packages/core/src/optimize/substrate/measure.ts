@@ -34,7 +34,7 @@ import { loadState } from '../../workflow/state.js';
 import { gatesFromOp, runOpsFromOp } from '../../runner/op-dispatch.js';
 import { evaluateChecks, type CheckResult, type FileBytes } from '../../checks.js';
 import { applyMergeOp } from '../../workflow/ops/merge.js';
-import { nodeEventsFile } from '../../runner/layout.js';
+import { nodeEventsFile, runJsonFile } from '../../runner/layout.js';
 import { buildRunView } from '../../observe/runView.js';
 import { projectRunDigest, type AnomalyKind } from '../../observe/telemetry.js';
 import { analyzeTraceFile, type SubstrateThresholds, type TraceMetricsReport } from './trace-metrics.js';
@@ -84,6 +84,22 @@ function templateDirForRun(runDir: string): string {
   return path.resolve(runDir, '..', '..', 'template');
 }
 
+/** Best-effort read of the finished run's PERSISTED args off `<runDir>/.pi/run.json` (the runner mirrors the
+ *  run's `--arg k=v` there). So a measure op referencing `{{arg.<key>}}` resolves against the SAME args the run
+ *  ran under. A missing/unparseable run.json or an absent/malformed `args` block degrades to `{}` — NEVER throws
+ *  (the whole module's contract). The resolver keeps its loud discipline downstream: an absent KEY still throws
+ *  `MissingArgError` (never a silent ''), so an EMPTY args object does NOT weaken that guarantee. */
+async function readRunArgs(runDir: string): Promise<Record<string, string>> {
+  try {
+    const raw = JSON.parse(await fs.readFile(runJsonFile(runDir), 'utf8')) as { args?: unknown };
+    return raw.args && typeof raw.args === 'object' && !Array.isArray(raw.args)
+      ? (raw.args as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 /** Best-effort read of a node's `optimize.measure` op[] straight off `<templateDir>/nodes/<id>/node.json`.
  *  Missing/unreadable/absent-block all degrade to `[]` (config-with-defaults — detectors still run). */
 async function readMeasureOps(templateDir: string, nodeId: string): Promise<OpSpec[]> {
@@ -123,7 +139,11 @@ export async function runSubstrateMeasure(
   const rawOps = await readMeasureOps(templateDir, nodeId);
 
   const state = await loadState(runDir);
-  const resolveCtx: ResolveCtx = { run: runDir, workspace: opts.workspace, state };
+  // Load the run's persisted args so a measure op's `{{arg.<key>}}` token resolves against the SAME args the
+  // run ran under (best-effort; absent ⇒ `{}` — see readRunArgs). Without this, any `{{arg.*}}` measure op
+  // throws `MissingArgError` and crashes measurement for the whole node.
+  const args = await readRunArgs(runDir);
+  const resolveCtx: ResolveCtx = { run: runDir, workspace: opts.workspace, state, args };
   const resolvedOps = resolveDeep(rawOps, resolveCtx);
 
   // (1) runnable `run` ops FIRST — same node-lifecycle.ts:588 pattern (`{run}` wrapped for applyMergeOp).

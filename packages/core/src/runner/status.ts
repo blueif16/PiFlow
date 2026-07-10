@@ -242,6 +242,13 @@ export interface RunStatus {
   provider?: string;
   model?: string | null;
   /**
+   * The run-level args (`--arg k=v` delivery) this run was launched with — mirrored here so an OUT-OF-BAND
+   * consumer (the optimize substrate's measure stage) can resolve a `{{arg.<key>}}` token in a node's
+   * `optimize.measure` op[] against the SAME args the run ran under, without re-deriving them. Absent on an
+   * older record; `{}` when the run carried none (additive, optional).
+   */
+  args?: Record<string, string>;
+  /**
    * The OS pid of the process that DROVE this run (the one that called `runWorkflow`), recorded at run
    * start so `piflowctl node <run> <id> --stop` can later signal it. The runner spawns each node's child
    * DETACHED as its own process group (sandbox/worktree.ts:128) and kills the GROUP via `kill(-pid)`; a

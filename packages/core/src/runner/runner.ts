@@ -498,6 +498,9 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
       ...(opts.spawnedBy ? { spawnedBy: opts.spawnedBy } : {}),
       source: wf.meta.name,
       profile: opts.profile ?? null,
+      // Mirror the run's args into the status so an out-of-band consumer (optimize/substrate's measure stage)
+      // can resolve a `{{arg.<key>}}` token against the SAME args this run ran under. `{}` when none were passed.
+      args: opts.args ?? {},
       provider: opts.providerName,
       model: opts.model ?? null,
       // The CONTROLLING process's pid — the one driving this run. Recorded so a later
