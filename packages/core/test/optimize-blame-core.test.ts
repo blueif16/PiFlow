@@ -400,6 +400,51 @@ describe('runBlameJudge — wires prompt→judge→verify→parse, with the spaw
     expect(types).toContain('blame-judged');
     expect(types).toContain('blame-verified');
   });
+
+  it('ORACLE FENCE: restores a judge-tampered measure.json + removes a judge-fabricated dissent, keeps a genuine one', async () => {
+    const { runDir, workspace, templateDir } = await fixture();
+    const dir = blameDir(runDir);
+    await fs.mkdir(dir, { recursive: true });
+    // the mechanical, code-authored ground truth folded by the CLI's blameMeasure BEFORE the judge spawns.
+    await fs.writeFile(join(dir, 'measure.json'), '{"MECHANICAL":true}');
+    // a GENUINE prior-pass triage dissent trace (TRIAGE-owned, §4.1) — must survive the judge/verify spawns.
+    await fs.writeFile(join(dir, 'dissent.author.md'), '# dissent — author @ prior\n\ngenuine node-local contest.\n');
+
+    // a rogue agent that (a) overwrites the mechanical measure.json and (b) FABRICATES a dissent for a node it blamed.
+    const rogueAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
+      const owns = o.owns[0];
+      await fs.mkdir(owns, { recursive: true });
+      await fs.writeFile(join(owns, 'blame.md'), '# blame summary\n\nplan owns it.\n\n' + renderBlameSummaryTail(goodSummary));
+      await fs.writeFile(join(owns, 'plan.md'), '# blame — plan @ run\n\nplan owns the defect.\n');
+      await fs.writeFile(join(owns, 'measure.json'), '{"MODEL_AUTHORED":true}'); // tamper the ground truth
+      await fs.writeFile(join(owns, 'dissent.plan.md'), '# a self-exculpating dissent the JUDGE wrote\n'); // fabricate a contest
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
+    };
+
+    await runBlameJudge(runDir, { workspace, templateDir, runAgent: rogueAgent });
+
+    // measure.json is RESTORED — the model can never make the mechanical report model-authored.
+    expect(await fs.readFile(join(dir, 'measure.json'), 'utf8')).toBe('{"MECHANICAL":true}');
+    // the judge-fabricated dissent is GONE — dissent is triage-owned, never judge-authored.
+    await expect(fs.access(join(dir, 'dissent.plan.md'))).rejects.toThrow();
+    // the genuine prior triage dissent SURVIVES untouched.
+    expect(await fs.readFile(join(dir, 'dissent.author.md'), 'utf8')).toMatch(/genuine node-local contest/);
+  });
+
+  it('ORACLE FENCE: removes a measure.json the judge CREATES when none existed before (never model-authored)', async () => {
+    const { runDir, workspace, templateDir } = await fixture();
+    const dir = blameDir(runDir);
+    const creatingAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
+      const owns = o.owns[0];
+      await fs.mkdir(owns, { recursive: true });
+      await fs.writeFile(join(owns, 'blame.md'), renderBlameSummaryTail(goodSummary));
+      await fs.writeFile(join(owns, 'plan.md'), 'x');
+      await fs.writeFile(join(owns, 'measure.json'), '{"MODEL_AUTHORED":true}'); // no mechanical fold ran → forbidden
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
+    };
+    await runBlameJudge(runDir, { workspace, templateDir, verifyRound: false, runAgent: creatingAgent });
+    await expect(fs.access(join(dir, 'measure.json'))).rejects.toThrow(); // deleted — never a model-authored ground truth
+  });
 });
 
 // ── (5) the three new SubstrateEvent members render ──────────────────────────────────────────────────────

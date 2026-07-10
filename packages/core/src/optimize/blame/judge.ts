@@ -79,6 +79,16 @@ async function readFileMaybe(file: string): Promise<string | null> {
   }
 }
 
+/** `dissent.<node>.md` file NAMES currently under the blame dir (unsorted; best-effort — a missing dir ⇒ []).
+ *  The oracle fence snapshots this set before the judge spawns and removes any file NOT in it afterward. */
+async function listDissentFileNames(blameDirPath: string): Promise<string[]> {
+  try {
+    return (await fs.readdir(blameDirPath)).filter((f) => /^dissent\..+\.md$/.test(f));
+  } catch {
+    return [];
+  }
+}
+
 const SEPARATION_LAW = [
   'SEPARATION LAW: blame files carry EVIDENCE and defect descriptions — NEVER the template criteria content.',
   'The criteria/gold below are JUDGE-FACING references ONLY (the Goodhart fence): never copy, quote, or',
@@ -240,6 +250,25 @@ export async function runBlameJudge(runDir: string, opts: RunBlameJudgeOpts): Pr
   const readScope = [runDir, templateDir, workspace];
   const owns = [dir];
 
+  // ── ORACLE FENCE (belt + suspenders beyond the dir-coarse `owns` grant) ────────────────────────────────
+  // The blame dir PHYSICALLY holds two paths the model must NEVER author: `measure.json` (the mechanical,
+  // code-authored run-level fold the CLI wrote BEFORE this pass — the load-bearing ground truth the next
+  // generation re-blames off, §4/§8) and `dissent.<node>.md` (TRIAGE-owned contest traces, §4.1 — never
+  // judge-written). A sandbox grant cannot exclude a FILE inside a granted DIR (the same coarseness the
+  // fixer's oracle diff-guard exists for), so we SNAPSHOT both before the spawns and, after, RESTORE a
+  // tampered/created measure.json and REMOVE any dissent file that did not pre-exist. The judge authors ONLY
+  // <node>.md + blame.md; this keeps the mechanical tier and the corroborate-locally/dissent design honest.
+  const measurePath = blameMeasurePath(runDir);
+  const measureBefore = await readFileMaybe(measurePath);
+  const dissentBefore = new Set(await listDissentFileNames(dir));
+  const enforceOracleFence = async (): Promise<void> => {
+    if (measureBefore !== null) await fs.writeFile(measurePath, measureBefore); // restore the mechanical report
+    else await fs.rm(measurePath, { force: true }); // the model must never CREATE a measure.json
+    for (const f of await listDissentFileNames(dir)) {
+      if (!dissentBefore.has(f)) await fs.rm(path.join(dir, f), { force: true }); // a judge-fabricated dissent
+    }
+  };
+
   const spawn = async (mode: 'judge' | 'verify'): Promise<RunBaseAgentResult> => {
     const prompt = await buildBlamePrompt({ runDir, workspace, templateDir, mode });
     return runAgent({
@@ -271,6 +300,10 @@ export async function runBlameJudge(runDir: string, opts: RunBlameJudgeOpts): Pr
     verifyText = verify.text;
     if (verify.runDir) agentRunDir = verify.runDir;
   }
+
+  // Enforce the oracle fence AFTER every spawn (judge + verify) and before the summary is read/consumed — a
+  // tampered/created measure.json is restored/removed and any judge-fabricated dissent is deleted (see above).
+  await enforceOracleFence();
 
   // Read + FAIL-CLOSED-parse the summary tail — a blame pass that wrote NO summary is a HARD failure (never a
   // silent empty), mirroring gate.ts's no-verdict throw.
