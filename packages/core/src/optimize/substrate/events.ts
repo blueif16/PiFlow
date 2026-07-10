@@ -21,7 +21,13 @@ export type SubstrateEvent =
   | { type: 'gated'; issue: string; accept: boolean; reason: string }
   | { type: 'staged'; issue: string; decision: 'staged' | 'discarded'; manifestPath: string }
   | { type: 'adopted'; issue: string; commit: string; files: number }
-  | { type: 'stopped'; issue: string; reason: string };
+  | { type: 'stopped'; issue: string; reason: string }
+  // RUN-LEVEL BLAME boundaries (docs/design/optimize-blame.md §4) — the same dedicated substrate stream, one
+  // level up. Unlike the fix-loop variants above these carry NO `issue` (blame is run-scoped, not per-issue):
+  // the measure fold, the judge round, and the one verify re-check each announce their boundary + count.
+  | { type: 'blame-measured' }
+  | { type: 'blame-judged'; blamed: number }
+  | { type: 'blame-verified'; blamed: number };
 
 export type SubstrateEventSink = (event: SubstrateEvent) => void;
 
@@ -64,5 +70,11 @@ export function renderSubstrateEvent(e: SubstrateEvent): string {
       return `adopted [${e.issue}] commit=${e.commit} files=${e.files} → resolved`;
     case 'stopped':
       return `stopped [${e.issue}] ${e.reason}`;
+    case 'blame-measured':
+      return 'blame-measured — run-level hard measure folded';
+    case 'blame-judged':
+      return `blame-judged blamed=${e.blamed} → verifying`;
+    case 'blame-verified':
+      return `blame-verified blamed=${e.blamed}`;
   }
 }

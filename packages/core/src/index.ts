@@ -581,3 +581,9 @@ export type {
 // optimize facade; core holds no judge/prose/roster logic yet (that is WS-B2, unbuilt).
 export { blameDir, blameFilePath, blameSummaryPath, blameMeasurePath, blameDissentPath, runBlameMeasure } from './optimize/index.js';
 export type { RunBlameMeasureOpts, BlameMeasureReport, BlameDigestSection, BlameDigestNode } from './optimize/index.js';
+// WS-B2 — the blame CORE (roster composition + the fenced-tail codec + the blame judge/verify agents),
+// lifted to the package's only public entry so the `optimize blame` CLI verb (packages/cli, WS-B3) reaches it.
+export { composeRoster, renderRoster, parseBlameSummaryTail, renderBlameSummaryTail, buildBlamePrompt, runBlameJudge } from './optimize/index.js';
+export type {
+  RosterEntry, BlameSummary, BlameEntry, BlameSeverity, BuildBlamePromptOpts, RunBlameJudgeOpts, RunBlameJudgeResult,
+} from './optimize/index.js';

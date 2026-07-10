@@ -139,3 +139,13 @@ export type { SubstrateJudgeOpts, SubstrateJudgeResult } from './substrate/judge
 export { blameDir, blameFilePath, blameSummaryPath, blameMeasurePath, blameDissentPath } from './blame/paths.js';
 export { runBlameMeasure } from './blame/measure.js';
 export type { RunBlameMeasureOpts, BlameMeasureReport, BlameDigestSection, BlameDigestNode } from './blame/measure.js';
+// WS-B2 — the blame CORE: the AUTO-COMPOSED responsibility roster (pure fn off each node.json, never hand-
+// synced — §2), the run summary's fenced-tail codec (the ONLY machine-read blame surface, fail-closed both
+// ways — §3), and the blame judge + one verify round (the strong-tier attribution turns, base-agent-shaped
+// like substrate/judge.ts + substrate/gate.ts).
+export { composeRoster, renderRoster } from './blame/roster.js';
+export type { RosterEntry } from './blame/roster.js';
+export { parseBlameSummaryTail, renderBlameSummaryTail } from './blame/summary.js';
+export type { BlameSummary, BlameEntry, BlameSeverity } from './blame/summary.js';
+export { buildBlamePrompt, runBlameJudge } from './blame/judge.js';
+export type { BuildBlamePromptOpts, RunBlameJudgeOpts, RunBlameJudgeResult } from './blame/judge.js';
