@@ -82,3 +82,15 @@ Independently of the upstream fix, piflow classifies this crash signature as a t
 failure and retries with capped exponential backoff (`isPiClientCrash` + `min(60s, 15s·2^N)`), on the
 `fix/infra-retry-backoff` branch. That converts the fatal crash into a survivable retry but does not
 recover the discarded turn — only the upstream null-guard does that.
+
+## Second occurrence (2026-07-10, run 260710-04, node w1-design)
+
+Reproduced ~4.5h after the first report on a DIFFERENT node and run: game-omni run `260710-04`,
+node `w1-design`, session `2026-07-10T06-16-02-517Z_w1-design.jsonl` — one
+`"errorMessage":"Cannot read properties of undefined (reading 'input_tokens')"` at ~06:26:31Z,
+mid-session (turn ~23, after 19 successful edit calls), killing the pi process with exit 1 while the
+model was mid-milestone ("M1 done. Now M2 —" in the final thinking block). Same provider path
+(mmgw, anthropic-messages-shaped MiniMax-M3 stream). Because the runner launches pi with
+`--no-session`, the subsequent recovery attempt failed with `No session found matching 'w1-design'` —
+so under `--no-session` this crash class is UNRECOVERABLE without a cold node re-run, raising the
+severity: the null-guard upstream is the only fix that preserves the turn.
