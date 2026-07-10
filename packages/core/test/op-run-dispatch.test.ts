@@ -94,3 +94,35 @@ describe('run fail-loud — a non-dispatchable run op blocks the node instead of
     expect((rec.issues ?? []).join(' '), 'the block names the undispatchable run op').toMatch(/run op .*has no executor/);
   });
 });
+
+describe('run op spawn error — the errno surfaces in the op-failure detail (not a causeless "failed")', () => {
+  it('a post run op whose cmd cannot spawn reports the spawn error message in issues[]', async () => {
+    // A programmatic node whose artifact is produced by a valid PRE seed, plus a POST run op with a
+    // nonexistent cmd: spawnSync sets res.error (ENOENT) — the merge executor reports that in `skipped`
+    // (no exit, no stderr). Pre-fix the detail rendered only exit/stderr, so issues[] read a causeless
+    // "run <cmd> failed" (live: w3a's freeze-check on count-three-e2e-1). RED without the skipped field.
+    const node: NodeIntent = {
+      label: 'gen',
+      programmatic: true,
+      tools: {},
+      io: {
+        reads: ['src.json'],
+        produces: ['out.json'],
+        externalInputs: ['src.json'],
+        artifacts: [{ path: 'out.json' }],
+      },
+      op: [
+        { when: 'pre', writes: ['out.json'], transform: { kind: 'seed', from: '{{RUN}}/src.json' } },
+        { when: 'post', run: { cmd: 'definitely-not-a-real-command-8f3a' }, onFailure: 'block' },
+      ],
+    };
+    const outDir = await tmpOut();
+    await fs.writeFile(path.join(outDir, 'src.json'), '{"v":1}');
+    const { status } = await runWorkflow(compile(wf([node])), { run: 'spawnerr', outDir });
+    const rec = status.nodes.gen;
+    expect(rec.status, 'a spawn-failing blocking run op must block the node').toBe('blocked');
+    expect((rec.issues ?? []).join(' '), 'the detail must carry the spawn error, not a bare "failed"').toMatch(
+      /spawn error|ENOENT/,
+    );
+  });
+});

@@ -661,7 +661,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         const mergeOnFailure = ((node.op ?? []).find((o) => o.transform?.kind === 'merge')?.onFailure ?? 'block') as OnFailure;
         const merged = await runMerge(resolveDeep(m, resolveCtx), ctx.outDir);
         for (const r of merged?.ops ?? []) {
-          if (r.failed) opFailures.push({ detail: `merge ${r.op} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: mergeOnFailure });
+          if (r.failed) opFailures.push({ detail: `merge ${r.op} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure: mergeOnFailure });
         }
       }
       // (M5 · #9/#18) AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic
@@ -671,7 +671,9 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       for (const { body, onFailure } of runOps.runnable) {
         const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
         if (r.failed) {
-          opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure });
+          // include r.skipped — the spawn-error branch (res.error: ENOENT/EAGAIN/EPERM) reports THERE, not in
+          // exit/stderr; without it the issue reads a causeless "run npm failed" (live: w3a count-three-e2e-1)
+          opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure });
         }
       }
       // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant,

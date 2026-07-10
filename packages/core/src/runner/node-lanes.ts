@@ -368,7 +368,8 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     for (const { body, onFailure } of runOps.runnable) {
       const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
       if (r.failed) {
-        opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure });
+        // include r.skipped — the spawn-error branch (res.error) reports THERE, not in exit/stderr
+        opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure });
       }
     }
     // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant, or
