@@ -41,6 +41,42 @@ describe('template-format schemas — the fixture VALIDATES (accept the real sha
     expect(r.ok).toBe(true);
   });
 
+  // (docs/design/optimize-blame.md WS-B0) The run-level `optimize` block — the meta.json twin of the
+  // node-level block above (node.schema.ts:385), exact per-node symmetry: `measure` (op[], expected-sparse)
+  // + `criteria` (soft bar, load-bearing). No `judge` alias, no `verifyDefault` (meta-level-only omissions).
+  describe('meta.json optimize block (WS-B0 — the run-level twin)', () => {
+    const withMetaOptimize = async (optimize: unknown) => {
+      const meta = { ...((await readJson(path.join(TPL, 'meta.json'))) as Record<string, unknown>), optimize };
+      return validate(metaSchema as object, meta);
+    };
+    it('accepts optimize.criteria alone', async () => {
+      const r = await withMetaOptimize({ criteria: '{{WORKSPACE}}/criteria.md' });
+      expect(r.errors).toEqual([]);
+      expect(r.ok).toBe(true);
+    });
+    it('accepts optimize.measure with a real op', async () => {
+      const r = await withMetaOptimize({
+        measure: [{ id: 'out-non-empty', when: 'post', gate: { kind: 'non-empty', path: '{{RUN}}/out.txt' } }],
+      });
+      expect(r.errors).toEqual([]);
+      expect(r.ok).toBe(true);
+    });
+    it('REJECTS a typo\'d key inside optimize (additionalProperties:false)', async () => {
+      const r = await withMetaOptimize({ criterion: 'typo' });
+      expect(r.ok).toBe(false);
+    });
+    it('REJECTS optimize.judge at meta level (no alias at this grain)', async () => {
+      const r = await withMetaOptimize({ judge: '{{WORKSPACE}}/judge.md' });
+      expect(r.ok).toBe(false);
+    });
+    it('a meta.json WITHOUT optimize still validates (the block is optional)', async () => {
+      const meta = await readJson(path.join(TPL, 'meta.json'));
+      const r = validate(metaSchema as object, meta);
+      expect(r.errors).toEqual([]);
+      expect(r.ok).toBe(true);
+    });
+  });
+
   it('the generated workflow.json validates', async () => {
     const wf = await readJson(path.join(TPL, 'workflow.json'));
     const r = validate(workflowSchema as object, wf);

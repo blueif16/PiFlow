@@ -115,6 +115,17 @@ for the optimize loop. A measure is NEVER a profile gate and a profile NEVER car
 yourself stamping a runway measure into a profile, you have crossed the two systems — stop and put it back in
 `node.json`.
 
+## The RUN-level runway (blame — the template-level twin)
+Same syntax one level up (`docs/design/optimize-blame.md` §2): `meta.json` `optimize.{measure, criteria}` +
+template-root `criteria.md`/gold — the run's runway the `optimize blame` verb judges the FINAL artifact
+against, same pre-flight discipline as a node's. The weight flips: COVERAGE at run level requires the SOFT
+criteria only — the hard op[] is OPTIONAL and expected-sparse (author one only for a real end-to-end
+invariant; most templates leave it empty), and its absence never halts the pre-flight. WIRING/VALIDITY/
+GROUNDING still apply to whatever exists (a soft criteria that doesn't discriminate still fails VALIDITY).
+The run's mechanical floor does NOT depend on the hard slot: every node-level floor + the digest already
+aggregate into the evidence pack — node-level floors ARE the run-level mechanical floor. "The runway isn't
+ready" is still a legitimate verdict, now returned by a blame pass instead of a node triage pass.
+
 ## The overlord procedure
 1. Before any optimize pass, run the pre-flight per node in scope (COVERAGE · WIRING · VALIDITY · GROUNDING).
 2. For any node that fails: HALT its loop; the owed work is a MEASURE fix (author / wire / de-skip), not a
