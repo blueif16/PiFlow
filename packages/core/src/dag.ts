@@ -68,6 +68,9 @@ function materialize(intent: NodeIntent, id: string): NodeSpec {
     // derive rep (the legacy `ops`/`NodeOps` carry was retired in U6; the runner reads via `derivesFromOp`).
     op: intent.op,
     checkpoint: intent.checkpoint,
+    // (P3 — INLINE HITL) Carry the inline (post-model) human gate verbatim → `node.gate`. Distinct from
+    // `checkpoint` (the standalone no-pi node) so the runner's checkpoint dispatch never short-circuits it.
+    gate: intent.gate,
     rerouteGate: intent.rerouteGate,
     // (PROGRAMMATIC NODE) Carry the no-pi marker verbatim — the runner dispatches a `programmatic` node to
     // `runProgrammatic` (declarative ops only, no `buildCommand`/exec). Additive: undefined ⇒ the pi lane.

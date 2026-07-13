@@ -65,4 +65,53 @@ describe('pre-gate — a checks.pre gate fires BEFORE the model (#11)', () => {
     expect(execCalls, 'the model must NOT spawn when a pre-gate blocks').toBe(0);
     expect(buildCalls, 'the command must NOT be built when a pre-gate blocks').toBe(0);
   });
+
+  // A pre-gate path carrying `{{WORKSPACE}}`/`{{arg.*}}` tokens must be RESOLVED before the read — the same
+  // resolve the staging clone applies to io.checks paths (node-lifecycle resolveTokens on c.path) and that
+  // merge/promote ops each gained at their call sites. Unresolved, the gate reads a literal `{{WORKSPACE}}/…`
+  // path under outDir → empty bytes → json-parses fails → the node blocks on a VALID input (live failure:
+  // lesson-build w3c-sound-asset, run count-three-e2e-1).
+  it('a tokened pre-gate path resolves against workspace/args before evaluation', async () => {
+    const outDir = await tmpOut();
+    const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-pregate-ws-'));
+    await fs.mkdir(path.join(workspace, 'data'), { recursive: true });
+    await fs.writeFile(path.join(workspace, 'data', 'in-count.json'), '{"ok": true}');
+
+    const node: NodeIntent = {
+      label: 'consume',
+      prompt: 'consume the input',
+      tools: {},
+      io: {
+        reads: [],
+        produces: ['out.json'],
+        externalInputs: [],
+        artifacts: [{ path: 'out.json' }],
+      },
+      op: [
+        {
+          when: 'pre',
+          gate: { kind: 'json-parses', path: '{{WORKSPACE}}/data/in-{{arg.suffix}}.json' },
+          onFailure: 'block',
+        },
+      ],
+    };
+
+    let execCalls = 0;
+    const countingExec: ExecRunner = async () => {
+      execCalls++;
+      return { result: { stdout: '', stderr: '', code: 0 }, killed: null };
+    };
+
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'pregate-tokens', outDir, workspace, args: { suffix: 'count' },
+      buildCommand: () => 'true', execRunner: countingExec,
+    });
+
+    // The staged file IS valid JSON — a resolved gate passes and the model spawns. Unresolved (the bug),
+    // the gate reads the literal token path, gets nothing, and blocks with execCalls 0.
+    expect(status.nodes.consume.issues ?? [], 'the valid input must not trip the pre-gate').not.toContainEqual(
+      expect.stringContaining('pre-gate'),
+    );
+    expect(execCalls, 'the model must spawn when the resolved pre-gate passes').toBe(1);
+  });
 });

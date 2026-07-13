@@ -91,6 +91,8 @@ const PROFILE_TEMPLATE = ((): string => {
     '  (literal "/var"))',
     '(allow file-read*',
     '@SCOPE_ALLOWS@)',
+    // --- per-exec bookkeeping DENY (last match wins; the runner .pi internals a node must never read) ---
+    '@READ_DENY@',
     // --- write jail (symmetric; toolchain writable set from Codex workspace-write, see read-scope.sb) ---
     '(deny file-write*)',
     '(allow file-write*',
@@ -157,6 +159,19 @@ export function buildSeatbeltProfile(opts: {
   writeScope?: string[];
   execCwd?: string;
   execReads?: string[];
+  /**
+   * (bookkeeping deny — run 260710-02) Subpaths to DENY reads on, rendered as a trailing rule so it
+   * OVERRIDES the broader allow above (SBPL: last match wins). Used to carve the runner's own `.pi/**`
+   * bookkeeping out of an otherwise-`{{RUN}}`-wide read grant so a node can never `find`/`cat`/`ls` the
+   * internals (sessions/nodes/journal) — the W4 nodes burned 300-540s hunting there. Empty ⇒ no-op.
+   */
+  readDeny?: string[];
+  /**
+   * Subpaths to RE-ALLOW after the `readDeny`, for the node's OWN inputs that legitimately live under a
+   * denied root (its `.pi/staged/<id>` prompt/extension + `.pi/skills`). Rendered LAST so it wins over the
+   * deny. Ignored when `readDeny` is empty.
+   */
+  readDenyExcept?: string[];
 }): string {
   const workdir = path.resolve(opts.workdir);
   // E10 — a node whose build runs from a PROJECT ROOT outside the run dir (`execCwd`) and imports SIBLING
@@ -187,10 +202,33 @@ export function buildSeatbeltProfile(opts: {
   // write-scratch roots (/tmp, $TMPDIR, /dev/*, ~/.npm, …) live in the template, so this block is ONLY
   // the node's own lane — a write outside {this block, the template scratch} EPERMs.
   const writeAllows = writeRoots.map((p) => `  (subpath ${sbplString(p)})`).join('\n');
+  const readDeny = renderReadDeny(opts.readDeny, opts.readDenyExcept);
   return PROFILE_TEMPLATE.replaceAll('@HOME@', os.homedir())
     .replaceAll('@TMPDIR@', os.tmpdir().replace(/\/+$/, ''))
     .replace('@SCOPE_ALLOWS@', allows)
+    .replace('@READ_DENY@', readDeny)
     .replace('@WRITE_SCOPE_ALLOWS@', writeAllows);
+}
+
+/**
+ * Render the trailing bookkeeping-DENY block: `(deny file-read* (subpath …)…)` for each denied root, then
+ * a `(allow file-read* (subpath …)…)` for the re-allowed exceptions (the node's own staged inputs). Both
+ * roots are realpath-expanded (the kernel matches the resolved path). Returns '' when nothing is denied, so
+ * the `@READ_DENY@` token substitutes to empty and the profile is byte-identical to before. Placed AFTER the
+ * scope allows, so SBPL last-match-wins makes the deny override the broad grant and the exceptions override
+ * the deny.
+ */
+function renderReadDeny(deny?: string[], except?: string[]): string {
+  const denied = [...new Set((deny ?? []).flatMap(expandRealpath))];
+  if (!denied.length) return '';
+  const denyRules = denied.map((p) => `  (subpath ${sbplString(p)})`).join('\n');
+  const lines = [`(deny file-read*\n${denyRules})`];
+  const allowed = [...new Set((except ?? []).flatMap(expandRealpath))];
+  if (allowed.length) {
+    const allowRules = allowed.map((p) => `  (subpath ${sbplString(p)})`).join('\n');
+    lines.push(`(allow file-read*\n${allowRules})`);
+  }
+  return lines.join('\n');
 }
 
 // ── the shared exec-wrap seam (reused by SeatbeltSandbox AND the in-place LocalSandbox) ─────────────
@@ -222,6 +260,8 @@ export function seatbeltExecPlan(
     writeScope?: string[];
     execCwd?: string;
     execReads?: string[];
+    readDeny?: string[];
+    readDenyExcept?: string[];
     profileDir: string;
   },
 ): SeatbeltExecPlan | null {
@@ -235,6 +275,8 @@ export function seatbeltExecPlan(
     writeScope: opts.writeScope,
     execCwd: opts.execCwd, // E10 — the getcwd literal + a read root for the out-of-tree build's cwd
     execReads: opts.execReads, // E10 — extra read roots the build imports
+    readDeny: opts.readDeny, // bookkeeping deny — carve the runner's .pi/** internals out of the grant
+    readDenyExcept: opts.readDenyExcept, // …re-allowing the node's own staged inputs
   });
   const profilePath = path.join(opts.profileDir, `piflow-sb-${process.pid}-${Date.now()}-${execSeq++}.sb`);
   fsSync.writeFileSync(profilePath, profile);
@@ -257,6 +299,10 @@ export class SeatbeltSandbox implements Sandbox {
     private readonly execCwd: string | undefined,
     /** E10 — extra external read roots the build imports (a sibling kit), resolved absolute + granted read. */
     private readonly execReads: string[],
+    /** Bookkeeping-deny roots (the runner's `.pi/**` internals) — denied AFTER the scope allows. */
+    private readonly readDeny: string[],
+    /** Re-allowed exceptions under a denied root (the node's own `.pi/staged/<id>`, `.pi/skills`). */
+    private readonly readDenyExcept: string[],
   ) {}
 
   static async create(opts: CreateOpts): Promise<SeatbeltSandbox> {
@@ -279,6 +325,8 @@ export class SeatbeltSandbox implements Sandbox {
       resolveScope(opts.writeScope),
       resolveOne(opts.execCwd), // E10 — exec cwd (a project root outside the workdir); undefined ⇒ workdir
       resolveScope(opts.execReads), // E10 — extra read roots the build imports
+      resolveScope(opts.readDeny), // bookkeeping deny — the runner's .pi/** internals
+      resolveScope(opts.readDenyExcept), // …minus the node's own staged inputs
     );
   }
 
@@ -316,6 +364,8 @@ export class SeatbeltSandbox implements Sandbox {
         writeScope: this.writeScope,
         execCwd: this.execCwd, // E10 — read root + getcwd literal for the out-of-tree build's cwd
         execReads: this.execReads, // E10 — extra read roots the build imports
+        readDeny: this.readDeny, // bookkeeping deny — carve out the runner's .pi/** internals
+        readDenyExcept: this.readDenyExcept, // …re-allow the node's own staged inputs
         profileDir: this.root,
       });
       const child = spawn(plan ? plan.file : cmd, plan ? plan.argv : [], {

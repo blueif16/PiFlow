@@ -20,29 +20,14 @@
 // or catalog/*. The runner reads only the emitted `OpSpec[]` and the materialized judge node —
 // zero new runtime code.
 
-import type { OpSpec, GateBody, CheckKind } from '../types.js';
+import type { OpSpec, GateBody, CheckKind, OnFailure, ActionBody, GatePolicy } from '../types.js';
 
 // ── 1 · AUTHORING SHAPES ─────────────────────────────────────────────────────
 
-/**
- * Policy carried on a gate — WHAT happens when the verdict is non-pass.
- * Uses the existing `PolicyAction` vocabulary; 'retry' on a gate ALWAYS carries `scope` (default
- * 'feedback') and a `max` budget.
- */
-export interface GatePolicy {
-  /** On-fail action. Default 'block'. Must be a valid PolicyAction. */
-  onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'escalate';
-  /**
-   * Retry budget — extra attempts after the first. Only meaningful when `onFail:'retry'`.
-   * Omit to use a single attempt (max:1 default).
-   */
-  retryMax?: number;
-  /**
-   * Correction scope for retries. `'feedback'` (DEFAULT, L1) = warm-resume with gate critique.
-   * `'fix'` (L2) = STUB — see ActionBody.scope JSDoc for the full contract.
-   */
-  retryScope?: 'feedback' | 'fix';
-}
+// (P2 · unified gate policy) `GatePolicy` — the ONE on-fail vocabulary every gate kind shares — now lives
+// on the spine (types.ts). Re-exported here so existing `import { GatePolicy } from './gate-authoring'`
+// sites (gate-list.ts, index.ts) are unchanged. See `types.ts` for the field docs + the back-compat aliases.
+export type { GatePolicy };
 
 // ── Gate kinds ────────────────────────────────────────────────────────────────
 
@@ -279,7 +264,8 @@ export function lowerGate(gate: GateAuthorSpec, producer: string): LowerGateResu
         threshold,
         agentType: 'judge',
       };
-      const retryMax = gate.policy?.retryMax ?? 1;
+      // (P2) The reroute budget: the canonical `max`, or its back-compat `retryMax` alias. Default 1.
+      const retryMax = gate.policy?.max ?? gate.policy?.retryMax ?? 1;
       const ops: OpSpec[] = [
         {
           when: 'on-failure',
@@ -300,10 +286,19 @@ export function lowerGate(gate: GateAuthorSpec, producer: string): LowerGateResu
     }
 
     case 'human': {
-      // Human (HITL) gate → G5 checkpoint patch on the producer node.
-      // NOT an op[] entry — the checkpoint is a separate authoring-layer field (types.ts:168).
+      // Human (HITL) gate → the producer's `checkpoint` patch PLUS a reject `retry` op-action (P3).
+      // (P3 · MUST-2) A hitl gate INLINES on the producer: the producer runs its model, then this gate
+      // pauses for a human; on REJECT it re-runs the producer through the SAME retry engine an execution
+      // gate uses. So we emit `makeRetryAction` (default warm — a reject RESUMES the producer's own session
+      // carrying the human's reason) UNLESS the author set an explicit non-retry consequence
+      // (onFail:'block' ⇒ a reject just blocks the node, no re-run). The checkpoint patch itself still rides
+      // the separate authoring-layer field (fanned onto `node.gate.checkpoint`, NOT an op[] entry).
+      const ops: OpSpec[] =
+        gate.policy?.onFail === 'retry' || gate.policy?.onFail === undefined
+          ? [makeRetryAction(gate.policy ?? {})]
+          : [];
       return {
-        ops: [], // no op[] entries for a human gate
+        ops,
         checkpointPatch: {
           kind: gate.checkpointKind ?? 'confirm',
           prompt: gate.question,
@@ -345,33 +340,55 @@ export function lowerGates(
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-/** Map a gate policy to the `OnFailure` value the OpSpec carries. Default 'block'. */
-function resolveOnFailure(policy: GatePolicy | undefined): import('../types.js').OnFailure {
-  const action = policy?.onFail ?? 'block';
-  // 'retry' on the gate level is expressed via a separate action op; the op's own onFailure stays
-  // 'block' (the retry action fires AFTER the block signals the failure). This mirrors how the
-  // existing checks+policy lower to op[]: the policy is the ACTION, not the op's own onFailure
-  // when retry is involved.
-  return (action === 'retry' ? 'block' : action) as import('../types.js').OnFailure;
+/**
+ * Map a unified gate policy's `onFail` (the P2 superset) down to the `OnFailure` value the OpSpec's own
+ * consequence carries. `'block'`/`'warn'`/`'stop'`/`'escalate'` pass through unchanged (pre-P2 meaning).
+ * `'retry'` and `'reroute'` block the op FIRST — the retry rides a separate retry action op (below); the
+ * reroute rides the judge's `reroute` field / a `rerouteTo` action, never the op's own onFailure. `'halt'`
+ * is the documented `stop` alias (refuse to proceed); `'accept'` is a non-fatal `warn` (record, don't fail).
+ * Default 'block'.
+ */
+function resolveOnFailure(policy: GatePolicy | undefined): OnFailure {
+  switch (policy?.onFail ?? 'block') {
+    case 'retry':
+    case 'reroute':
+      return 'block';
+    case 'halt':
+      return 'stop';
+    case 'accept':
+      return 'warn';
+    default:
+      return (policy?.onFail ?? 'block') as OnFailure; // 'block' | 'warn' | 'stop' | 'escalate'
+  }
 }
 
-/** Emit a retry action op from a gate policy. */
+/**
+ * Emit a retry action op from a gate policy. The budget is the canonical `max` (or its `retryMax` alias);
+ * `scope` keeps the L1/L2 corrective LANE (default 'feedback'); `session` carries the P2 RESUME(warm)/
+ * RERUN(cold) knob — default 'warm', so an existing policy that named only `retryScope:'feedback'|'fix'`
+ * still lowers to a warm feedback retry unchanged (byte-identical to pre-P2 for those callers).
+ */
 function makeRetryAction(policy: GatePolicy): OpSpec {
-  const retryAction: Extract<import('../types.js').ActionBody, { kind: 'retry' }> = {
+  const retryAction: Extract<ActionBody, { kind: 'retry' }> = {
     kind: 'retry',
-    max: policy.retryMax ?? 1,
-    ...(policy.retryScope ? { scope: policy.retryScope } : { scope: 'feedback' as const }),
+    max: policy.max ?? policy.retryMax ?? 1,
+    scope: policy.retryScope ?? 'feedback',
+    session: policy.session ?? 'warm',
   };
   return { when: 'on-failure', action: retryAction };
 }
 
 /**
- * Build the judge node's prompt from the rubric + threshold.
- * The threshold is embedded as an explicit acceptance bar so the judge model knows the bar it must
- * clear. Authors should use the agentic-prompt-design skill when writing rubric text.
+ * Build the judge node's REASONING + verdict contract from the rubric + threshold. Names the acceptance bar
+ * explicitly and pins the verdict schema; the CRITIQUE requirement is motivated (it is fed to the producer's
+ * re-run, so it must be actionable). The concrete OUTPUT-FILE contract (which file the verdict is written to
+ * and the accept-only pass-sentinel) is APPENDED by `materializeJudgeNodes` where the run-relative paths are
+ * known — a judge on the FUSION path (no reroute) uses this reasoning contract alone. Authored per the
+ * agentic-prompt-design skill; kept crisp because a judge is a frontier (deep-tier) model.
  */
 function buildJudgePrompt(rubric: string, threshold: string): string {
-  return `You are a judge evaluating a producer node's output against the following rubric.
+  return `You are a senior QA judge evaluating a producer node's output against a fixed rubric. You are a
+DIFFERENT model than the producer — your job is to catch what it missed, not to rubber-stamp it.
 
 ## Rubric
 
@@ -379,13 +396,20 @@ ${rubric}
 
 ## Acceptance bar
 
-Your verdict MUST meet or exceed: **${threshold}**
+ACCEPT (verdict "pass") only if the output MEETS OR EXCEEDS: **${threshold}**. If ANY rubric requirement is
+unmet, REJECT (verdict "fail") — never pass a near-miss.
 
-Emit your verdict as a JSON object in a fenced block at the end of your response:
+## Your verdict
+
+Decide "pass" or "fail" against the bar, then:
+- On "fail", write a SPECIFIC, ACTIONABLE critique: name each unmet requirement and the concrete change that
+  fixes it. This critique is fed VERBATIM to the producer's re-run — "improve the quality" wastes the retry;
+  "section 3 omits the error-handling case; add it" gets fixed.
+- On "pass", one line of justification is enough.
+
+Emit your verdict as a fenced JSON block at the END of your response:
 \`\`\`json
-{ "verdict": "pass" | "fail", "score": "<your score if applicable>", "critique": "<brief reason>" }
+{ "verdict": "pass" | "fail", "score": "<your score if applicable>", "critique": "<actionable reason>" }
 \`\`\`
-
-If the output does not meet the acceptance bar, emit verdict:"fail" and include a clear, actionable
-critique the producer can use to improve. Do NOT emit verdict:"pass" if the bar is not met.`;
+Do NOT emit verdict:"pass" if the bar is not met.`;
 }

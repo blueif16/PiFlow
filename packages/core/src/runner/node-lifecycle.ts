@@ -66,6 +66,7 @@ import {
 } from './env-staging.js';
 import type { RunContext } from './run-context.js';
 import { readHostFile, stageHostPathIntoSandbox } from './run-context.js';
+import { runInlineCheckpoint } from './inline-checkpoint.js';
 
 /**
  * (G12 — M4) A per-attempt OVERRIDE for an ESCALATION/CONSULT re-run: prepend the verified-evidence
@@ -333,6 +334,18 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // the extra read roots the build imports. Resolved above; undefined ⇒ cwd = workdir (unchanged).
       execCwd: node.sandbox.execCwd,
       execReads: node.sandbox.execReads,
+      // (BOOKKEEPING DENY — run 260710-02) A node's read scope is typically `{{RUN}}`-wide, which also
+      // grants the runner's OWN `.pi/**` internals (sessions/nodes/journal/state) — dead ends a node has no
+      // business reading (W4 nodes burned 300-540s running `find` under `{{RUN}}/.pi/**`). DENY that whole
+      // tree in the kernel jail, RE-allowing only the node's own staged inputs (`.pi/staged/<id>` prompt/
+      // extension/mcp) + shared `.pi/skills`. In-place (local) only — cloud/in-memory ignore these; a
+      // `fullAccess` node runs jail-off anyway. The deny is under `ctx.outDir` (the run dir == the in-place
+      // workdir), so it is a no-op for a throwaway provider whose workdir holds no run bookkeeping.
+      readDeny: [path.join(ctx.outDir, '.pi')],
+      readDenyExcept: [
+        path.join(ctx.outDir, '.pi', 'staged', node.id),
+        path.join(ctx.outDir, '.pi', 'skills'),
+      ],
       outputDir: sbLoc.outputDir,
       workdir: sbLoc.workdir,
       image: node.sandbox.image,
@@ -380,7 +393,9 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // ran before the model. Here a blocking pre-gate failure fails the node WITHOUT ever spawning pi — the
     // real firing site #11 needs. Each gate's `onFailure` (default 'block') gives its consequence; an
     // `advisory`/`warn` gate is recorded but does not block. Reads the host run dir (= the staged inputs).
-    const preChecks = gatesFromOp(node.op).pre; // (C2) the SINGLE gate→Check reconstruction (was inlined here).
+    // Gate paths resolve like io.checks paths do at staging — an unresolved `{{WORKSPACE}}/…` reads a
+    // literal path under outDir and fails a VALID input (the merge/promote resolve-fix class).
+    const preChecks = gatesFromOp(node.op).pre.map((c) => (c.path ? { ...c, path: resolveTokens(c.path, resolveCtx) } : c));
     if (preChecks.length) {
       const preReadBytes = (rel: string): FileBytes => {
         try {
@@ -646,7 +661,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         const mergeOnFailure = ((node.op ?? []).find((o) => o.transform?.kind === 'merge')?.onFailure ?? 'block') as OnFailure;
         const merged = await runMerge(resolveDeep(m, resolveCtx), ctx.outDir);
         for (const r of merged?.ops ?? []) {
-          if (r.failed) opFailures.push({ detail: `merge ${r.op} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: mergeOnFailure });
+          if (r.failed) opFailures.push({ detail: `merge ${r.op} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure: mergeOnFailure });
         }
       }
       // (M5 · #9/#18) AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic
@@ -654,9 +669,14 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // route a non-zero exit through the op's `onFailure` (default 'block').
       const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
       for (const { body, onFailure } of runOps.runnable) {
-        const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
+        // The body resolves at dispatch like the sibling merge/promote specs — merge.ts's own sub() handles
+        // only {project}, so a raw {{WORKSPACE}} cwd joins literally under the project base → spawnSync ENOENT.
+        const rb = resolveDeep({ cmd: body.cmd, args: body.args, cwd: body.cwd }, resolveCtx) as { cmd: string; args?: string[]; cwd?: string };
+        const r = await applyMergeOp({ run: rb }, ctx.outDir);
         if (r.failed) {
-          opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure });
+          // include r.skipped — the spawn-error branch (res.error: ENOENT/EAGAIN/EPERM) reports THERE, not in
+          // exit/stderr; without it the issue reads a causeless "run npm failed" (live: w3a count-three-e2e-1)
+          opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure });
         }
       }
       // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant,
@@ -906,6 +926,27 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     if (skillMissing) issues.push(skillMissing);
     if (parsed?.issues?.length) issues.push(...parsed.issues);
 
+    // (P3 · MUST-2 — INLINE HITL GATE) A producer with an inline human gate ran its MODEL above; PAUSE for a
+    // human NOW — after the verdict settles and issues are appended, but BEFORE the success POST-hooks /
+    // promote fire (so no success side-effect publishes for a node about to be rejected). Only gate an
+    // otherwise-`ok` node (deterministic gates already had their say). On REJECT set `st='error'` — NOT
+    // 'blocked': `classifyFailure` routes a `(blocked|gap)` whose reason text matches "missing input" to
+    // `halt` (no retry), and a free-text human reason could trip that; `error` classifies as a retryable
+    // quality-gap. The `st!=='ok'` capture below then feeds `ctx.failureSignals` (with `rejectReason`/
+    // `humanReject`), so `runNodeWithRetries` re-enters WARM and the reviewer's reason reaches the re-run via
+    // `consultPreamble`. `humanReject` also forces that re-attempt RETRY-ONLY (never escalate — H1).
+    let humanRejected = false;
+    let rejectReason: string | undefined;
+    if (st === 'ok' && node.gate?.checkpoint) {
+      const decision = await runInlineCheckpoint(ctx, node, node.gate.checkpoint);
+      if (!decision.accept) {
+        st = 'error';
+        humanRejected = true;
+        rejectReason = decision.reason;
+        issues.push(`human reviewer REJECTED the output${decision.reason ? `: ${decision.reason}` : ''}`);
+      }
+    }
+
     // POST hooks — fire with the node's outcome; a blocking failure downgrades the node to error.
     try {
       await runHooks(node.hooks?.post, hookCtx, { outcome: st === 'ok' ? 'success' : 'failure' });
@@ -965,6 +1006,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         exitCode: result.code,
         stderrTail: (result.stderr || '').slice(-400),
         parsedOk: parsed != null,
+        // (P3 · inline hitl) A human rejection at the inline gate — the reviewer's WHY (→ consultPreamble on
+        // the warm re-run) + the discriminator that forces the re-attempt retry-only (never escalate, H1).
+        ...(humanRejected ? { humanReject: true } : {}),
+        ...(rejectReason !== undefined ? { rejectReason } : {}),
       });
     }
 
@@ -1021,16 +1066,24 @@ export function summarizeGates(node: NodeSpec): GateSummary | undefined {
     } else if (op.action) {
       const a = op.action;
       if (a.kind === 'rerouteTo') entries.push({ kind: 'reroute', label: `reroute→${a.node}${a.max ? ` ×${a.max}` : ''}`, when });
-      else if (a.kind === 'retry') entries.push({ kind: 'retry', label: `retry${a.max ? ` ×${a.max}` : ''}${a.scope ? ` (${a.scope})` : ''}`, when });
+      else if (a.kind === 'retry') {
+        // (P2) surface the corrective lane (`scope`) AND the RESUME/RERUN knob (`session`) minimally: `retry ×1 (feedback·warm)`.
+        const tags = [a.scope, a.session].filter(Boolean).join('·');
+        entries.push({ kind: 'retry', label: `retry${a.max ? ` ×${a.max}` : ''}${tags ? ` (${tags})` : ''}`, when });
+      }
       else if (a.kind === 'escalate') entries.push({ kind: 'escalate', label: `escalate: ${a.via}`, when });
       else if (a.kind === 'notify') entries.push({ kind: 'notify', label: `notify: ${a.channel}`, when });
     }
     // transform ops are plumbing (derive/seed/merge/promote) — never a gate; skipped.
   }
+  // (H3) The human gate is visible whether it is a STANDALONE checkpoint node (`node.checkpoint`) or an
+  // INLINE post-model gate on a producer (`node.gate.checkpoint`, P3) — read BOTH so the inline gate stays
+  // legible in the GateSummary/observe path. A node carries at most one (the loader forbids both).
   let checkpoint: GateSummary['checkpoint'];
-  if (node.checkpoint) {
-    checkpoint = node.checkpoint.kind;
-    entries.push({ kind: 'human', label: node.checkpoint.kind, when: 'post' });
+  const humanCheckpoint = node.checkpoint ?? node.gate?.checkpoint;
+  if (humanCheckpoint) {
+    checkpoint = humanCheckpoint.kind;
+    entries.push({ kind: 'human', label: humanCheckpoint.kind, when: 'post' });
   }
   if (entries.length === 0) return undefined;
   return { entries, ...(checkpoint ? { checkpoint } : {}) };

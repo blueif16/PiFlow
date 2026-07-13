@@ -25,7 +25,7 @@ into extra intents BEFORE this compile (see `per-node-routing-and-fusion`).
 
 # Anchors
 AUTHORED TEMPLATE → LOAD
-- `packages/core/src/workflow/template/loader.ts:273` — `loadTemplate` — fail-closed scan+check → `WorkflowSpec`
+- `packages/core/src/workflow/template/loader.ts:281` — `loadTemplate` — fail-closed scan+check → `WorkflowSpec`
 - `packages/core/src/workflow/template/loader.ts:129` — `toNodeIntent` — authored `TemplateNode` → runtime `NodeIntent`
 CONTRACT CODEC (DRIVER-* markers)
 - `packages/core/src/contract.ts:199` — `markersFromNode` — derive a node's contract markers from its `NodeSpec`/resolve
@@ -33,10 +33,10 @@ CONTRACT CODEC (DRIVER-* markers)
 SCHEMA (authored shape)
 - `packages/core/src/workflow/template/schema/node.schema.ts:55` — `agentType` field — one example of the authored node.json surface `toNodeIntent` reads
 WORKFLOWSPEC → DAG (topo-order)
-- `packages/core/src/dag.ts:206` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
-- `packages/core/src/dag.ts:76` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
-- `packages/core/src/dag.ts:112` — `stagesOf` — longest-path topological stages (parallel lanes per level)
-- `packages/core/src/types.ts:1062` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
+- `packages/core/src/dag.ts:212` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
+- `packages/core/src/dag.ts:82` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
+- `packages/core/src/dag.ts:118` — `stagesOf` — longest-path topological stages (parallel lanes per level)
+- `packages/core/src/types.ts:1148` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the compiled `Workflow`/`NodeSpec`/`Stage`/`Edge` shapes all live in `packages/core/src/types.ts` (1026/17/1011/1019), NOT in dag.ts — dag.ts only computes them. This card is the STATIC compile spine carved out of the former `runtime-core`; the DYNAMIC exec spine (DAG → one pi per node → artifacts) is the sibling `runner` slice, and they meet at the `Workflow` object. `loadTemplate` is async (returns a `Promise<WorkflowSpec>`).
@@ -136,6 +136,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `0b0fbcd` 2026-07-06 — feat(core): wire gates[] + additive profiles into loadTemplate
 - `f157e62` 2026-07-07 — chore(okf): re-stamp anchors after the profile-overlay run-path move + refresh auto regions
 - `e9c123e` 2026-07-08 — feat(optimize): WS3 — per-issue verify tier + optimize.criteria rename (judge alias)
+- `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
+- `df59fb0` 2026-07-09 — fix(core): make a judge gate's REJECT actually re-run its producer
+- `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
+- `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 
 ### Lessons — memory cluster
 
@@ -179,18 +183,20 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-rollout-enablement]]
 - [[piflowctl-bin-rename]]
 - [[roadmap-bookkeeping-linear]]
+- [[run-level-blame-design]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `toNodeIntent` (packages/core/src/workflow/template/loader.ts:129) — 1 caller in `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
-- `loadTemplate` (packages/core/src/workflow/template/loader.ts:273) — 9 callers in `packages/core/src/runner/entry.ts`, `packages/core/src/optimize/substrate/child-run.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/cli/test/run.test.ts`, `packages/core/test/gate-list-profiles.test.ts`, `packages/core/test/judge-materialization.test.ts`
-- `NodeSpec` (packages/core/src/types.ts:17) — 38 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/drivers/types.ts` +3 more; tests: `packages/core/test/command-thinking.test.ts`, `packages/core/test/execcwd-staging.test.ts`, `packages/core/test/resolve-node-write-scope.test.ts`, `packages/core/test/schema.test.ts` +4
+- `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 1 caller; tests: `packages/core/test/gate-list-profiles.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 27 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; tests: `packages/core/test/inline-hitl-gate.test.ts`
 
-<sub>derived 2026-07-09 · arc=80 commits · files=5 · lessons=43</sub>
+<sub>derived 2026-07-10 · arc=84 commits · files=5 · lessons=45</sub>
 <!-- okf:auto-end -->

@@ -103,14 +103,18 @@ describe('gates[] — the additive typed gate list', () => {
     expect((runOp!.run as any).args).toEqual(['test']);
   });
 
-  it('a `hitl` gate sets the node checkpoint', async () => {
+  it('a `hitl` gate INLINES on the producer (node.gate.checkpoint, NOT node.checkpoint)', async () => {
+    // (P3 · MUST-2) A hitl gate now lands on `node.gate.checkpoint` — the INLINE post-model gate — NOT
+    // `node.checkpoint` (the standalone no-pi human node that would skip the producer's model at
+    // runner.ts dispatch). The behavior DELIBERATELY changed from the pre-P3 standalone-checkpoint mapping.
     dir = await cloneFixture();
     await authorGatesOn(dir, 'w2b-assets', [{ type: 'hitl', question: 'Ship these assets?', checkpointKind: 'confirm' }]);
     const spec = await loadTemplate(dir);
     const node = spec.nodes.find((x) => x.label === 'w2b-assets')!;
-    expect(node.checkpoint, 'a hitl gate must set the node checkpoint').toBeDefined();
-    expect(node.checkpoint!.kind).toBe('confirm');
-    expect(node.checkpoint!.prompt).toBe('Ship these assets?');
+    expect(node.checkpoint, 'a hitl gate must NOT set the standalone node.checkpoint (it would skip the model)').toBeUndefined();
+    expect(node.gate?.checkpoint, 'a hitl gate must set the INLINE node.gate.checkpoint').toBeDefined();
+    expect(node.gate!.checkpoint!.kind).toBe('confirm');
+    expect(node.gate!.checkpoint!.prompt).toBe('Ship these assets?');
   });
 
   it('an EMPTY gates:[] list adds no gates (still byte-identical to the golden)', async () => {

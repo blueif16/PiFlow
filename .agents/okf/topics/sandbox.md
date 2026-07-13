@@ -4,7 +4,7 @@ key: sandbox
 title: Sandbox (per-node OS filesystem jail — declare → plan → kernel-enforce)
 description: How a node's declared readScope/owns become a kernel-enforced filesystem jail — a shared scope policy rendered as a macOS seatbelt SBPL profile or Linux bwrap bind-mount argv, wrapping the in-place pi exec so reads/writes outside the lane EPERM; danger-full-access is the bypass.
 resource: packages/core/src/sandbox/scope.ts
-aliases: [sandbox, seatbelt, bwrap, bubblewrap, readScope, owns, jail, danger-full-access, sandbox-exec, read-scope.sb, computeScopeRoots, worktree, fullAccess, enforceReadScope, per-node full access]
+aliases: [sandbox, seatbelt, bwrap, bubblewrap, readScope, owns, jail, danger-full-access, sandbox-exec, read-scope.sb, computeScopeRoots, worktree, fullAccess, enforceReadScope, per-node full access, execCwd, execReads, exec-scope, uv_cwd, npm run under sandbox, E10]
 seeds: [packages/core/src/sandbox/scope.ts, packages/core/src/sandbox/jail.ts, packages/core/src/sandbox/seatbelt.ts, packages/core/src/sandbox/bwrap.ts, packages/core/src/sandbox/local.ts, packages/core/src/sandbox/read-scope.sb, packages/core/src/workflow/template/schema/node.schema.ts, packages/cli/src/run.ts]
 symbols: [computeScopeRoots, localJailPlan, seatbeltExecPlan, buildSeatbeltProfile, bwrapExecPlan, buildBwrapArgs, LocalSandbox, LocalSandboxProvider]
 tags: [sandbox, security, runner, cli, core]
@@ -18,7 +18,13 @@ template `loader` lowers these to `node.sandbox.{read,write}`; `node-lifecycle` 
 (in-place — runs in the real working tree, never `mkdtemp`s). On every `exec` it calls `localJailPlan`,
 the OS dispatcher, which routes darwin→`seatbeltExecPlan`, linux→`bwrapExecPlan`. Both backends consume
 the ONE shared policy `computeScopeRoots` (workdir + node_modules + node toolchain + readScope as read
-roots; workdir + owns as write roots, realpath-expanded). Seatbelt renders these as SBPL `(subpath …)`
+roots; workdir + owns as write roots, realpath-expanded). (E10 exec-scope) `contract.execCwd` — the
+project root an out-of-tree build/npm script runs from — is folded into the read roots as a RECURSIVE
+subpath plus a getcwd `(literal)`, and becomes the process cwd; `contract.execReads` adds extra external
+read roots. execCwd is THE fix for `npm run` from a project dir outside the granted roots: npm fails
+FIRST on `EPERM: uv_cwd` (the cwd dir entry is unreadable) before any node_modules resolution, and
+enumerating leaf entries in readScope does NOT help — the recursive grant on the project root does
+(live-probed 2026-07-09 against buildSeatbeltProfile). Seatbelt renders all roots as SBPL `(subpath …)`
 allow rules in a per-exec `.sb` (from the `read-scope.sb` template) and runs `sandbox-exec -f <profile>
 sh -c <cmd>`; bwrap renders them as `--ro-bind`/`--bind` argv in a fresh mount namespace. Either way a
 read/write outside the lane EPERMs, kernel-enforced and inherited by every child. Network + exec stay
@@ -28,28 +34,38 @@ isolation, composable with seatbelt.
 
 # Anchors
 SCOPE (declare)
-- `packages/core/src/workflow/template/schema/node.schema.ts:136` — `owns` field — write-authority globs (→ writeScope)
-- `packages/core/src/workflow/template/schema/node.schema.ts:141` — `readScope` field — exposed read dirs + the OS allow-list
-- `packages/core/src/workflow/template/loader.ts:146` — lowers `readScope`/`owns` → `node.sandbox.{read,write}`
-- `packages/core/src/runner/node-lifecycle.ts:201` — passes them as `CreateOpts.{readScope,writeScope}` into `scope.create`
+- `packages/core/src/workflow/template/schema/node.schema.ts:184` — `owns` field — write-authority globs (→ writeScope)
+- `packages/core/src/workflow/template/schema/node.schema.ts:189` — `readScope` field — exposed read dirs + the OS allow-list
+- `packages/core/src/workflow/template/loader.ts:190` — lowers `readScope`/`owns` → `node.sandbox.{read,write}`
+EXEC-SCOPE (E10 — out-of-tree builds / npm run)
+- `packages/core/src/workflow/template/schema/node.schema.ts:194` — `execCwd` field — the project root the node's build runs from (→ `node.sandbox.execCwd`)
+- `packages/core/src/workflow/template/schema/node.schema.ts:202` — `execReads` field — extra external read roots, unioned into the read scope
+- `packages/core/src/workflow/template/loader.ts:196` — lowers `execCwd`/`execReads` → `node.sandbox.{execCwd,execReads}` (raw tokens survive; resolve at launch)
+- `packages/core/src/runner/node-lifecycle.ts:253` — resolves `{{WORKSPACE}}` in execCwd/execReads at launch, threads them into the sandbox opts
+- `packages/core/src/sandbox/seatbelt.ts:180` — `execReadRoots` — folds execReads ∪ execCwd into the declared read scope (recursive subpaths; execCwd also gets the getcwd literal)
+- `packages/core/src/sandbox/scope.ts:87` — autoRead grants `workdir/node_modules` + host-cwd node_modules by DEFAULT (why in-tree `node x.mjs` never EPERMed)
 PLAN (shared policy + dispatch)
 - `packages/core/src/sandbox/scope.ts:71` — `computeScopeRoots()` — the SINGLE source of read/write roots both backends render
 - `packages/core/src/sandbox/jail.ts:54` — `localJailPlan()` — OS dispatcher: darwin→seatbelt, linux→bwrap, else warn+bare
 - `packages/core/src/sandbox/local.ts:125` — `LocalSandbox.exec` wraps the command in the jail plan (default); `null` ⇒ bare
 ENFORCE (macOS)
-- `packages/core/src/sandbox/seatbelt.ts:217` — `seatbeltExecPlan()` — writes a per-exec `.sb`, returns `sandbox-exec -f <p> sh -c <cmd>`
-- `packages/core/src/sandbox/seatbelt.ts:154` — `buildSeatbeltProfile()` — renders read/write roots as SBPL `(subpath …)` allows
+- `packages/core/src/sandbox/seatbelt.ts:255` — `seatbeltExecPlan()` — writes a per-exec `.sb`, returns `sandbox-exec -f <p> sh -c <cmd>`
+- `packages/core/src/sandbox/seatbelt.ts:156` — `buildSeatbeltProfile()` — renders read/write roots as SBPL `(subpath …)` allows
 - `packages/core/src/sandbox/read-scope.sb:46` — `(deny file-read*)` … `@SCOPE_ALLOWS@` — the deny-all-then-reallow template
 ENFORCE (linux)
 - `packages/core/src/sandbox/bwrap.ts:293` — `bwrapExecPlan()` — null off-linux or no-bwrap (warns once), else bwrap argv
 - `packages/core/src/sandbox/bwrap.ts:216` — `buildBwrapArgs()` — renders roots as `--ro-bind`/`--bind` mount-namespace argv
 BYPASS
 - `packages/cli/src/run.ts:504` — `--sandbox danger-full-access` → `makeLocalProvider({dangerous:true})` (enforceReadScope:false) — RUN-level bypass
-- `packages/core/src/workflow/template/schema/node.schema.ts:155` — `fullAccess` field — PER-NODE jail-off (`node.sandbox.fullAccess`): this ONE node runs outside the fs jail even under `--sandbox local`
+- `packages/core/src/workflow/template/schema/node.schema.ts:208` — `fullAccess` field — PER-NODE jail-off (`node.sandbox.fullAccess`): this ONE node runs outside the fs jail even under `--sandbox local`
 - `packages/core/src/sandbox/local.ts:72` — `enforceReadScope` — LocalSandbox constructor param; `false` (per-node fullAccess or `danger-full-access`) short-circuits the jail plan (bare exec)
 
 # Freshness (anti-drift)
-anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `cli/src/run.ts:502` prints "Linux bwrap backend unwired … UNSANDBOXED" but `jail.ts:57` DOES route linux→`bwrapExecPlan` and `local.ts` calls it — the backend IS wired; only kernel EPERM is unverified-in-CI (bwrap absent on the macOS dev host). · `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts) accepts CreateOpts but does NOT enforce readScope/owns in the cloud VM (no jail) — scope enforcement is local/seatbelt/bwrap only. · MERGE: `--sandbox` is now the LEGACY per-run override of the persistent `context worker` (same axis, `WorkerKind ⊂ SandboxChoice`); the effective value is resolved by `run.ts:resolveRunSandbox` (flag > context-worker > inmemory) — see [[context]].
+anchors ✓ · scope = the seeds above · re-derive when they change · HOLE: the jail wraps ONLY the pi
+agent's exec — op[] `run` cmds (post-hooks, `optimize.measure`) execute via raw
+`spawnSync(cmd, argv, {env: process.env})` at `packages/core/src/workflow/ops/merge.ts:212`
+(dispatched from node-lifecycle/node-lanes/measure) — UNSANDBOXED on the host; if op[] runs are ever
+routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIFT NOTE: `cli/src/run.ts:502` prints "Linux bwrap backend unwired … UNSANDBOXED" but `jail.ts:57` DOES route linux→`bwrapExecPlan` and `local.ts` calls it — the backend IS wired; only kernel EPERM is unverified-in-CI (bwrap absent on the macOS dev host). · `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts) accepts CreateOpts but does NOT enforce readScope/owns in the cloud VM (no jail) — scope enforcement is local/seatbelt/bwrap only. · MERGE: `--sandbox` is now the LEGACY per-run override of the persistent `context worker` (same axis, `WorkerKind ⊂ SandboxChoice`); the effective value is resolved by `run.ts:resolveRunSandbox` (flag > context-worker > inmemory) — see [[context]].
 
 <!-- okf:auto-start -->
 > _Auto-generated by `_generate.mjs` — do not hand-edit between the markers; re-run `--write`._
@@ -162,6 +178,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
 - `e9c123e` 2026-07-08 — feat(optimize): WS3 — per-issue verify tier + optimize.criteria rename (judge alias)
 - `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
+- `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
+- `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 
 ### Lessons — memory cluster
 
@@ -179,6 +197,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
+- [[delegate-inspection-to-subagents]]
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[game-omni-reference-product]]
@@ -194,19 +213,25 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
+- [[npm-run-is-system-contract]]
+- [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
 - [[optimize-substrate-program]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
 - [[piflow-context-cloud-run-footgun]]
 - [[piflow-init-scaffolder]]
+- [[piflow-issue-interface]]
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-handbook]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
+- [[piflow-rollout-enablement]]
+- [[piflow-template-authoring-constraints]]
 - [[playbook-skills-depth-over-budget]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
+- [[run-level-blame-design]]
 - [[sandbox-readscope-default-on]]
 - [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-legibility-tracks]]
@@ -216,10 +241,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
-- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 4 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:217) — 1 caller in `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
+- `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 4 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
+- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 2 callers in `packages/core/src/sandbox/local.ts`; ⚠ no covering tests found
+- `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:255) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-09 · arc=93 commits · files=8 · lessons=46</sub>
+<sub>derived 2026-07-10 · arc=95 commits · files=8 · lessons=53</sub>
 <!-- okf:auto-end -->

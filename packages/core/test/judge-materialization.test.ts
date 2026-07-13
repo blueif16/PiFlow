@@ -8,7 +8,8 @@
 //   • id `<producer>__judge`, agentType:'judge', tier == judgeTier (and != the producer's tier);
 //   • prompt CONTAINS the rubric (the materialized judge prompt);
 //   • io.reads = the producer's produced artifact(s); deps place the judge AFTER the producer;
-//   • a producer-side `rerouteTo`→producer action carries the retry budget (the judge-fail loop);
+//   • the JUDGE carries the judge-fail loop as a `reroute` field (onFail→producer + retry budget + an
+//     accept-only pass-sentinel oracle) — consumed by `expandReroute`, NOT a dead producer-side op;
 //   • the producer's downstream CONSUMERS depend on the judge (the judge gates the hand-off);
 //   • the judge model MUST differ from the producer (the design invariant — a same-tier judge is REJECTED).
 //
@@ -98,30 +99,35 @@ describe('loadTemplate — judge gate materializes a REAL judge node into the DA
     expect(producer.io.produces).toContain('spec/classification.json');
   });
 
-  it('attaches a producer-side rerouteTo→producer action carrying the retry budget (judge-fail loop)', async () => {
-    dir = await cloneFixture();
-    await authorJudgeOn(dir);
-    const spec = await loadTemplate(dir);
-    const producer = spec.nodes.find((n) => n.label === 'w0-classify')!;
-    const reroute = (producer.op ?? []).find((o) => (o.action as any)?.kind === 'rerouteTo');
-    expect(reroute, 'the producer must carry a rerouteTo action for the judge-fail loop').toBeDefined();
-    expect((reroute!.action as any).node).toBe('w0-classify');
-    expect((reroute!.action as any).max).toBe(2); // the authored retryMax
-  });
-
-  it('the reroute carries an EVIDENCE pointer to the judge verdict (the re-entered producer reads what failed)', async () => {
+  it('sets the judge-fail loop on the JUDGE\'s `reroute` field (onFail→producer + retry budget) — NOT a dead producer op', async () => {
     dir = await cloneFixture();
     await authorJudgeOn(dir);
     const spec = await loadTemplate(dir);
     const producer = spec.nodes.find((n) => n.label === 'w0-classify')!;
     const judge = spec.nodes.find((n) => n.label === 'w0-classify__judge')!;
-    const reroute = (producer.op ?? []).find((o) => (o.action as any)?.kind === 'rerouteTo')!;
-    // The judge-fail loop must tell the re-entered producer WHAT failed: the reroute evidence points at the
-    // judge's verdict artifact (mirrors the hand-authored verify nodes' `evidence:[…report…]`). Omitting it
-    // (attachRerouteLoop's 4th arg dropped) leaves the re-entry blind — this asserts the pointer is threaded.
-    expect((reroute.action as any).evidence, 'the reroute must carry the judge verdict as evidence').toEqual([
-      judge.io.produces[0],
-    ]);
+    // The judge-fail loop is the JUDGE's `reroute` field — the ONLY thing `expandReroute` consumes. The old
+    // producer-side `rerouteTo` op was DEAD (nothing read it), so the producer must carry NO such op now.
+    expect((producer.op ?? []).some((o) => (o.action as any)?.kind === 'rerouteTo'), 'the producer must NOT carry a dead rerouteTo op').toBe(false);
+    expect(judge.reroute, 'the judge must carry the reroute field expandReroute unrolls').toBeDefined();
+    expect(judge.reroute!.onFail).toBe('w0-classify'); // re-enter the producer on a judge fail
+    expect(judge.reroute!.max).toBe(2); // the authored retryMax
+  });
+
+  it('the judge reroute carries the verdict as EVIDENCE + an accept-only pass-sentinel oracle (so a REJECT re-runs)', async () => {
+    dir = await cloneFixture();
+    await authorJudgeOn(dir);
+    const spec = await loadTemplate(dir);
+    const judge = spec.nodes.find((n) => n.label === 'w0-classify__judge')!;
+    // Evidence points at the judge's verdict artifact (produces[0]) so the re-entered producer reads WHAT failed.
+    expect(judge.reroute!.evidence, 'the reroute must carry the judge verdict as evidence').toEqual([judge.io.produces[0]]);
+    // The reroute-gate oracle is an ACCEPT-ONLY pass-sentinel, NOT the always-written verdict — else the gate
+    // sees "pass" on every reject and the producer never re-runs (Bug B). It must be one of the judge's
+    // produces (so expandReroute namespaces it per attempt) and must NOT be the verdict.
+    expect(judge.reroute!.passSentinel, 'the reroute must carry a pass-sentinel oracle').toBeDefined();
+    expect(judge.io.produces).toContain(judge.reroute!.passSentinel!);
+    expect(judge.reroute!.passSentinel).not.toBe(judge.io.produces[0]);
+    // The pass-sentinel is NOT a required artifact — a REJECT writes none and must not block the judge node.
+    expect(judge.io.artifacts.some((a) => a.path === judge.reroute!.passSentinel), 'the pass-sentinel must NOT be a required artifact').toBe(false);
   });
 
   it('re-points the producer\'s downstream CONSUMERS to depend on the judge (the judge gates the hand-off)', async () => {

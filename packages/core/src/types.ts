@@ -76,6 +76,16 @@ export interface NodeSpec {
    */
   checkpoint?: CheckpointSpec;
   /**
+   * 6b. (P3 — INLINE HITL) An inline human gate on a PRODUCER node. UNLIKE `checkpoint` (which routes the
+   * node to the no-pi lane BEFORE any model runs), `gate.checkpoint` is INVISIBLE to that dispatch: the node
+   * runs its model normally, and only AFTER its verdict settles `ok` — before the success POST-hooks /
+   * promote — does the runner PAUSE for a human. On REJECT the producer re-runs through the retry engine
+   * (default warm), carrying the reviewer's reason. `policy` is the hitl GatePolicy (reject budget/session).
+   * Additive: a node with no `gate` behaves exactly as before. Authored via a `hitl` gate entry (fanned by
+   * the loader), never hand-written in node.json. See `NodeGate`.
+   */
+  gate?: NodeGate;
+  /**
    * 7. (G12 — M3) When present, this is a GENERATED reroute existence-gate node: it spawns NO `pi`, stat()s
    * the prior attempt's verify output, and (on a pass) copies it forward + marks the cloned re-entry body
    * `reused` so it never spawns (#17). NOT author-reachable — `expandReroute` emits it pre-compile. Optional/
@@ -187,6 +197,15 @@ export type ActionBody =
        *   the build-spec §Self-correction. Owned by SA-D + the memory system. NOT YET IMPLEMENTED.
        */
       scope?: 'feedback' | 'fix';
+      /**
+       * (P2 · unified gate policy) RESUME(warm) vs RERUN(cold) — threaded from `GatePolicy.session` by
+       * `makeRetryAction`. `'warm'` (default) RESUMES the node's pi session with a FEEDBACK-ONLY turn;
+       * `'cold'` RERUNS fresh — no session resume, the full resolved prompt re-sent with the critique
+       * prefix. `runNodeWithRetries` reads THIS (not the mere presence of the action) to pick warm/cold, so
+       * a cold feedback retry is now requestable. Absent ⇒ warm (byte-identical to pre-P2). Orthogonal to
+       * `scope` (which corrective LANE) — `session` is only which SESSION.
+       */
+      session?: 'warm' | 'cold';
     }
   | { kind: 'escalate'; via: string; evidence?: string[] }
   | { kind: 'notify'; channel: string; payload?: string[] }
@@ -220,6 +239,20 @@ export interface CheckpointSpec {
    * attended run). On elapse the `headless` policy fires. A tiny value drives the headless path in tests.
    */
   timeoutMs?: number;
+}
+
+/**
+ * (P3 — INLINE HITL) The inline-gate carrier on a producer node: a human checkpoint that fires AFTER the
+ * node's model runs (a post-model approve/reject), plus its policy (the reject budget/session). Held on
+ * `NodeSpec.gate` — a DISTINCT field from `NodeSpec.checkpoint` (the standalone no-pi human NODE) precisely
+ * so the runner's checkpoint dispatch (which keys off `node.checkpoint`) never short-circuits an
+ * inline-gated producer before its model runs.
+ */
+export interface NodeGate {
+  /** The human checkpoint fired AFTER the producer's model settles `ok` (before the success hooks/promote). */
+  checkpoint?: CheckpointSpec;
+  /** The hitl policy — the reject budget (`max`) + session (warm/cold) the reject re-run uses. */
+  policy?: GatePolicy;
 }
 
 // 1 ── SANDBOX ────────────────────────────────────────────────────────────────
@@ -472,6 +505,60 @@ export interface EscalateSpec {
   on?: FailureClass[];
 }
 
+/**
+ * (P2 · unified gate policy) The ONE on-fail vocabulary EVERY gate kind shares — the deterministic
+ * (floor/execution) gate, the agentic judge gate, and the hitl gate all carry a `GatePolicy`. It unifies
+ * what were three overlapping dialects into one superset AND adds the net-new RESUME(warm)/RERUN(cold)
+ * `session` knob, DECOUPLED from "a retry action exists" (pre-P2 a cold feedback retry was unrequestable).
+ * Canonical home = this spine; referenced by `workflow/gate-authoring.ts` (re-export), `workflow/gate-list.ts`,
+ * `NodeIntent.judgeGate.policy`, and mirrored by the node/gate-entry JSON schemas. All fields optional/
+ * additive: an omitted policy defaults to `onFail:'block'`.
+ */
+export interface GatePolicy {
+  /**
+   * On-fail action — the UNIFIED superset. Deterministic consequences: `'block'` (fail the node + halt
+   * before the next stage; the DEFAULT), `'warn'` (record a non-fatal issue), `'stop'` (the documented
+   * `block` alias). Correction lanes: `'retry'` (re-run the producer — the `session` knob picks warm/cold),
+   * `'reroute'` (re-enter a strict-ancestor `target`, default the producer — the judge-gate spelling P1
+   * wired), `'escalate'` (re-run on a stronger model — see `escalate`). Terminal: `'halt'` (refuse to spin
+   * — a missing upstream input; lowers to the `stop` alias) and `'accept'` (accept the non-pass output — a
+   * non-fatal warn). Default `'block'`. `'block'`/`'warn'`/`'stop'` keep their exact pre-P2 meaning.
+   */
+  onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'reroute' | 'escalate' | 'halt' | 'accept';
+  /**
+   * (retry only) RESUME vs RERUN — the net-new knob. `'warm'` (DEFAULT for the feedback path) RESUMES the
+   * producer's own pi session with a FEEDBACK-ONLY turn (the critique alone; the original prompt already
+   * lives in the resumed session tree). `'cold'` RERUNS fresh: no session resume, the full resolved prompt
+   * is re-sent with the critique prepended. Independent of whether a retry action exists. Honored only on a
+   * warm-eligible (in-place/local) provider; a cloud/inmemory node stays cold regardless.
+   */
+  session?: 'warm' | 'cold';
+  /**
+   * (reroute only) The strict-ANCESTOR label to re-enter on fail. Default: the producer (the classic
+   * judge→producer loop P1 wired). A non-ancestor target is a loud `RerouteConfigError` (`expandReroute`).
+   */
+  target?: string;
+  /** Extra attempts after the first (the retry/reroute budget). The canonical spelling of `retryMax`. */
+  max?: number;
+  /**
+   * (escalate) The stronger target + when — the same shape as `NodeIO.escalate`. TYPE/VOCABULARY only in
+   * P2: the escalate LOWERING still reads `io.escalate` (`runNodeWithRetries` is kept as-is), so a
+   * `policy.escalate` is not yet consumed — the field completes the unified vocabulary (the `retryScope:'fix'`
+   * stub precedent). Wiring is a follow-up.
+   */
+  escalate?: EscalateSpec;
+
+  // ── BACK-COMPAT ALIASES (accepted verbatim; mapped to the canonical fields above — never emitted anew) ──
+  /** @deprecated Alias for `max` (the retry/reroute budget). Read only when `max` is absent. */
+  retryMax?: number;
+  /**
+   * @deprecated The pre-P2 correction scope. `'feedback'` (L1) and `'fix'` (L2 stub) BOTH map to
+   * `session:'warm'` (the default), so an existing `{retryScope:'feedback'|'fix'}` still lowers to a warm
+   * feedback retry unchanged; the L2 `'fix'` routing stub is preserved on the lowered action's `scope`.
+   */
+  retryScope?: 'feedback' | 'fix';
+}
+
 // 3 ── HOOK (deterministic; never an LLM) ──────────────────────────────────────
 
 /** When a hook fires relative to its node's outcome. */
@@ -570,6 +657,17 @@ export interface CreateOpts {
    */
   execCwd?: string;
   execReads?: string[];
+  /**
+   * BOOKKEEPING-DENY (additive; local jail only, ignored by cloud/in-memory). `readDeny`: subpaths to DENY
+   * reads on AFTER the scope allows, so they OVERRIDE an otherwise-`{{RUN}}`-wide read grant — used to carve
+   * the runner's OWN `.pi/**` bookkeeping (sessions/nodes/journal/state) out of a node's read scope so it can
+   * never `find`/`cat`/`ls` the internals. `readDenyExcept`: subpaths RE-allowed after the deny (the node's
+   * own `.pi/staged/<id>` inputs + `.pi/skills`). Omitted ⇒ no deny layer (byte-identical). WHY: run
+   * 260710-02's W4 nodes burned 300-540s hunting under `{{RUN}}/.pi/**`; the prose guardrail was
+   * unenforceable, so the boundary now lives in the kernel jail.
+   */
+  readDeny?: string[];
+  readDenyExcept?: string[];
   outputDir: string;
   workdir: string;
   /**
@@ -915,6 +1013,14 @@ export interface RerouteSpec {
   evidence?: string[];
   /** The final clone's consequence — `'block'` (default) or its documented alias `'stop'` (design §2.4). */
   onFailure?: 'block' | 'stop';
+  /**
+   * The reroute EXISTENCE-GATE's pass-signal, when V's FIRST `io.produces` is NOT itself a pass/fail signal.
+   * A JUDGE writes its required artifact (`verdict.json`) on BOTH accept AND reject — the outcome lives in the
+   * CONTENT — so its mere existence is NOT a "prior attempt passed". This names a SEPARATE file V writes ONLY
+   * on PASS (e.g. `_judge/<producer>/pass.ok`): the gate stat()'s THIS (not `priorV[0]`), so a reject (no
+   * sentinel) actually re-runs the producer clone. MUST be one of V's `io.produces` (so it namespaces per
+   * attempt). Absent ⇒ the classic existence gate over V's first produced artifact (author-direct reroute). */
+  passSentinel?: string;
 }
 
 /**
@@ -928,7 +1034,9 @@ export interface RerouteSpec {
  * runs exactly as before.
  */
 export interface RerouteGate {
-  /** The prior attempt's canonical verify artifact; its presence ⇒ the prior attempt PASSED ⇒ short-circuit. */
+  /** The prior attempt's PASS-SIGNAL file; its presence ⇒ the prior attempt PASSED ⇒ short-circuit. Usually
+   *  V's canonical verify artifact; for a judge (writes its artifact on BOTH outcomes) it is the accept-only
+   *  pass-sentinel (`RerouteSpec.passSentinel`) instead. */
   artifact: string;
   /** On a pass, COPY the passing artifact forward to these dests (the next downstream reads them). */
   copyTo: string[];
@@ -977,6 +1085,8 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
   op?: NodeSpec['op'];
   /** (G5) A human checkpoint on this node — carried verbatim onto the dense NodeSpec. */
   checkpoint?: NodeSpec['checkpoint'];
+  /** (P3 — INLINE HITL) An inline (post-model) human gate — carried verbatim onto the dense NodeSpec (`node.gate`). */
+  gate?: NodeSpec['gate'];
   /** (G12 — M3) A generated reroute existence-gate marker — carried verbatim onto the dense NodeSpec. */
   rerouteGate?: NodeSpec['rerouteGate'];
   /** (PROGRAMMATIC NODE) Marks this node no-pi: it runs its declarative ops deterministically, spawning no `pi`. */
@@ -1011,7 +1121,9 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
     judgeTier: string;
     rubric: string;
     threshold?: string;
-    policy?: { onFail?: 'block' | 'warn' | 'stop' | 'retry' | 'escalate'; retryMax?: number; retryScope?: 'feedback' | 'fix' };
+    /** The UNIFIED on-fail policy (P2). `onFail:'reroute'` + `target` (default the producer) is the
+     *  canonical spelling of the judge-fail loop; the budget is `max` (or its `retryMax` alias). */
+    policy?: GatePolicy;
   };
 };
 

@@ -75,6 +75,11 @@ export class LocalSandbox implements Sandbox {
     private readonly execCwd: string | undefined,
     /** E10 — extra external read roots the build imports (a sibling kit), resolved absolute + granted read. */
     private readonly execReads: string[],
+    /** Bookkeeping-deny roots (the runner's `.pi/**` internals) — denied AFTER the scope allows so a node
+     * can never read the run's own sessions/nodes/journal (run 260710-02). Empty ⇒ byte-identical. */
+    private readonly readDeny: string[],
+    /** Re-allowed exceptions under a denied root (the node's own `.pi/staged/<id>`, `.pi/skills`). */
+    private readonly readDenyExcept: string[],
   ) {}
 
   /**
@@ -105,6 +110,8 @@ export class LocalSandbox implements Sandbox {
       runtime.enforceReadScope ?? true,
       resolveOne(opts.execCwd), // E10 exec cwd (a project root outside the run dir) — undefined ⇒ workdir
       resolveScope(opts.execReads), // E10 extra read roots the build imports
+      resolveScope(opts.readDeny), // bookkeeping deny — the runner's .pi/** internals
+      resolveScope(opts.readDenyExcept), // …minus the node's own staged inputs
     );
   }
 
@@ -145,6 +152,8 @@ export class LocalSandbox implements Sandbox {
               writeScope: this.writeScope, // grant the workdir + declared write scope (owns) + scratch
               execCwd: this.execCwd, // E10 — read root + getcwd literal (darwin) / --chdir (bwrap)
               execReads: this.execReads, // E10 — extra read roots the build imports (a sibling kit)
+              readDeny: this.readDeny, // bookkeeping deny — carve the runner's .pi/** internals out
+              readDenyExcept: this.readDenyExcept, // …re-allow the node's own staged inputs
               profileDir: os.tmpdir(),
             })
           : null;

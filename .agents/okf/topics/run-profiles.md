@@ -97,8 +97,8 @@ contract is pinned here. Design: `docs/design/gate-list-and-additive-profiles.md
 - `UnknownProfileError` (packages/core/src/workflow/profile.ts:21) — 3 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/profile.ts`; tests: `packages/core/test/profile.test.ts`
 - `applyProfileByName` (packages/core/src/workflow/profile.ts:133) — 7 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/profile.test.ts`
 - `loadProfileOverlay` (packages/core/src/workflow/profile-overlay.ts:56) — 3 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
-- `ProfileOverlayError` (packages/core/src/workflow/profile-overlay.ts:24) — 4 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/profile-overlay.ts`; ⚠ no covering tests found
+- `ProfileOverlayError` (packages/core/src/workflow/profile-overlay.ts:24) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/workflow/template/loader.ts`, `packages/core/src/workflow/profile-overlay.ts`; ⚠ no covering tests found
 - `applyProfile` (packages/core/src/workflow/profile.ts:95) — 3 callers in `packages/core/src/workflow/profile.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/profile.test.ts`
 
-<sub>derived 2026-07-09 · arc=4 commits · files=3 · lessons=8</sub>
+<sub>derived 2026-07-10 · arc=4 commits · files=3 · lessons=8</sub>
 <!-- okf:auto-end -->

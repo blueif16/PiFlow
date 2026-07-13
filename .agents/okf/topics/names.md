@@ -122,6 +122,8 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - [[optimize-substrate-program]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
+- [[piflow-template-authoring-constraints]]
+- [[run-level-blame-design]]
 - [[runs-live-in-product-runs-folder]]
 
 ### Code anchors / blast radius (codegraph)
@@ -132,5 +134,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-09 · arc=50 commits · files=7 · lessons=10</sub>
+<sub>derived 2026-07-10 · arc=50 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

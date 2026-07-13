@@ -300,7 +300,9 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // PRE-GATE — fire the node's `when:'pre'` gate ops over the staged inputs (mirrors runNode's #11 block).
     // A blocking pre-gate failure fails the node here. Each gate's `onFailure` (default 'block') decides;
     // an `advisory`/`warn` gate records but does not block.
-    const preChecks = gatesFromOp(node.op).pre; // (C2) the SINGLE gate→Check reconstruction (was inlined here).
+    // Gate paths resolve like io.checks paths do at staging — an unresolved `{{WORKSPACE}}/…` reads a
+    // literal path under outDir and fails a VALID input (the merge/promote resolve-fix class).
+    const preChecks = gatesFromOp(node.op).pre.map((c) => (c.path ? { ...c, path: resolveTokens(c.path, resolveCtx) } : c));
     if (preChecks.length) {
       const preReadBytes = (rel: string): FileBytes => {
         try {
@@ -364,9 +366,13 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // effect step. Reuse the merge executor's `run` impl, then route a non-zero exit through `onFailure`.
     const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
     for (const { body, onFailure } of runOps.runnable) {
-      const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, ctx.outDir);
+      // The body resolves at dispatch like the sibling merge/promote specs — merge.ts's own sub() handles
+      // only {project}, so a raw {{WORKSPACE}} cwd joins literally under the project base → spawnSync ENOENT.
+      const rb = resolveDeep({ cmd: body.cmd, args: body.args, cwd: body.cwd }, resolveCtx) as { cmd: string; args?: string[]; cwd?: string };
+      const r = await applyMergeOp({ run: rb }, ctx.outDir);
       if (r.failed) {
-        opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure });
+        // include r.skipped — the spawn-error branch (res.error) reports THERE, not in exit/stderr
+        opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure });
       }
     }
     // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant, or

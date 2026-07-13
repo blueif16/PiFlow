@@ -11,7 +11,7 @@
 // malformed-case test bite. A typo'd key (`own` for `owns`, `dep` for `deps`) must FAIL, not pass
 // silently — a loose schema is the bug the validation test exists to catch.
 
-import { gateEntrySchema } from './gate-entry.schema.js';
+import { gateEntrySchema, gatePolicy } from './gate-entry.schema.js';
 
 /** The draft-2020-12 JSON Schema object for a template `node.json`. Frozen; import to validate. */
 export const nodeSchema = {
@@ -354,16 +354,9 @@ export const nodeSchema = {
         judgeTier: { type: 'string', minLength: 1, description: 'The tier alias the judge model resolves through. MUST differ from the producer tier.' },
         rubric: { type: 'string', minLength: 1, description: "The rubric prompt body the judge evaluates the producer's output against." },
         threshold: { type: 'string', minLength: 1, description: "Pass/fail bar the judge must meet (rubric-dependent; default 'pass')." },
-        policy: {
-          type: 'object',
-          additionalProperties: false,
-          description: 'On-fail consequence — `retryMax` bounds the judge-fail reroute loop back to the producer.',
-          properties: {
-            onFail: { enum: ['block', 'warn', 'stop', 'retry', 'escalate'], description: "On-fail action. Default 'block' (the reroute loop is the consequence)." },
-            retryMax: { type: 'integer', minimum: 0, description: 'Reroute budget — extra producer attempts after the first on judge-fail.' },
-            retryScope: { enum: ['feedback', 'fix'], description: "Correction scope for retries (default 'feedback')." },
-          },
-        },
+        // (P2) The UNIFIED gate policy (shared with the gate LIST) — the canonical judge-fail spelling is
+        // `onFail:'reroute'` + `target` (default the producer); the budget is `max` (or the `retryMax` alias).
+        policy: gatePolicy,
       },
     },
     subworkflow: {
