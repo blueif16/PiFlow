@@ -107,6 +107,28 @@ reading of the seam law: you cannot safely enforce mid-run on a live producer, s
 where the unit is disposable. A live-run failure is not the overlord's live problem; it becomes a **defect the
 optimize loop fixes later**.
 
+## The root-cause law — the model is GOOD; the harness is almost always the defect
+When a node fails — a gate blocks, an artifact is wrong or thin — your reflex diagnosis will be *"the model
+wasn't capable enough."* **Reject that as your FIRST answer.** It is almost always wrong, and it is ALWAYS
+non-actionable: you cannot make the fleet's model smarter at the seam, and "too weak" HIDES the real, fixable
+root. The overwhelming majority of node failures are **preparation defects in OUR harness**, not capability
+gaps in the model — so assume the model is capable and ask instead: **"what did our harness fail to give it —
+clearly, concisely, correctly, and in the right form?"** The usual roots:
+- the prompt left the requirement **advisory or implicit** instead of a HARD, self-checkable rule;
+- the **authoritative facts weren't STAGED where the model must see them** (a forced-read `inject` / a seed
+  hook / an upstream programmatic node) — so it worked against a gap it could not see;
+- the facts were present but **noisy / bloated / mis-ordered** and the signal drowned (more context ≠ better context);
+- the **gate BLOCKS instead of COACHING** — no warm-resume-with-feedback policy, so a near-miss dies instead
+  of self-correcting.
+
+You hold the full infra to ACT on this, not just to assign blame: **triage** (name the harness defect) →
+**find** → **fixer** (repair the prompt / skill / staged data / gate policy) → **gate** (verify). The
+overlord's optimization objective is NOT a stronger model — it is a harness that hands the SAME model the
+**best, most concise, correct, well-staged information** and makes every requirement checkable, so it generates
+**correctly AND efficiently**. Every "the model is too weak" verdict is a triage MISS — re-open it as a harness
+question. (This is the same law the fixer and gate obey: fix the ROOT in the harness, never teach-to-the-test,
+never blame the model.)
+
 ## Output shape — every overlord turn is a DECISION RECORD
 Lead with the decision so the human (or the parent loop) sees it first. One record per intervention:
 ```
@@ -384,6 +406,8 @@ These endpoints are the map, not the manual — to go deeper on any one, run `pi
 - [ ] On a **live producer** the action was queued to the next **intervention-seam**; only an off-path
   candidate (or the optimize loop, in-band) was acted on immediately, and the optimize loop was NOT aborted on
   a routine `gated:reject`.
+- [ ] I did NOT default to blaming the model — I framed the failure as a HARNESS/preparation defect and routed
+  it to triage→find→fix (optimize the information the harness feeds the model, not the model).
 
 ## Anti-patterns (what loses a fleet)
 - ❌ A blind long run with no watcher. ✅ Every run is watched by the reflex AND by you.
@@ -398,6 +422,9 @@ These endpoints are the map, not the manual — to go deeper on any one, run `pi
 - ❌ Aborting the optimize loop on a routine `gated:reject`/`fixer-aborted` (kills the multi-round machine). ✅
   Wake in-band; abort the loop only on a terminal `loop-stopped`/`stopped`/`fix-cycle-ceiling`.
 - ❌ Inventing a fix the node should make. ✅ Nudge the node, or escalate to the human.
+- ❌ Diagnosing a node failure as "the model is too weak / not capable" (non-actionable, almost always wrong).
+  ✅ Assume the model is good — root-cause the HARNESS (prompt / staged facts / gate policy), route
+  triage→find→fix, and optimize the INFORMATION you feed it, not the model.
 
 ## Worked example — the fixer overlord (the live M3 case)
 > ⚠️ This example is on the **classic** binding-driven engine (its `fixer-trace` stream + the game-omni
