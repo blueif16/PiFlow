@@ -65,6 +65,7 @@ import {
   cloudCredEnvAdditions,
 } from './env-staging.js';
 import type { RunContext } from './run-context.js';
+import type { WatchdogEvent } from './exec-runner.js';
 import { readHostFile, stageHostPathIntoSandbox } from './run-context.js';
 import { runInlineCheckpoint } from './inline-checkpoint.js';
 
@@ -586,7 +587,11 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     const hostSignalable = IN_PLACE_KINDS.has(ctx.providerKind);
     const onSpawn = hostSignalable ? (pid: number): void => { void writeNodePid(ctx.outDir, node.id, pid); } : undefined;
     // `let result` (not `const`): the G8 repair loop re-execs in the live sandbox and re-binds it.
-    const exec0 = await ctx.execRunner(execSandbox, cmd, { ...ctx.watchdog, nodeTimeoutMs, onSpawn, breakerSignal: breakerAc?.signal });
+    // (idle telemetry) Route each idle-watchdog action into THIS node's event archive so a request re-exec is
+    // visible in `events.jsonl` (fired-at + silence measured + attempt #) rather than inferred post-hoc from a
+    // pi `Unhandled stop reason: abort`. Only when recording; `note` bypasses the stdout line buffer (events.ts).
+    const onWatchdog = recorder ? (ev: WatchdogEvent): void => recorder.note({ ...ev }) : undefined;
+    const exec0 = await ctx.execRunner(execSandbox, cmd, { ...ctx.watchdog, nodeTimeoutMs, onSpawn, onWatchdog, breakerSignal: breakerAc?.signal });
     let result = exec0.result;
     const { killed } = exec0;
     await recorder?.close();
@@ -990,6 +995,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     if (killed === 'timeout') rec.killedTimeout = true;
     if (killed === 'stall') rec.killedStall = true;
     if (killed === 'tool-loop') rec.killedToolLoop = true;
+    if (killed === 'idle') rec.killedIdle = true;
 
     // (G12 — M4) CAPTURE the EMPIRICAL failure signals for `runNodeWithRetries` (the retry / escalate
     // lanes). Set ONLY on a non-ok verdict so a clean node leaves none — `classifyFailure`/`consultPreamble`
@@ -1007,6 +1013,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         killedTimeout: killed === 'timeout',
         killedStall: killed === 'stall',
         killedToolLoop: killed === 'tool-loop',
+        killedIdle: killed === 'idle',
         exitCode: result.code,
         stderrTail: (result.stderr || '').slice(-400),
         parsedOk: parsed != null,

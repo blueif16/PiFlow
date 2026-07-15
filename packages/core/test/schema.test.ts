@@ -72,6 +72,93 @@ describe('validateArtifactSchemas — multi-file $ref (base + overlay) schemas',
   });
 });
 
+describe('validateArtifactSchemas — mixed-dialect (draft-07 overlay → draft-2020-12 base) chain', () => {
+  // REGRESSION (run 260714-02): the default validator is an `ajv/dist/2020.js` build that bundles ONLY the
+  // draft-2020-12 meta, so an OVERLAY schema that DECLARES `$schema: ".../draft-07/schema#"` (which game-omni's
+  // per-archetype blueprint overlays do — e.g. templates/modules/platformer/blueprint.schema.json — while their
+  // shared base declares draft-2020-12) made `ajv.compile()` throw `no schema with key or ref
+  // "http://json-schema.org/draft-07/schema#"`, so the gate SKIPPED on EVERY game-omni run. The fix registers
+  // the draft-07 meta alongside 2020-12 so the ONE compiler accepts BOTH dialects the chain declares.
+  it('a draft-07 overlay $ref-ing a draft-2020-12 base COMPILES and catches a real violation (no dialect skip/throw)', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-schema-dialect-'));
+    try {
+      // base: draft-2020-12 (the real blueprint.base.schema.json dialect).
+      await fs.writeFile(
+        path.join(dir, 'base.schema.json'),
+        JSON.stringify({
+          $id: 'base.schema.json',
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          $defs: { positive: { type: 'number', minimum: 0 } },
+        }),
+      );
+      // overlay: draft-07 (the real per-archetype blueprint.schema.json dialect), $ref-ing the 2020-12 base.
+      await fs.writeFile(
+        path.join(dir, 'overlay.schema.json'),
+        JSON.stringify({
+          $schema: 'http://json-schema.org/draft-07/schema#',
+          type: 'object',
+          properties: { hp: { $ref: 'base.schema.json#/$defs/positive' } },
+          required: ['hp'],
+        }),
+      );
+      // hp:-1 violates the base's minimum:0 through the overlay's $ref — a real, detectable breach.
+      await fs.writeFile(path.join(dir, 'data.json'), JSON.stringify({ hp: -1 }));
+
+      const validate = await defaultSchemaValidator();
+      expect(validate).not.toBeNull();
+
+      const result = await validateArtifactSchemas([{ path: 'data.json', schema: 'overlay.schema.json' }], {
+        outDir: dir,
+        roots: [dir],
+        validate,
+      });
+
+      // Pre-fix: `skipped` carried the draft-07 dialect throw and `checked` was decremented to 0 (never validated).
+      expect(result.skipped).toBeNull();
+      expect(result.checked).toBe(1);
+      expect(result.invalid.length).toBe(1);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('a valid instance against the SAME draft-07→2020-12 chain passes clean', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-schema-dialect-ok-'));
+    try {
+      await fs.writeFile(
+        path.join(dir, 'base.schema.json'),
+        JSON.stringify({
+          $id: 'base.schema.json',
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          $defs: { positive: { type: 'number', minimum: 0 } },
+        }),
+      );
+      await fs.writeFile(
+        path.join(dir, 'overlay.schema.json'),
+        JSON.stringify({
+          $schema: 'http://json-schema.org/draft-07/schema#',
+          type: 'object',
+          properties: { hp: { $ref: 'base.schema.json#/$defs/positive' } },
+          required: ['hp'],
+        }),
+      );
+      await fs.writeFile(path.join(dir, 'data.json'), JSON.stringify({ hp: 42 }));
+
+      const validate = await defaultSchemaValidator();
+      const result = await validateArtifactSchemas([{ path: 'data.json', schema: 'overlay.schema.json' }], {
+        outDir: dir,
+        roots: [dir],
+        validate,
+      });
+      expect(result.skipped).toBeNull();
+      expect(result.checked).toBe(1);
+      expect(result.invalid.length).toBe(0);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('artifact-resolution map — a {{state.*}}-tokened contract `schema` path', () => {
   it('resolves through the SAME map that resolves `path` (the launch-time clone carries no raw {{ )', async () => {
     const outDir = await tmpOut();

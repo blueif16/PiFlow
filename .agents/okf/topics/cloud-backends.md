@@ -185,6 +185,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[competitive-gaps-pdw]]
 - [[compose-gate-drag-audit]]
 - [[daytona-cloud-path]]
+- [[default-profile-programmatic-gates-only]]
 - [[design-at-init-architecture]]
 - [[expert-representations]]
 - [[first-fleet-video-e2e]]
@@ -239,5 +240,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-15 · arc=109 commits · files=8 · lessons=55</sub>
+<sub>derived 2026-07-15 · arc=109 commits · files=8 · lessons=56</sub>
 <!-- okf:auto-end -->

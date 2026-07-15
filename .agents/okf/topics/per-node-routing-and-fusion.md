@@ -142,6 +142,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
 - [[daytona-cloud-path]]
+- [[default-profile-programmatic-gates-only]]
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
@@ -195,5 +196,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-15 · arc=54 commits · files=10 · lessons=55</sub>
+<sub>derived 2026-07-15 · arc=54 commits · files=10 · lessons=56</sub>
 <!-- okf:auto-end -->

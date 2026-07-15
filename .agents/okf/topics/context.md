@@ -54,8 +54,8 @@ SWITCH (the CLI — one word to live in + escape hatches)
 - `packages/cli/src/context.ts:56` — `hostSetupHint()` — setup-on-miss guidance; `selfhost` = the FREE serve + Cloudflare quick-tunnel (`*.trycloudflare.com`)
 - `packages/cli/src/context.ts:73` — `workerSetupHint()` — cloud-worker cred setup guidance (`E2B_API_KEY` / `DAYTONA_API_KEY`)
 TERMINAL (the merge — context worker IS the sandbox)
-- `packages/cli/src/run.ts:1021` — `resolveRunSandbox()` — the ONE resolver: `--sandbox` (legacy override) > context worker > `inmemory` default
-- `packages/cli/src/run.ts:1096` — `runRunCli` wiring — sets `parsed.sandbox = resolveRunSandbox(...)` before BOTH the local (`runTemplate`) and remote (`remoteStartBody`) paths
+- `packages/cli/src/run.ts:1037` — `resolveRunSandbox()` — the ONE resolver: `--sandbox` (legacy override) > context worker > `inmemory` default
+- `packages/cli/src/run.ts:1112` — `runRunCli` wiring — sets `parsed.sandbox = resolveRunSandbox(...)` before BOTH the local (`runTemplate`) and remote (`remoteStartBody`) paths
 - `packages/cli/src/context-store.ts:134` — `resolveActive()` — the `--context` flag > `PIFLOW_CONTEXT` env > persisted `current` > `local` ladder (which context is active)
 
 # Freshness (anti-drift)

@@ -7,6 +7,7 @@
 //
 // Env mapping (mirrors game-omni pi-runner/run.mjs): PI_RUNNER_PROVIDER→providerName · PI_RUNNER_MODEL→model
 // · PI_RUNNER_THINKING→thinking · PI_RUNNER_NODE_TIMEOUT(s)→nodeTimeoutMs · PI_RUNNER_STALL_TIMEOUT(s)→stallMs
+// · PI_RUNNER_IDLE_TIMEOUT(s)→idleRequestMs · PI_RUNNER_IDLE_RETRIES→idleRequestRetries
 // · PI_RUNNER_FROM→from · PI_RUNNER_UNTIL→until. `run` (the instance id) is REQUIRED — a clear throw if absent.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,8 @@ export interface ConfigArgs {
   until?: string;
   nodeTimeoutMs?: number;
   stallMs?: number;
+  idleRequestMs?: number;
+  idleRequestRetries?: number;
   /** Run-level return-handshake default (the write-then-fence default; a node's own returnMode still wins). */
   returnProtocol?: RunOptions['returnProtocol'];
   /**
@@ -64,6 +67,8 @@ export type ResolvedRunOpts = Pick<
   | 'until'
   | 'nodeTimeoutMs'
   | 'stallMs'
+  | 'idleRequestMs'
+  | 'idleRequestRetries'
   | 'returnProtocol'
   | 'args'
 >;
@@ -95,6 +100,13 @@ function secondsToMs(v: string | undefined): number | undefined {
   if (v === undefined || v === '') return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n * 1000 : undefined;
+}
+
+/** Parse a non-negative integer count from the env; undefined if absent/unparseable. */
+function intFromEnv(v: string | undefined): number | undefined {
+  if (v === undefined || v === '') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : undefined;
 }
 
 /** Drop the undefined-valued keys so a spread does not clobber `runWorkflow`'s own defaults with `undefined`. */
@@ -131,6 +143,10 @@ export function loadConfig(input: LoadConfigInput): ResolvedRunOpts {
     until: args.until ?? env.PI_RUNNER_UNTIL ?? undefined,
     nodeTimeoutMs: args.nodeTimeoutMs ?? secondsToMs(env.PI_RUNNER_NODE_TIMEOUT),
     stallMs: args.stallMs ?? secondsToMs(env.PI_RUNNER_STALL_TIMEOUT),
+    // REQUEST-LEVEL liveness watchdog: seconds in the env (game-omni convention) → ms. Absent ⇒ runner default
+    // (720_000 ms / 2 re-execs, default ON). PI_RUNNER_IDLE_TIMEOUT=0 disables the window (0 honored: secondsToMs('0')===0).
+    idleRequestMs: args.idleRequestMs ?? secondsToMs(env.PI_RUNNER_IDLE_TIMEOUT),
+    idleRequestRetries: args.idleRequestRetries ?? intFromEnv(env.PI_RUNNER_IDLE_RETRIES),
     returnProtocol: args.returnProtocol,
     // The `--arg k=v` channel — no env fallback (it is per-run CLI delivery). An empty map prunes away.
     args: args.args && Object.keys(args.args).length ? args.args : undefined,

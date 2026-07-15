@@ -9,6 +9,7 @@
 
 import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import type { ArtifactReq } from '../types.js';
 
 /**
@@ -40,6 +41,7 @@ export async function defaultSchemaValidator(): Promise<SchemaValidator | null> 
     const Ajv2020 = (mod.Ajv2020 ?? mod.default ?? mod) as unknown as new (o: object) => {
       compile: (s: object) => ((d: unknown) => boolean) & { errors?: { instancePath?: string; message?: string }[] | null };
       addSchema: (s: object) => void;
+      addMetaSchema: (s: object) => void;
     };
     if (typeof Ajv2020 !== 'function') {
       _default = null;
@@ -51,8 +53,22 @@ export async function defaultSchemaValidator(): Promise<SchemaValidator | null> 
     } catch {
       /* formats are optional */
     }
+    // DUAL-DIALECT support (mirrors game-omni's harden-blueprint/gen/check-schema-compile.mjs loadAjv):
+    // the `ajv/dist/2020.js` build bundles ONLY the draft-2020-12 meta-schema, so `ajv.compile()` on a
+    // schema that DECLARES an older dialect (`$schema: ".../draft-07/schema#"` — which game-omni's per-archetype
+    // blueprint OVERLAYS do, while their shared base declares draft-2020-12) throws `no schema with key or ref
+    // "http://json-schema.org/draft-07/schema#"` and the gate skips on EVERY run. Registering the draft-07 meta
+    // alongside lets the ONE compiler accept BOTH dialects a mixed overlay→base chain declares (2020-12 stays
+    // native; no regression). Best-effort: an ajv without the bundled draft-07 ref leaves 2020-12 support intact.
+    let draft07Meta: object | null = null;
+    try {
+      draft07Meta = createRequire(import.meta.url)('ajv/dist/refs/json-schema-draft-07.json') as object;
+    } catch {
+      /* draft-07 meta unavailable — draft-2020-12 support still stands */
+    }
     _default = (schema, data, schemaDir) => {
       const ajv = new Ajv2020({ allErrors: true, strict: false });
+      if (draft07Meta) try { ajv.addMetaSchema(draft07Meta); } catch { /* already native / non-fatal */ }
       if (addFormats) try { addFormats(ajv); } catch { /* non-fatal */ }
       // Multi-file $ref support (a faithful port of the pi-runner hook engine's loadSchemaValidatorFactory):
       // load every relative-FILE $ref (e.g. a per-branch overlay schema $ref-ing a shared base) and

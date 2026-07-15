@@ -62,7 +62,7 @@ import { defaultExecRunner, defaultCheckpointWait } from './exec-runner.js';
 import type { ExecRunner, ExecWatchdogOpts, CheckpointWaiter } from './exec-runner.js';
 import { DEFAULT_TOOL_LOOP_LIMIT } from './tool-loop-breaker.js';
 export { defaultExecRunner, defaultCheckpointWait } from './exec-runner.js';
-export type { ExecRunner, ExecWatchdogOpts, CheckpointWaiter } from './exec-runner.js';
+export type { ExecRunner, ExecWatchdogOpts, WatchdogEvent, CheckpointWaiter } from './exec-runner.js';
 
 /** Options for `runWorkflow`. Everything below the workflow is defaulted to a live-free, offline run. */
 export interface RunOptions {
@@ -162,6 +162,19 @@ export interface RunOptions {
   nodeTimeoutMs?: number;
   /** Silent-stall kill threshold (ms); 0 disables. Default 0 (off; the in-memory baseline is fast). */
   stallMs?: number;
+  /**
+   * (REQUEST-LEVEL liveness watchdog) No stdout/stderr STREAM activity for this long (ms; 0 disables) aborts
+   * the current pi request and RE-EXECS THE SAME command in place — a fresh request, NOT a node retry. The
+   * fine-grained guard the coarse node-level `nodeTimeoutMs` misses (a single gateway request silent for
+   * 20-30 min). DEFAULT ON at 720_000 (12 min): a legit turn can be silent the WHOLE turn (pi does not always
+   * stream deltas — a pure think emits nothing until it completes), and run 260714-02 held a legitimate 523s
+   * think that sat only 17s under the former 540s window, so the window must comfortably exceed the longest
+   * real turn; 12 min keeps ~40% headroom over that observed think yet still converts a silent 20-30 min hang
+   * into < 13 min. Env: `PI_RUNNER_IDLE_TIMEOUT` (seconds). Set 0 to disable.
+   */
+  idleRequestMs?: number;
+  /** (REQUEST-LEVEL liveness) Max in-place request re-execs before `killed:'idle'`. Default 2. Env: `PI_RUNNER_IDLE_RETRIES`. */
+  idleRequestRetries?: number;
   /** ms after SIGTERM before SIGKILL. Default 3000 (run.mjs 904–911). */
   killGraceMs?: number;
   /**
@@ -483,6 +496,11 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     watchdog: {
       nodeTimeoutMs: opts.nodeTimeoutMs ?? 1_800_000,
       stallMs: opts.stallMs ?? 0,
+      // REQUEST-LEVEL liveness: default ON (12 min window, 2 in-place re-execs). 0 disables the window. Widened
+      // from 9 min after a legit 523s think sat 17s under the old window (260714-02) — the window must exceed
+      // the longest real turn with headroom, since a pure think streams nothing until it completes.
+      idleRequestMs: opts.idleRequestMs ?? 720_000,
+      idleRequestRetries: opts.idleRequestRetries ?? 2,
       killGraceMs: opts.killGraceMs ?? 3000,
       toolLoopLimit: opts.toolLoopLimit ?? DEFAULT_TOOL_LOOP_LIMIT,
     },

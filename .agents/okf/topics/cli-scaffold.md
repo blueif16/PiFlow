@@ -247,6 +247,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[config-is-truth-gui-is-projection]]
 - [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
+- [[default-profile-programmatic-gates-only]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
@@ -327,5 +328,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-15 · arc=168 commits · files=8 · lessons=86</sub>
+<sub>derived 2026-07-15 · arc=168 commits · files=8 · lessons=87</sub>
 <!-- okf:auto-end -->

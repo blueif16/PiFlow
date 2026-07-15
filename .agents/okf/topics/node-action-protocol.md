@@ -182,6 +182,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[config-is-truth-gui-is-projection]]
 - [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
+- [[default-profile-programmatic-gates-only]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
@@ -253,8 +254,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 ### Code anchors / blast radius (codegraph)
 
 - `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
-- `evaluateChecks` (packages/core/src/checks.ts:117) — 4 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
+- `evaluateChecks` (packages/core/src/checks.ts:117) — 2 callers in `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-15 · arc=99 commits · files=8 · lessons=83</sub>
+<sub>derived 2026-07-15 · arc=99 commits · files=8 · lessons=84</sub>
 <!-- okf:auto-end -->

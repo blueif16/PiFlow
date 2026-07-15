@@ -172,6 +172,16 @@ export class NodeRecorder {
     if (text) this.emit({ type: 'stderr', text });
   }
 
+  /**
+   * Archive a SYNTHETIC runner-level event (NOT from the agent's stdout) — e.g. an idle-watchdog action — into
+   * the SAME event stream, stamped with the node clock. Bypasses the stdout LINE BUFFER (unlike `feedStdout`),
+   * so injecting it can never tear a half-received pi line; the whole point is to make a re-exec visible in
+   * `events.jsonl` at the moment it happens rather than reconstructing it from a pi `Unhandled stop reason`.
+   */
+  note(ev: PiEvent): void {
+    this.emit(ev);
+  }
+
   private writeLine(line: string): void {
     const s = line.trim();
     if (!s) return;
@@ -181,7 +191,7 @@ export class NodeRecorder {
   }
 
   private emit(ev: PiEvent): void {
-    const synthetic = ev.type === 'raw' || ev.type === 'stderr';
+    const synthetic = ev.type === 'raw' || ev.type === 'stderr' || ev.type === 'watchdog';
     const slim = synthetic ? ev : slimEvent(ev);
     if (!slim) return;
     slim._t = Date.now() - this.t0;

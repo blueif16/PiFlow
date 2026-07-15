@@ -161,6 +161,8 @@ export interface NodeStatusRecord {
   killedStall?: boolean;
   /** Set when the deterministic tool-loop breaker killed the node (one tool run with identical args past the limit). */
   killedToolLoop?: boolean;
+  /** Set when the request-level idle watchdog exhausted its in-place re-execs (the request stayed silent). */
+  killedIdle?: boolean;
   exitCode?: number;
   command?: string;
   /** G1 — the EFFECTIVE model this node ran on (after the routing precedence). Null/absent ⇒ pi's provider default. */
