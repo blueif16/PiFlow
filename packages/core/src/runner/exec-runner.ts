@@ -114,6 +114,11 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
     // `restarting` = an idle abort is in flight; the currently-live attempt must be ABANDONED and a fresh one
     // started, NOT resolved. `attemptId` tags each exec so a late result from an abandoned attempt is dropped.
     let restarting = false;
+    // `intervened` = the idle watchdog has aborted at least once, so this call is now in RECOVERY: a subsequent
+    // attempt that fails ON ITS OWN (nonzero exit, before the idle window) is the watchdog's mess to clean up
+    // (a corrupted/duplicate pi session or a still-sick gateway from our abort), NOT a genuine node error — so
+    // it spends a re-exec instead of settling verbatim. Latches true; never resets (the first attempt is clean).
+    let intervened = false;
     let attemptId = 0;
     let currentAc: AbortController | null = null;
     let graceTimer: NodeJS.Timeout | undefined;
@@ -153,6 +158,7 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
           if (idleRetriesLeft > 0) {
             idleRetriesLeft--;
             restarting = true;
+            intervened = true; // we are now in RECOVERY — a later self-failing attempt is ours to retry, not fatal
             try { currentAc?.abort(); } catch { /* no-op */ } // signal-honoring providers reap → .then/.catch re-execs
             // Restart-grace: a hung request that IGNORES the abort would never settle its promise and thus
             // never trigger the re-exec — so start the next attempt anyway after the kill grace. The abandoned
@@ -186,7 +192,21 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
       lastEventAt = Date.now(); // reset the liveness clock at each (re-)exec start so the window is per-attempt
       const onOutcome = (result: ExecResult): void => {
         if (myId !== attemptId) return; // a stale/abandoned attempt's late result — drop it
-        if (restarting && !trippedAs && !settled) { doRestart(); return; }
+        if (restarting && !trippedAs && !settled) { doRestart(); return; } // OUR idle abort → discard, next attempt
+        if (settled || trippedAs) { settle(result); return; } // a terminal (timeout/stall/tool-loop/idle) already owns it
+        // (REQUEST-LEVEL idle recovery) A watchdog intervention must NEVER convert a transient gateway hang into a
+        // FATAL node error. Once we have aborted at least once, an attempt that fails ON ITS OWN — a nonzero exit
+        // that arrives BEFORE the idle window (a corrupted/duplicate pi session or a still-sick gateway that our
+        // own abort produced) — is treated like a silent trip: spend a remaining re-exec, else surface the terminal
+        // `killed:'idle'` (classifies INFRA, greppable) CARRYING the real failing result — rather than settling it
+        // verbatim as `killed:null` "nonzero exit 1", which misclassifies the hang as a node/capability error and
+        // burns a whole NODE retry. The FIRST attempt (intervened===false) is untouched: a clean failure settles as-is.
+        if (intervened && result.code !== 0) {
+          if (idleRetriesLeft > 0) { idleRetriesLeft--; runAttempt(); return; }
+          trippedAs = 'idle'; // terminal idle verdict; keep the real failing result for the stderr/exit forensics
+          settle(result);
+          return;
+        }
         settle(result);
       };
       sandbox

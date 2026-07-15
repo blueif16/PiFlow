@@ -203,7 +203,7 @@ export function diagnoseRun(outDir: string): { run?: string; done?: boolean; ok?
     const killed = n.killedTimeout ? 'timeout' : n.killedStall ? 'stall' : n.killedToolLoop ? 'tool-loop' : n.killedIdle ? 'idle' : undefined;
     let note: string;
     if (n.status === 'ok' || n.status === 'reused') note = 'ok';
-    else if (killed) note = `killed: ${killed === 'timeout' ? 'node-timeout' : killed === 'stall' ? 'silent-stall' : 'tool-loop (identical-args)'}`;
+    else if (killed) note = `killed: ${killed === 'timeout' ? 'node-timeout' : killed === 'stall' ? 'silent-stall' : killed === 'idle' ? 'idle-watchdog (request silent, re-execs exhausted)' : 'tool-loop (identical-args)'}`;
     else if (c.writes === 0 && missing.length && c.lastSay) note = 'never-write: emitted text but called NO write tool';
     else if (missing.length) note = `missing ${missing.length} declared artifact(s)`;
     else note = n.status;

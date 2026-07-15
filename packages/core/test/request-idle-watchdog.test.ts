@@ -51,6 +51,13 @@ const silentHonoring: Behaviour = (opts, resolve) => {
 };
 /** Never emit AND never resolve — even on abort (a HUNG request that ignores the signal, the gateway case). */
 const silentIgnoring: Behaviour = () => { /* the promise stays pending forever */ };
+/**
+ * Resolve FAST with a nonzero exit and ZERO stream activity — a re-exec that dies on its own (before the idle
+ * window), the real-world case where our own abort corrupted pi's session / the gateway is still sick so the
+ * re-run exits 1 immediately. The pre-fix watchdog settled THIS as the node's terminal result (killed=null,
+ * exit 1) — converting a transient gateway hang into a fatal node error — instead of spending a re-exec.
+ */
+const failFast: Behaviour = (_o, resolve) => { setTimeout(() => resolve({ stdout: '', stderr: 'boom', code: 1 }), 5); };
 
 const WATCHDOG = { nodeTimeoutMs: 10_000, stallMs: 0, killGraceMs: 20, toolLoopLimit: 0 };
 
@@ -88,6 +95,45 @@ describe('request-level idle watchdog — in-place re-exec, not a node retry', (
     expect(calls.length).toBe(2);
     expect(killed).toBeNull();
     expect(result.code).toBe(0);
+  });
+
+  it('a re-exec that DIES FAST after an idle abort is NOT surfaced as a fatal node error — it spends the remaining re-execs, then a terminal killed="idle"', async () => {
+    // The Case-B regression (run 260714-02 w2-scaffold): the watchdog aborted a silent request, the in-place
+    // re-exec exited 1 immediately (a corrupted/duplicate session, or a still-sick gateway), and the pre-fix
+    // runner SETTLED that exit-1 as the node result (killed=null) — a fatal "nonzero exit 1" that then burned a
+    // whole NODE retry. A watchdog intervention must NEVER convert a transient hang into a fatal node error:
+    // once we have intervened, a self-failing attempt spends a re-exec, and only exhaustion yields killed:'idle'.
+    const { sandbox, calls } = scriptedSandbox([silentHonoring, failFast, failFast]);
+    const { killed, result } = await defaultExecRunner(sandbox, 'pi run node-ff', {
+      ...WATCHDOG, idleRequestMs: 40, idleRequestRetries: 2,
+    });
+    // 1 silent (aborted) + 2 in-place re-execs (each died fast) = 3 attempts, then the terminal idle verdict.
+    expect(calls.length).toBe(3);
+    expect(killed).toBe('idle');       // classified INFRA (transient gateway hang), NOT killed=null "exit 1".
+    expect(result.code).not.toBe(0);   // the real failing result is preserved, but TAGGED as the idle terminal.
+  });
+
+  it('a re-exec that RECOVERS after an idle abort settles clean even though the first re-exec died fast', async () => {
+    // Robustness: a self-failing re-exec must not abandon the recovery — the NEXT re-exec can still succeed.
+    const { sandbox, calls } = scriptedSandbox([silentHonoring, failFast, active]);
+    const { killed, result } = await defaultExecRunner(sandbox, 'pi run node-rec', {
+      ...WATCHDOG, idleRequestMs: 40, idleRequestRetries: 2,
+    });
+    expect(calls.length).toBe(3);
+    expect(killed).toBeNull();
+    expect(result.code).toBe(0);
+  });
+
+  it('a FIRST attempt that fails on its own (no watchdog intervention) settles as-is — byte-identical to pre-watchdog', async () => {
+    // NEGATIVE CONTROL: the intervened-recovery path must NOT hijack a plain, un-aborted first-attempt failure
+    // (a genuine node error) — that still surfaces verbatim (killed=null, its exit code), no re-exec.
+    const { sandbox, calls } = scriptedSandbox([failFast]);
+    const { killed, result } = await defaultExecRunner(sandbox, 'pi run node-firstfail', {
+      ...WATCHDOG, idleRequestMs: 40, idleRequestRetries: 2,
+    });
+    expect(calls.length).toBe(1);
+    expect(killed).toBeNull();
+    expect(result.code).toBe(1);
   });
 
   it('is OFF when idleRequestMs=0: a silent request is left to the node-level cap, no in-place re-exec', async () => {
