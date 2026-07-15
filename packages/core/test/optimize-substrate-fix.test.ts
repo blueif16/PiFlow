@@ -1046,6 +1046,54 @@ describe('fixIssue — a TRUE child of the base agent (the ONE shared inherited 
   });
 });
 
+describe('fixIssue — hydrates the fixer spawn\'s `state` from the PARENT run\'s .pi/state.json', () => {
+  // Regression for the substrate-fixer spawn death: the fixer prompt embeds the issue file VERBATIM
+  // (buildFixerPrompt), which routinely quotes the target node's OWN config — including a legitimate
+  // `{{state.<channel>}}` token the REAL run promoted (e.g. this fixture's `owns` pattern below). Before the
+  // fix, that quoted token crashed the fixer's ephemeral spawn (agent.ts has no state of its own) with
+  // `MissingChannelError` before a single model call — this pins that `fixIssue` now reads the PARENT run's
+  // persisted channels and threads them through, rather than leaving the fixer to resolve against nothing.
+  it('reads {slug: ...} off parentRunDir/.pi/state.json and forwards it as `state` to runAgent', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    await fs.mkdir(join(parentRunDir, '.pi'), { recursive: true });
+    await fs.writeFile(join(parentRunDir, '.pi', 'state.json'), JSON.stringify({ slug: 'grade1-vol1-section-3' }));
+
+    let captured: RunBaseAgentOpts | undefined;
+    const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
+      captured = o;
+      await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n');
+      return agentResult();
+    };
+    await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      prove: false,
+      runAgent: capturingRunAgent,
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    expect(captured?.state).toEqual({ slug: 'grade1-vol1-section-3' });
+  });
+
+  it('a parent run with NO .pi/state.json forwards `state: {}` (never throws building the spawn)', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    // parentRunDir has no .pi/state.json at all (setupFixture never writes one).
+    let captured: RunBaseAgentOpts | undefined;
+    const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
+      captured = o;
+      await fs.appendFile(join(o.cwd, 'templates', 'genres.json'), '\n// fixed\n');
+      return agentResult();
+    };
+    await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace,
+      prove: false,
+      runAgent: capturingRunAgent,
+      spawnChild: async () => childResult('x', await scratch()),
+      measure: async () => measureReport({}),
+    });
+    expect(captured?.state).toEqual({});
+  });
+});
+
 describe('fixIssue — dry-run (the inherited base-agent preview)', () => {
   it('returns the composed fixer plan (worktree jail) and mutates NOTHING — no transition, no worktree, no manifest, no events', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
