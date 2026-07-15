@@ -15,7 +15,10 @@
 //     seam (readScope = [runDir, templateDir, workspace]; owns = the blame dir; NO skill — v1 discipline is
 //     in-prompt), then (default) the verify turn the same way, then read + FAIL-CLOSED-parse the summary tail
 //     (a pass that wrote no summary is a HARD failure, mirroring gate.ts's no-verdict throw). The spawn is the
-//     ONLY model turn; a test injects `runAgent` and never live-spawns.
+//     ONLY model turn; a test injects `runAgent` and never live-spawns. Both spawns hydrate `state` from THIS
+//     pinned run's `.pi/state.json` (loadState) — the same fixer/judge/gate state hole (d3ae3ce): the embedded
+//     criteria/measure/memory prose may legitimately quote a `{{state.<channel>}}` token this ephemeral turn
+//     would otherwise have no state to resolve.
 //
 // FOLLOW-UP: v1 stages NO skill for the blame spawns (the judge/verify discipline lives entirely in the
 // assembled prompt). A dedicated `piflow-blame` playbook skill is the natural next step, mirroring how triage/
@@ -24,6 +27,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { resolveTokens } from '../../workflow/resolver.js';
+import { loadState } from '../../workflow/state.js';
 import {
   inheritedAgentOpts, runBaseAgent,
   type RunBaseAgentResult, type BaseAgentChildOpts,
@@ -249,6 +253,12 @@ export async function runBlameJudge(runDir: string, opts: RunBlameJudgeOpts): Pr
   const runAgent = opts.runAgent ?? runBaseAgent;
   const readScope = [runDir, templateDir, workspace];
   const owns = [dir];
+  // GAP2 (the run-level twin of the fixer/judge/gate state hole — d3ae3ce): buildBlamePrompt embeds the
+  // run-level criteria + per-node measure reports + template-root memory.md VERBATIM, any of which may
+  // legitimately quote a `{{state.<channel>}}` token this run actually promoted. The blame spawn is the SAME
+  // ephemeral agent.ts turn (no state of its own), so hydrate it from THIS pinned run's `.pi/state.json`
+  // (read-only) — a channel genuinely absent from the run's state stays absent here too.
+  const pinnedState = await loadState(runDir);
 
   // ── ORACLE FENCE (belt + suspenders beyond the dir-coarse `owns` grant) ────────────────────────────────
   // The blame dir PHYSICALLY holds two paths the model must NEVER author: `measure.json` (the mechanical,
@@ -277,6 +287,7 @@ export async function runBlameJudge(runDir: string, opts: RunBlameJudgeOpts): Pr
       readScope,
       owns,
       // NO skill — v1 blame discipline is entirely in-prompt (see the module header FOLLOW-UP note).
+      state: pinnedState,
       ...inheritedAgentOpts(opts),
     });
   };
