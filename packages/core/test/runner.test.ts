@@ -1218,6 +1218,55 @@ describe('runWorkflow — promote + barrier-merge + state I/O (S3)', () => {
     expect(writes.find((x) => x.path === stagedPath('use', 'prompt.md'))!.data).toContain('use voxel');
     await fs.rm(outDir, { recursive: true, force: true });
   });
+
+  // Regression for the substrate-fixer spawn death (bug: "prompt token resolution failed: unresolved state
+  // channel \"slug\"..."): a substrate base-agent spawn (agent.ts) runs an EPHEMERAL one-node WorkflowSpec
+  // whose `outDir` starts with NO `.pi/state.json` of its own — so a `{{state.*}}` token quoted verbatim
+  // inside an embedded issue/criteria file (legitimately promoted during the REAL pinned run) had nothing to
+  // resolve against and threw before a single model call. `opts.initialState` seeds RunState for exactly this
+  // case, mirroring `spawnChildRun`'s `loadState(pinnedRunDir)` pattern (child-run.ts) at the shared seam.
+  it('seeds RunState from `opts.initialState` when outDir has NO pre-existing state.json of its own', async () => {
+    const outDir = await tmpOut(); // fresh — no .pi/state.json (the ephemeral base-agent spawn case)
+    const node: NodeIntent = { label: 'Use', prompt: 'use {{state.slug}}', tools: {}, io: { reads: [], produces: ['u.txt'], artifacts: [{ path: 'u.txt' }] } };
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'seeded', outDir, buildCommand: stubBuilder(),
+      initialState: { slug: 'grade1-vol1-section-3' },
+    });
+    expect(status.nodes.use.status).toBe('ok');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a genuinely-absent channel STILL fails loud even with `initialState` set (never invents a default)', async () => {
+    const outDir = await tmpOut();
+    const node: NodeIntent = { label: 'Use', prompt: 'use {{state.slug}}', tools: {}, io: { reads: [], produces: ['u.txt'], artifacts: [{ path: 'u.txt' }] } };
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'seeded-miss', outDir, buildCommand: stubBuilder(),
+      initialState: { other: 'unrelated' }, // "slug" is NOT present
+    });
+    expect(status.nodes.use.status).toBe('error');
+    expect(status.nodes.use.summary).toMatch(/unresolved state channel "slug"/);
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('outDir\'s OWN persisted state.json wins over `initialState` on a key conflict (this run\'s history is never shadowed)', async () => {
+    const outDir = await tmpOut();
+    await fs.mkdir(piDir(outDir), { recursive: true });
+    await fs.writeFile(stateFile(outDir), JSON.stringify({ slug: 'from-this-run' }));
+    const node: NodeIntent = { label: 'Use', prompt: 'use {{state.slug}}', tools: {}, io: { reads: [], produces: ['u.txt'], artifacts: [{ path: 'u.txt' }] } };
+    const { provider, writes } = (() => {
+      const w: { path: string; data: string }[] = [];
+      const base = new InMemorySandboxProvider();
+      const p: SandboxProvider = { kind: 'inmemory', async create(opts: CreateOpts): Promise<Sandbox> { const sb = await base.create(opts); const orig = sb.writeFile.bind(sb); sb.writeFile = async (pp: string, d: Uint8Array | string) => { w.push({ path: pp, data: typeof d === 'string' ? d : Buffer.from(d).toString('utf8') }); return orig(pp, d); }; return sb; } };
+      return { provider: p, writes: w };
+    })();
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'seeded-conflict', outDir, provider, buildCommand: stubBuilder(),
+      initialState: { slug: 'from-the-seed' },
+    });
+    expect(status.nodes.use.status).toBe('ok');
+    expect(writes.find((x) => x.path === stagedPath('use', 'prompt.md'))!.data).toContain('use from-this-run');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
 });
 
 // ── S4: a merge `run` op that PRODUCES the node's required artifact (the asset gen-hook shape) ─────
