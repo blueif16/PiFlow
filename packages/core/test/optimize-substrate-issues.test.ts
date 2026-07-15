@@ -311,6 +311,9 @@ describe('status machine — assertTransition throws on any edge outside the doc
   const validEdges: [Status, Status][] = [
     ['open', 'active'],
     ['active', 'fix-landed'],
+    ['active', 'open'], // GAP1 crash drop-back: a fixIssue that dies right after activating (e.g. the fixer
+                         // spawn itself throws, before any commit) needs a legal edge back to `open`, else the
+                         // issue is stranded `active` forever with no re-select/re-fix path.
     ['fix-landed', 'verifying'],
     ['fix-landed', 'resolved'], // the skip-proof path
     ['fix-landed', 'open'], // the adopt-train stale-base BOUNCE of a skip-proof fix (re-fixable, never stranded)

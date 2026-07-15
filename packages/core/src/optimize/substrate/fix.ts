@@ -1002,6 +1002,22 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
       fixerRunDir: fixerResult.runDir,
       ...(fixerResult.text ? { fixerAccount: fixerResult.text } : {}),
     };
+  } catch (e) {
+    // GAP1 CRASH DROP-BACK — a throw ANYWHERE in this block (the fixer spawn itself, commitCandidate, the
+    // prove spawn/measure, or the gate) must not strand the issue at an in-flight status with no legal path
+    // back. Observed live: the fixer spawn died before a single edit landed, leaving the issue `active` forever
+    // (its only forward edge WAS `fix-landed` — no back edge existed), so a later `optimize fix` could never
+    // re-select it and a human had to hand-edit the frontmatter. Re-read the CURRENT on-disk status (it may
+    // have advanced past `active` before the throw) and walk it back to `open` unless it is already there.
+    // Best-effort: a secondary ledger read/transition error here must NEVER mask the original crash re-thrown
+    // below — the crash itself is the signal the caller needs.
+    try {
+      const current = await parseIssueFile(issuePathAbs);
+      if (current.status !== 'open') await transitionIssue(issuePathAbs, 'open');
+    } catch {
+      // swallow — see above
+    }
+    throw e;
   } finally {
     // (f) CLEANUP — tear down the candidate worktree checkout on EVERY exit (success OR a throw from
     // the fixer / commit / prove / gate); the branch + candidateSha persist for adopt/discard.

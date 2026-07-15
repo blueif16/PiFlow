@@ -368,6 +368,44 @@ describe('runBlameJudge — wires prompt→judge→verify→parse, with the spaw
     expect(seen?.owns).toEqual([blameDir(runDir)]);
   });
 
+  // GAP2: the run-level twin of the fixer/judge/gate state hole (d3ae3ce) — buildBlamePrompt embeds the
+  // run-level criteria + per-node measure reports + template-root memory.md VERBATIM, any of which may
+  // legitimately quote a `{{state.<channel>}}` token the run being blamed actually promoted. The blame spawn is
+  // the SAME ephemeral agent.ts turn (no state of its own), so runBlameJudge must hydrate it from THIS pinned
+  // run's `.pi/state.json`, exactly like runSubstrateJudge/runSubstrateGate.
+  it('hydrates the judge spawn\'s `state` from runDir/.pi/state.json (GAP2)', async () => {
+    const { runDir, workspace, templateDir } = await fixture();
+    await fs.mkdir(join(runDir, '.pi'), { recursive: true });
+    await fs.writeFile(join(runDir, '.pi', 'state.json'), JSON.stringify({ slug: 'grade1-vol1-section-3' }));
+
+    let seen: RunBaseAgentOpts | undefined;
+    const agent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
+      seen = o;
+      const dir = o.owns[0];
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(join(dir, 'blame.md'), renderBlameSummaryTail(goodSummary));
+      await fs.writeFile(join(dir, 'plan.md'), 'x');
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
+    };
+    await runBlameJudge(runDir, { workspace, templateDir, verifyRound: false, runAgent: agent });
+    expect(seen?.state).toEqual({ slug: 'grade1-vol1-section-3' });
+  });
+
+  it('a run with NO .pi/state.json forwards `state: {}` (never throws building the blame spawn) (GAP2)', async () => {
+    const { runDir, workspace, templateDir } = await fixture(); // no .pi/state.json written
+    let seen: RunBaseAgentOpts | undefined;
+    const agent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
+      seen = o;
+      const dir = o.owns[0];
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(join(dir, 'blame.md'), renderBlameSummaryTail(goodSummary));
+      await fs.writeFile(join(dir, 'plan.md'), 'x');
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
+    };
+    await runBlameJudge(runDir, { workspace, templateDir, verifyRound: false, runAgent: agent });
+    expect(seen?.state).toEqual({});
+  });
+
   it('HARD-THROWS when the judge wrote no summary (a blame pass that emits no tail is a failed pass)', async () => {
     const { runDir, workspace, templateDir } = await fixture();
     const silentAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
