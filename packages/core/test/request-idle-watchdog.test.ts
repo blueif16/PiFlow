@@ -136,6 +136,33 @@ describe('request-level idle watchdog — in-place re-exec, not a node retry', (
     expect(result.code).toBe(1);
   });
 
+  it('records each watchdog ACTION via onWatchdog (fired-at surface: silence measured + attempt # + re-exec cause)', async () => {
+    // DO#3: a re-exec must be visible in the node event stream, not reconstructed from a pi "Unhandled stop
+    // reason: abort". Drive the Case-B shape (1 silent abort → 2 fast-failing re-execs → terminal) and assert
+    // the watchdog narrates it: an idle-abort (with a real silence measurement), then a refail, then exhaustion.
+    const seen: { action: string; silenceMs: number; attempt: number; retriesLeft: number; code?: number }[] = [];
+    const { sandbox } = scriptedSandbox([silentHonoring, failFast, failFast]);
+    const { killed } = await defaultExecRunner(sandbox, 'pi run node-tel', {
+      ...WATCHDOG, idleRequestMs: 40, idleRequestRetries: 2, onWatchdog: (ev) => seen.push(ev),
+    });
+    expect(killed).toBe('idle');
+    const actions = seen.map((e) => e.action);
+    expect(actions).toEqual(['idle-abort', 'idle-refail', 'idle-exhausted']);
+    expect(seen[0].silenceMs).toBeGreaterThan(40);   // the abort carries a REAL measured silence, not a placeholder
+    expect(seen[0].retriesLeft).toBe(1);             // one re-exec remained after the first abort
+    expect(seen[1].code).toBe(1);                    // the refail names the failing exit code
+    expect(seen[2].code).toBe(1);                    // exhaustion preserves the failing exit code
+  });
+
+  it('emits NO watchdog actions when the request is healthy (a clean first attempt)', async () => {
+    const seen: unknown[] = [];
+    const { sandbox } = scriptedSandbox([active]);
+    await defaultExecRunner(sandbox, 'pi run node-clean', {
+      ...WATCHDOG, idleRequestMs: 40, idleRequestRetries: 2, onWatchdog: (ev) => seen.push(ev),
+    });
+    expect(seen).toEqual([]);
+  });
+
   it('is OFF when idleRequestMs=0: a silent request is left to the node-level cap, no in-place re-exec', async () => {
     const { sandbox, calls } = scriptedSandbox([
       // resolve clean shortly after start WITHOUT any stream activity — idle would trip if it were armed.

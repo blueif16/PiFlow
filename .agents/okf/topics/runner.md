@@ -33,7 +33,7 @@ PER-NODE RUNNER EXEC
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
 - `packages/core/src/runner/node-lifecycle.ts:490` — artifact host-stat — a node is `ok` only if its declared artifacts exist
-- `packages/core/src/runner/node-lifecycle.ts:1179` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
+- `packages/core/src/runner/node-lifecycle.ts:1186` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode`/`finishNode` no longer live in `packages/core/src/runner/runner.ts` (the §2.1 split moved the per-node lifecycle to `packages/core/src/runner/node-lifecycle.ts`; runner.ts only re-exports them) — the stage loop is the run-level concern in runner.ts, the per-node concern is in node-lifecycle.ts. This is the DYNAMIC exec spine carved out of the former `runtime-core`; its static sibling (`workflow-compile`) ends at the compiled `Workflow`, which is exactly where this slice begins. Threads that cross this spine each have their own slice: `sandbox` (the jail runNode creates), `per-node-routing-and-fusion` (the model on the pi command), `node-action-protocol` (the gates between exec and finish).
@@ -207,6 +207,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 - `77b527c` 2026-07-10 — fix(core): op-failure detail carries the spawn-error message (r.skipped)
+- `b9e8999` 2026-07-10 — fix(core): run-op bodies resolve {{RUN}}/{{WORKSPACE}}/{{arg.*}} tokens at dispatch
+- `be2dc1d` 2026-07-14 — feat(core): request-level idle liveness watchdog with in-place re-exec
+- `9dd443b` 2026-07-14 — fix(core): widen the default idle-request window 540s → 720s
 
 ### Lessons — memory cluster
 
@@ -226,10 +229,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
+- `runNode` (packages/core/src/runner/node-lifecycle.ts:116) — 1 caller in `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 - `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 10 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run-baseline.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
-- `RunContext` (packages/core/src/runner/run-context.ts:32) — 17 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:766) — 5 callers in `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
+- `RunContext` (packages/core/src/runner/run-context.ts:32) — 17 callers in `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts` +2 more; ⚠ no covering tests found
+- `RunScope` (packages/core/src/types.ts:766) — 7 callers in `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=152 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-15 · arc=155 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

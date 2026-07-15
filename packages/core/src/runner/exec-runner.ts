@@ -66,6 +66,30 @@ export interface ExecWatchdogOpts {
    * runner that ignores it (a test) is unchanged, and the default just relays it to the sandbox.
    */
   onSpawn?: (pid: number) => void;
+  /**
+   * (REQUEST-LEVEL idle telemetry) Called each time the idle watchdog ACTS — a silence abort, a re-exec spent
+   * on a self-failing attempt, the restart-grace fallback, or the terminal exhaustion. The runner wires this to
+   * the node's event recorder so a re-exec is visible in `events.jsonl` (fired-at + silence measured + attempt #)
+   * instead of being reconstructed post-hoc from a pi `Unhandled stop reason: abort`. Absent ⇒ no-op (tests).
+   */
+  onWatchdog?: (ev: WatchdogEvent) => void;
+}
+
+/** One idle-watchdog action, archived into the node's event stream (the recorder stamps the wall clock). */
+export interface WatchdogEvent {
+  type: 'watchdog';
+  /** `idle-abort` = silence tripped, aborting to re-exec · `idle-refail` = a re-exec died on its own, spending a
+   *  re-exec · `idle-restart-grace` = the aborted request never resolved, the grace timer forced the next attempt
+   *  · `idle-exhausted` = re-execs spent, the node is now `killed:'idle'`. */
+  action: 'idle-abort' | 'idle-refail' | 'idle-restart-grace' | 'idle-exhausted';
+  /** ms of stream silence measured when the action fired (an `idle-abort`); 0 when not silence-driven. */
+  silenceMs: number;
+  /** 1-based index of the attempt this action concerns (the initial exec is attempt 1). */
+  attempt: number;
+  /** in-place re-execs still available AFTER this action (0 ⇒ the next failure is terminal). */
+  retriesLeft: number;
+  /** the failing exit code — present on the self-failure paths (`idle-refail`, a refail-driven `idle-exhausted`). */
+  code?: number;
 }
 
 /** The checkpoint wait seam — polls for a reply until `accept` passes or the deadline elapses (G5). */
@@ -123,6 +147,13 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
     let currentAc: AbortController | null = null;
     let graceTimer: NodeJS.Timeout | undefined;
     let restartGrace: NodeJS.Timeout | undefined;
+    // (idle telemetry) Archive one watchdog action into the node's event stream. Best-effort — a bad sink never
+    // breaks the run — and it does NOT touch `lastEventAt` (it is not agent stream activity).
+    const emitWatchdog = (action: WatchdogEvent['action'], extra: { silenceMs?: number; code?: number } = {}): void => {
+      try {
+        opts.onWatchdog?.({ type: 'watchdog', action, silenceMs: extra.silenceMs ?? 0, attempt: attemptId, retriesLeft: idleRetriesLeft, ...(extra.code !== undefined ? { code: extra.code } : {}) });
+      } catch { /* no-op */ }
+    };
     const settle = (result: ExecResult): void => {
       if (settled) return;
       settled = true;
@@ -154,18 +185,24 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
     const idleTimer = idleRequestMs > 0
       ? setInterval(() => {
           if (settled || trippedAs || restarting) return;
-          if (Date.now() - lastEventAt <= idleRequestMs) return;
+          const silenceMs = Date.now() - lastEventAt;
+          if (silenceMs <= idleRequestMs) return;
           if (idleRetriesLeft > 0) {
             idleRetriesLeft--;
             restarting = true;
             intervened = true; // we are now in RECOVERY — a later self-failing attempt is ours to retry, not fatal
+            emitWatchdog('idle-abort', { silenceMs }); // fired-at (recorder-stamped) + silence measured + attempt #
             try { currentAc?.abort(); } catch { /* no-op */ } // signal-honoring providers reap → .then/.catch re-execs
             // Restart-grace: a hung request that IGNORES the abort would never settle its promise and thus
             // never trigger the re-exec — so start the next attempt anyway after the kill grace. The abandoned
             // promise's late result is dropped by the `attemptId` guard in `runAttempt`.
-            restartGrace = setTimeout(doRestart, opts.killGraceMs);
+            restartGrace = setTimeout(() => {
+              if (restarting && !settled && !trippedAs) emitWatchdog('idle-restart-grace', { silenceMs });
+              doRestart();
+            }, opts.killGraceMs);
             restartGrace.unref?.();
           } else {
+            emitWatchdog('idle-exhausted', { silenceMs }); // re-execs spent on silence — the node is now killed:'idle'
             trip('idle'); // retries spent — the request is genuinely dead → a node error (retry/escalate lanes)
           }
         }, Math.max(25, Math.floor(idleRequestMs / 4)))
@@ -202,7 +239,8 @@ export const defaultExecRunner: ExecRunner = (sandbox, cmd, opts) =>
         // verbatim as `killed:null` "nonzero exit 1", which misclassifies the hang as a node/capability error and
         // burns a whole NODE retry. The FIRST attempt (intervened===false) is untouched: a clean failure settles as-is.
         if (intervened && result.code !== 0) {
-          if (idleRetriesLeft > 0) { idleRetriesLeft--; runAttempt(); return; }
+          if (idleRetriesLeft > 0) { idleRetriesLeft--; emitWatchdog('idle-refail', { code: result.code }); runAttempt(); return; }
+          emitWatchdog('idle-exhausted', { code: result.code }); // re-execs spent on a self-failing re-exec
           trippedAs = 'idle'; // terminal idle verdict; keep the real failing result for the stderr/exit forensics
           settle(result);
           return;

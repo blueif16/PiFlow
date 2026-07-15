@@ -62,7 +62,7 @@ import { defaultExecRunner, defaultCheckpointWait } from './exec-runner.js';
 import type { ExecRunner, ExecWatchdogOpts, CheckpointWaiter } from './exec-runner.js';
 import { DEFAULT_TOOL_LOOP_LIMIT } from './tool-loop-breaker.js';
 export { defaultExecRunner, defaultCheckpointWait } from './exec-runner.js';
-export type { ExecRunner, ExecWatchdogOpts, CheckpointWaiter } from './exec-runner.js';
+export type { ExecRunner, ExecWatchdogOpts, WatchdogEvent, CheckpointWaiter } from './exec-runner.js';
 
 /** Options for `runWorkflow`. Everything below the workflow is defaulted to a live-free, offline run. */
 export interface RunOptions {
