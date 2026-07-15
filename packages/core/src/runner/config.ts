@@ -144,7 +144,7 @@ export function loadConfig(input: LoadConfigInput): ResolvedRunOpts {
     nodeTimeoutMs: args.nodeTimeoutMs ?? secondsToMs(env.PI_RUNNER_NODE_TIMEOUT),
     stallMs: args.stallMs ?? secondsToMs(env.PI_RUNNER_STALL_TIMEOUT),
     // REQUEST-LEVEL liveness watchdog: seconds in the env (game-omni convention) → ms. Absent ⇒ runner default
-    // (720_000 ms / 2 re-execs, default ON). PI_RUNNER_IDLE_TIMEOUT=0 disables the window.
+    // (720_000 ms / 2 re-execs, default ON). PI_RUNNER_IDLE_TIMEOUT=0 disables the window (0 honored: secondsToMs('0')===0).
     idleRequestMs: args.idleRequestMs ?? secondsToMs(env.PI_RUNNER_IDLE_TIMEOUT),
     idleRequestRetries: args.idleRequestRetries ?? intFromEnv(env.PI_RUNNER_IDLE_RETRIES),
     returnProtocol: args.returnProtocol,

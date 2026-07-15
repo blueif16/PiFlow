@@ -418,6 +418,49 @@ describe('piflowctl run — LIVE branch routes through core runFromTemplate, thr
     expect((optsSeen?.provider as { kind?: string } | undefined)?.kind).toBe('local');
   });
 
+  it('PI_RUNNER_IDLE_TIMEOUT=0 threads idleRequestMs:0 into runFromTemplate — the env DISABLE reaches the live path', async () => {
+    // The 0-doesn't-disable regression (run 260714-02): the live template path resolves the PI_RUNNER_* timeout
+    // knobs through loadConfig and threads them into runFromTemplate. Without that threading the env is read
+    // NOWHERE on a live run and the runner default silently wins. Drop the watchdog threading in run.ts ⇒
+    // idleRequestMs is undefined ⇒ this goes red. 0 must arrive as a real 0 (which the runner treats as OFF).
+    const prev = process.env.PI_RUNNER_IDLE_TIMEOUT;
+    process.env.PI_RUNNER_IDLE_TIMEOUT = '0';
+    try {
+      let optsSeen: RunFromTemplateOpts | undefined;
+      const deps: RunDeps = {
+        runFromTemplate: async (_dir, opts) => { optsSeen = opts; return { status: { ok: true } as never, outDir: opts.runDir }; },
+        print: () => {},
+      };
+      await runTemplate(
+        { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gidle0', args: {}, outDir: out, sandbox: 'inmemory' },
+        deps,
+      );
+      expect(optsSeen?.idleRequestMs).toBe(0);
+    } finally {
+      if (prev === undefined) delete process.env.PI_RUNNER_IDLE_TIMEOUT;
+      else process.env.PI_RUNNER_IDLE_TIMEOUT = prev;
+    }
+  });
+
+  it('a live run with NO PI_RUNNER_IDLE_TIMEOUT leaves idleRequestMs undefined (the runner default applies)', async () => {
+    const prev = process.env.PI_RUNNER_IDLE_TIMEOUT;
+    delete process.env.PI_RUNNER_IDLE_TIMEOUT;
+    try {
+      let optsSeen: RunFromTemplateOpts | undefined;
+      const deps: RunDeps = {
+        runFromTemplate: async (_dir, opts) => { optsSeen = opts; return { status: { ok: true } as never, outDir: opts.runDir }; },
+        print: () => {},
+      };
+      await runTemplate(
+        { templateDir: TEMPLATE_MIN, dryRun: false, run: 'gidledef', args: {}, outDir: out, sandbox: 'inmemory' },
+        deps,
+      );
+      expect(optsSeen?.idleRequestMs).toBeUndefined(); // absent ⇒ pruned ⇒ runWorkflow's `?? 720_000` wins
+    } finally {
+      if (prev !== undefined) process.env.PI_RUNNER_IDLE_TIMEOUT = prev;
+    }
+  });
+
   it('--sandbox inmemory OMITS the provider (core default) — no LocalSandboxProvider', async () => {
     let optsSeen: RunFromTemplateOpts | undefined;
     const deps: RunDeps = {

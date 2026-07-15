@@ -32,6 +32,15 @@ describe('loadConfig — resolve PI_RUNNER_* env + args → the run-opts subset 
     expect(cfg.until).toBe('verify');
   });
 
+  it('PI_RUNNER_IDLE_TIMEOUT=0 resolves to idleRequestMs:0 — the documented DISABLE is honored, never pruned to undefined', () => {
+    // The 0-doesn't-disable regression (run 260714-02): `0` must survive as a real value all the way to the
+    // runner's `idleRequestMs ?? default` (where 0 disarms) — never coerced to undefined (which would let the
+    // default win). secondsToMs('0')===0, and pruneUndefined keeps 0 (0 !== undefined).
+    const cfg = loadConfig({ args: { run: 'g0' }, env: { PI_RUNNER_IDLE_TIMEOUT: '0' } });
+    expect(cfg.idleRequestMs).toBe(0);
+    expect('idleRequestMs' in cfg).toBe(true); // present, not pruned away — this is the value the CLI threads
+  });
+
   it('args OVERRIDE env (the CLI flag beats the env default)', () => {
     const cfg = loadConfig({
       args: { run: 'g2', providerName: 'openrouter', model: 'm-cli', from: 'harden' },

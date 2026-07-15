@@ -31,6 +31,7 @@ import {
   loadModelTiers,
   loadModelsIndex,
   loadPiDefaults,
+  loadConfig,
   expandFusion,
   expandSubworkflow,
   loadFusionConfig,
@@ -938,8 +939,23 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
   if (parsed.detach) {
     print(`piflowctl run: detached/unattended — checkpoints take their default; run dir: ${outDir} (monitor: piflowctl watch ${outDir})`);
   }
+  // (watchdog env) The live template path does NOT otherwise call loadConfig, so the PI_RUNNER_* timeout knobs
+  // (`*_NODE_TIMEOUT` / `*_STALL_TIMEOUT` / `*_IDLE_TIMEOUT` / `*_IDLE_RETRIES`) were read NOWHERE on a live run
+  // and the runner default silently won — the reason `PI_RUNNER_IDLE_TIMEOUT=0` did NOT disable the idle
+  // watchdog. Resolve them through the canonical env home (`loadConfig`; seconds→ms, and 0 HONORED as a
+  // disable) and thread ONLY the watchdog subset (provider/model/from/until are resolved separately above, so
+  // loadConfig's copies of those are intentionally discarded). Each field is present only when its env is set
+  // (loadConfig prunes absent keys), so an unset knob leaves `runWorkflow`'s own `?? default` intact.
+  const wd = (deps.loadConfig ?? loadConfig)({ args: { run: runId }, env: process.env });
+  const watchdogOpts = {
+    ...(wd.nodeTimeoutMs !== undefined ? { nodeTimeoutMs: wd.nodeTimeoutMs } : {}),
+    ...(wd.stallMs !== undefined ? { stallMs: wd.stallMs } : {}),
+    ...(wd.idleRequestMs !== undefined ? { idleRequestMs: wd.idleRequestMs } : {}),
+    ...(wd.idleRequestRetries !== undefined ? { idleRequestRetries: wd.idleRequestRetries } : {}),
+  };
   return runFromTemplate(templateDir, {
     runDir: outDir,
+    ...watchdogOpts,
     run: runId,
     // The resolved memorable identity (explicit `--run` or the auto-minted name) + the prompt metadata —
     // recorded into run.json by the core writer (status.name / status.promptId).
