@@ -307,40 +307,75 @@ function resolveOutDir(arg: string | undefined): string {
   return path.resolve(a);
 }
 
-/** `[dir|run] [--node <id>] [-f|--follow] [--raw] [--summary] [--poll <ms>]` — the body behind `piflowctl logs`. */
-export async function runLogsCli(argv: string[]): Promise<void> {
-  let dir: string | undefined;
-  let node: string | undefined;
-  let follow = false;
-  let raw = false;
-  let summary = false;
-  let pollMs: number | undefined;
+export const LOGS_USAGE = `piflowctl logs <rundir|run> [nodeId] [options]  — stream / replay / diagnose a run
+
+  <rundir|run>  a run dir (holds .pi/) OR a bare run id (→ out/<id>)
+  [nodeId]      restrict to one node (positional, like status/telemetry/trace); omit for all started nodes
+
+OPTIONS
+  -f, --follow    watch the run live (docker logs -f)
+  --summary       one-glance post-run diagnosis (the never-write made obvious)
+  --node <id>     alternative to the positional nodeId
+  --raw           print the raw event lines, undistilled
+  --poll <ms>     follow poll interval
+  -h, --help      print this usage`;
+
+export interface ParsedLogsArgs {
+  dir?: string;
+  node?: string;
+  follow: boolean;
+  raw: boolean;
+  summary: boolean;
+  pollMs?: number;
+  help: boolean;
+}
+
+/** Parse `[dir|run] [nodeId] [--node <id>] [-f|--follow] [--raw] [--summary] [--poll <ms>] [--help]`.
+ *  Positionals bind `<rundir> [nodeId]` — the SAME shape status/telemetry/trace use — so the second
+ *  positional is the node (an explicit `--node` still wins). Previously the last positional overwrote the
+ *  dir, dropping the rundir; `--help` had no home and fell through to run-dir resolution. */
+export function parseLogsArgs(argv: string[]): ParsedLogsArgs {
+  const out: ParsedLogsArgs = { follow: false, raw: false, summary: false, help: false };
+  const positionals: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
-    if (k === '-f' || k === '--follow') follow = true;
-    else if (k === '--raw') raw = true;
-    else if (k === '--summary') summary = true;
-    else if (k === '--node') node = argv[++i];
-    else if (k === '--poll') pollMs = Number(argv[++i]);
-    else if (!k.startsWith('-')) dir = k;
+    if (k === '-f' || k === '--follow') out.follow = true;
+    else if (k === '--raw') out.raw = true;
+    else if (k === '--summary') out.summary = true;
+    else if (k === '-h' || k === '--help') out.help = true;
+    else if (k === '--node') out.node = argv[++i];
+    else if (k === '--poll') out.pollMs = Number(argv[++i]);
+    else if (!k.startsWith('-')) positionals.push(k);
   }
-  const outDir = resolveOutDir(dir);
+  if (positionals[0]) out.dir = positionals[0];
+  if (out.node === undefined && positionals[1]) out.node = positionals[1];
+  return out;
+}
+
+/** The body behind `piflowctl logs` — see `parseLogsArgs` / `LOGS_USAGE`. */
+export async function runLogsCli(argv: string[]): Promise<void> {
+  const a = parseLogsArgs(argv);
+  if (a.help) {
+    process.stdout.write(LOGS_USAGE + '\n');
+    return;
+  }
+  const outDir = resolveOutDir(a.dir);
   if (!existsSync(statusFilePath(outDir))) {
     process.stderr.write(`piflowctl logs: no .pi/run.json under ${outDir}\n`);
     process.exitCode = 1;
     return;
   }
-  if (summary) {
+  if (a.summary) {
     for (const line of renderDiagnosis(diagnoseRun(outDir))) process.stdout.write(line + '\n');
     return;
   }
-  if (follow) {
-    await followRun(outDir, { node, raw, pollMs });
+  if (a.follow) {
+    await followRun(outDir, { node: a.node, raw: a.raw, pollMs: a.pollMs });
     return;
   }
   const st = readStatus(outDir);
-  const ids = node ? [node] : activeNodeIds(st);
+  const ids = a.node ? [a.node] : activeNodeIds(st);
   for (const id of ids) {
-    for (const line of tailNode(outDir, id, { raw })) process.stdout.write(`[${id}] ${line}\n`);
+    for (const line of tailNode(outDir, id, { raw: a.raw })) process.stdout.write(`[${id}] ${line}\n`);
   }
 }
