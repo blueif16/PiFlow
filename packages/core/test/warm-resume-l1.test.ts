@@ -153,6 +153,66 @@ describe('warm-resume L1 — same-model retry resumes the per-node session', () 
     await fs.rm(outDir, { recursive: true, force: true });
   });
 
+  it('when attempt-1 left a real session FILE, the warm resume addresses it by PATH — not the bare id pi can\'t resolve', async () => {
+    // ROOT-CAUSE REGRESSION (run 260715-02/plan): a bare `--session <nodeId>` under a custom `--session-dir`
+    // makes pi SCAN + classify the session "different project" → an unanswerable fork prompt in headless `-p`
+    // → the warm attempt no-ops and events.jsonl is starved. The fix: once attempt-1 has PERSISTED the session
+    // file (`<ISO-ts>_<nodeId>.jsonl`), the resume must address it by its ABSOLUTE PATH (pi's direct-path
+    // branch — no scan, no fork). This test plants a real session file on attempt-1 (the in-place shell runs on
+    // the host fs) and asserts attempt-2's built command references THAT path. FAILS pre-fix (`--session 'producer'`).
+    const node: NodeIntent = {
+      label: 'Producer',
+      prompt: 'produce the artifact',
+      tools: {},
+      io: { reads: [], produces: ['out.txt'], artifacts: [{ path: 'out.txt' }], retry: { max: 1 } },
+      op: [{ when: 'on-failure', action: { kind: 'retry', max: 1, scope: 'feedback' } }],
+    };
+    const g = compile(wf([node]));
+    const outDir = await tmpOut();
+    const sessDir = piSessionsDir(outDir);
+    const sessFile = path.join(sessDir, '2026-07-15T21-14-54-714Z_producer.jsonl');
+
+    const attempts: Attempt[] = [];
+    const builder = (
+      nodeSpec: NodeSpec & { sandbox: { output: string } },
+      resolved: ResolveResult,
+      ctx: { promptFile: string; provider?: string; model?: string },
+      opts?: PiCommandOptions,
+    ): string => {
+      const cmd = defaultPiCommand(nodeSpec, resolved, ctx, opts);
+      const i = attempts.length;
+      attempts.push({ cmd, session: opts?.session, prompt: '' });
+      const art = nodeSpec.io.artifacts[0].path;
+      const dest = path.join(outDir, art);
+      // attempt 1: PERSIST a native session file (as pi's `--session-id` create would), then FAIL → warm retry.
+      // attempt 2: write the artifact so the node ends ok.
+      const tail = i === 0
+        ? `mkdir -p '${sessDir}' && printf '%s' '{"type":"session","version":3,"id":"producer"}' > '${sessFile}' && exit 1`
+        : `mkdir -p ${path.dirname(dest)} && printf '%s' ok > ${dest}`;
+      return `${tail}`;
+    };
+
+    await runWorkflow(g, {
+      run: 'wr-ref',
+      outDir,
+      provider: localKindProvider(),
+      buildCommand: builder as Parameters<typeof runWorkflow>[1]['buildCommand'],
+    });
+
+    expect(attempts).toHaveLength(2);
+    // attempt-1 CREATES by id (unchanged).
+    expect(attempts[0].session!.resume).toBeFalsy();
+    expect(attempts[0].cmd).toContain("--session-id 'producer'");
+    // THE FIX: attempt-2 resumes by the LOCATED FILE PATH (resolvable), not the bare id.
+    expect(attempts[1].session!.resume).toBe(true);
+    expect(attempts[1].session!.resumeRef, 'the runner must locate + carry the session file path').toBe(sessFile);
+    expect(attempts[1].cmd).toContain(`--session '${sessFile}'`);
+    expect(attempts[1].cmd).not.toContain("--session 'producer'");
+    expect(attempts[1].cmd).not.toContain('--session-id');
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
   it('an ESCALATION retry (different model) stays COLD — no --session flag (behavior 5)', async () => {
     // A node that escalates to a stronger tier. The escalation attempt swaps the model; it must NOT warm-
     // resume (warm carries the original model in its tree; §4d). The escalation command stays cold (create-

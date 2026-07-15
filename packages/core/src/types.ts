@@ -907,9 +907,15 @@ export interface PiCommandOptions {
    * builder keeps today's `--no-session` (ephemeral) default, byte-identical to before.
    *   - `dir`    : the in-sandbox `--session-dir` (a dedicated subdir, NEVER pi's `.pi/` journal tree).
    *   - `id`     : the exact session id (the node id) — `--session-id` on create, `--session` on resume.
-   *   - `resume` : `true` ⇒ emit `--session <id>` (resume); falsy/absent ⇒ `--session-id <id>` (create).
+   *   - `resume` : `true` ⇒ emit `--session <ref>` (resume); falsy/absent ⇒ `--session-id <id>` (create).
+   *   - `resumeRef` : (resume only) the ABSOLUTE path of the located session file. Preferred over `id` on
+   *       resume because pi resolves a bare id against a custom `--session-dir` by SCANNING for a match and,
+   *       finding it in a foreign project dir, classifies it "different project" and PROMPTS to fork — a
+   *       prompt a headless `pi -p` cannot answer, so the warm attempt hangs/no-ops and starves events.jsonl.
+   *       A full path hits pi's direct-path branch (`resolveSessionPath` sees the `/`), opening the exact
+   *       file with no scan and no fork prompt. Absent ⇒ fall back to `--session <id>` (best-effort).
    */
-  session?: { dir: string; id: string; resume?: boolean };
+  session?: { dir: string; id: string; resume?: boolean; resumeRef?: string };
 }
 
 /** The catalog: register tools, resolve a selection to pi flags, search, and enumerate. */

@@ -47,4 +47,31 @@ describe('defaultPiCommand — session flag emission', () => {
     expect(cmd).not.toContain('--session-id');
     expect(cmd).not.toContain('--no-session');
   });
+
+  it('resume with a resumeRef → emits --session <resumeRef path> (the RESOLVABLE ref), NOT the bare id', () => {
+    // THE WRITE-PATH FIX (run 260715-02/plan). pi resolves `--session <bare-id>` against a custom
+    // `--session-dir` by SCANNING; finding the session in a foreign project dir it classifies it a "different
+    // project" and prompts to fork — a prompt a headless `pi -p` cannot answer, so the warm attempt no-ops and
+    // starves events.jsonl. A FULL PATH hits pi's direct-path branch and opens the exact file. So when the
+    // runner has LOCATED the session file, the resume MUST address it by that path, not the bare id.
+    const ref = '/run/.pi/sessions/2026-07-15T21-14-54-714Z_producer.jsonl';
+    const cmd = defaultPiCommand(node, resolved, ctx, {
+      session: { dir: '/run/.pi/sessions', id: 'producer', resume: true, resumeRef: ref },
+    });
+    expect(cmd).toContain(`--session '${ref}'`);
+    // the bare id must NOT be the --session argument (that is exactly what pi cannot resolve here).
+    expect(cmd).not.toContain("--session 'producer'");
+    expect(cmd).not.toContain('--session-id');
+    expect(cmd).not.toContain('--no-session');
+  });
+
+  it('create with a (stray) resumeRef → still --session-id <id> (resumeRef is resume-only)', () => {
+    // resumeRef only steers the RESUME arm; a create attempt always mints by id (a path would fail pi's
+    // assertValidSessionId). Guards against the builder leaking the ref onto the create flag.
+    const cmd = defaultPiCommand(node, resolved, ctx, {
+      session: { dir: '/run/.pi/sessions', id: 'producer', resumeRef: '/some/path_producer.jsonl' },
+    });
+    expect(cmd).toContain("--session-id 'producer'");
+    expect(cmd).not.toContain('/some/path_producer.jsonl');
+  });
 });

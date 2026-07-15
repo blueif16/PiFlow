@@ -48,6 +48,7 @@ import {
   artifactState,
 } from './status.js';
 import { piSessionsDir, writeNodePid, clearNodePid, nodeDir, nodeEventsFile } from './layout.js';
+import { locatePiSessionFile } from './pi-session.js';
 import {
   envelopeHash,
   inputFilesOf,
@@ -442,8 +443,14 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // An escalation never sets it (stays cold).
     const warmEligible = IN_PLACE_KINDS.has(ctx.providerKind);
     const isResume = warmEligible && over.resumeSessionId !== undefined;
+    const sessionDir = piSessionsDir(path.resolve(ctx.outDir));
+    // On a warm RESUME, LOCATE the session file attempt-1 minted (`<ISO-ts>_<nodeId>.jsonl`) so the resume can
+    // address it by its ABSOLUTE PATH — a bare `--session <nodeId>` under this custom `--session-dir` makes pi
+    // SCAN + classify the session "different project" and prompt to fork (unanswerable in headless `-p`), which
+    // starves the node's events.jsonl (run 260715-02/plan). Absent ⇒ fall back to the bare id (best-effort).
+    const resumeRef = isResume ? (locatePiSessionFile(sessionDir, node.id) ?? undefined) : undefined;
     const session = warmEligible
-      ? { dir: piSessionsDir(path.resolve(ctx.outDir)), id: node.id, resume: isResume }
+      ? { dir: sessionDir, id: node.id, resume: isResume, ...(resumeRef ? { resumeRef } : {}) }
       : undefined;
     if (session) { rec.sessionId = session.id; rec.sessionDir = session.dir; }
 
