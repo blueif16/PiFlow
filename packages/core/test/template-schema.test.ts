@@ -112,6 +112,64 @@ describe('template-format schemas — the fixture VALIDATES (accept the real sha
     expect(r.ok).toBe(true);
   });
 
+  // (op-integrity WS-I0) the op envelope gains `expect` (integrity post-conditions) + `resultFile` (the structured
+  // verdict/manifest pointer). The ACCEPT cases are the load-bearing RED: until the op schema declares these two
+  // keys, additionalProperties:false rejects them (the mutation these pin). The manifest convention: expect targets
+  // the resultFile manifest via json-pointer/json-schema; contains-marker is the documented last resort.
+  describe('op[] integrity — expect + resultFile (WS-I0)', () => {
+    const withOp = async (op: unknown): Promise<ReturnType<SchemaValidator>> => {
+      const node = { ...((await readJson(nodePath('w0-classify'))) as Record<string, unknown>), op };
+      return validate(nodeSchema as object, node);
+    };
+    it('accepts a pre-op with expect + a resultFile manifest (the recommended structured predicates)', async () => {
+      const r = await withOp([
+        {
+          when: 'pre',
+          writes: ['persona.md'],
+          run: { cmd: 'planner-context', args: ['--emit-manifest', 'persona.manifest.json'] },
+          resultFile: 'persona.manifest.json',
+          onFailure: 'warn',
+          expect: [
+            { kind: 'min-bytes', path: 'persona.md', param: 200000 },
+            { kind: 'json-pointer-exists', path: 'persona.manifest.json', param: { pointer: '/required_kp_ids' } },
+            { kind: 'json-pointer-equals', path: 'persona.manifest.json', param: { pointer: '/ok', value: true } },
+            { kind: 'json-schema', path: 'persona.manifest.json', param: { schema: { type: 'object', required: ['ok'] } } },
+            { kind: 'contains-marker', path: 'persona.md', param: 'required_kp_ids' },
+          ],
+        },
+      ]);
+      expect(r.errors).toEqual([]);
+      expect(r.ok).toBe(true);
+    });
+    it('accepts an expect entry that omits `path` (checks each of the op writes)', async () => {
+      const r = await withOp([{ when: 'post', writes: ['a.json', 'b.json'], run: { cmd: 'gen' }, expect: [{ kind: 'json-parses' }] }]);
+      expect(r.ok).toBe(true);
+    });
+    it('REJECTS an expect entry missing `kind` (required)', async () => {
+      const r = await withOp([{ when: 'post', run: { cmd: 'gen' }, expect: [{ path: 'x.json' }] }]);
+      expect(r.ok).toBe(false);
+      expect(r.errors.join(' ')).toMatch(/kind|required/);
+    });
+    it('REJECTS an unknown key inside an expect entry (additionalProperties:false)', async () => {
+      const r = await withOp([{ when: 'post', run: { cmd: 'gen' }, expect: [{ kind: 'min-bytes', paths: 'typo' }] }]);
+      expect(r.ok).toBe(false);
+      expect(r.errors.join(' ')).toMatch(/additional|paths/i);
+    });
+    it('REJECTS an expect that is not an array', async () => {
+      const r = await withOp([{ when: 'post', run: { cmd: 'gen' }, expect: { kind: 'min-bytes' } }]);
+      expect(r.ok).toBe(false);
+    });
+    it('REJECTS a non-string resultFile', async () => {
+      const r = await withOp([{ when: 'post', run: { cmd: 'gen' }, resultFile: 42 }]);
+      expect(r.ok).toBe(false);
+    });
+    it('an op with NEITHER expect nor resultFile still validates (both optional — backward compat)', async () => {
+      const r = await withOp([{ when: 'post', run: { cmd: 'gen' } }]);
+      expect(r.errors).toEqual([]);
+      expect(r.ok).toBe(true);
+    });
+  });
+
   // (WS3) The optimizer-facing `optimize` block gains `criteria` (the rename of `judge` — the SHARED bar read
   // by triage + gate) and `verifyDefault` (the node's default per-issue verify tier). `judge` survives as a
   // back-compat READ alias. additionalProperties:false makes the typo/enum cases bite (the mutation these pin).

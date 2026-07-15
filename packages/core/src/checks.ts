@@ -6,12 +6,66 @@
 // lastFencedBlock). A check NEVER judges GOODNESS — `count-floor` asserts "≥N items EXIST", never
 // "the items are good"; the human-judged quality bar lives in the criteria fixture, not here.
 
-import type { Check, Verdict, Policy, PolicyAction, FailureClass, RetrySpec } from './types.js';
+import type { Check, Verdict, Policy, PolicyAction, FailureClass, RetrySpec, IntegrityExpectation } from './types.js';
+import type { SchemaValidator } from './runner/schema.js';
 
 /** A file as read for a check: its bytes (null = unreadable/absent) and size. */
 export interface FileBytes {
   bytes: string | null;
   size: number;
+}
+
+/** Injected capabilities a predicate may consult (kept out of the pure single-file model). Only `json-schema`
+ *  reads it (an ajv `validate` seam); every other predicate ignores it, so passing it is always additive. */
+export interface EvaluateOpts {
+  /** The draft-2020-12 validator seam (`RunOptions.validateSchema`) — `json-schema` validates against it. */
+  validate?: SchemaValidator | null;
+}
+
+/**
+ * Resolve an RFC-6901 JSON pointer against a parsed value. `''` ⇒ the whole document. Returns `undefined`
+ * when any segment is absent. Unescapes `~1`→`/` and `~0`→`~` (the pointer token escapes, in that order).
+ */
+export function resolvePointer(obj: unknown, pointer: string): unknown {
+  if (pointer === '') return obj;
+  if (!pointer.startsWith('/')) return undefined; // a valid non-empty pointer MUST start with '/'
+  const tokens = pointer
+    .slice(1)
+    .split('/')
+    .map((t) => t.replace(/~1/g, '/').replace(/~0/g, '~'));
+  let cur: unknown = obj;
+  for (const t of tokens) {
+    if (cur == null) return undefined;
+    if (Array.isArray(cur)) {
+      const i = /^\d+$/.test(t) ? Number(t) : NaN;
+      if (Number.isNaN(i) || i < 0 || i >= cur.length) return undefined;
+      cur = cur[i];
+    } else if (typeof cur === 'object') {
+      const rec = cur as Record<string, unknown>;
+      if (!Object.hasOwn(rec, t)) return undefined;
+      cur = rec[t];
+    } else {
+      return undefined; // a primitive cannot be descended into
+    }
+  }
+  return cur;
+}
+
+/** Structural deep-equal for JSON-shaped values (the `json-pointer-equals` comparator). */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null || typeof a !== typeof b) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((x, i) => deepEqual(x, b[i]));
+  }
+  if (typeof a === 'object') {
+    const ka = Object.keys(a as object);
+    const kb = Object.keys(b as object);
+    if (ka.length !== kb.length) return false;
+    return ka.every((k) => deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]));
+  }
+  return false;
 }
 
 /** The result of running one check (the per-node `checks` record + control-flow input). */
@@ -52,8 +106,8 @@ export function lastFencedBlock(text: string, lang?: string): unknown {
   }
 }
 
-/** A predicate: pure fn of a read file (+ its `param`) → { ok, reason }. */
-type Predicate = (f: FileBytes, param?: unknown) => { ok: boolean; reason: string };
+/** A predicate: pure fn of a read file (+ its `param`, + injected `opts` only `json-schema` reads) → { ok, reason }. */
+type Predicate = (f: FileBytes, param?: unknown, opts?: EvaluateOpts) => { ok: boolean; reason: string };
 
 /**
  * The predicate registry. Each entry is a pure fn of the file's bytes. Mirrors run.mjs CHECK_KINDS
@@ -61,7 +115,13 @@ type Predicate = (f: FileBytes, param?: unknown) => { ok: boolean; reason: strin
  */
 export const CHECK_KINDS: Record<string, Predicate> = {
   exists: (f) => ({ ok: f.bytes != null, reason: f.bytes != null ? 'present' : 'missing' }),
-  'non-empty': (f) => ({ ok: (f.size || 0) > 0, reason: `${f.size || 0} bytes` }),
+  'non-empty': (f, p) => {
+    // A numeric `param` is a BYTE FLOOR (the `min-bytes` integrity kind rides this predicate — op-integrity §1);
+    // any non-number param (or none) means the pre-integrity ">0" check, byte-identical to before.
+    const min = typeof p === 'number' && p > 0 ? p : 1;
+    const size = f.size || 0;
+    return { ok: size >= min, reason: min > 1 ? `${size} bytes (min ${min})` : `${size} bytes` };
+  },
   'regex-absent': (f, p) => {
     const hit = new RegExp(String(p)).test(f.bytes || '');
     return { ok: !hit, reason: hit ? `/${String(p)}/ present (incomplete)` : `/${String(p)}/ absent` };
@@ -108,13 +168,89 @@ export const CHECK_KINDS: Record<string, Predicate> = {
     const min = param.minItems ?? 1;
     return { ok: n >= min, reason: `${param.field || 'tail'}: ${n} (min ${min})` };
   },
+  // ── structured-data predicates (op-integrity · manifest convention) — assert over parsed JSON, never prose ──
+  'json-pointer-exists': (f, p) => {
+    const pointer = typeof p === 'string' ? p : (p as { pointer?: string } | null)?.pointer;
+    if (typeof pointer !== 'string') return { ok: false, reason: 'json-pointer-exists: no pointer declared' };
+    let doc: unknown;
+    try {
+      doc = JSON.parse(f.bytes ?? '');
+    } catch {
+      return { ok: false, reason: 'unparseable JSON' };
+    }
+    const v = resolvePointer(doc, pointer);
+    const ok = v != null && !(Array.isArray(v) && v.length === 0);
+    return { ok, reason: ok ? `${pointer} present` : v === undefined ? `${pointer} absent` : Array.isArray(v) ? `${pointer} empty array` : `${pointer} null` };
+  },
+  'json-pointer-equals': (f, p) => {
+    const param = (p ?? {}) as { pointer?: string; value?: unknown };
+    if (typeof param.pointer !== 'string') return { ok: false, reason: 'json-pointer-equals: no pointer declared' };
+    let doc: unknown;
+    try {
+      doc = JSON.parse(f.bytes ?? '');
+    } catch {
+      return { ok: false, reason: 'unparseable JSON' };
+    }
+    const v = resolvePointer(doc, param.pointer);
+    const ok = deepEqual(v, param.value);
+    return { ok, reason: ok ? `${param.pointer} == ${JSON.stringify(param.value)}` : `${param.pointer} = ${JSON.stringify(v)} (want ${JSON.stringify(param.value)})` };
+  },
+  'json-schema': (f, p, opts) => {
+    const schema = (p as { schema?: unknown } | null)?.schema;
+    if (schema == null || typeof schema !== 'object') return { ok: false, reason: 'json-schema: no inline schema declared' };
+    // Degrade (never a false breach) when no validator is injected or the schema will not compile — the
+    // schema gate's degrade-don't-brick contract (runner/schema.ts). ajv IS a @piflow/core dep, so this is edge-only.
+    if (!opts?.validate) return { ok: true, reason: 'json-schema: skipped (no validator)' };
+    let data: unknown;
+    try {
+      data = JSON.parse(f.bytes ?? '');
+    } catch (e) {
+      return { ok: false, reason: `invalid JSON: ${(e as Error).message}` };
+    }
+    try {
+      const r = opts.validate(schema as object, data);
+      return { ok: r.ok, reason: r.ok ? 'valid vs schema' : `schema violation: ${(r.errors ?? []).slice(0, 3).join('; ') || 'invalid'}` };
+    } catch (e) {
+      return { ok: true, reason: `json-schema: skipped (uncompilable: ${(e as Error).message})` };
+    }
+  },
 };
+
+/**
+ * (op-integrity §1) Translate ONE integrity expectation for ONE resolved path into a `Check` the CHECK_KINDS
+ * engine runs — the alias layer that keeps `expect` authoring integrity-facing while reusing the predicates.
+ * severity is always `fail` (the CONSEQUENCE — block vs warn — is the op's `onFailure`, applied by the runner,
+ * NOT the check severity). `json-schema` param is passed through resolved (the runner reads a `schemaPath`).
+ */
+export function integrityToCheck(exp: IntegrityExpectation, path: string): Check {
+  const base = { path, severity: 'fail' as const };
+  switch (exp.kind) {
+    case 'file-exists':
+      return { kind: 'exists', ...base };
+    case 'min-bytes':
+      return { kind: 'non-empty', param: exp.param, ...base };
+    case 'contains-marker':
+      // A literal marker → an ESCAPED regex-present so metachars in the marker match literally (never a pattern).
+      return { kind: 'regex-present', param: escapeRegex(String(exp.param)), ...base };
+    case 'json-parses':
+      return { kind: 'json-parses', ...base };
+    case 'json-pointer-exists':
+      return { kind: 'json-pointer-exists', param: exp.param, ...base };
+    case 'json-pointer-equals':
+      return { kind: 'json-pointer-equals', param: exp.param, ...base };
+    case 'json-schema':
+      return { kind: 'json-schema', param: exp.param, ...base };
+    default:
+      // An unknown integrity kind rides through verbatim — evaluateChecks degrades it to a warn (skipped).
+      return { kind: exp.kind, param: exp.param, ...base };
+  }
+}
 
 /**
  * Run a check list, reading each referenced file ONCE via the injected `read`. Returns one
  * CheckResult per check (in order). An unknown kind degrades to a `warn` (never a hard fail).
  */
-export function evaluateChecks(checks: Check[], read: (path: string) => FileBytes): CheckResult[] {
+export function evaluateChecks(checks: Check[], read: (path: string) => FileBytes, opts?: EvaluateOpts): CheckResult[] {
   if (!checks || !checks.length) return [];
   return checks.map((c) => {
     const severity: 'fail' | 'warn' = c.severity || 'fail';
@@ -123,7 +259,7 @@ export function evaluateChecks(checks: Check[], read: (path: string) => FileByte
       return { kind: c.kind, path: c.path ?? null, verdict: 'warn', reason: `unknown check kind '${c.kind}' (skipped)`, severity: 'warn' };
     }
     const file = c.path ? read(c.path) : { bytes: null, size: 0 };
-    const r = fn(file, c.param);
+    const r = fn(file, c.param, opts);
     return { kind: c.kind, path: c.path ?? null, verdict: r.ok ? 'pass' : severity, reason: r.reason, severity };
   });
 }

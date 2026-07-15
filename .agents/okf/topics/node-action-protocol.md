@@ -40,7 +40,7 @@ GATE
 POLICY
 - `packages/core/src/checks.ts:154` — `actionForVerdict` — verdict → `block|warn|stop|retry|escalate` via `io.policy`
 - `packages/core/src/runner/node-lifecycle.ts:653` — `blockingChecks` clause in the status ladder ⇒ `blocked`
-- `packages/core/src/checks.ts:214` — `classifyFailure` — failed checks → `quality-gap`, feeding `retry.ts` retry/escalate
+- `packages/core/src/checks.ts:216` — `classifyFailure` — failed checks → `quality-gap`, feeding `retry.ts` retry/escalate
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode` lives in `packages/core/src/runner/node-lifecycle.ts` (NOT `runner.ts`, which only re-exports it at :296); the no-pi lanes in `packages/core/src/runner/node-lanes.ts` carry a PARALLEL copy of the pre-gate/check/hook blocks (:289/:391/:320/:429) — both must move together. This card is the authored `node-action-protocol` (design: `docs/design/node-action-protocol.md`); it supersedes the hand-guessed `checks-hooks` name and absorbs the centrality-flagged one-file `packages/core/src/hooks/index.ts` (a standalone hooks slice would be a single file).

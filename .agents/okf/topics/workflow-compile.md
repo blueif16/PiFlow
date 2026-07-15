@@ -36,7 +36,7 @@ WORKFLOWSPEC → DAG (topo-order)
 - `packages/core/src/dag.ts:212` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
 - `packages/core/src/dag.ts:82` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
 - `packages/core/src/dag.ts:118` — `stagesOf` — longest-path topological stages (parallel lanes per level)
-- `packages/core/src/types.ts:1148` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
+- `packages/core/src/types.ts:1180` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the compiled `Workflow`/`NodeSpec`/`Stage`/`Edge` shapes all live in `packages/core/src/types.ts` (1026/17/1011/1019), NOT in dag.ts — dag.ts only computes them. This card is the STATIC compile spine carved out of the former `runtime-core`; the DYNAMIC exec spine (DAG → one pi per node → artifacts) is the sibling `runner` slice, and they meet at the `Workflow` object. `loadTemplate` is async (returns a `Promise<WorkflowSpec>`).
