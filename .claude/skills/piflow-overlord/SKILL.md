@@ -38,6 +38,27 @@ that *whoever occupies the seat gets the job right*, whether that is you in this
 agent, or an agent in a cloud control-sandbox. Everything below the seat stays the same when the occupant
 changes; that invariance is the whole point.
 
+## The two systems you straddle — the WORKFLOW ≠ the OPTIMIZATION SUBSTRATE (never conflate them)
+You sit above **two separate systems**, and almost every decision below keys on which one you are in:
+- **The WORKFLOW (the product data plane).** The DAG of producer/verify nodes. Each node carries its OWN
+  in-band quality machinery — its **gate(s) and its resume/retry `policy`** (`policy.fail`, the
+  warm-resume-with-feedback the runner honors on a gate miss) — authored in that node's `node.json` and fired by
+  the runner DURING a production run. **The gate and the policy are PART OF THE NODE, part of the WORKFLOW** —
+  the node's own in-band self-correction, owned by the product; NOT owned by you and NOT part of the substrate.
+- **The OPTIMIZATION SUBSTRATE (a separate, OUT-OF-BAND loop).** triage → fix → verify → adopt, which IMPROVES
+  those nodes BETWEEN runs from a finished run's evidence. Its **issue file**, its **candidate fix-gate**
+  (piflow-gate over a disposable copy), and its staging/adopt train are the substrate's OWN vocabulary — none of
+  it runs inside a production node.
+- **Two "gates," never merged.** The node's in-band VERIFY gate (a `production`-profile op that blocks/coaches a
+  LIVE artifact) ≠ the substrate's candidate FIX-gate (an out-of-band judge of a fixer's edit). When a section
+  below says "gate," it means exactly one of these — never assume the other.
+- **op-failures are WORKFLOW runtime EVIDENCE, not issues.** A failed op records into the node's typed
+  `opFailures` channel — extra evidence the substrate READS at triage time to recognize + cite a defect. It is
+  NOT the issue system, is never flattened into `issues[]`, and never auto-mints an issue. Recording ≠ triaging.
+
+This is exactly why the posture below is asymmetric: on a live WORKFLOW producer you stay passive (its own
+gate+policy self-correct in-band); in the SUBSTRATE loop you go active (the candidate is off the critical path).
+
 ## Starting — the first commands (the on-ramp)
 **Step 0, before anything else — refresh skills:** `piflowctl skills install . --force` (run from the
 product-repo root). The overlord and its sibling skills evolve upstream; this guarantees the session runs on
