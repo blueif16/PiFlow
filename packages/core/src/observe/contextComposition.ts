@@ -22,6 +22,7 @@
 
 import fssync from 'node:fs';
 import { createHash } from 'node:crypto';
+import { readNodeObserveEvents } from '../runner/pi-session.js';
 import type { ScopeKind } from './runView.js';
 
 /** pi's per-call read page: ~2000 lines / 50 KB. A no-offset read of a file under BOTH is whole-file. */
@@ -250,18 +251,15 @@ function coverageForPath(
  * `op:'inject'` for the staged prompt.md.
  */
 export function buildNodeContext(runDir: string, nodeId: string, ctx: ContextBuildCtx): NodeContext {
-  const evFile = `${runDir}/.pi/nodes/${nodeId}/events.jsonl`;
-  let raw = '';
-  try { raw = fssync.readFileSync(evFile, 'utf8'); } catch { raw = ''; }
+  // Read the node's ordered events, RECOVERING from pi's native session when events.jsonl is starved (a
+  // session-only node — run 260715-02/plan). The shared reader is a no-op passthrough for a normal captured
+  // archive, so the happy path is byte-identical; a starved node gets its read/edit elements from the session.
+  const events = readNodeObserveEvents(runDir, nodeId) as unknown as RawEvent[];
 
   const pending: PendingOp[] = [];
   const byId = new Map<string, PendingOp>();
   let toolSeq = 0;
-  for (const line of raw.split('\n')) {
-    const s = line.trim();
-    if (!s) continue;
-    let ev: RawEvent;
-    try { ev = JSON.parse(s) as RawEvent; } catch { continue; }
+  for (const ev of events) {
     if (ev.type === 'tool_execution_start') {
       const toolName = typeof ev.toolName === 'string' ? ev.toolName : '';
       const op = opKind(toolName);
