@@ -33,8 +33,8 @@ export interface ExecWatchdogOpts {
    * `nodeTimeoutMs` (tens of minutes) misses: a single gateway request that goes silent for 20-30 min was
    * previously invisible until the whole-node cap. WHY a stdout chunk is the signal (not a token stream): pi
    * emits its event stream per turn-END, not per token — even on the gateway a legitimate multi-minute think
-   * is silent the WHOLE turn — so the window is GENEROUS (default ~9 min) to never cut a real mega-think, yet
-   * still converts a silent 20-30 min hang into < 10 min. Bounded by `idleRequestRetries`; the node's hard
+   * is silent the WHOLE turn — so the window is GENEROUS (default ~12 min) to never cut a real mega-think, yet
+   * still converts a silent 20-30 min hang into < 13 min. Bounded by `idleRequestRetries`; the node's hard
    * `nodeTimeoutMs` still caps the TOTAL wall-clock across every in-place re-exec.
    */
   idleRequestMs: number;
