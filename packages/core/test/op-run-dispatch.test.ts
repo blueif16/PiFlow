@@ -91,16 +91,20 @@ describe('run fail-loud — a non-dispatchable run op blocks the node instead of
     const badRun = await runWorkflow(compile(wf([mkNode(true)])), { run: 'bad', outDir: badOut });
     const rec = badRun.status.nodes.gen;
     expect(rec.status, 'a non-dispatchable run op must block the node, not vanish').toBe('blocked');
-    expect((rec.issues ?? []).join(' '), 'the block names the undispatchable run op').toMatch(/run op .*has no executor/);
+    // (A1) The op failure rides the DEDICATED TYPED `opFailures` channel — NOT the `issues[]` string (op has
+    // nothing to do with the issue system). The undispatchable run op's detail is recorded there, absent from issues[].
+    expect((rec.opFailures ?? []).map((f) => f.detail).join(' '), 'the typed channel names the undispatchable run op').toMatch(/run op .*has no executor/);
+    expect((rec.issues ?? []).join(' '), 'op failures never leak into issues[]').not.toMatch(/run op .*has no executor/);
   });
 });
 
 describe('run op spawn error — the errno surfaces in the op-failure detail (not a causeless "failed")', () => {
-  it('a post run op whose cmd cannot spawn reports the spawn error message in issues[]', async () => {
+  it('a post run op whose cmd cannot spawn reports the spawn error message on the typed opFailures channel', async () => {
     // A programmatic node whose artifact is produced by a valid PRE seed, plus a POST run op with a
     // nonexistent cmd: spawnSync sets res.error (ENOENT) — the merge executor reports that in `skipped`
-    // (no exit, no stderr). Pre-fix the detail rendered only exit/stderr, so issues[] read a causeless
+    // (no exit, no stderr). Pre-fix the detail rendered only exit/stderr, so the op detail read a causeless
     // "run <cmd> failed" (live: w3a's freeze-check on count-three-e2e-1). RED without the skipped field.
+    // (A1) The op-failure detail now rides the DEDICATED TYPED `opFailures` channel, never `issues[]`.
     const node: NodeIntent = {
       label: 'gen',
       programmatic: true,
@@ -121,9 +125,10 @@ describe('run op spawn error — the errno surfaces in the op-failure detail (no
     const { status } = await runWorkflow(compile(wf([node])), { run: 'spawnerr', outDir });
     const rec = status.nodes.gen;
     expect(rec.status, 'a spawn-failing blocking run op must block the node').toBe('blocked');
-    expect((rec.issues ?? []).join(' '), 'the detail must carry the spawn error, not a bare "failed"').toMatch(
+    expect((rec.opFailures ?? []).map((f) => f.detail).join(' '), 'the typed op detail must carry the spawn error, not a bare "failed"').toMatch(
       /spawn error|ENOENT/,
     );
+    expect((rec.issues ?? []).join(' '), 'op failures never leak into issues[]').not.toMatch(/spawn error|ENOENT/);
   });
 });
 

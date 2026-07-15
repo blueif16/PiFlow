@@ -859,7 +859,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // (or any non-blocking consequence) only surfaces an issue. `retry`/`escalate` are blocking at the
     // node-status level here (the M4 retry/escalate lanes then act on the blocked verdict).
     const blockingOpFailures = opFailures.filter((f) => f.onFailure !== 'warn');
-    const warningOpFailures = opFailures.filter((f) => f.onFailure === 'warn');
+    // (A1 — op[] typed channel) RECORD op failures on their OWN typed record field, never flattened into the
+    // generic `issues[]` string (the user's law: op has nothing to do with the issue system). The blocking-op
+    // branch below still sets `st='blocked'`; only the carrier of the reason moved here. Absent when none failed.
+    if (opFailures.length) rec.opFailures = opFailures;
 
     let st: NodeStatusRecord['status'];
     const issues: string[] = [];
@@ -884,10 +887,11 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       st = 'blocked';
       issues.push(`integrity check FAILED — ${blockingChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
     } else if (blockingOpFailures.length) {
-      // (M5 · #18) A post `run`/`merge.run` op failed with a blocking `onFailure` — the exit code now routes
-      // to status (today it was swallowed: the `runMerge` return was discarded). The node blocks.
+      // (M5 · #18) A post `run`/`merge.run` op failed with a blocking `onFailure` — the exit code routes to
+      // status (today it was swallowed: the `runMerge` return was discarded). The node blocks. (A1) The op
+      // failure's DETAIL rides `rec.opFailures` (stamped above), NOT the `issues[]` string — op stays out of
+      // the issue system; only the `blocked` verdict is carried here.
       st = 'blocked';
-      issues.push(`op FAILED — ${blockingOpFailures.map((f) => f.detail).join(' | ')}`);
     } else if (returnSchemaBreach) {
       st = 'blocked';
       issues.push(`contract breach — return violates the declared returnSchema: ${returnSchemaInvalid.join('; ')}`);
@@ -919,8 +923,8 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // recorded — never let a real `downloadDir` error vanish (it may have dropped a non-required file).
     if (collectError && !missing.length) issues.push(collectError);
     if (warningChecks.length) issues.push(`integrity warn — ${warningChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
-    // (M5 · #18) A `warn`-routed op failure surfaces an issue but never blocks (NOT swallowed, NOT fatal).
-    if (warningOpFailures.length) issues.push(`op warn — ${warningOpFailures.map((f) => f.detail).join(' | ')}`);
+    // (A1) A `warn`-routed op failure is RECORDED on `rec.opFailures` (stamped above) — never flattened into
+    // `issues[]`. It stays non-blocking (the node keeps its `ok`/self-report verdict); op is out of issues.
     if (schema.skipped) issues.push(`schema gate skipped — ${schema.skipped}`);
     // The LOUD skill-missing note recorded at stage time rides the node's issues (never a silent skip).
     if (skillMissing) issues.push(skillMissing);

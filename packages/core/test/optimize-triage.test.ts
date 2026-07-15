@@ -201,6 +201,24 @@ describe('triage — the four-way projector', () => {
     expect(d.evidence.join('\n')).toContain('killed: silent stall');
   });
 
+  // ── op[] leaves the issue bucket — a POST `op[]` action failure now rides a DEDICATED TYPED channel
+  // (`opFailures`), NOT the generic `issues[]` string. The projector must derive the structural signal from
+  // the typed field, so an op-failed node STILL routes FUNCTIONALITY even with an EMPTY `issues[]` — proving
+  // the optimize substrate keeps its signal without grepping the issue-string bucket (the user's A1 law).
+  it('an op[] action failure on the TYPED opFailures channel (issues[] empty) is FUNCTIONALITY, not the LAPSE default', () => {
+    const scores: NodeScore[] = [{
+      node: 'deploy', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    // op-failures have LEFT issues[] entirely — the signal is ONLY on the typed channel.
+    const nd = { ...nodeDigest('deploy', []), opFailures: [{ detail: 'run sh failed (exit 3)', onFailure: 'block' as const }] } as NodeDigest;
+    const digest = digestWith([{ failed: 'deploy', earliestUpstream: 'deploy', viaPath: '', chain: ['deploy'] }], [nd]);
+    const [d] = triage(scores, digest);
+    expect(d.bucket).toBe('FUNCTIONALITY');
+    expect(d.needsSignal).toBeUndefined();          // a concrete typed signal is present — no LAPSE deferral
+    expect(d.evidence.join('\n')).toContain('exit 3'); // the op-failure detail reached the fixer's evidence
+  });
+
   it('a bare structural failure with NO recorded issue text still defaults to LAPSE (no regression)', () => {
     // Same shape as the "defaults to LAPSE" test above, but now digest.nodes carries an entry with NO
     // structural-signal text — proves the new reader does not over-fire on an unrelated/empty issues list.
