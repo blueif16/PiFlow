@@ -152,6 +152,25 @@ export function collectWorkspaceRefs(value: unknown, into: Set<string> = new Set
   return into;
 }
 
+/** PURE, exported: does ANY string inside `value` grant the WHOLE workspace root — a BARE `{{WORKSPACE}}` (no
+ *  subpath, or a `{{WORKSPACE}}/` with an empty suffix)? Walks arrays/objects exactly like `collectWorkspaceRefs`,
+ *  inspecting only the token. `collectWorkspaceRefs`/`normalizeRel` deliberately DROP the bare token (correct for
+ *  the oracle EXCLUDE set — the whole root is never a fence/guard TARGET), which ALSO empties the INCLUDE set for a
+ *  whole-repo read grant like `readScope: ["{{RUN}}", "{{WORKSPACE}}"]`. This helper is how the fence RECOVERS that
+ *  intent: a bare grant means "the whole candidate worktree is the fixer's writable fence." */
+export function grantsWorkspaceRoot(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === 'string') {
+    for (const m of value.matchAll(WORKSPACE_REF)) {
+      if (m[1] === undefined || m[1] === '/') return true; // a bare {{WORKSPACE}} (or a trailing "/") → the root
+    }
+    return false;
+  }
+  if (Array.isArray(value)) return value.some((v) => grantsWorkspaceRoot(v));
+  if (typeof value === 'object') return Object.values(value as Record<string, unknown>).some((v) => grantsWorkspaceRoot(v));
+  return false;
+}
+
 /** `<templateDir>/nodes/<id>/node.json`'s raw shape — the optimizer-facing block the loader never wires on.
  *  `criteria` is the current spelling of the shared bar; `judge` is the back-compat READ alias (either works). */
 interface RawNodeJson {
@@ -206,6 +225,10 @@ async function nodeVerifyDefault(templateDir: string, nodeId: string): Promise<V
 export interface ClosureRefs {
   include: string[];
   exclude: string[];
+  /** TRUE iff `contract.readScope` / `contract.execReads` carries a BARE `{{WORKSPACE}}` — a whole-repo read
+   *  grant. `collectWorkspaceRefs` DROPS the bare token so `include` is empty in that case; the fence reads THIS
+   *  flag to grant the whole candidate worktree instead of an empty (self-jailing) allowlist. */
+  grantsWorkspaceRoot: boolean;
 }
 
 /** Derive the node's include/exclude {{WORKSPACE}}-ref sets straight off its `node.json` (the block is
@@ -225,7 +248,8 @@ export async function readClosureRefs(templateDir: string, nodeId: string): Prom
   collectWorkspaceRefs(nj.optimize?.criteria, exclude);
   collectWorkspaceRefs(nj.optimize?.judge, exclude);
 
-  return { include: [...include], exclude: [...exclude] };
+  const rootGrant = grantsWorkspaceRoot(nj.contract?.readScope) || grantsWorkspaceRoot(nj.contract?.execReads);
+  return { include: [...include], exclude: [...exclude], grantsWorkspaceRoot: rootGrant };
 }
 
 /** PURE: is `rel` an oracle path — either exactly in the exclude set, or UNDER an excluded dir? The one prefix
@@ -739,10 +763,14 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   // The oracle FENCE (include MINUS exclude), computed once off node.json (a read, not a mutation — safe under
   // dry-run). Each surviving rel maps to a worktree-absolute dir → the fixer's readScope/owns; the oracle paths
   // are simply not in the allowlist, so the default-on jail denies them.
-  const { include, exclude } = await readClosureRefs(templateDir, node);
+  const { include, exclude, grantsWorkspaceRoot: grantsRoot } = await readClosureRefs(templateDir, node);
   const excludeSet = new Set(exclude);
   const fenceRels = include.filter((rel) => !isOracleRel(rel, excludeSet, exclude));
-  const fencePaths = fenceRels.map((rel) => path.join(worktreeDir, rel));
+  // A BARE `{{WORKSPACE}}` read grant means "the whole candidate worktree is the fixer's writable fence" — the
+  // maximal case of the already-accepted dir-coarse grant. Without it `fenceRels` is EMPTY (collectWorkspaceRefs
+  // drops the bare token), which would jail the fixer out of its OWN disposable worktree (every edit → EPERM).
+  // Oracle protection stays the POST-COMMIT diff guard (`oracleTouchedByDiff`), never the dir-coarse seatbelt.
+  const fencePaths = grantsRoot ? [worktreeDir] : fenceRels.map((rel) => path.join(worktreeDir, rel));
 
   // The ONE fixer spawn composition — shared VERBATIM by the dry-run preview and the live spawn (never two
   // hand-copies that can drift apart). `cwd` is the worktree; the jail is the fence; the playbook is the
@@ -788,7 +816,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   const wt = await prepareCandidateWorktree(repoRoot, { node, issue: issue.name, attempt });
   const baseSha = wt.baseSha;
   try {
-    emit({ type: 'candidate-prepared', issue: issue.name, candidateRef: worktreeDir, included: fenceRels.length, excluded: exclude.length });
+    emit({ type: 'candidate-prepared', issue: issue.name, candidateRef: worktreeDir, included: fencePaths.length, excluded: exclude.length });
 
     // (c) fixer — edits the worktree; `git add -A && commit` → candidateSha; editsApplied = the diff name-count.
     emit({ type: 'fixer-started', issue: issue.name });
