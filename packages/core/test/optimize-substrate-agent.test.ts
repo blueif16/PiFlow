@@ -223,6 +223,51 @@ describe('runBaseAgent — the OBSERVE seam: a persisted run dir readable like a
   });
 });
 
+describe('runBaseAgent — {{state.*}} hydration from a caller-supplied `state` seed', () => {
+  // Regression for the substrate-fixer spawn death (bug: "prompt token resolution failed: unresolved state
+  // channel \"slug\"..."): a caller (fix.ts/judge.ts/gate.ts) embeds a PINNED run's text (an issue file, a
+  // criteria doc) verbatim into the prompt, and that text may legitimately quote a `{{state.<channel>}}`
+  // token the run actually promoted. This spawn is EPHEMERAL — its own `.pi/state.json` starts empty — so
+  // without a seed, the runner's own token-resolution pass throws before a single model call.
+  it('resolves {{state.<channel>}} in the prompt using the caller-supplied `state` seed', async () => {
+    const capture: { node?: NodeSpec } = {};
+    const { status } = await runBaseAgent({
+      prompt: 'the node\'s owns pattern: {{WORKSPACE}}/.artifacts/{{state.slug}}/*',
+      cwd: process.cwd(),
+      readScope: [],
+      owns: [],
+      state: { slug: 'grade1-vol1-section-3' },
+      buildCommand: capturingBuilder(claudeStdout('ok'), capture),
+    });
+    expect(status.status).toBe('ok');
+  });
+
+  it('a channel genuinely ABSENT from the seed still fails loud (MissingChannelError) — never invents a default', async () => {
+    const { status } = await runBaseAgent({
+      prompt: 'the node\'s owns pattern: {{state.slug}}',
+      cwd: process.cwd(),
+      readScope: [],
+      owns: [],
+      state: { other: 'unrelated' }, // "slug" is NOT present
+      buildCommand: capturingBuilder(claudeStdout('SHOULD NEVER RUN'), {}),
+    });
+    expect(status.status).toBe('error');
+    expect(status.issues.join(' ')).toMatch(/unresolved state channel "slug"/);
+  });
+
+  it('omitting `state` entirely is UNCHANGED from before this seam existed — the same prompt still throws', async () => {
+    const { status } = await runBaseAgent({
+      prompt: 'the node\'s owns pattern: {{state.slug}}',
+      cwd: process.cwd(),
+      readScope: [],
+      owns: [],
+      buildCommand: capturingBuilder(claudeStdout('SHOULD NEVER RUN'), {}),
+    });
+    expect(status.status).toBe('error');
+    expect(status.summary).toMatch(/prompt token resolution failed/);
+  });
+});
+
 describe('runBaseAgent — returns the NodeStatusRecord + the REAL parsed result text', () => {
   it('text is the actual `result` event text off the node\'s genuine stdout (parseClaudeResult, not a guess)', async () => {
     const { status, text } = await runBaseAgent({
