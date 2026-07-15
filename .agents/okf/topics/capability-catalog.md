@@ -124,6 +124,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[fixer-two-half-law]]
+- [[flexibility-over-hardcoded-plans]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
@@ -133,12 +134,15 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[guidance-node-sonnet5-routing]]
 - [[hooks-give-info-never-autofix]]
 - [[issue-lifecycle-gate-redesign]]
+- [[journal-reuse-flips-on-dist-rebuild]]
 - [[local-docker-sandbox-mode]]
 - [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[minimax-m3-framing]]
+- [[never-blame-the-model-harness-fault]]
 - [[node-illustration-pipeline]]
+- [[nodes-clear-instructions-no-mega-think]]
 - [[okf-coverage-boundary]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
@@ -152,6 +156,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[piflow-template-authoring-constraints]]
 - [[piflowctl-bin-rename]]
 - [[playbook-skills-depth-over-budget]]
@@ -172,7 +177,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `listServerTools` (packages/tool-bridge/src/index.ts:105) — 2 callers in `packages/core/src/catalog/introspect.ts`; tests: `packages/tool-bridge/test/list-server-tools.test.ts`
 - `seededRegistry` (packages/core/src/tools/catalog.ts:58) — 8 callers in `packages/cli/src/inspect.ts`, `packages/core/src/runner/tool-config.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog.test.ts`
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/tool-config.test.ts`, `packages/core/test/catalog-introspect.test.ts`
-- `introspectMcpServer` (packages/core/src/catalog/introspect.ts:109) — 3 callers in `packages/cli/src/catalog.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/catalog-introspect.test.ts`
+- `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/runner/tool-config.ts`, `packages/core/src/catalog/introspect.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`, `packages/core/test/runner.test.ts`
 
-<sub>derived 2026-07-10 · arc=35 commits · files=9 · lessons=60</sub>
+<sub>derived 2026-07-15 · arc=35 commits · files=9 · lessons=65</sub>
 <!-- okf:auto-end -->

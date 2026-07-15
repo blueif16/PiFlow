@@ -223,7 +223,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `c7a6ade` 2026-07-08 — feat(optimize): WS2 — decouple the gate stage + uniform per-issue CLI
 - `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
 - `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
+- `d21c5cb` 2026-07-09 — feat(optimize): CLI verb `optimize blame <run>` (WS-B3)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
+- `7009d61` 2026-07-12 — merge feat/uniform-gate-reattempt: uniform gate re-attempt layer
+- `e4e9ec4` 2026-07-15 — feat(cli): optimize fix — no-prove by default, --prove to opt in
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -247,7 +251,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
+- [[first-fleet-video-e2e]]
 - [[fixer-two-half-law]]
+- [[flexibility-over-hardcoded-plans]]
 - [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
@@ -260,6 +266,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[harden-write-forcing-experiment]]
 - [[hooks-give-info-never-autofix]]
 - [[issue-lifecycle-gate-redesign]]
+- [[journal-reuse-flips-on-dist-rebuild]]
 - [[local-docker-sandbox-mode]]
 - [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
@@ -270,6 +277,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
+- [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
 - [[observe-single-data-path]]
 - [[okf-coverage-boundary]]
@@ -290,6 +298,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[piflow-template-authoring-constraints]]
 - [[piflowctl-bin-rename]]
 - [[railway-deploy-from-main-not-worktree]]
@@ -308,6 +317,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[two-front-reporting]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -317,5 +327,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-10 · arc=164 commits · files=8 · lessons=80</sub>
+<sub>derived 2026-07-15 · arc=168 commits · files=8 · lessons=86</sub>
 <!-- okf:auto-end -->

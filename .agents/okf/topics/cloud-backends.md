@@ -170,6 +170,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `df59fb0` 2026-07-09 — fix(core): make a judge gate's REJECT actually re-run its producer
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -186,6 +187,8 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[daytona-cloud-path]]
 - [[design-at-init-architecture]]
 - [[expert-representations]]
+- [[first-fleet-video-e2e]]
+- [[flexibility-over-hardcoded-plans]]
 - [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
@@ -195,6 +198,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[guidance-node-sonnet5-routing]]
 - [[harden-write-forcing-experiment]]
 - [[issue-lifecycle-gate-redesign]]
+- [[journal-reuse-flips-on-dist-rebuild]]
 - [[local-docker-sandbox-mode]]
 - [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
@@ -202,6 +206,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
+- [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
 - [[omniscience-piflow-setup]]
 - [[optimize-substrate-program]]
@@ -213,6 +218,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[piflow-template-authoring-constraints]]
 - [[piflowctl-bin-rename]]
 - [[railway-deploy-from-main-not-worktree]]
@@ -231,7 +237,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `E2bSandboxProvider` (packages/e2b/src/e2b.ts:436) — 6 callers in `packages/e2b/src/e2b-sdk.ts`, `packages/e2b/src/index.ts`; tests: `packages/e2b/test/sandbox-e2b-parity.test.ts`, `packages/e2b/test/n127-negative-twin.test.ts`, `packages/e2b/test/nbreach-parity.test.ts`
 - `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
-- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
+- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=108 commits · files=8 · lessons=50</sub>
+<sub>derived 2026-07-15 · arc=109 commits · files=8 · lessons=55</sub>
 <!-- okf:auto-end -->

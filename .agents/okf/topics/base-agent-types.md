@@ -206,6 +206,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 - `77b527c` 2026-07-10 — fix(core): op-failure detail carries the spawn-error message (r.skipped)
+- `b9e8999` 2026-07-10 — fix(core): run-op bodies resolve {{RUN}}/{{WORKSPACE}}/{{arg.*}} tokens at dispatch
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -233,5 +235,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=146 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-15 · arc=148 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

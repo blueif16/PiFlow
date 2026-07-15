@@ -180,6 +180,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
 - `babd3cb` 2026-07-09 — fix(sandbox): deny node reads into the run's own .pi/ bookkeeping dir
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -199,12 +200,15 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - [[daytona-cloud-path]]
 - [[delegate-inspection-to-subagents]]
 - [[expert-representations]]
+- [[first-fleet-video-e2e]]
+- [[flexibility-over-hardcoded-plans]]
 - [[g11-g13-node-action-protocol]]
 - [[game-omni-reference-product]]
 - [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
+- [[journal-reuse-flips-on-dist-rebuild]]
 - [[local-docker-sandbox-mode]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
@@ -213,6 +217,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
+- [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
 - [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
@@ -227,6 +232,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - [[piflow-optimize-layer-built]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[piflow-template-authoring-constraints]]
 - [[playbook-skills-depth-over-budget]]
 - [[railway-deploy-from-main-not-worktree]]
@@ -242,9 +248,9 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 
 - `BwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:279) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/sandbox/bwrap.ts`; ⚠ no covering tests found
 - `bwrapExecPlan` (packages/core/src/sandbox/bwrap.ts:295) — 4 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
-- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 2 callers in `packages/core/src/sandbox/local.ts`; ⚠ no covering tests found
+- `localJailPlan` (packages/core/src/sandbox/jail.ts:54) — 3 callers in `packages/core/src/sandbox/local.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:255) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-10 · arc=95 commits · files=8 · lessons=53</sub>
+<sub>derived 2026-07-15 · arc=96 commits · files=8 · lessons=58</sub>
 <!-- okf:auto-end -->

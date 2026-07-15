@@ -54,8 +54,8 @@ SWITCH (the CLI — one word to live in + escape hatches)
 - `packages/cli/src/context.ts:56` — `hostSetupHint()` — setup-on-miss guidance; `selfhost` = the FREE serve + Cloudflare quick-tunnel (`*.trycloudflare.com`)
 - `packages/cli/src/context.ts:73` — `workerSetupHint()` — cloud-worker cred setup guidance (`E2B_API_KEY` / `DAYTONA_API_KEY`)
 TERMINAL (the merge — context worker IS the sandbox)
-- `packages/cli/src/run.ts:1016` — `resolveRunSandbox()` — the ONE resolver: `--sandbox` (legacy override) > context worker > `inmemory` default
-- `packages/cli/src/run.ts:1091` — `runRunCli` wiring — sets `parsed.sandbox = resolveRunSandbox(...)` before BOTH the local (`runTemplate`) and remote (`remoteStartBody`) paths
+- `packages/cli/src/run.ts:1021` — `resolveRunSandbox()` — the ONE resolver: `--sandbox` (legacy override) > context worker > `inmemory` default
+- `packages/cli/src/run.ts:1096` — `runRunCli` wiring — sets `parsed.sandbox = resolveRunSandbox(...)` before BOTH the local (`runTemplate`) and remote (`remoteStartBody`) paths
 - `packages/cli/src/context-store.ts:134` — `resolveActive()` — the `--context` flag > `PIFLOW_CONTEXT` env > persisted `current` > `local` ladder (which context is active)
 
 # Freshness (anti-drift)
@@ -141,6 +141,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `95d420d` 2026-07-08 — fix(cli): resolve a relative --workspace against cwd once
 - `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
 - `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -189,5 +190,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-10 · arc=55 commits · files=3 · lessons=35</sub>
+<sub>derived 2026-07-15 · arc=56 commits · files=3 · lessons=35</sub>
 <!-- okf:auto-end -->
