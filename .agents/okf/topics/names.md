@@ -109,7 +109,9 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `95d420d` 2026-07-08 — fix(cli): resolve a relative --workspace against cwd once
 - `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
 - `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
+- `2b66404` 2026-07-15 — fix(cli): thread PI_RUNNER_* watchdog env knobs into the live template run
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
+- `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 
 ### Lessons — memory cluster
 
@@ -135,5 +137,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-15 · arc=51 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-15 · arc=53 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

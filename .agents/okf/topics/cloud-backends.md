@@ -170,7 +170,9 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `df59fb0` 2026-07-09 — fix(core): make a judge gate's REJECT actually re-run its producer
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
+- `2b66404` 2026-07-15 — fix(cli): thread PI_RUNNER_* watchdog env knobs into the live template run
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
+- `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 
 ### Lessons — memory cluster
 
@@ -202,6 +204,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[journal-reuse-flips-on-dist-rebuild]]
 - [[local-docker-sandbox-mode]]
 - [[loop-prevention-laws]]
+- [[main-never-writes-subagents-execute]]
 - [[mastra-competitive-analysis]]
 - [[minimax-m3-framing]]
 - [[model-provider-single-default-fixture]]
@@ -231,6 +234,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-legibility-tracks]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w2b-glyph-corruption-is-model-degeneration]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -240,5 +244,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-15 · arc=109 commits · files=8 · lessons=56</sub>
+<sub>derived 2026-07-15 · arc=111 commits · files=8 · lessons=58</sub>
 <!-- okf:auto-end -->

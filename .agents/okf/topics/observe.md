@@ -255,14 +255,15 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[two-front-reporting]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w2b-glyph-corruption-is-model-degeneration]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `deriveNode` (packages/core/src/observe/derive.ts:84) — 5 callers in `packages/core/src/observe/runView.ts`, `packages/core/src/observe/index.ts`; tests: `packages/core/test/derive.test.ts`
-- `assembleNode` (packages/core/src/observe/runView.ts:380) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
-- `NodeTokenSpine` (packages/core/src/observe/runView.ts:300) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
-- `RunView` (packages/core/src/observe/runView.ts:138) — 5 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
+- `assembleNode` (packages/core/src/observe/runView.ts:450) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
+- `NodeTokenSpine` (packages/core/src/observe/runView.ts:370) — 1 caller in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
+- `RunView` (packages/core/src/observe/runView.ts:139) — 2 callers in `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `RunView` (gui/src/data/runView.ts:153) — 8 callers in `gui/src/data/runView.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-15 · arc=92 commits · files=13 · lessons=70</sub>
+<sub>derived 2026-07-15 · arc=92 commits · files=13 · lessons=71</sub>
 <!-- okf:auto-end -->
