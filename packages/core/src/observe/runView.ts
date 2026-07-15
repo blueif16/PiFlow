@@ -22,6 +22,7 @@ import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
 import { builtinDrivers, type DriverTable } from '../runner/drivers/table.js';
+import { piSessionsDir } from '../runner/layout.js';
 import type { NodeConfig, NodeUsage } from '../runner/status.js';
 import type { PiEvent } from '../runner/events.js';
 import type { SandboxProviderKind, Workflow, OnFailure } from '../types.js';
@@ -226,6 +227,70 @@ function replayEvents(runDir: string, id: string, drivers: DriverTable, driverId
   return { acc, lines, parseErrors, exists, bytes };
 }
 
+// ── session backfill — recover a pi node's signal from its NATIVE session when events.jsonl had no usage ──
+// pi's stdout tee (events.jsonl) can be empty of model turns even though the node really ran — e.g. a
+// failed `--session <id>` resume whose events.jsonl holds only pi's "No session found matching '<id>'"
+// stderr, while pi still persisted a full native session (run 260715-02/plan: 688KB session, 0 in
+// events.jsonl → `telemetry plan` reported 0 calls/0 tokens). The native session is the authoritative
+// record; we TRANSCODE its `message`/content vocabulary into the pi STREAM events the shared reducer
+// already folds, so recovered tokens/calls are byte-identical to a live run.
+
+/** Locate a node's pi session file. pi mints it as `<sessionDir>/<ISO-timestamp>_<sessionId>.jsonl`
+ *  (session-manager.js) — the ISO-8601 timestamp prefix is opaque, so we match the `_<sessionId>.jsonl`
+ *  SUFFIX (the sessionId is the node id) and, if several runs left one, take the latest (lexical order of
+ *  the ISO prefix == chronological). Returns null when the dir/file is absent. */
+function piSessionFile(sessionDir: string, sessionId: string): string | null {
+  let entries: string[];
+  try { entries = fssync.readdirSync(sessionDir); } catch { return null; }
+  const suffix = `_${sessionId}.jsonl`;
+  const hits = entries.filter((f) => f.endsWith(suffix)).sort();
+  const pick = hits[hits.length - 1];
+  return pick ? path.join(sessionDir, pick) : null;
+}
+
+/** Transcode a pi native-session file into the pi STREAM-event vocabulary the reducer folds. Each
+ *  assistant `message` record becomes a `message_end` (its nested `message` carries role/model/usage/
+ *  stopReason verbatim, exactly what the reducer reads), and its `thinking`/`toolCall` content blocks become
+ *  `thinking_delta`/`tool_execution_start` events (thinking volume + tool calls). Best-effort per line. */
+function transcodePiSession(file: string): PiEvent[] {
+  let raw: string;
+  try { raw = fssync.readFileSync(file, 'utf8'); } catch { return []; }
+  const out: PiEvent[] = [];
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let r: { type?: string; message?: { role?: string; content?: unknown[] } };
+    try { r = JSON.parse(line); } catch { continue; }
+    if (r.type !== 'message' || !r.message || r.message.role !== 'assistant') continue;
+    const content = Array.isArray(r.message.content) ? r.message.content : [];
+    for (const b of content) {
+      const blk = b as { type?: string; thinking?: unknown; name?: unknown; arguments?: unknown; id?: unknown };
+      if (blk.type === 'thinking' && typeof blk.thinking === 'string') {
+        out.push({ type: 'thinking_delta', delta: blk.thinking } as unknown as PiEvent);
+      } else if (blk.type === 'toolCall' && typeof blk.name === 'string') {
+        out.push({ type: 'tool_execution_start', toolName: blk.name, args: blk.arguments, toolCallId: blk.id } as unknown as PiEvent);
+      }
+    }
+    out.push({ type: 'message_end', message: r.message } as unknown as PiEvent);
+  }
+  return out;
+}
+
+/** Fold a pi node's native session into a `rich` node (the SAME reducer path a live pi run uses), or null
+ *  when there is no session or it holds no model turn. The caller only reaches here when events.jsonl gave
+ *  nothing, so this never double-counts a run whose stream WAS captured. */
+function recoverFromPiSession(runDir: string, rec: RunJsonNode): RichNode | null {
+  const sessionId = rec.sessionId ?? rec.id;
+  const dir = rec.sessionDir && rec.sessionDir.trim() ? rec.sessionDir : piSessionsDir(runDir);
+  const file = piSessionFile(dir, sessionId);
+  if (!file) return null;
+  const events = transcodePiSession(file);
+  if (!events.length) return null;
+  const acc = createNodeAccumulator();
+  for (const e of events) acc.push(e);
+  const { rich } = acc.finalize(rec);
+  return rich.coverage.usageEvents > 0 ? rich : null;
+}
+
 // Read a UTF-8 file, returning null when it is absent/unreadable (the context builder's prompt source).
 function readTextSafe(file: string): string | null {
   try { return fssync.readFileSync(file, 'utf8'); } catch { return null; }
@@ -287,6 +352,11 @@ interface RunJsonNode {
   /** (P5) the stamped driver/executor id (P3, `NodeStatusRecord.driverId`) — the observe fold selects the
    *  per-node accumulator by this and folds it onto the wire node's `executor`. Absent ⇒ pi default. */
   driverId?: string;
+  /** pi's per-node NATIVE session (`NodeStatusRecord.sessionId`/`.sessionDir`) — the read-path fallback source
+   *  when events.jsonl carried no usage (see `recoverFromPiSession`). sessionId === node id; the file is
+   *  `<sessionDir>/<ISO-ts>_<sessionId>.jsonl`. Absent ⇒ no session (no fallback). */
+  sessionId?: string;
+  sessionDir?: string;
 }
 interface RunJson {
   run: string; source?: string; provider?: string; model?: string | null;
@@ -484,13 +554,22 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
   const ctx: AssembleNodeCtx = { toAbs, underRun, displayPath, catalog, expected, samples, expectedBillable, expectedCost, ckJournal, readMarkerSync };
   for (const [id, rec] of Object.entries(rj.nodes || {})) {
     const replay = replayEvents(runDir, id, drivers, rec.driverId);
-    const { rich } = replay.acc.finalize(rec);
+    let { rich } = replay.acc.finalize(rec);
     const cov = rich.coverage;
+    // The audit ledger stays TRUE to events.jsonl (its integrity is the thing being audited) — computed
+    // from the stream replay BEFORE any session backfill below.
     audit.push({
       id, status: rec.status, exists: replay.exists, bytes: replay.bytes,
       lines: replay.lines, seen: cov.eventsSeen, dropped: replay.parseErrors,
       usageEvents: cov.usageEvents, billable: rich.tokens.billable,
     });
+    // SESSION BACKFILL: events.jsonl carried no model usage and the executor left no authoritative usage
+    // rollup (pi never sets `rec.usage`) — recover the node's real metrics from pi's native session file so
+    // telemetry isn't a false zero (run 260715-02/plan). Gated so a normal captured run is never re-sourced.
+    if (cov.usageEvents === 0 && !rec.usage) {
+      const recovered = recoverFromPiSession(runDir, rec);
+      if (recovered) rich = recovered;
+    }
 
     // Parse the io.json ledger once (phase override + declared read/write paths for the edge source).
     let ioLedger: NodeIoLedger | null = null;
