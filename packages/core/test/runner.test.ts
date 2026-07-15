@@ -1272,6 +1272,47 @@ describe('runWorkflow — merge run-op PRODUCES a required artifact (derive-befo
   });
 });
 
+// ── op[] failures ride a DEDICATED TYPED channel — NOT the generic issues[] string (A1) ───────────
+//   The user's law: "op should have NOTHING to do with the issue system." A blocking POST `run`/`merge`
+//   op failure is a REAL contract signal, but it must be RECORDED on the typed `rec.opFailures` channel
+//   (as extra evidence for future triage) and leave `rec.issues[]` ENTIRELY. The node still BLOCKS — only
+//   the *carrier* of the reason changes. This pins both halves: the typed field is populated AND no
+//   `op FAILED`/`op warn` substring leaks into issues[].
+
+describe('runWorkflow — op[] failures ride the TYPED opFailures channel, not issues[] (A1)', () => {
+  it('a blocking post `run` op failure → rec.opFailures {detail,onFailure}, and issues[] carries NO op-string', async () => {
+    const node: NodeIntent = {
+      label: 'Deploy',
+      prompt: 'deploy the build',
+      tools: {},
+      // the node PRODUCES its required artifact (so it is NOT blocked on a missing/schema/check gate) — the
+      // ONLY failure is the post `run` op, so the status ladder reaches the blocking-op branch.
+      io: { reads: [], produces: ['out.txt'], artifacts: [{ path: 'out.txt' }] },
+      // a deterministic POST run op that exits nonzero → a blocking op failure (onFailure defaults to 'block').
+      op: [{ when: 'post', run: { cmd: 'sh', args: ['-c', 'exit 3'] } }],
+    };
+    const outDir = await tmpOut();
+
+    const { status } = await runWorkflow(compile(wf([node])), { run: 'a1-op-typed', outDir, buildCommand: stubBuilder() });
+    const rec = status.nodes.deploy;
+
+    // The node still BLOCKS on the op failure (the verdict is preserved — only the carrier changed).
+    expect(rec.status).toBe('blocked');
+    // HALF 1 — the op failure is RECORDED on the TYPED channel with its detail + on-fail consequence.
+    expect(rec.opFailures).toBeDefined();
+    expect(rec.opFailures).toHaveLength(1);
+    expect(rec.opFailures?.[0]).toMatchObject({ onFailure: 'block' });
+    expect(rec.opFailures?.[0]?.detail).toContain('exit 3');
+    // HALF 2 — op-failures have LEFT issues[] ENTIRELY (no `op FAILED` / `op warn` substring anywhere).
+    const issueText = (rec.issues ?? []).join('\n');
+    expect(issueText).not.toContain('op FAILED');
+    expect(issueText).not.toContain('op warn');
+    expect(status.ok).toBe(false);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
 // ── run scope: openRun lifecycle (worktree/cloud share ONE resource across a run) ─────────────────
 
 describe('runWorkflow — run scope (the openRun lifecycle for worktree/cloud providers)', () => {

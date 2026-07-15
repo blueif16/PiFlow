@@ -40,19 +40,27 @@ const tier1Failed = (s: NodeScore): boolean => !!s.tier1 && !s.tier1.abstained &
 /** A node earns a worklist item iff it has a real problem signal — and abstained nodes never do (re-measure). */
 const isDefect = (s: NodeScore): boolean => !s.abstained && (s.tier0.disqualified || tier1Failed(s));
 
-// ── STRUCTURAL COVERAGE — a self-originating failure whose OWN recorded issues name a code/contract-level
-// cause is NOT the same as a bare "something went wrong". `node-lifecycle.ts` already stamps these into the
-// node's `issues[]` (schemaInvalid/schemaSkipped/killedTimeout/killedStall/a staged-input race/a failed
-// integrity or op check) but the fold above never reads them — a Tier-0 disqualifier with a rich, concrete
-// cause was silently indistinguishable from one with NONE, so it collapsed into the low-confidence LAPSE
-// default (the corpus-protection rule is right for a TRULY signal-less slip, wrong for a named contract
-// breach the fixer can act on). Matches the issue-string vocabulary node-lifecycle.ts actually writes.
-const CODE_SIGNAL = /contract breach|schema (gate skipped|invalid)|killed:|integrity check failed|op failed|staging/i;
+// ── STRUCTURAL COVERAGE — a self-originating failure whose OWN recorded signals name a code/contract-level
+// cause is NOT the same as a bare "something went wrong". `node-lifecycle.ts` stamps these onto the node's
+// record (schemaInvalid/schemaSkipped/killedTimeout/killedStall/a staged-input race/a failed integrity check
+// ride `issues[]`; op[] action failures ride the DEDICATED TYPED `opFailures` channel, A1) but the fold above
+// never reads them — a Tier-0 disqualifier with a rich, concrete cause was silently indistinguishable from
+// one with NONE, so it collapsed into the low-confidence LAPSE default (the corpus-protection rule is right
+// for a TRULY signal-less slip, wrong for a named contract breach the fixer can act on). Matches the
+// issue-string vocabulary node-lifecycle.ts writes (op failures are read off the typed field, not this regex).
+const CODE_SIGNAL = /contract breach|schema (gate skipped|invalid)|killed:|integrity check failed|staging/i;
 
-/** The first issue string (if any) on `node`'s own digest entry that names a code/contract-level cause. */
+/** The first recorded signal (if any) on `node`'s own digest entry that names a code/contract-level cause. */
 function codeSignalOf(node: string, digest: RunDigest): string | null {
   const nd = digest.nodes.find((n) => n.id === node);
-  return nd?.issues.find((i) => CODE_SIGNAL.test(i)) ?? null;
+  if (!nd) return null;
+  // (A1) An op[] action failure rides the DEDICATED TYPED `opFailures` channel — never the `issues[]` string
+  // (the user's law: op has nothing to do with the issue system). Read it directly as the op-failure signal
+  // (replacing the old `op failed` grep of `issues[]`). Purely additive EVIDENCE: it feeds the SAME structural
+  // routing op failures always drove — it mints no issue and introduces no new coupling.
+  const opFail = nd.opFailures?.[0];
+  if (opFail) return `op failed — ${opFail.detail}`;
+  return nd.issues.find((i) => CODE_SIGNAL.test(i)) ?? null;
 }
 
 export function triage(scores: NodeScore[], digest: RunDigest, opts: TriageOpts = {}): Defect[] {

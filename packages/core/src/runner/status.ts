@@ -10,7 +10,7 @@
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ReturnMode, SandboxProviderKind, OpWhen, PolicyAction } from '../types.js';
+import type { ReturnMode, SandboxProviderKind, OpWhen, PolicyAction, OnFailure } from '../types.js';
 import type { CheckResult } from '../checks.js';
 import { piDir, runJsonFile } from './layout.js';
 
@@ -146,6 +146,15 @@ export interface NodeStatusRecord {
   durationMs?: number;
   artifacts: ArtifactState[];
   issues: string[];
+  /**
+   * (A1 — op[] typed channel) POST `op[]` action failures (a `run`/`merge.run` op that exited nonzero, or a
+   * fail-loud rejected run op), each with its `detail` + on-fail `onFailure` consequence. A DEDICATED typed
+   * channel that RECORDS an op failure as extra evidence — it does NOT flatten into the generic `issues[]`
+   * string (the user's law: "op has NOTHING to do with the issue system"). A blocking op still sets the node
+   * `blocked`; only the CARRIER of the reason changed. The optimize substrate reads THIS field, never an
+   * issue-string grep. Absent when the node ran no failing op (the minimal-record rule).
+   */
+  opFailures?: { detail: string; onFailure: OnFailure }[];
   summary?: string;
   /** Set when a watchdog killed the node (classifies the `error`). */
   killedTimeout?: boolean;

@@ -107,14 +107,17 @@ USAGE
                                             judge (soft) a node's finished run(s) → issue files. --run pins one
                                             exact run; --topk K (default 1) scans the newest un-triaged runs.
                                             --node also takes a DOTTED <run>.<id> ref, ≡ --node <id> --run <run>.
-  piflowctl optimize fix    --node <id> [--issue <name> | --status open,regressed] [--watch] [--cap N] [--no-prove]
-                                            fix the node's issues (severity-desc): candidate copy → fixer → prove
-                                            → gate → STAGE a manifest. A soft-gate REJECT drops back into a
-                                            bounded, diversifying retry (fresh fixer, --max-attempts N, default 3);
-                                            past the bound the best candidate is KEPT + escalated, never landed.
-                                            --breaker N halts the run after N consecutive issues exhaust (default 3;
-                                            0 = off). --watch streams progress. --dry-run prints the composed fixer
-                                            spawn; mutates/spawns NOTHING. --node also takes a DOTTED <run>.<id> ref.
+  piflowctl optimize fix    --node <id> [--issue <name> | --status open,regressed] [--watch] [--cap N] [--prove]
+                                            fix the node's issues (severity-desc): candidate copy → fixer → STAGE
+                                            (fix-landed → resolved). NO-PROVE BY DEFAULT — no rerun, no gate; the
+                                            edit is staged unproven for a human \`optimize adopt\` to land, saving
+                                            tokens in a batch fix session. Pass --prove to run the frozen rerun +
+                                            gate before staging; a soft-gate REJECT then drops back into a bounded,
+                                            diversifying retry (fresh fixer, --max-attempts N, default 3); past the
+                                            bound the best candidate is KEPT + escalated, never landed. --breaker N
+                                            halts the run after N consecutive issues exhaust (default 3; 0 = off).
+                                            --watch streams progress. --dry-run prints the composed fixer spawn;
+                                            mutates/spawns NOTHING. --node also takes a DOTTED <run>.<id> ref.
   piflowctl optimize verify --node <id> [--issue <name>] [--run <id>]  re-gate an EXISTING candidate record
                                             (its candidateSha + proved child) — the decoupled gate stage: NO
                                             fixer, NO re-prove. Prints the verdict; on reject, the drop-back.

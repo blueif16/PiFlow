@@ -2,7 +2,8 @@
 // status. TODAY the exit is SWALLOWED: the runner runs `runMerge(...)` and DISCARDS its `{failed,exit}`
 // return (runner.ts ~:1129), so a node whose merge `run` op fails still ends `ok` (only a MISSING required
 // artifact blocks it). #18 is a behavior ADDITION: the exit code now routes through the lowered op's
-// `onFailure` — `warn` ⇒ ok + a warn issue; `block` (default) ⇒ blocked.
+// `onFailure` — `warn` ⇒ ok + the failure RECORDED on the typed `opFailures` channel; `block` (default) ⇒
+// blocked. (A1) The op-failure detail rides that DEDICATED TYPED channel — it NEVER touches `issues[]`.
 //
 // Per the spec gate we PIN the today-swallowed baseline FIRST (proving the discard is real), then assert the
 // NEW routing — so the test fails today ONLY on the new-routing assertion (not the baseline), the honest
@@ -61,10 +62,13 @@ describe('run-onfailure — a run op exit routes to status (#18 ADDITION)', () =
     const { status } = await runWorkflow(compile(wf([nodeWithFailingRun('warn')])), {
       run: 'warn', outDir, buildCommand: stubBuilder(),
     });
-    // With onFailure:'warn' the failing run does NOT block — the node is ok, but the failure is SURFACED as
-    // an issue (NOT swallowed). RED today: the run is swallowed so there is no warn issue at all.
+    // With onFailure:'warn' the failing run does NOT block — the node is ok, but the failure is RECORDED on
+    // the DEDICATED TYPED `opFailures` channel (A1: op has NOTHING to do with the issue system — it never
+    // touches issues[]). The detail is preserved; only the carrier moved off the issue string.
     expect(status.nodes.gen.status).toBe('ok');
-    expect(status.nodes.gen.issues.join(' '), 'a warn-routed run failure must surface an issue').toMatch(/run|exit|failed/i);
+    expect(status.nodes.gen.opFailures?.map((f) => f.detail).join(' '), 'a warn-routed run failure is recorded on the typed channel').toMatch(/run|exit|failed/i);
+    expect(status.nodes.gen.opFailures?.[0]?.onFailure).toBe('warn');
+    expect(status.nodes.gen.issues.join(' '), 'op failures never leak into issues[]').not.toMatch(/\bop (FAILED|warn)\b/);
   });
 
   it('NEW: a failing post-run with onFailure:block (the default) BLOCKS the node (#18)', async () => {
@@ -72,8 +76,11 @@ describe('run-onfailure — a run op exit routes to status (#18 ADDITION)', () =
     const { status } = await runWorkflow(compile(wf([nodeWithFailingRun()])), {
       run: 'block', outDir, buildCommand: stubBuilder(),
     });
-    // RED today: the run exit is discarded so the node ends `ok` despite the failing run.
+    // The run exit routes to status: the node BLOCKS. (A1) The op-failure detail rides the DEDICATED TYPED
+    // `opFailures` channel, NOT the `issues[]` string — op is fully out of the issue system.
     expect(status.nodes.gen.status, 'a failing run with default onFailure must block').toBe('blocked');
-    expect(status.nodes.gen.issues.join(' ')).toMatch(/run|exit|failed/i);
+    expect(status.nodes.gen.opFailures?.map((f) => f.detail).join(' ')).toMatch(/run|exit|failed/i);
+    expect(status.nodes.gen.opFailures?.[0]?.onFailure).toBe('block');
+    expect(status.nodes.gen.issues.join(' '), 'op failures never leak into issues[]').not.toMatch(/\bop (FAILED|warn)\b/);
   });
 });

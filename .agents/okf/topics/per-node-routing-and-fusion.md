@@ -145,6 +145,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
+- [[first-fleet-video-e2e]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
@@ -159,6 +160,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[minimax-m3-framing]]
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
+- [[never-blame-the-model-harness-fault]]
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
@@ -171,6 +173,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[piflow-memory-system-v1]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[piflow-template-authoring-constraints]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
@@ -182,6 +185,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[tui-dag-structure-source]]
 - [[two-front-reporting]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -191,5 +195,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=54 commits · files=10 · lessons=51</sub>
+<sub>derived 2026-07-15 · arc=54 commits · files=10 · lessons=55</sub>
 <!-- okf:auto-end -->

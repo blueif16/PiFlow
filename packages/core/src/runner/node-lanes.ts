@@ -415,7 +415,10 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     const warningChecks = failedChecks.filter((c) => actionForVerdict(c.verdict as 'fail' | 'warn', node.io.policy) === 'warn');
 
     const blockingOpFailures = opFailures.filter((f) => f.onFailure !== 'warn');
-    const warningOpFailures = opFailures.filter((f) => f.onFailure === 'warn');
+    // (A1 — op[] typed channel) RECORD op failures on their OWN typed record field, never flattened into the
+    // generic `issues[]` string (the user's law: op has nothing to do with the issue system). The blocking-op
+    // branch below still sets `st='blocked'`; only the carrier of the reason moved here. Absent when none failed.
+    if (opFailures.length) rec.opFailures = opFailures;
 
     // The status ladder — the driver-verified contract breaches (no model exit to read, no return handshake:
     // a programmatic node proves its work by its artifacts + checks, never a fenced-JSON tail). missing →
@@ -432,13 +435,15 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
       st = 'blocked';
       issues.push(`integrity check FAILED — ${blockingChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
     } else if (blockingOpFailures.length) {
+      // (A1) A blocking op failure blocks the node; its DETAIL rides `rec.opFailures` (stamped above), NOT the
+      // `issues[]` string — op stays out of the issue system; only the `blocked` verdict is carried here.
       st = 'blocked';
-      issues.push(`op FAILED — ${blockingOpFailures.map((f) => f.detail).join(' | ')}`);
     } else {
       st = 'ok';
     }
     if (warningChecks.length) issues.push(`integrity warn — ${warningChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
-    if (warningOpFailures.length) issues.push(`op warn — ${warningOpFailures.map((f) => f.detail).join(' | ')}`);
+    // (A1) A `warn`-routed op failure is RECORDED on `rec.opFailures` (stamped above) — never flattened into
+    // `issues[]`. It stays non-blocking (the node keeps its `ok` verdict); op is out of issues.
     if (schema.skipped) issues.push(`schema gate skipped — ${schema.skipped}`);
 
     // POST hooks — fire with the node's outcome; a blocking failure downgrades the node to error.

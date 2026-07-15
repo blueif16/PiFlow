@@ -61,7 +61,7 @@ SCORE
 - `packages/core/src/optimize/score.ts:93` — `scoreRun` — impure shell: read run dir + recorded verify reports, then fold
 - `packages/core/src/optimize/tier1.ts:38` — `readVerifyReport` — project a verify-milestone report → Tier1Result (abstain re-tag)
 TRIAGE
-- `packages/core/src/optimize/triage.ts:58` — `triage` — four-way LAPSE/SKILL/FUNCTIONALITY/ARCH projector → Defect[]
+- `packages/core/src/optimize/triage.ts:66` — `triage` — four-way LAPSE/SKILL/FUNCTIONALITY/ARCH projector → Defect[]
 - `packages/core/src/optimize/types.ts:110` — `DefectScope` — the two-leg scope-context a SKILL fixer reads (recurrence + root/prevention + the linked [[okf-slice]] KEY)
 - `packages/core/src/optimize/render.ts:33` — `renderRouting` — Defect[] → the proven HERMES-ROUTING.md worklist
 GATE
@@ -162,6 +162,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `f8fc81c` 2026-07-02 — feat(okf): CLI reader + fixer wire source ranking from the engine — M1b
 - `7a4374c` 2026-07-02 — fix(optimize): persist the worklist + surface structural defects
 - `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -189,7 +190,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[loop-prevention-laws]]
 - [[memory-legs-coordination]]
 - [[minimax-thinking-cap-noop]]
+- [[never-blame-the-model-harness-fault]]
 - [[node-illustration-pipeline]]
+- [[nodes-clear-instructions-no-mega-think]]
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
 - [[optimize-fixer-tier-finding]]
@@ -202,6 +205,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[playbook-skills-depth-over-budget]]
 - [[roadmap-bookkeeping-linear]]
 - [[run-level-blame-design]]
@@ -209,6 +213,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -218,5 +223,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-10 · arc=28 commits · files=19 · lessons=43</sub>
+<sub>derived 2026-07-15 · arc=29 commits · files=19 · lessons=47</sub>
 <!-- okf:auto-end -->

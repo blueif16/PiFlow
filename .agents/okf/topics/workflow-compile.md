@@ -169,6 +169,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[merge-workspace-token-bug]]
 - [[minimax-thinking-cap-noop]]
 - [[node-illustration-pipeline]]
+- [[nodes-clear-instructions-no-mega-think]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
 - [[optimize-substrate-program]]
@@ -181,6 +182,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[piflowctl-bin-rename]]
 - [[roadmap-bookkeeping-linear]]
 - [[run-level-blame-design]]
@@ -189,14 +191,15 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
+- [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `toNodeIntent` (packages/core/src/workflow/template/loader.ts:129) — 1 caller in `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
-- `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 1 caller; tests: `packages/core/test/gate-list-profiles.test.ts`
-- `NodeSpec` (packages/core/src/types.ts:17) — 27 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; tests: `packages/core/test/inline-hitl-gate.test.ts`
+- `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 4 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-list-profiles.test.ts`, `packages/cli/test/run.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 32 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/drivers/types.ts` +3 more; tests: `packages/core/test/inline-hitl-gate.test.ts`, `packages/core/test/runner.test.ts`, `packages/core/test/schema.test.ts`
 
-<sub>derived 2026-07-10 · arc=84 commits · files=5 · lessons=45</sub>
+<sub>derived 2026-07-15 · arc=84 commits · files=5 · lessons=48</sub>
 <!-- okf:auto-end -->

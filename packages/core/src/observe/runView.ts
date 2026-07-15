@@ -24,7 +24,7 @@ import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot }
 import { builtinDrivers, type DriverTable } from '../runner/drivers/table.js';
 import type { NodeConfig, NodeUsage } from '../runner/status.js';
 import type { PiEvent } from '../runner/events.js';
-import type { SandboxProviderKind, Workflow } from '../types.js';
+import type { SandboxProviderKind, Workflow, OnFailure } from '../types.js';
 
 export type ScopeKind = 'run' | 'skill' | 'template' | 'package' | 'repo';
 export interface ScopeBucket { kind: ScopeKind; label: string; count: number; paths: string[] }
@@ -111,6 +111,9 @@ export interface RunViewNode {
   turnSummary?: TurnSummary;
   summary?: string;
   issues?: string[];
+  /** (A1) op[] action failures on their DEDICATED TYPED channel — carried verbatim from the record so an
+   *  op failure stays VISIBLE in the observe surface even though it left `issues[]` entirely. Absent when none. */
+  opFailures?: { detail: string; onFailure: OnFailure }[];
   stageIndex?: number;
   lane?: number;
   /**
@@ -273,6 +276,9 @@ interface RunJsonNode {
   startedAt?: string; endedAt?: string; durationMs?: number;
   artifacts?: { path: string; exists?: boolean; bytes?: number }[];
   summary?: string; issues?: string[];
+  /** (A1) op[] action failures on their DEDICATED TYPED channel (NodeStatusRecord.opFailures) — read off
+   *  `.pi/run.json` and carried onto the wire node so an op failure stays visible after leaving `issues[]`. */
+  opFailures?: { detail: string; onFailure: OnFailure }[];
   config?: NodeConfig;
   /** the effective model recorded on the node (fallback when message events carried none — e.g. Claude). */
   model?: string | null;
@@ -424,6 +430,7 @@ export function assembleNode(
     modelCalls: spine.modelCalls, maxToolRepeat: rich.maxToolRepeat, repeatedTool: rich.repeatedTool,
     loopScore: rich.loopScore, // (P6) consecutive-repeat loop signal, folded from the reducer.
     summary: rec.summary, issues: rec.issues || [],
+    ...(rec.opFailures ? { opFailures: rec.opFailures } : {}), // (A1) typed op-failure channel → observe surface
     ...(checkpoint ? { checkpoint } : {}),
   };
   // Compute the DISPLAY zones ONCE, from the assembled node's own fields (tokens/tools/timeline/context/

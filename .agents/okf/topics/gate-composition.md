@@ -87,6 +87,8 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[compose-gate-drag-audit]]
 - [[design-at-init-architecture]]
 - [[expert-representations]]
+- [[first-fleet-video-e2e]]
+- [[flexibility-over-hardcoded-plans]]
 - [[issue-lifecycle-gate-redesign]]
 - [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
@@ -99,14 +101,15 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[sandbox-readscope-default-on]]
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
+- [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
 
-- `lowerGates` (packages/core/src/workflow/gate-authoring.ts:318) — 1 caller; tests: `packages/core/test/gate-authoring.test.ts`
-- `fanoutGates` (packages/core/src/workflow/gate-list.ts:124) — 3 callers in `packages/core/src/workflow/template/loader.ts`; tests: `packages/core/test/inline-hitl-fanout.test.ts`
-- `lowerGate` (packages/core/src/workflow/gate-authoring.ts:220) — 4 callers in `packages/core/src/workflow/gate-authoring.ts`, `packages/core/src/workflow/gate-list.ts`; tests: `packages/core/test/gate-authoring.test.ts`
-- `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:129) — 7 callers in `packages/core/src/workflow/gate-list.ts`, `packages/core/src/workflow/gate-authoring.ts`; tests: `packages/core/test/gate-authoring.test.ts`
-- `GateListError` (packages/core/src/workflow/gate-list.ts:25) — 5 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/workflow/gate-list.ts`; tests: `packages/core/test/inline-hitl-fanout.test.ts`
+- `lowerGates` (packages/core/src/workflow/gate-authoring.ts:318) — 2 callers in `packages/core/src/index.ts`; tests: `packages/core/test/gate-authoring.test.ts`
+- `fanoutGates` (packages/core/src/workflow/gate-list.ts:124) — 4 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/inline-hitl-fanout.test.ts`
+- `lowerGate` (packages/core/src/workflow/gate-authoring.ts:220) — 5 callers in `packages/core/src/workflow/gate-authoring.ts`, `packages/core/src/workflow/gate-list.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-authoring.test.ts`
+- `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:129) — 8 callers in `packages/core/src/workflow/gate-list.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-authoring.ts`; tests: `packages/core/test/gate-authoring.test.ts`
+- `GateListError` (packages/core/src/workflow/gate-list.ts:25) — 6 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-list.ts`; tests: `packages/core/test/inline-hitl-fanout.test.ts`
 
-<sub>derived 2026-07-10 · arc=6 commits · files=3 · lessons=18</sub>
+<sub>derived 2026-07-15 · arc=6 commits · files=3 · lessons=21</sub>
 <!-- okf:auto-end -->

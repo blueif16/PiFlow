@@ -109,6 +109,7 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `95d420d` 2026-07-08 — fix(cli): resolve a relative --workspace against cwd once
 - `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
 - `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -130,9 +131,9 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 
 - `pieSlugList` (packages/core/src/names/slugify.ts:64) — 5 callers in `packages/core/src/names/generate-pies.mjs`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `pieSlug` (packages/core/src/names/slugify.ts:43) — 4 callers in `packages/core/src/names/slugify.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
-- `generateRunName` (packages/core/src/names/generator.ts:40) — 8 callers in `packages/server/src/start-run.ts`, `packages/core/src/optimize/substrate/judge.ts`, `packages/core/src/names/index.ts`, `packages/cli/src/run.ts` +1 more; tests: `packages/core/test/names.test.ts`
+- `generateRunName` (packages/core/src/names/generator.ts:40) — 8 callers in `packages/server/src/start-run.ts`, `packages/core/src/optimize/substrate/judge.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/names.test.ts`
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-10 · arc=50 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-15 · arc=51 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

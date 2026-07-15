@@ -20,6 +20,7 @@ import { builtinDrivers } from '../runner/drivers/table.js';
 import type { AgentDriver } from '../runner/drivers/types.js';
 import type { PiEvent } from '../runner/events.js';
 import type { TurnRecord, MegaThinkTurn } from './turnDissection.js';
+import type { OnFailure } from '../types.js';
 
 // ── thresholds — the tail-sampling triggers (research: keep errors + anomalies, not keep-all) ──────────
 export interface TelemetryThresholds {
@@ -88,6 +89,9 @@ export interface NodeDigest {
   // failure surface
   missing: string[];
   issues: string[];
+  /** (A1) op[] action failures on their DEDICATED TYPED channel — decision-grade evidence a triage/fixer
+   *  reads WITHOUT grepping the `issues[]` string (op failures leave that bucket entirely). Absent when none. */
+  opFailures?: { detail: string; onFailure: OnFailure }[];
   /** which thresholds this node tripped (the per-node anomaly kinds). */
   anomalies: AnomalyKind[];
   // (turn-dissection) reasoning-effort — RECORD-mode-only (a projection over events.jsonl on disk); absent
@@ -179,6 +183,9 @@ interface NodeMetrics {
   truncated: boolean;
   missing: string[];
   issues: string[];
+  /** (A1) op[] action failures on their DEDICATED TYPED channel — carried through the projection so the digest
+   *  surfaces op failures as evidence without an `issues[]` grep. Absent when the node ran no failing op. */
+  opFailures?: { detail: string; onFailure: OnFailure }[];
   // (turn-dissection) RECORD-mode-only — see NodeDigest. Absent/undefined ⇒ no turn data (never anomalous).
   turns?: TurnRecord[];
   totalThinkChars?: number;
@@ -276,6 +283,7 @@ function projectNode(m: NodeMetrics, th: TelemetryThresholds): { digest: NodeDig
     truncated: m.truncated,
     missing: m.missing,
     issues: m.issues,
+    ...(m.opFailures ? { opFailures: m.opFailures } : {}), // (A1) typed op-failure channel → digest evidence
     anomalies: anomalies.map((a) => a.kind),
     ...(m.turns ? { turns: m.turns } : {}),
     ...(m.totalThinkChars != null ? { totalThinkChars: m.totalThinkChars } : {}),
@@ -319,6 +327,7 @@ function metricsFromView(n: RunViewNode): NodeMetrics {
     truncated: !!n.truncated,
     missing: [], // a RunViewNode that ran clean carries no missing list; failure surface comes via status
     issues: n.issues ?? [],
+    ...(n.opFailures ? { opFailures: n.opFailures } : {}), // (A1) carry the typed op-failure channel forward
     ...(n.turns ? { turns: n.turns } : {}),
     ...(n.turnSummary ? {
       totalThinkChars: n.turnSummary.totalThinkChars,

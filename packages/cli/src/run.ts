@@ -991,7 +991,12 @@ export function runFailureReport(status: RunResult['status'], runDir: string): s
     (n) => n.status === 'error' || n.status === 'blocked',
   );
   const lines = [`piflowctl run: ✗ FAILED — ${failed.length || 'a'} node(s) blocked/errored`];
-  for (const n of failed) for (const issue of n.issues ?? []) lines.push(`  ✗ ${n.id}: ${issue}`);
+  for (const n of failed) {
+    for (const issue of n.issues ?? []) lines.push(`  ✗ ${n.id}: ${issue}`);
+    // (A1) op[] action failures ride their OWN typed channel (not `issues[]`) — print them too so the human
+    // still sees the op cause on the terminal (a blocking op failure blocked the node with an empty issues list).
+    for (const f of n.opFailures ?? []) lines.push(`  ✗ ${n.id}: op ${f.onFailure === 'warn' ? 'warn' : 'FAILED'} — ${f.detail}`);
+  }
   lines.push(`  → inspect: piflowctl status ${runDir}`);
   return lines.join('\n');
 }

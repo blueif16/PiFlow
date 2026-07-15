@@ -272,6 +272,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `bb0d2a7` 2026-07-08 — fix(optimize): `optimize verify` survives a numeric-only node (no criteria) + per-issue errors
 - `f92e48e` 2026-07-08 — Merge feat/optimize-issue-lifecycle: WS0-WS4 optimize outer-loop lifecycle
 - `36e25ed` 2026-07-08 — Merge feat/optimize-issue-lifecycle: land 5 follow-up fixes
+- `e3ca38b` 2026-07-09 — feat(optimize): run-level hard measure fold — blame/measure.json (WS-B1)
+- `5297f06` 2026-07-09 — feat(optimize): blame core — composed roster + judge/verify agents + summary tail codec (WS-B2)
+- `d21c5cb` 2026-07-09 — feat(optimize): CLI verb `optimize blame <run>` (WS-B3)
+- `7558f92` 2026-07-09 — feat(optimize): adopt train — staleness policy, stale-base bounce, branch GC, blame landing order (WS-B5)
+- `d5c93a4` 2026-07-09 — feat(optimize): blame-memorize into template-root memory.md (WS-B6)
+- `9586ae3` 2026-07-10 — fix(optimize): wire the adopt-train re-prove seam + let it land a HEAD-rebuilt candidate
+- `e4e9ec4` 2026-07-15 — feat(cli): optimize fix — no-prove by default, --prove to opt in
 
 ### Lessons — memory cluster
 
@@ -301,7 +308,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `seedNodeCodeMap` (packages/core/src/code-map.ts:59) — 5 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/code-map.test.ts`
 - `buildNodeMemory` (packages/core/src/memory/skeleton.ts:15) — 1 caller in `packages/core/src/index.ts`; ⚠ no covering tests found
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
-- `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 6 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
+- `seedSystemMemory` (packages/core/src/memory/seed.ts:36) — 8 callers in `packages/cli/src/scaffold.ts`, `packages/core/src/optimize/blame/memorize.ts`, `packages/core/src/memory/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/memory.test.ts`
 
-<sub>derived 2026-07-10 · arc=196 commits · files=15 · lessons=18</sub>
+<sub>derived 2026-07-15 · arc=203 commits · files=15 · lessons=18</sub>
 <!-- okf:auto-end -->

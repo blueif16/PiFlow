@@ -124,6 +124,8 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 - `77b527c` 2026-07-10 — fix(core): op-failure detail carries the spawn-error message (r.skipped)
+- `b9e8999` 2026-07-10 — fix(core): run-op bodies resolve {{RUN}}/{{WORKSPACE}}/{{arg.*}} tokens at dispatch
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -153,6 +155,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
@@ -169,5 +172,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-10 · arc=51 commits · files=5 · lessons=32</sub>
+<sub>derived 2026-07-15 · arc=53 commits · files=5 · lessons=33</sub>
 <!-- okf:auto-end -->

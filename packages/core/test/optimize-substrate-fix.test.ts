@@ -21,6 +21,7 @@ import {
   commitCandidate,
   oracleTouchedByDiff,
   collectWorkspaceRefs,
+  grantsWorkspaceRoot,
   readClosureRefs,
   foldGradedDelta,
   buildFixerPrompt,
@@ -212,6 +213,54 @@ describe('collectWorkspaceRefs — {{WORKSPACE}} ref extraction (mechanical)', (
   it('normalizes redundant separators and drops workspace-escaping / empty paths', () => {
     const refs = collectWorkspaceRefs(['{{WORKSPACE}}/a//b/', '{{WORKSPACE}}/../escape', '{{WORKSPACE}}/']);
     expect([...refs]).toEqual(['a/b']);
+  });
+});
+
+// ── grantsWorkspaceRoot — a BARE {{WORKSPACE}} read grant means "the whole worktree is the writable fence" ──
+describe('grantsWorkspaceRoot — detects a BARE {{WORKSPACE}} whole-root grant (that collectWorkspaceRefs drops)', () => {
+  it('true iff any string carries a BARE {{WORKSPACE}} (no subpath, or a trailing "/"); a subpath/other token is false', () => {
+    expect(grantsWorkspaceRoot(['{{WORKSPACE}}'])).toBe(true); // the whole-repo read grant (the section-adventure plan node)
+    expect(grantsWorkspaceRoot(['{{WORKSPACE}}/'])).toBe(true); // a trailing slash is still the bare root
+    expect(grantsWorkspaceRoot(['{{ WORKSPACE }}'])).toBe(true); // the regex tolerates inner whitespace
+    expect(grantsWorkspaceRoot(['{{WORKSPACE}}/sub/x'])).toBe(false); // a subpath is a normal fence target, NOT the root
+    expect(grantsWorkspaceRoot(['{{RUN}}'])).toBe(false); // a different token never matches
+    expect(grantsWorkspaceRoot(['no token here'])).toBe(false);
+    expect(grantsWorkspaceRoot([])).toBe(false);
+    expect(grantsWorkspaceRoot(null)).toBe(false);
+  });
+
+  it('recurses arrays/objects (the mixed real-world case) — a bare grant anywhere in the value wins', () => {
+    // the load-bearing shape: a whole-repo read grant SANDWICHED with a run-scoped token + a subpath.
+    expect(grantsWorkspaceRoot(['{{RUN}}', '{{WORKSPACE}}'])).toBe(true);
+    expect(grantsWorkspaceRoot({ a: ['{{WORKSPACE}}/templates'], b: { c: '{{WORKSPACE}}' } })).toBe(true);
+    expect(grantsWorkspaceRoot({ a: ['{{WORKSPACE}}/templates'], b: { c: '{{WORKSPACE}}/eval' } })).toBe(false);
+  });
+
+  it('readClosureRefs surfaces the flag: true for a bare-{{WORKSPACE}} readScope, false for a subpath-only one', async () => {
+    const mk = async (readScope: string[]): Promise<Awaited<ReturnType<typeof readClosureRefs>>> => {
+      const templateDir = await scratch('piflow-tpl-');
+      const nodeDir = join(templateDir, 'nodes', 'gameplay');
+      await fs.mkdir(nodeDir, { recursive: true });
+      await fs.writeFile(join(nodeDir, 'node.json'), JSON.stringify({ contract: { readScope } }));
+      return readClosureRefs(templateDir, 'gameplay');
+    };
+    // whole-repo grant: collectWorkspaceRefs DROPS the bare token (include empty) but the flag recovers the intent.
+    const whole = await mk(['{{RUN}}', '{{WORKSPACE}}']);
+    expect(whole.include).toEqual([]);
+    expect(whole.grantsWorkspaceRoot).toBe(true);
+    // subpath-only: the normal mapping still applies and the flag is false.
+    const sub = await mk(['{{WORKSPACE}}/templates']);
+    expect(sub.include).toEqual(['templates']);
+    expect(sub.grantsWorkspaceRoot).toBe(false);
+    // execReads can ALSO carry the grant (readClosureRefs ORs both).
+    const viaExec = await (async () => {
+      const templateDir = await scratch('piflow-tpl-');
+      const nodeDir = join(templateDir, 'nodes', 'gameplay');
+      await fs.mkdir(nodeDir, { recursive: true });
+      await fs.writeFile(join(nodeDir, 'node.json'), JSON.stringify({ contract: { readScope: ['{{WORKSPACE}}/templates'], execReads: ['{{WORKSPACE}}'] } }));
+      return readClosureRefs(templateDir, 'gameplay');
+    })();
+    expect(viaExec.grantsWorkspaceRoot).toBe(true);
   });
 });
 
@@ -434,6 +483,52 @@ describe('fixIssue fence — the fixer spawns jailed to (include MINUS oracle) u
     // the oracle path is ABSENT from both (the subtraction actually removed it), and cwd is the worktree.
     expect(captured!.readScope).not.toContain(join(wt, 'eval', 'check.mjs'));
     expect(captured!.owns).not.toContain(join(wt, 'eval', 'check.mjs'));
+    expect(wt.endsWith(join('soggy-crust', 'attempt-1'))).toBe(true);
+  });
+});
+
+// ── the whole-repo read grant: a BARE {{WORKSPACE}} readScope must fence to the WHOLE candidate worktree ────
+// REGRESSION: a node whose contract.readScope is ["{{RUN}}", "{{WORKSPACE}}"] (a whole-repo read grant, e.g. the
+// section-adventure `plan` node) yields an EMPTY include set — collectWorkspaceRefs drops the bare {{WORKSPACE}}.
+// Before the fix the fixer spawned with readScope []/owns [] → the seatbelt jailed it out of its OWN candidate
+// worktree → every edit was EPERM → "no edit applied". The fence must grant the whole worktree root instead.
+describe('fixIssue fence — a BARE {{WORKSPACE}} read grant fences to the WHOLE candidate worktree (not [])', () => {
+  it('readScope/owns = [worktreeDir] (NON-EMPTY) when contract.readScope carries a bare {{WORKSPACE}}', async () => {
+    const templateDir = await scratch('piflow-tpl-');
+    const workspace = await scratch('piflow-ws-');
+    const parentRunDir = await scratch('piflow-run-');
+    const nodeDir = join(templateDir, 'nodes', 'gameplay');
+    await fs.mkdir(join(nodeDir, 'issues'), { recursive: true });
+    await fs.writeFile(
+      join(nodeDir, 'node.json'),
+      JSON.stringify({
+        label: 'gameplay',
+        // a whole-repo READ grant (RUN token + the bare WORKSPACE root) — the common plan-node shape.
+        contract: { readScope: ['{{RUN}}', '{{WORKSPACE}}'] },
+        // an oracle is STILL declared — the whole-worktree grant intentionally covers it (the diff guard, not the
+        // dir-coarse seatbelt, is what protects the oracle; see the fix.ts fence header).
+        optimize: { measure: [{ id: 'f', run: { cmd: 'node', args: ['{{WORKSPACE}}/eval/check.mjs'] } }] },
+      }),
+    );
+    await fs.mkdir(join(workspace, 'templates'), { recursive: true });
+    await fs.writeFile(join(workspace, 'templates', 'genres.json'), '{"a":1}\n');
+    await fs.mkdir(join(workspace, 'eval'), { recursive: true });
+    await fs.writeFile(join(workspace, 'eval', 'check.mjs'), '// scorer\n');
+    seedGitRepo(workspace);
+    const issuePath = join(nodeDir, 'issues', 'soggy-crust.md');
+    await writeIssueFile(issuePath, makeIssue());
+
+    let captured: RunBaseAgentOpts | undefined;
+    await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace, prove: false,
+      runAgent: async (o) => { captured = o; return agentResult(); }, // no edit — we test the spawn opts only
+    });
+    const wt = captured!.cwd; // the candidate worktree (the fixer's cwd)
+    // BEFORE the fix this was [] (the seatbelt jailed the fixer out of its own worktree → EPERM). It must be the
+    // WHOLE worktree, so every edit inside the disposable candidate copy is writable.
+    expect(captured!.readScope).not.toEqual([]);
+    expect(captured!.readScope).toEqual([wt]);
+    expect(captured!.owns).toEqual([wt]);
     expect(wt.endsWith(join('soggy-crust', 'attempt-1'))).toBe(true);
   });
 });

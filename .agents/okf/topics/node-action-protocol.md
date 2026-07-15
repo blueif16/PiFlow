@@ -160,6 +160,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 - `77b527c` 2026-07-10 — fix(core): op-failure detail carries the spawn-error message (r.skipped)
+- `b9e8999` 2026-07-10 — fix(core): run-op bodies resolve {{RUN}}/{{WORKSPACE}}/{{arg.*}} tokens at dispatch
+- `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 
 ### Lessons — memory cluster
 
@@ -184,7 +186,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[design-at-init-architecture]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
+- [[first-fleet-video-e2e]]
 - [[fixer-two-half-law]]
+- [[flexibility-over-hardcoded-plans]]
 - [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
@@ -197,6 +201,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[harden-write-forcing-experiment]]
 - [[hooks-give-info-never-autofix]]
 - [[issue-lifecycle-gate-redesign]]
+- [[journal-reuse-flips-on-dist-rebuild]]
 - [[local-docker-sandbox-mode]]
 - [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
@@ -204,7 +209,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[merge-workspace-token-bug]]
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
+- [[never-blame-the-model-harness-fault]]
 - [[node-illustration-pipeline]]
+- [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
 - [[observe-single-data-path]]
 - [[okf-coverage-boundary]]
@@ -225,6 +232,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflow-overlord-control-plane]]
 - [[piflow-product-positioning]]
 - [[piflow-rollout-enablement]]
+- [[piflow-runs-use-default-model]]
 - [[piflow-template-authoring-constraints]]
 - [[piflowctl-bin-rename]]
 - [[playbook-skills-depth-over-budget]]
@@ -240,6 +248,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -247,5 +256,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:117) — 4 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-10 · arc=97 commits · files=8 · lessons=76</sub>
+<sub>derived 2026-07-15 · arc=99 commits · files=8 · lessons=83</sub>
 <!-- okf:auto-end -->

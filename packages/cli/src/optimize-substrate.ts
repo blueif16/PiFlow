@@ -248,7 +248,7 @@ export interface SubstrateFixArgs {
 }
 
 export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
-  const out: SubstrateFixArgs = { node: '', status: 'open,regressed', watch: false, watchJson: false, cap: DEFAULT_FIX_CAP, prove: true };
+  const out: SubstrateFixArgs = { node: '', status: 'open,regressed', watch: false, watchJson: false, cap: DEFAULT_FIX_CAP, prove: false };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--node') out.node = argv[++i] ?? '';
@@ -260,6 +260,7 @@ export function parseSubstrateFixArgs(argv: string[]): SubstrateFixArgs {
     else if (k === '--watch') out.watch = true;
     else if (k === '--watch-json') { out.watch = true; out.watchJson = true; }
     else if (k === '--cap') out.cap = Math.max(1, Number(argv[++i]) || DEFAULT_FIX_CAP);
+    else if (k === '--prove') out.prove = true;
     else if (k === '--no-prove') out.prove = false;
     else if (k === '--tier') out.tier = argv[++i];
     else if (k === '--model') out.model = argv[++i];
