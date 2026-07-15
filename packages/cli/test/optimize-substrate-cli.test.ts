@@ -92,10 +92,11 @@ describe('parsers', () => {
     expect(parseSubstrateTriageArgs(['--node', 'g', '--topk', '5', '--tier', 'deep'])).toMatchObject({ topk: 5, tier: 'deep' });
     expect(parseSubstrateTriageArgs(['--node', 'g', '--topk', '0']).topk).toBe(1); // clamped ≥1
   });
-  it('parseSubstrateFixArgs: issue XOR status(default), watch/-json, cap default, --no-prove', () => {
-    expect(parseSubstrateFixArgs(['--node', 'g'])).toMatchObject({ status: 'open,regressed', cap: DEFAULT_FIX_CAP, prove: true, watch: false });
+  it('parseSubstrateFixArgs: issue XOR status(default), watch/-json, cap default, prove opt-in', () => {
+    expect(parseSubstrateFixArgs(['--node', 'g'])).toMatchObject({ status: 'open,regressed', cap: DEFAULT_FIX_CAP, prove: false, watch: false });
     expect(parseSubstrateFixArgs(['--node', 'g', '--issue', 'soggy-crust'])).toMatchObject({ issue: 'soggy-crust' });
     expect(parseSubstrateFixArgs(['--node', 'g', '--watch-json'])).toMatchObject({ watch: true, watchJson: true });
+    expect(parseSubstrateFixArgs(['--node', 'g', '--prove']).prove).toBe(true);
     expect(parseSubstrateFixArgs(['--node', 'g', '--no-prove']).prove).toBe(false);
   });
   it('parseSubstrateFixArgs: --dry-run → dryRun (the inherited base-agent preview; off by default)', () => {
