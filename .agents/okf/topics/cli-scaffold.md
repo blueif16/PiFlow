@@ -226,8 +226,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `d21c5cb` 2026-07-09 — feat(optimize): CLI verb `optimize blame <run>` (WS-B3)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 - `7009d61` 2026-07-12 — merge feat/uniform-gate-reattempt: uniform gate re-attempt layer
+- `2b66404` 2026-07-15 — fix(cli): thread PI_RUNNER_* watchdog env knobs into the live template run
 - `e4e9ec4` 2026-07-15 — feat(cli): optimize fix — no-prove by default, --prove to opt in
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
+- `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 
 ### Lessons — memory cluster
 
@@ -270,6 +272,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[journal-reuse-flips-on-dist-rebuild]]
 - [[local-docker-sandbox-mode]]
 - [[loop-prevention-laws]]
+- [[main-never-writes-subagents-execute]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
@@ -318,6 +321,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[two-front-reporting]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
@@ -328,5 +332,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-15 · arc=168 commits · files=8 · lessons=87</sub>
+<sub>derived 2026-07-15 · arc=170 commits · files=8 · lessons=89</sub>
 <!-- okf:auto-end -->

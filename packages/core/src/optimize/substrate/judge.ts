@@ -25,6 +25,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { resolveTokens } from '../../workflow/resolver.js';
+import { loadState } from '../../workflow/state.js';
 import {
   computeIssueId, listIssues, parseIssueFile, reopen, writeIssueFile,
   type Issue, type IssueRecord, type Severity, type VerifyTier,
@@ -439,6 +440,12 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
   const readScope = [runDir, templateDir, workspace];
   const owns = [issuesDirPath];
   const runAgent = opts.runAgent ?? runBaseAgent;
+  // The prompt embeds the node's OWN judge/criteria file + memory.md + existing-issues prose VERBATIM — any of
+  // which may legitimately quote a `{{state.<channel>}}` token the run being judged actually promoted. Hydrate
+  // from THIS pinned run's `.pi/state.json` (read-only) so the judge's ephemeral spawn (agent.ts — no state of
+  // its own) resolves it instead of throwing `MissingChannelError` before a single model call — same hole,
+  // same fix, as the fixer spawn (fix.ts).
+  const pinnedState = await loadState(runDir);
 
   const agentResult = await runAgent({
     prompt,
@@ -446,6 +453,7 @@ export async function runSubstrateJudge(runDir: string, nodeId: string, opts: Su
     readScope,
     owns,
     skill: TRIAGE_SKILL, // stage the default triage playbook (Ring 1); a miss degrades to the promptless playbook.
+    state: pinnedState,
     // The base agent's WHOLE inherited surface (tier/model/timeoutMs/provider/seams/dryRun/…), forwarded as
     // one projection — never a hand-enumerated subset (dryRun's preview short-circuit rides this too).
     ...inheritedAgentOpts(opts),

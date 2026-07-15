@@ -156,6 +156,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[harden-node-completes-run-to-completion]]
 - [[issue-lifecycle-gate-redesign]]
 - [[local-docker-sandbox-mode]]
+- [[main-never-writes-subagents-execute]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[minimax-m3-framing]]
@@ -186,6 +187,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[tui-dag-structure-source]]
 - [[two-front-reporting]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
@@ -196,5 +198,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/runner/runner.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-15 · arc=54 commits · files=10 · lessons=56</sub>
+<sub>derived 2026-07-15 · arc=54 commits · files=10 · lessons=58</sub>
 <!-- okf:auto-end -->

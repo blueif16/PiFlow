@@ -100,6 +100,19 @@ export interface RunOptions {
    * A `{{arg.x}}` token with no matching key fails the node loudly (MissingArgError), never a silent ''.
    */
   args?: Record<string, string>;
+  /**
+   * SEED the per-thread RunState `{{state.*}}` tokens resolve against, for a run whose `outDir` starts with
+   * NO `.pi/state.json` of its own (an EPHEMERAL one-node spawn — a substrate base agent, never a normal
+   * template run). Mirrors `spawnChildRun`'s `loadState(pinnedRunDir)` pattern (child-run.ts) at the ONE
+   * shared seam every base-agent spawn goes through (`agent.ts` → `runFromConfig` → here) — a caller embeds
+   * a PINNED run's text (an issue file, a criteria doc, a diff) verbatim into a one-node prompt without
+   * itself resolving `{{state.*}}`, so THIS run's own token-resolution pass must see the pinned run's real
+   * channels or it throws `MissingChannelError` on a channel that legitimately exists, just not HERE.
+   * Precedence: `loadState(outDir)` (this run's OWN promoted history, if any) wins per-key over this seed —
+   * an inherited baseline never shadows what the run itself has since promoted. Omit ⇒ today's behavior
+   * (`loadState(outDir)` alone; `{}` on a fresh dir).
+   */
+  initialState?: RunState;
   /** Sandbox backend. Default the in-memory reference provider. */
   provider?: SandboxProvider;
   /** Tool registry to resolve each node's selection. Default builtin registry. */
@@ -475,8 +488,10 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     workspace: opts.workspace ?? repoRoot,
     args: opts.args ?? {},
     // Load the per-thread RunState at run start (D6): a fresh run sees `{}`; a resume sees the prior
-    // barrier's persisted channels, so the resumed tail's `{{state.*}}` resolves from t=0.
-    runState: await loadState(outDir),
+    // barrier's persisted channels, so the resumed tail's `{{state.*}}` resolves from t=0. An `initialState`
+    // seed (an ephemeral base-agent spawn hydrating from its PINNED run) layers UNDER it — this run's own
+    // persisted channels, if any, always win per-key over an inherited baseline.
+    runState: { ...(opts.initialState ?? {}), ...(await loadState(outDir)) },
     promotesByNode: new Map(),
     // The G2 concurrency cap: ONE global limiter, normalized (default 8, clamped [1,16], 0/NaN→1).
     limiter: createLimiter(normalizeConcurrent(opts.maxConcurrent)),

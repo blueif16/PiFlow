@@ -213,4 +213,28 @@ describe('runSubstrateGate', () => {
       runSubstrateGate(runDir, 'w0-classify', { ...baseOpts(runDir, templateDir), runAgent }),
     ).rejects.toThrow(/wrote no verdict/);
   });
+
+  // Same hole as the fixer/judge spawns: the gate prompt embeds the criteria file + the issue + the fixer diff
+  // VERBATIM (buildGatePrompt), any of which may legitimately quote a `{{state.<channel>}}` token. The gate's
+  // spawn is ephemeral (agent.ts — no state of its own), so `runSubstrateGate` must hydrate from the candidate
+  // run's `.pi/state.json` (populated by `spawnChildRun`'s copy of the parent's state, or its own prove-rerun).
+  it('hydrates `state` off runDir/.pi/state.json and forwards it to runAgent', async () => {
+    const { runDir, templateDir } = await fixture();
+    await fs.mkdir(join(runDir, '.pi'), { recursive: true });
+    await fs.writeFile(join(runDir, '.pi', 'state.json'), JSON.stringify({ slug: 'grade1-vol1-section-3' }));
+    const { runAgent, seen } = stubAgent({ decision: 'accept', rationale: 'defect absent' });
+
+    await runSubstrateGate(runDir, 'w0-classify', { ...baseOpts(runDir, templateDir), runAgent });
+
+    expect(seen.last?.state).toEqual({ slug: 'grade1-vol1-section-3' });
+  });
+
+  it('a candidate run with NO .pi/state.json forwards `state: {}` (never throws building the spawn)', async () => {
+    const { runDir, templateDir } = await fixture(); // no .pi/state.json written
+    const { runAgent, seen } = stubAgent({ decision: 'accept', rationale: 'defect absent' });
+
+    await runSubstrateGate(runDir, 'w0-classify', { ...baseOpts(runDir, templateDir), runAgent });
+
+    expect(seen.last?.state).toEqual({});
+  });
 });

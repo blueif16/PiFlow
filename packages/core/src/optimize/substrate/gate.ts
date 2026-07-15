@@ -19,6 +19,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { resolveTokens } from '../../workflow/resolver.js';
+import { loadState } from '../../workflow/state.js';
 import {
   inheritedAgentOpts, runBaseAgent,
   type RunBaseAgentResult, type BaseAgentChildOpts,
@@ -255,6 +256,13 @@ export async function runSubstrateGate(runDir: string, nodeId: string, opts: Run
     runDir, workspace, templateDir, issueFileText, fixerDiff, fixerAccount, verdictPath,
   });
   const readScope = [runDir, templateDir, workspace, ...(opts.candidateRef ? [opts.candidateRef] : [])];
+  // The prompt embeds the CRITERIA file + the issue file + the fixer's diff VERBATIM — any of which may
+  // legitimately quote a `{{state.<channel>}}` token (e.g. the node's own `contract.owns` pattern). Hydrate
+  // from the candidate run's `.pi/state.json` (read-only) — populated either by `spawnChildRun`'s copy of the
+  // parent's state or the prove-rerun's own promotions — so the gate's ephemeral spawn (agent.ts — no state
+  // of its own) resolves it instead of throwing `MissingChannelError` before a single model call. Same hole,
+  // same fix, as the fixer (fix.ts) and judge (judge.ts) spawns.
+  const pinnedState = await loadState(runDir);
 
   const agentResult = await runAgent({
     prompt,
@@ -262,6 +270,7 @@ export async function runSubstrateGate(runDir: string, nodeId: string, opts: Run
     readScope,
     owns: [gateOutDir],
     skill: GATE_SKILL, // stage the default gate playbook (Ring 1); a miss degrades to the promptless playbook.
+    state: pinnedState,
     // The base agent's WHOLE inherited surface (tier/model/timeoutMs/provider/seams/dryRun/…), forwarded as one
     // projection — never a hand-enumerated subset (dryRun's preview short-circuit rides this too).
     ...inheritedAgentOpts(opts),

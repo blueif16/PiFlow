@@ -21,11 +21,21 @@
 // Since every input the agent needs (measure report, memory.md, existing issues, …) is embedded by the
 // CALLER (judge.ts) into the literal `prompt` string before this is ever invoked, agent.ts itself does no
 // token resolution / file I/O of its own beyond the ephemeral scratch dir `runFromConfig` requires.
+//
+// STATE HYDRATION: a caller's embedded text (an issue file, a criteria doc, a fixer diff) commonly quotes a
+// node's OWN config/prompt verbatim — which may legitimately contain a `{{state.<channel>}}` token (e.g. a
+// node's `contract.owns` pattern promoted during the REAL run this text describes). `runFromConfig`'s runner
+// still resolves EVERY `{{…}}` occurrence in the composed one-node prompt (it cannot tell "live token" from
+// "quoted prose"), against THIS spawn's own `outDir` — which starts with NO `.pi/state.json` (an ephemeral
+// scratch dir, never the pinned run). Left unfed, that throws `MissingChannelError` on a channel that is
+// real, just not promoted HERE — the spawn dies before a single model call. A caller that knows which run
+// its embedded text came from passes `state` (typically `loadState(pinnedRunDir)`); this module forwards it
+// as `runFromConfig`'s `initialState` seed — the SAME pattern `spawnChildRun` already uses (child-run.ts).
 
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import type { WorkflowSpec, ToolSelection, SandboxProvider } from '../../types.js';
+import type { WorkflowSpec, ToolSelection, SandboxProvider, RunState } from '../../types.js';
 import type { CommandBuilder } from '../../runner/command.js';
 import type { ExecRunner } from '../../runner/exec-runner.js';
 import { defaultExecRunner } from '../../runner/exec-runner.js';
@@ -97,6 +107,12 @@ export interface RunBaseAgentOpts extends BaseAgentInherited {
    *  `<cwd>/.agents/skills/<id>` then Ring 1 `<piflowHome>/skills/<id>`. Omitted ⇒ no `--skill`. A declared
    *  skill absent from every ring DEGRADES (advisory skill-missing; the node still runs) — never a hard fail. */
   skill?: string;
+  /** SEED for `{{state.*}}` token resolution — forwarded to `runFromConfig` as `initialState` (runner.ts).
+   *  NOT auto-inherited via `inheritedAgentOpts` (unlike tier/model/…): each caller computes this itself
+   *  (typically `loadState(pinnedRunDir)`) from a run dir it alone knows about — there is no sensible outer
+   *  default. Omit ⇒ this spawn's own (always-empty, ephemeral) `.pi/state.json` alone, i.e. today's
+   *  behavior: any `{{state.*}}` occurrence in `prompt` throws `MissingChannelError`. */
+  state?: RunState;
 }
 
 /** What a CHILD base agent's opts EMBED: the whole inherited base surface + the `runAgent` test seam
@@ -212,6 +228,7 @@ export async function runBaseAgent(opts: RunBaseAgentOpts): Promise<RunBaseAgent
       provider: opts.provider ?? new LocalSandboxProvider({ enforceReadScope: true }),
       ...(opts.buildCommand ? { buildCommand: opts.buildCommand } : {}),
       ...(opts.modelRouting ? { modelRouting: opts.modelRouting } : {}),
+      ...(opts.state ? { initialState: opts.state } : {}),
     });
     const status = result.status.nodes[AGENT_NODE_LABEL];
     const text = parseClaudeResult(capturedStdout).text ?? '';

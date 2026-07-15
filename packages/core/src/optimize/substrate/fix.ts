@@ -92,6 +92,7 @@ import {
 } from './agent.js';
 import { spawnChildRun, type SpawnChildRunOpts, type SpawnChildRunResult } from './child-run.js';
 import { runSubstrateMeasure, type RunSubstrateMeasureOpts, type MeasureReport } from './measure.js';
+import { loadState } from '../../workflow/state.js';
 import {
   runSubstrateGate,
   type RunSubstrateGateOpts, type RunSubstrateGateResult, type GateVerdictFile, type GateRejectCategory,
@@ -772,6 +773,14 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   // Oracle protection stays the POST-COMMIT diff guard (`oracleTouchedByDiff`), never the dir-coarse seatbelt.
   const fencePaths = grantsRoot ? [worktreeDir] : fenceRels.map((rel) => path.join(worktreeDir, rel));
 
+  // The fixer prompt EMBEDS the issue file verbatim (buildFixerPrompt), which routinely quotes the target
+  // node's OWN config/prompt — including a legitimate `{{state.<channel>}}` token the REAL run promoted (e.g.
+  // a `contract.owns` pattern). The fixer's spawn is an EPHEMERAL one-node run (agent.ts) with no state of its
+  // own, so that quoted token would otherwise throw `MissingChannelError` before a single model call. Hydrate
+  // it from the PINNED parent run's `.pi/state.json` — read-only, never invented: a channel genuinely absent
+  // from the parent's state stays absent here too, so an actually-wrong token still fails exactly as before.
+  const pinnedState = await loadState(parentRunDir);
+
   // The ONE fixer spawn composition — shared VERBATIM by the dry-run preview and the live spawn (never two
   // hand-copies that can drift apart). `cwd` is the worktree; the jail is the fence; the playbook is the
   // product-root skill PATH (a path-like ref the runner uses directly, no ring-search from the worktree).
@@ -781,6 +790,7 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
     readScope: fencePaths,
     owns: fencePaths,
     skill: path.join(workspace, '.claude', 'skills', FIXER_SKILL),
+    state: pinnedState,
     ...inheritedAgentOpts(opts),
   });
 

@@ -191,6 +191,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
+- [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
@@ -201,5 +202,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 4 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-list-profiles.test.ts`, `packages/cli/test/run.test.ts`
 - `NodeSpec` (packages/core/src/types.ts:17) — 32 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lanes.ts` +3 more; tests: `packages/core/test/inline-hitl-gate.test.ts`, `packages/core/test/runner.test.ts`, `packages/core/test/schema.test.ts`
 
-<sub>derived 2026-07-15 · arc=84 commits · files=5 · lessons=48</sub>
+<sub>derived 2026-07-15 · arc=84 commits · files=5 · lessons=49</sub>
 <!-- okf:auto-end -->

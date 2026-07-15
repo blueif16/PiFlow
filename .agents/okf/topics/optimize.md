@@ -214,6 +214,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
 
 ### Code anchors / blast radius (codegraph)
@@ -224,5 +225,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-15 · arc=29 commits · files=19 · lessons=48</sub>
+<sub>derived 2026-07-15 · arc=29 commits · files=19 · lessons=49</sub>
 <!-- okf:auto-end -->

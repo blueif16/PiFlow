@@ -141,7 +141,9 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `95d420d` 2026-07-08 — fix(cli): resolve a relative --workspace against cwd once
 - `ca5474b` 2026-07-08 — Merge fix/promote-resolves-tokens: resolve tokens in promote `from` + relative --workspace
 - `899f7c9` 2026-07-08 — feat(cli): --checkpoints flag + `snapshot list|restore` verbs
+- `2b66404` 2026-07-15 — fix(cli): thread PI_RUNNER_* watchdog env knobs into the live template run
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
+- `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 
 ### Lessons — memory cluster
 
@@ -162,6 +164,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[guidance-node-sonnet5-routing]]
 - [[hooks-give-info-never-autofix]]
 - [[local-docker-sandbox-mode]]
+- [[main-never-writes-subagents-execute]]
 - [[mastra-competitive-analysis]]
 - [[memory-legs-coordination]]
 - [[merge-workspace-token-bug]]
@@ -190,5 +193,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-15 · arc=56 commits · files=3 · lessons=35</sub>
+<sub>derived 2026-07-15 · arc=58 commits · files=3 · lessons=36</sub>
 <!-- okf:auto-end -->

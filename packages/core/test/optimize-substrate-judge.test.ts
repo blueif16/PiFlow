@@ -378,6 +378,48 @@ describe('runSubstrateJudge — a TRUE child of the base agent (the ONE shared i
   });
 });
 
+describe('runSubstrateJudge — hydrates the judge spawn\'s `state` from the run being judged', () => {
+  // Same hole as the fixer (fix.ts): the judge prompt embeds the node's OWN judge/criteria file + memory.md +
+  // existing-issues prose VERBATIM (buildJudgePrompt), any of which may legitimately quote a
+  // `{{state.<channel>}}` token the run actually promoted. The judge's spawn is ephemeral (agent.ts — no
+  // state of its own), so `runSubstrateJudge` must hydrate from THIS pinned run's `.pi/state.json`.
+  it('reads {slug: ...} off runDir/.pi/state.json and forwards it as `state` to runAgent', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch();
+    const workspace = templateDir;
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+    await fs.mkdir(join(runDir, '.pi'), { recursive: true });
+    await fs.writeFile(join(runDir, '.pi', 'state.json'), JSON.stringify({ slug: 'grade1-vol1-section-3' }));
+
+    let captured: RunBaseAgentOpts | undefined;
+    const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
+      captured = o;
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
+    };
+    await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: capturingRunAgent });
+
+    expect(captured?.state).toEqual({ slug: 'grade1-vol1-section-3' });
+  });
+
+  it('a run with NO .pi/state.json forwards `state: {}` (never throws building the spawn)', async () => {
+    const templateDir = await scratch();
+    const runDir = await scratch(); // no .pi/state.json written
+    const workspace = templateDir;
+    await writeNodeJson(templateDir, 'gameplay', { judge: 'nodes/gameplay/judge.md' });
+    await fs.writeFile(join(templateDir, 'nodes', 'gameplay', 'judge.md'), 'j');
+
+    let captured: RunBaseAgentOpts | undefined;
+    const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
+      captured = o;
+      return { status: { id: 'agent', label: 'agent', status: 'ok', artifacts: [], issues: [] } as unknown as RunBaseAgentResult['status'], text: '' };
+    };
+    await runSubstrateJudge(runDir, 'gameplay', { workspace, templateDir, runAgent: capturingRunAgent });
+
+    expect(captured?.state).toEqual({});
+  });
+});
+
 describe('runSubstrateJudge — stages the piflow-triage playbook for the judge spawn', () => {
   it('passes skill:"piflow-triage" to runAgent so the runner stages the DEFAULT triage playbook (Ring 1)', async () => {
     const templateDir = await scratch();

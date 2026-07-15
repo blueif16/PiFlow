@@ -28,7 +28,7 @@ TEMPLATE-RUN JOIN
 - `packages/core/src/runner/entry.ts:163` — `runFromTemplate` — load → instantiate → compile → run
 - `packages/core/src/workflow/template/instantiate.ts:98` — `instantiateRun` — materialize `${RUN}/.pi/nodes/<id>/`
 PER-NODE RUNNER EXEC
-- `packages/core/src/runner/runner.ts:411` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
+- `packages/core/src/runner/runner.ts:424` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
 - `packages/core/src/runner/node-lifecycle.ts:113` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
@@ -208,7 +208,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 - `77b527c` 2026-07-10 — fix(core): op-failure detail carries the spawn-error message (r.skipped)
 - `b9e8999` 2026-07-10 — fix(core): run-op bodies resolve {{RUN}}/{{WORKSPACE}}/{{arg.*}} tokens at dispatch
+- `be2dc1d` 2026-07-14 — feat(core): request-level idle liveness watchdog with in-place re-exec
+- `9dd443b` 2026-07-14 — fix(core): widen the default idle-request window 540s → 720s
+- `059b071` 2026-07-14 — feat(core): record idle-watchdog actions into the node event stream
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
+- `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 
 ### Lessons — memory cluster
 
@@ -234,5 +238,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 17 callers in `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts` +2 more; ⚠ no covering tests found
 - `RunScope` (packages/core/src/types.ts:766) — 7 callers in `packages/core/src/runner/retry.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-15 · arc=154 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-15 · arc=158 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->
