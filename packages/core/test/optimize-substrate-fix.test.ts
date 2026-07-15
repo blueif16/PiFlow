@@ -656,6 +656,39 @@ describe('fixIssue — the candidate worktree is torn down even on a THROW (try/
   });
 });
 
+// ── GAP1: a mid-fix CRASH must not strand the issue at `active` forever ──────────────────────────────────
+// Observed live: the fixer spawn itself died before a single edit landed. Before the fix, ALLOWED_TRANSITIONS
+// only let `active` advance to `fix-landed` — no edge led back — so the issue was stuck `active` with no legal
+// re-select/re-fix path (a human had to hand-edit the frontmatter). `fixIssue` must now drop a crashed issue
+// back to `open` (best-effort, never masking the original crash) so a LATER `optimize fix` can re-activate it.
+describe('fixIssue — a CRASHING fixer spawn drops the issue back to `open` (never stranded active) (GAP1)', () => {
+  it('a throwing fixer spawn re-throws AND walks the issue back to open; a subsequent fixIssue then proceeds', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+
+    await expect(
+      fixIssue(issuePath, {
+        parentRunDir, templateDir, workspace,
+        runAgent: async () => { throw new Error('fixer-spawn-died'); },
+      }),
+    ).rejects.toThrow(/fixer-spawn-died/);
+
+    // NOT stranded at `active` — the crash dropped it back to `open`.
+    const afterCrash = await parseIssueFile(issuePath);
+    expect(afterCrash.status).toBe('open');
+    expect(afterCrash.reason).toBeNull();
+    expect(afterCrash.attempts).toEqual([]); // nothing landed — no attempt stamped
+
+    // a SUBSEQUENT fixIssue on the SAME issue must proceed (re-activate cleanly, not "invalid transition").
+    const res = await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace, prove: false,
+      runAgent: editingAgent,
+    });
+    expect(res.editsApplied).toBe(1);
+    expect(res.candidateSha).toBeDefined();
+    expect((await parseIssueFile(issuePath)).status).toBe('fix-landed');
+  });
+});
+
 describe('fixIssue — attemptTag + retry context threading (WS0: per-attempt worktree/branch)', () => {
   it('scopes the candidate worktree/branch by attemptTag and threads the retry context into the fixer prompt', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();

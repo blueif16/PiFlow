@@ -31,6 +31,14 @@
 //
 // STATUS MACHINE (guards throw on any edge outside this graph — piflow-memory-v1.5 grilling, contract lane):
 //   open → active → fix-landed → verifying → resolved         (the full fix cycle)
+//            active ──────────→ open            (GAP1 crash drop-back: fixIssue died — e.g. the fixer spawn
+//                                                 itself threw — before any commit landed. Without this edge
+//                                                 `active` had NO way back: a mid-fix crash stranded the issue
+//                                                 forever, un-reselectable by a later `optimize fix`, forcing a
+//                                                 human to hand-edit the frontmatter. `fixIssue`'s try/catch
+//                                                 performs this drop-back itself on any throw, reason null, NO
+//                                                 attempt stamped — nothing landed, mirroring the sibling
+//                                                 verifying→open / fix-landed→open back-edges below.)
 //                     fix-landed ────────────→ resolved        (skip-proof path, proving configured off)
 //                     fix-landed ────────────→ open            (adopt-train stale-base BOUNCE of a skip-proof
 //                                                                fix: the candidate never landed, so the issue
@@ -332,7 +340,10 @@ export async function reopen(file: string, opts: { run: string }): Promise<Issue
 /** The documented status graph — every OTHER edge is invalid. */
 export const ALLOWED_TRANSITIONS: Readonly<Record<Status, readonly Status[]>> = {
   open: ['active'],
-  active: ['fix-landed'],
+  // `open` is the GAP1 crash drop-back — a fixIssue that dies (any throw) before it lands `fix-landed` has no
+  // OTHER legal edge back; without it a crashed fixer spawn stranded the issue `active` forever (see the module
+  // header). `fixIssue`'s own try/catch is the only caller of this edge.
+  active: ['fix-landed', 'open'],
   // verifying/resolved are the skip-proof forward edges; `open` is the adopt-train stale-base BOUNCE back-edge
   // (a skip-proof fix that never landed returns to the open pool re-fixable — else it is stranded at fix-landed).
   'fix-landed': ['verifying', 'resolved', 'open'],
