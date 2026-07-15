@@ -23,8 +23,8 @@ export interface RawRun {
   /** path to the persisted, SLIMMED events.jsonl — the streaming decoder reads this, NOT stdout (§4.2). */
   eventsPath?: string;
   exitCode: number;
-  /** the watchdog outcome, if the run was killed (incl. the deterministic tool-loop breaker). */
-  killed: 'timeout' | 'stall' | 'tool-loop' | null;
+  /** the watchdog outcome, if the run was killed (incl. the deterministic tool-loop breaker + request-idle). */
+  killed: 'timeout' | 'stall' | 'tool-loop' | 'idle' | null;
 }
 
 /** The agent-neutral verdict `parseResult` yields — replaces the `isClaude` fork at node-lifecycle.ts:612. */

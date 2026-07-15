@@ -182,6 +182,8 @@ export interface FailureSignals {
   killedStall: boolean;
   /** The deterministic tool-loop breaker killed the node (one tool run with identical args past the limit). */
   killedToolLoop?: boolean;
+  /** The request-level idle watchdog exhausted its in-place re-execs (the pi request stayed silent). */
+  killedIdle?: boolean;
   /** The node's process exit code (0 = clean). */
   exitCode: number;
   /** The tail of the agent's stderr (matched against the infra-noise regex). */
@@ -220,6 +222,10 @@ export function classifyFailure(n: FailureSignals): FailureClass {
   if (n.missing && n.missing.length) return 'contract';
   // A declarative integrity check FAILED on an otherwise-present artifact (#6: a QUALITY verdict).
   if (n.failedChecks && n.failedChecks.length) return 'quality-gap';
+  // A request-level idle EXHAUSTION (every in-place re-exec stayed silent) is a TRANSIENT gateway hang, not a
+  // model capability gap — a fresh same-model re-run is the right fix (a stronger model can't un-hang a
+  // gateway), so it classes as INFRA (retry), NOT quality-gap (escalate). Checked before the stall/timeout arm.
+  if (n.killedIdle) return 'infra';
   // Watchdog kills → escalate (a same-model retry just loops/stalls the same way) — but stall/timeout
   // are capability/budget misses (escalate), so they fall through to quality-gap below by default. A
   // deterministic tool-loop kill is the same class: a same-model retry would loop identically → escalate.
@@ -248,6 +254,7 @@ export function consultPreamble(n: FailureSignals): string {
   if (n.returnSchemaInvalid && n.returnSchemaInvalid.length) ev.push(`return violates the declared returnSchema: ${n.returnSchemaInvalid.slice(0, 3).join('; ')}`);
   if (n.failedChecks && n.failedChecks.length) ev.push(`failed integrity check(s): ${n.failedChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
   if (n.killedStall) ev.push('went silent with no tool running (model stalled)');
+  if (n.killedIdle) ev.push('the request went silent past the idle window and every in-place re-exec stayed silent (gateway hang)');
   if (n.killedTimeout) ev.push('exceeded the node time budget');
   if (n.killedToolLoop) ev.push('looped: called one tool repeatedly with identical args (deterministic tool-loop kill)');
   if (!n.parsedOk) ev.push('produced no parseable return-protocol block');

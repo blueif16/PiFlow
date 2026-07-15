@@ -986,6 +986,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     if (killed === 'timeout') rec.killedTimeout = true;
     if (killed === 'stall') rec.killedStall = true;
     if (killed === 'tool-loop') rec.killedToolLoop = true;
+    if (killed === 'idle') rec.killedIdle = true;
 
     // (G12 — M4) CAPTURE the EMPIRICAL failure signals for `runNodeWithRetries` (the retry / escalate
     // lanes). Set ONLY on a non-ok verdict so a clean node leaves none — `classifyFailure`/`consultPreamble`
@@ -1003,6 +1004,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         killedTimeout: killed === 'timeout',
         killedStall: killed === 'stall',
         killedToolLoop: killed === 'tool-loop',
+        killedIdle: killed === 'idle',
         exitCode: result.code,
         stderrTail: (result.stderr || '').slice(-400),
         parsedOk: parsed != null,

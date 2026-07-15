@@ -14,6 +14,8 @@ describe('loadConfig — resolve PI_RUNNER_* env + args → the run-opts subset 
         PI_RUNNER_THINKING: 'high',
         PI_RUNNER_NODE_TIMEOUT: '600', // seconds
         PI_RUNNER_STALL_TIMEOUT: '120', // seconds
+        PI_RUNNER_IDLE_TIMEOUT: '480', // seconds — the request-level liveness window
+        PI_RUNNER_IDLE_RETRIES: '3', // in-place re-execs before killed:'idle'
         PI_RUNNER_FROM: 'w2',
         PI_RUNNER_UNTIL: 'verify',
       },
@@ -24,6 +26,8 @@ describe('loadConfig — resolve PI_RUNNER_* env + args → the run-opts subset 
     expect(cfg.thinking).toBe('high');
     expect(cfg.nodeTimeoutMs).toBe(600_000); // 600 s → ms
     expect(cfg.stallMs).toBe(120_000); // 120 s → ms
+    expect(cfg.idleRequestMs).toBe(480_000); // 480 s → ms
+    expect(cfg.idleRequestRetries).toBe(3);
     expect(cfg.from).toBe('w2');
     expect(cfg.until).toBe('verify');
   });

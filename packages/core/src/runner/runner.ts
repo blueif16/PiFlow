@@ -162,6 +162,17 @@ export interface RunOptions {
   nodeTimeoutMs?: number;
   /** Silent-stall kill threshold (ms); 0 disables. Default 0 (off; the in-memory baseline is fast). */
   stallMs?: number;
+  /**
+   * (REQUEST-LEVEL liveness watchdog) No stdout/stderr STREAM activity for this long (ms; 0 disables) aborts
+   * the current pi request and RE-EXECS THE SAME command in place — a fresh request, NOT a node retry. The
+   * fine-grained guard the coarse node-level `nodeTimeoutMs` misses (a single gateway request silent for
+   * 20-30 min). DEFAULT ON at 540_000 (9 min): pi streams per turn-END (a legit mega-think is silent the
+   * whole turn), so the window is generous enough to never cut a real think yet converts a silent 20-30 min
+   * hang into < 10 min. Env: `PI_RUNNER_IDLE_TIMEOUT` (seconds). Set 0 to disable.
+   */
+  idleRequestMs?: number;
+  /** (REQUEST-LEVEL liveness) Max in-place request re-execs before `killed:'idle'`. Default 2. Env: `PI_RUNNER_IDLE_RETRIES`. */
+  idleRequestRetries?: number;
   /** ms after SIGTERM before SIGKILL. Default 3000 (run.mjs 904–911). */
   killGraceMs?: number;
   /**
@@ -483,6 +494,9 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     watchdog: {
       nodeTimeoutMs: opts.nodeTimeoutMs ?? 1_800_000,
       stallMs: opts.stallMs ?? 0,
+      // REQUEST-LEVEL liveness: default ON (9 min window, 2 in-place re-execs). 0 disables the window.
+      idleRequestMs: opts.idleRequestMs ?? 540_000,
+      idleRequestRetries: opts.idleRequestRetries ?? 2,
       killGraceMs: opts.killGraceMs ?? 3000,
       toolLoopLimit: opts.toolLoopLimit ?? DEFAULT_TOOL_LOOP_LIMIT,
     },
