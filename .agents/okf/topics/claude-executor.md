@@ -27,13 +27,13 @@ a claude success still falls through to the executor-agnostic driver gates, so s
 
 # Anchors
 SELECT (route + credential + model)
-- `packages/core/src/runner/command.ts:164` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
+- `packages/core/src/runner/command.ts:170` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
 - `packages/core/src/runner/node-lifecycle.ts:208` — `runNode` — builds the claude env additions (`claudeExecutorEnvAdditions`) before sandbox create
 - `packages/core/src/runner/claude-executor.ts:124` — `claudeExecutorEnvAdditions` — injects `CLAUDE_CODE_OAUTH_TOKEN` + `CLAUDE_CONFIG_DIR`, empties the API-key vars (subscription-only, never silent API billing)
 - `packages/core/src/runner/claude-executor.ts:100` — `resolveClaudeOAuthToken` — layered host-side token resolve: SecretResolver env → `~/.piflow/claude-code.json` → local Keychain/`.credentials.json`
 BUILD (`claude -p` command)
-- `packages/core/src/runner/command.ts:133` — `claudeCommand` — assembles `claude -p --permission-mode bypassPermissions --output-format stream-json --verbose` (prompt on stdin)
-- `packages/core/src/runner/command.ts:137` — `claudeCommand` — `if (ctx.model) parts.push('--model', ctx.model)` — the model wiring
+- `packages/core/src/runner/command.ts:141` — `claudeCommand` — assembles `claude -p --permission-mode bypassPermissions --output-format stream-json --verbose` (prompt on stdin)
+- `packages/core/src/runner/command.ts:141` — `claudeCommand` — `if (ctx.model) parts.push('--model', ctx.model)` — the model wiring
 SPAWN
 - `packages/core/src/runner/node-lifecycle.ts:398` — `runNode` — `ctx.buildCommand(...)` (dispatch happens here) produces the command
 - `packages/core/src/runner/node-lifecycle.ts:415` — `runNode` — `ctx.execRunner(execSandbox, cmd, …)` spawns claude inside the sandbox jail
@@ -170,7 +170,6 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 ### Code anchors / blast radius (codegraph)
 
 - `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:15) — 3 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
-- `claudeCommand` (packages/core/src/runner/command.ts:135) — 2 callers in `packages/core/src/runner/index.ts`; tests: `packages/core/test/command-thinking.test.ts`
 - `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 8 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/optimize/substrate/agent.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found

@@ -94,8 +94,8 @@ STREAM (`--fix --watch`)
 BLAME (`docs/design/optimize-blame.md` — the run-level attribution layer over this per-node loop)
 - `packages/core/src/optimize/blame/measure.ts:133` — `runBlameMeasure` — the run-level hard-measure fold (expected-sparse) → `blame/measure.json`
 - `packages/core/src/optimize/blame/roster.ts:61` — `composeRoster` — pure fn off each `node.json` (id · description · produces/owns) → the auto-composed responsibility roster, never hand-synced
-- `packages/core/src/optimize/blame/judge.ts:140` — `buildBlamePrompt` — assembles the evidence pack + roster + criteria/gold + `memory.md` recurrence into the blind judge's prompt
-- `packages/core/src/optimize/blame/judge.ts:244` — `runBlameJudge` — judge + one verify round → prose `<node>.md` blame files + the `blame.md` summary
+- `packages/core/src/optimize/blame/judge.ts:144` — `buildBlamePrompt` — assembles the evidence pack + roster + criteria/gold + `memory.md` recurrence into the blind judge's prompt
+- `packages/core/src/optimize/blame/judge.ts:248` — `runBlameJudge` — judge + one verify round → prose `<node>.md` blame files + the `blame.md` summary
 - `packages/core/src/optimize/blame/summary.ts:42` — `parseBlameSummaryTail` — the ONLY machine-read surface: `blame.md`'s fenced JSON tail (`blamed`/`edges`/`unattributed`) round-trips with `renderBlameSummaryTail`
 - `packages/core/src/optimize/blame/memorize.ts:65` — `memorizeBlame` — blame-memorize: distills each attribution into template-root `memory.md` (run/blame grain, separate from the issue ledger)
 - `packages/core/src/optimize/substrate/train.ts:51` — `assessStaleness` — pure fn over `(baseSha, HEAD, changedPaths, closure)` → `fresh | disjoint | overlap`, the adopt train's per-record land-time policy

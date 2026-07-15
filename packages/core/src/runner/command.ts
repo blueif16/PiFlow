@@ -75,7 +75,13 @@ export const defaultPiCommand: CommandBuilder = (node, resolved, ctx, opts = {})
   // L1 retry). Absent ⇒ keep `--no-session` (today's default — a no-session node stays BYTE-IDENTICAL: the
   // flag stays in its original slot right after `-a`).
   const sessionFlags = opts.session
-    ? ['--session-dir', q(opts.session.dir), opts.session.resume ? '--session' : '--session-id', q(opts.session.id)]
+    ? opts.session.resume
+      // RESUME: address the session by its RESOLVABLE reference. Prefer the located file PATH (`resumeRef`) —
+      // pi opens it directly (`resolveSessionPath` sees the `/`), skipping the bare-id SCAN that classifies a
+      // session under a custom `--session-dir` as a "different project" and prompts to fork (unanswerable in
+      // headless `-p` ⇒ a starved events.jsonl, run 260715-02/plan). No ref located ⇒ fall back to the bare id.
+      ? ['--session-dir', q(opts.session.dir), '--session', q(opts.session.resumeRef ?? opts.session.id)]
+      : ['--session-dir', q(opts.session.dir), '--session-id', q(opts.session.id)]
     : ['--no-session'];
   const parts: string[] = [
     'pi', '-p', '--mode', 'json', '-a', ...sessionFlags,

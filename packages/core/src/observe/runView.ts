@@ -22,7 +22,7 @@ import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
 import { checkpointViewFrom, type CheckpointMarker, type CheckpointJournalSlot } from '../runner/checkpoint.js';
 import { builtinDrivers, type DriverTable } from '../runner/drivers/table.js';
-import { piSessionsDir } from '../runner/layout.js';
+import { recoverNodeEvents } from '../runner/pi-session.js';
 import type { NodeConfig, NodeUsage } from '../runner/status.js';
 import type { PiEvent } from '../runner/events.js';
 import type { SandboxProviderKind, Workflow, OnFailure } from '../types.js';
@@ -235,56 +235,13 @@ function replayEvents(runDir: string, id: string, drivers: DriverTable, driverId
 // record; we TRANSCODE its `message`/content vocabulary into the pi STREAM events the shared reducer
 // already folds, so recovered tokens/calls are byte-identical to a live run.
 
-/** Locate a node's pi session file. pi mints it as `<sessionDir>/<ISO-timestamp>_<sessionId>.jsonl`
- *  (session-manager.js) — the ISO-8601 timestamp prefix is opaque, so we match the `_<sessionId>.jsonl`
- *  SUFFIX (the sessionId is the node id) and, if several runs left one, take the latest (lexical order of
- *  the ISO prefix == chronological). Returns null when the dir/file is absent. */
-function piSessionFile(sessionDir: string, sessionId: string): string | null {
-  let entries: string[];
-  try { entries = fssync.readdirSync(sessionDir); } catch { return null; }
-  const suffix = `_${sessionId}.jsonl`;
-  const hits = entries.filter((f) => f.endsWith(suffix)).sort();
-  const pick = hits[hits.length - 1];
-  return pick ? path.join(sessionDir, pick) : null;
-}
-
-/** Transcode a pi native-session file into the pi STREAM-event vocabulary the reducer folds. Each
- *  assistant `message` record becomes a `message_end` (its nested `message` carries role/model/usage/
- *  stopReason verbatim, exactly what the reducer reads), and its `thinking`/`toolCall` content blocks become
- *  `thinking_delta`/`tool_execution_start` events (thinking volume + tool calls). Best-effort per line. */
-function transcodePiSession(file: string): PiEvent[] {
-  let raw: string;
-  try { raw = fssync.readFileSync(file, 'utf8'); } catch { return []; }
-  const out: PiEvent[] = [];
-  for (const line of raw.split('\n')) {
-    if (!line.trim()) continue;
-    let r: { type?: string; message?: { role?: string; content?: unknown[] } };
-    try { r = JSON.parse(line); } catch { continue; }
-    if (r.type !== 'message' || !r.message || r.message.role !== 'assistant') continue;
-    const content = Array.isArray(r.message.content) ? r.message.content : [];
-    for (const b of content) {
-      const blk = b as { type?: string; thinking?: unknown; name?: unknown; arguments?: unknown; id?: unknown };
-      if (blk.type === 'thinking' && typeof blk.thinking === 'string') {
-        out.push({ type: 'thinking_delta', delta: blk.thinking } as unknown as PiEvent);
-      } else if (blk.type === 'toolCall' && typeof blk.name === 'string') {
-        out.push({ type: 'tool_execution_start', toolName: blk.name, args: blk.arguments, toolCallId: blk.id } as unknown as PiEvent);
-      }
-    }
-    out.push({ type: 'message_end', message: r.message } as unknown as PiEvent);
-  }
-  return out;
-}
-
 /** Fold a pi node's native session into a `rich` node (the SAME reducer path a live pi run uses), or null
- *  when there is no session or it holds no model turn. The caller only reaches here when events.jsonl gave
- *  nothing, so this never double-counts a run whose stream WAS captured. */
+ *  when there is no session or it holds no model turn. The locator + transcode live in the shared
+ *  `runner/pi-session.ts` (reused by the write path and `runner/logs`), so there is ONE copy of that logic.
+ *  The caller only reaches here when events.jsonl gave nothing, so this never double-counts a captured stream. */
 function recoverFromPiSession(runDir: string, rec: RunJsonNode): RichNode | null {
-  const sessionId = rec.sessionId ?? rec.id;
-  const dir = rec.sessionDir && rec.sessionDir.trim() ? rec.sessionDir : piSessionsDir(runDir);
-  const file = piSessionFile(dir, sessionId);
-  if (!file) return null;
-  const events = transcodePiSession(file);
-  if (!events.length) return null;
+  const events = recoverNodeEvents(runDir, { sessionId: rec.sessionId, sessionDir: rec.sessionDir }, rec.id);
+  if (!events) return null;
   const acc = createNodeAccumulator();
   for (const e of events) acc.push(e);
   const { rich } = acc.finalize(rec);

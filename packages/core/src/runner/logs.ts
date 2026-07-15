@@ -14,6 +14,7 @@ import { readFileSync, existsSync, statSync, openSync, readSync, closeSync } fro
 import path from 'node:path';
 import { nodeEventsFile, runJsonFile } from './layout.js';
 import type { PiEvent } from './events.js';
+import { readNodeObserveEvents, type SessionRef } from './pi-session.js';
 
 /** A node's event archive — the canonical `.pi/nodes/<id>/events.jsonl` (re-export of the layout helper). */
 export function eventsPath(outDir: string, nodeId: string): string {
@@ -119,11 +120,18 @@ export function parseEventsFile(file: string): PiEvent[] {
   return evs;
 }
 
-/** One-shot: the distilled (or `--raw`) lines for one node. */
-export function tailNode(outDir: string, nodeId: string, opts: { raw?: boolean } = {}): string[] {
+/** One-shot: the distilled (or `--raw`) lines for one node. `--raw` prints the literal archive bytes (no
+ *  recovery — that is the audit view); the distilled view RECOVERS a starved archive from the native session
+ *  (a session-only node) so the one-shot replay isn't near-empty. `ref` supplies the session id/dir. */
+export function tailNode(outDir: string, nodeId: string, opts: { raw?: boolean; ref?: SessionRef } = {}): string[] {
   const file = eventsPath(outDir, nodeId);
   if (opts.raw) return existsSync(file) ? readFileSync(file, 'utf8').split('\n').filter(Boolean) : [];
-  return distillEvents(parseEventsFile(file));
+  return distillEvents(readNodeObserveEvents(outDir, nodeId, opts.ref ?? {}));
+}
+
+/** Pull the session-recovery ref (id/dir) off a run-status node record. */
+function sessionRef(n: StatusNode): SessionRef {
+  return { sessionId: n.sessionId, sessionDir: n.sessionDir };
 }
 
 interface StatusNode {
@@ -136,6 +144,10 @@ interface StatusNode {
   killedIdle?: boolean;
   durationMs?: number;
   artifacts?: { path: string; exists: boolean; bytes?: number }[];
+  /** The node's pi native session (id/dir) — the source for recovering a STARVED events.jsonl (a
+   *  session-only node whose stdout tee carried no model turns; run 260715-02/plan). Absent ⇒ no fallback. */
+  sessionId?: string;
+  sessionDir?: string;
 }
 interface StatusShape {
   run?: string;
@@ -198,7 +210,9 @@ export function diagnoseRun(outDir: string): { run?: string; done?: boolean; ok?
   const nodes: NodeDiagnosis[] = [];
   for (const n of Object.values(st?.nodes ?? {})) {
     if (n.status === 'pending') continue;
-    const c = countNode(parseEventsFile(eventsPath(outDir, n.id)));
+    // RECOVER a starved events.jsonl (session-only node) from pi's native session so `--summary` reflects the
+    // node's REAL tool/write activity, not a false 0w/0r/0t. No-op passthrough for a normally-captured archive.
+    const c = countNode(readNodeObserveEvents(outDir, n.id, sessionRef(n)));
     const missing = (n.artifacts ?? []).filter((a) => !a.exists).map((a) => a.path);
     const killed = n.killedTimeout ? 'timeout' : n.killedStall ? 'stall' : n.killedToolLoop ? 'tool-loop' : n.killedIdle ? 'idle' : undefined;
     let note: string;
@@ -376,6 +390,9 @@ export async function runLogsCli(argv: string[]): Promise<void> {
   const st = readStatus(outDir);
   const ids = a.node ? [a.node] : activeNodeIds(st);
   for (const id of ids) {
-    for (const line of tailNode(outDir, id, { raw: a.raw })) process.stdout.write(`[${id}] ${line}\n`);
+    const rec = st?.nodes?.[id];
+    for (const line of tailNode(outDir, id, { raw: a.raw, ref: rec ? sessionRef(rec) : undefined })) {
+      process.stdout.write(`[${id}] ${line}\n`);
+    }
   }
 }

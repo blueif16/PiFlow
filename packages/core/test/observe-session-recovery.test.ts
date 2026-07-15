@@ -127,3 +127,70 @@ describe('buildRunView — a 0-usage events.jsonl is BACKFILLED from pi\'s nativ
     expect(node.modelCalls).toBe(1);
   });
 });
+
+// ── TASK 2 — the recovery also feeds `trace` (context-composition) and `logs --summary` (diagnoseRun) ──
+// A session-only node must not leave `trace`/`logs --summary` near-empty: they recover from the SAME native
+// session via the shared reader, not just telemetry. Verified live against run 260715-02/plan (19 model /
+// 31 tool calls; 18 read, 2 write).
+
+describe('trace / context-composition — a starved node recovers its read/edit elements from the session', () => {
+  it('buildRunView(...).node.context lists the read tool calls transcoded from the native session', async () => {
+    const runDir = mkRunDir();
+    await writeRunJson(runDir, baseStatus({
+      plan: {
+        id: 'plan', label: 'Plan', status: 'error', artifacts: [], issues: ['nonzero exit 1'],
+        durationMs: 214187, driverId: 'pi', sessionId: 'plan', sessionDir: piSessionsDir(runDir),
+      },
+    }));
+    await writeNodeIo(runDir, { id: 'plan', label: 'Plan', phase: null, reads: [], writes: [], promotes: [], status: 'error' });
+    const ef = nodeEventsFile(runDir, 'plan');
+    await fs.mkdir(path.dirname(ef), { recursive: true });
+    // starved archive — only the session-resolve stderr, no tool calls.
+    await fs.writeFile(ef, JSON.stringify({ type: 'stderr', text: "No session found matching 'plan'" }) + '\n');
+    // native session with two READ turns against a real path — the context elements we must surface.
+    await seedSession(runDir, 'plan', [
+      sessionMessage({ usage: { input: 100, output: 50, totalTokens: 300 }, tool: { name: 'read', args: { path: '/tmp/brief.txt', offset: 1, limit: 2000 } } }),
+      sessionMessage({ usage: { input: 20, output: 5, totalTokens: 425 }, tool: { name: 'write', args: { path: '/tmp/out.yaml' } }, stopReason: 'stop' }),
+    ]);
+
+    const { view } = buildRunView(runDir);
+    const node = view.nodes.find((n) => n.id === 'plan')!;
+    // PRE-FIX: context is empty (buildNodeContext read only the starved events.jsonl). POST-FIX: the read/edit
+    // elements are recovered from the session.
+    expect(node.context, 'context must be recovered from the session').toBeDefined();
+    const ops = node.context ?? [];
+    const reads = ops.filter((o) => o.op === 'read');
+    expect(reads.length, 'the read tool call must appear as a context element').toBeGreaterThanOrEqual(1);
+    expect(reads.some((o) => o.displayPath.includes('brief.txt'))).toBe(true);
+    // the write element is surfaced too (op kind depends on the reducer's tool→op map; the tool call is present).
+    expect(ops.some((o) => o.displayPath.includes('out.yaml'))).toBe(true);
+  });
+});
+
+describe('logs --summary (diagnoseRun) — a starved node reflects the session\'s real tool activity', () => {
+  it('counts the session\'s reads/writes/tools instead of a false 0w/0r/0t', async () => {
+    const runDir = mkRunDir();
+    await writeRunJson(runDir, baseStatus({
+      plan: {
+        id: 'plan', label: 'Plan', status: 'error', artifacts: [{ path: 'brief.yaml', exists: false }], issues: ['nonzero exit 1'],
+        durationMs: 214187, driverId: 'pi', sessionId: 'plan', sessionDir: piSessionsDir(runDir),
+      },
+    }));
+    const ef = nodeEventsFile(runDir, 'plan');
+    await fs.mkdir(path.dirname(ef), { recursive: true });
+    await fs.writeFile(ef, JSON.stringify({ type: 'stderr', text: "No session found matching 'plan'" }) + '\n');
+    await seedSession(runDir, 'plan', [
+      sessionMessage({ usage: { input: 1, output: 1, totalTokens: 2 }, tool: { name: 'read', args: { path: '/tmp/a' } } }),
+      sessionMessage({ usage: { input: 1, output: 1, totalTokens: 2 }, tool: { name: 'read', args: { path: '/tmp/b' } } }),
+      sessionMessage({ usage: { input: 1, output: 1, totalTokens: 2 }, tool: { name: 'write', args: { path: '/tmp/c' } }, stopReason: 'stop' }),
+    ]);
+
+    const { diagnoseRun } = await import('../src/runner/logs.js');
+    const d = diagnoseRun(runDir);
+    const n = d.nodes.find((x) => x.id === 'plan')!;
+    // PRE-FIX: diagnoseRun read only events.jsonl → 0 tools. POST-FIX: recovered from the session.
+    expect(n.tools, 'total tool calls recovered from the session').toBe(3);
+    expect(n.reads).toBe(2);
+    expect(n.writes).toBe(1);
+  });
+});
