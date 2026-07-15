@@ -106,6 +106,18 @@ A needle matches a stage by substring against its **phase, node-id, or node labe
 - **`--until X` runs through the LAST stage containing X; `--from X` resumes AT X** (reusing upstream artifacts
   via a stat preflight). `--only X` = both.
 
+## Fix ONE node in a failed run — `node --rerun`, NOT `--from` (verified 2026-07-10)
+- **`piflowctl node <run> <nodeId> --rerun [--sandbox local --thinking low --provider <gw>]`** re-runs EXACTLY
+  that node and **force-reuses every other node's artifact unconditionally** (bypasses the envelope-hash
+  comparison for non-targets). It does NOT continue downstream — chain
+  `piflowctl run <templateDir> --run <id> --from <next-stage> …` afterwards (the fixed stage joins the
+  unconditionally-pinned prefix, so nothing re-runs spuriously).
+- **Resume args are NOT carried forward.** `--arg` values come ONLY from the current invocation (`state.json`
+  carries forward; args do not), and each node's reuse hash bakes in its realized prompt. On ANY `--from`
+  resume, re-pass the ORIGINAL `--arg prompt="…"` **byte-identical** — read it back from the run's
+  `.pi/run.json` `args`, never retype it. A differing arg flips every windowed node REUSE→RUN — the classic
+  "why did all 7 parallel siblings re-run when only one failed" trap.
+
 ## Profiles — match the user's intent to a declared profile, then run
 A template may declare named run PROFILES in its `meta.json` (`profiles` + `defaultProfile`); each ELIDES a
 subset of nodes so one workflow has several run shapes — e.g. a full `production` flow with verify gates and a
