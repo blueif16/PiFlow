@@ -40,6 +40,9 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
   live, e.g. `/Users/tk/Desktop/game-omni`). It resolves the `{{WORKSPACE}}` tokens in every seed/hook path; a
   wrong workspace makes hooks read nothing. The TEMPLATE may live in a different repo (e.g.
   `piflow/.piflow/game-omni/template`) — that's fine; `--workspace` is what binds the run to the content.
+- **NEVER pass `--run` on a fresh run — piflow assigns the run name itself.** Omit `--run` and the SDK
+  generates the id. Supply `--run <id>` ONLY to target an EXISTING run (a `--from` resume or chaining after
+  `node --rerun`) — never to name a new one.
 - **NEVER pass `--out` — the run's home is SDK-derived and canonical.** A template at `.piflow/<wf>/template/`
   makes the SDK land every run in `.piflow/<wf>/runs/<id>/` (`{{RUN}}`/`{project}`) — the single place discovery,
   the global index, and `status`/`watch` read. `--out` cannot relocate that (it is IGNORED, with a warning, when
@@ -51,8 +54,9 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
    and prints each realized `pi` command:
    ```bash
    piflowctl run <templateDir> \
-     --workspace <consumerRepo> --run <id> \
-     --provider <gw> --arg prompt="<the bank entry's prompt>" --dry-run
+     --workspace <consumerRepo> \
+     --arg prompt="<the bank entry's prompt>" --dry-run
+   # no --run: piflow assigns the run name (pass --run <id> only when resuming an existing run)
    ```
    (`piflowctl` is the global linked bin — the consumer repo needs no install; `--workspace` points it at the
    consumer's content. If `which piflowctl` is empty, fall back to `node <piflow>/packages/cli/dist/cli.js run …`.)
@@ -64,10 +68,10 @@ below (`run` · `inspect` · `extract` · `status` · `watch` · `logs`) is a `p
    run in the background:
    ```bash
    piflowctl run <templateDir> \
-     --workspace <consumerRepo> --run <id> \
-     --provider <gw> --thinking low --sandbox local \
+     --workspace <consumerRepo> \
+     --thinking low --sandbox local \
      --arg prompt="…" [--from <node>] [--until <node>] \
-     > /tmp/piflow-<id>.console.log 2>&1   # launch in the background
+     > /tmp/piflow-run.console.log 2>&1   # launch in the background; no --run (SDK names the run)
    ```
    (The console log goes to `/tmp` — a path that exists before the run; the AUTHORITATIVE per-node logs live
    in the canonical run dir. Proven game-omni invocation: `--provider mmgw --thinking low --sandbox local`,
