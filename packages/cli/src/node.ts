@@ -335,6 +335,12 @@ export interface ParsedNodeArgs {
   thinking?: string;
   provider?: string;
   workspace?: string;
+  /**
+   * `--rerun`'s repeated `--arg k=v` (BUG A) — parsed EXACTLY like the `run` verb's `parseRunArgs` (first
+   * `=` splits key from value; a value may itself contain `=`). `{}` when none were passed — the `--rerun`
+   * handler then falls back to the run's OWN recorded `.pi/run.json` args (see `runNodeCli`).
+   */
+  args: Record<string, string>;
 }
 
 /**
@@ -343,7 +349,7 @@ export interface ParsedNodeArgs {
  * leaves `nodeId` empty; the handler does not require it for that action).
  */
 export function parseNodeArgs(argv: string[]): ParsedNodeArgs {
-  const out: ParsedNodeArgs = { run: '', nodeId: '', resume: false, stop: false, rerun: false, finalize: false };
+  const out: ParsedNodeArgs = { run: '', nodeId: '', resume: false, stop: false, rerun: false, finalize: false, args: {} };
   const positionals: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
@@ -357,6 +363,11 @@ export function parseNodeArgs(argv: string[]): ParsedNodeArgs {
     else if (k === '--thinking') out.thinking = argv[++i];
     else if (k === '--provider') out.provider = argv[++i];
     else if (k === '--workspace') out.workspace = argv[++i];
+    else if (k === '--arg') {
+      const kv = argv[++i] ?? '';
+      const eq = kv.indexOf('='); // only the FIRST '=' splits k from v (values may contain '=') — mirrors run.ts.
+      if (eq > 0) out.args[kv.slice(0, eq)] = kv.slice(eq + 1);
+    }
     else if (!k.startsWith('-')) positionals.push(k);
   }
   out.run = positionals[0] ?? '';
@@ -487,6 +498,12 @@ export async function runNodeCli(argv: string[], deps: NodeDeps = {}): Promise<n
       return 1;
     }
     const runId = path.basename(runDir);
+    // The args this rerun carries (BUG A): explicit repeated `--arg k=v` — parsed identically to the `run`
+    // verb — wins; with NONE given, fall back to the run's OWN recorded `.pi/run.json` args, so a zero-flag
+    // `--rerun` of a run that recorded args just works (a node's realized-prompt `{{arg.*}}` tokens need the
+    // SAME values the run originally used — a `--rerun` used to always execute with `args: {}`, which the
+    // resolver rejects loudly: `unresolved run arg "<key>"`).
+    const rerunArgs = Object.keys(parsed.args).length ? parsed.args : (loadRunStatus(runDir)?.args ?? {});
     // Build the run args: window=[nodeId,nodeId] + an EXPLICIT rerun-set (force-RUN exactly this node,
     // force-REUSE every sibling/upstream) over the EXISTING run dir (its canonical home resolves back to
     // `runDir`). NOT `noResume:true` — that would re-run every sibling sharing the target's parallel stage.
@@ -504,7 +521,7 @@ export async function runNodeCli(argv: string[], deps: NodeDeps = {}): Promise<n
       ...(parsed.workspace ? { workspace: parsed.workspace } : {}),
       ...(parsed.provider ? { provider: parsed.provider } : {}),
       ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
-      args: {},
+      args: rerunArgs,
     };
     print(
       `piflowctl node: cold re-run of "${parsed.nodeId}" in ${runDir} — window [${parsed.nodeId}], force-RUN this node + force-REUSE its siblings/upstream (upstream artifacts frozen + preflighted).`,

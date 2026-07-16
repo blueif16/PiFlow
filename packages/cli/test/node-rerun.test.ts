@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runNodeCli } from '../src/node.js';
+import { runNodeCli, parseNodeArgs } from '../src/node.js';
 import { runTemplate as realRunTemplate, type RunDeps, type ParsedRunArgs } from '../src/run.js';
 import {
   loadTemplate,
@@ -176,6 +176,30 @@ describe('piflowctl node --rerun — cold single-node re-execution from frozen u
     expect(errs.join('\n')).toMatch(/n0\.txt/); // names the missing upstream artifact
   });
 
+  // (BUG B, generalized) a FAILED --rerun (halted before it ever re-executes) must not falsify the target's
+  // OWN prior record to a blank "0 artifacts" stub — live-observed alongside the args clobber.
+  it('a failed --rerun preserves the target\'s prior ok record instead of blanking it to 0 artifacts', async () => {
+    const before = JSON.parse(await fs.readFile(runJsonFile(runDir), 'utf8')) as RunStatus;
+    const priorN1 = before.nodes.n1;
+    expect(priorN1.status).toBe('ok');
+    expect(priorN1.artifacts.length).toBeGreaterThan(0);
+
+    await fs.rm(path.join(runDir, 'n0.txt')); // delete a frozen upstream artifact → preflight HALT
+    const code = await runNodeCli([runDir, 'n1', '--rerun'], {
+      runTemplate: nodeRunTemplate,
+      print: () => {},
+      error: () => {},
+    });
+
+    expect(code).not.toBe(0);
+    expect(ran.has('n1')).toBe(false); // never re-executed this attempt
+    const after = JSON.parse(await fs.readFile(runJsonFile(runDir), 'utf8')) as RunStatus;
+    // n1's own record — untouched this attempt — still carries its PRIOR real artifacts/duration/summary.
+    expect(after.nodes.n1.artifacts).toEqual(priorN1.artifacts);
+    expect(after.nodes.n1.durationMs).toBe(priorN1.durationMs);
+    expect(after.nodes.n1.summary).toBe(priorN1.summary);
+  });
+
   // WIRING — node.ts maps `<run> <id> --rerun` to run's window=[id,id] + an EXPLICIT rerun-set (force RUN the
   // target, force-REUSE the rest) over the derived template, honoring the same run flags. A SPY captures the
   // args; this is the crisp RED signal (baseline `--rerun` is an unknown flag → runTemplate is never called).
@@ -319,5 +343,141 @@ describe('piflowctl node --rerun — isolates ONE node in a shared PARALLEL stag
     expect(code).not.toBe(0);
     expect(ran.has('target')).toBe(false); // hard-halted at preflight
     expect(errs.join('\n')).toMatch(/up\.txt/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `--arg` PARSING + the recorded-args FALLBACK (BUG A) — live-observed: `node --rerun --arg k=v` failed with
+// "unresolved run arg" because `parseNodeArgs` never recognized `--arg` at all (its value was silently
+// dropped as a stray positional), so a `--rerun` always executed with `args: {}` regardless of what the user
+// passed. The fix: `node --rerun` parses repeated `--arg k=v` exactly like the `run` verb, and when NONE are
+// given it falls back to the run's OWN recorded `.pi/run.json` args — so a zero-flag rerun of a run that
+// recorded args just works.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('parseNodeArgs — parses repeated `--arg k=v` (mirrors run.ts)', () => {
+  it('parses a single --arg k=v pair', () => {
+    expect(parseNodeArgs(['r1', 'n0', '--rerun', '--arg', 'bookId=1']).args).toEqual({ bookId: '1' });
+  });
+
+  it('parses REPEATED --arg flags into one map', () => {
+    const parsed = parseNodeArgs(['r1', 'n0', '--rerun', '--arg', 'bookId=1', '--arg', 'sectionId=3']);
+    expect(parsed.args).toEqual({ bookId: '1', sectionId: '3' });
+  });
+
+  it('does not pollute positionals with --arg values (run/nodeId stay r1/n0)', () => {
+    const parsed = parseNodeArgs(['r1', 'n0', '--rerun', '--arg', 'bookId=1', '--arg', 'sectionId=3']);
+    expect(parsed.run).toBe('r1');
+    expect(parsed.nodeId).toBe('n0');
+  });
+
+  it('only the FIRST "=" splits key from value (a value may itself contain "=")', () => {
+    expect(parseNodeArgs(['r1', 'n0', '--rerun', '--arg', 'expr=a=b']).args).toEqual({ expr: 'a=b' });
+  });
+
+  it('no --arg at all ⇒ an empty args map (the CLI fallback decides what happens next)', () => {
+    expect(parseNodeArgs(['r1', 'n0', '--rerun']).args).toEqual({});
+  });
+});
+
+/** A single-node template whose PROMPT references `{{arg.bookId}}` — an unresolved arg throws at
+ *  token-resolution time (node-lifecycle U7), failing the node with status 'error' (never silently). This
+ *  is the fixture that proves the `--rerun` args fallback actually restores real EXECUTION behavior, not
+ *  just plumbing. */
+async function writeArgTemplate(templateDir: string): Promise<void> {
+  await fs.mkdir(templateDir, { recursive: true });
+  await fs.writeFile(
+    path.join(templateDir, 'meta.json'),
+    JSON.stringify({ id: 'argt', name: 'argt', description: 'arg-fallback rerun fixture', phases: ['s0'] }, null, 2),
+  );
+  const dir = path.join(templateDir, 'nodes', 'n0');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'node.json'),
+    JSON.stringify(
+      {
+        id: 'n0',
+        phase: 's0',
+        deps: [],
+        prompt: { file: 'prompt.md' },
+        tools: { allow: ['read', 'write', 'submit_result'] },
+        contract: { artifacts: ['n0.txt'], owns: ['n0.txt'], readScope: ['{{RUN}}'], returnMode: 'optional' },
+      },
+      null,
+      2,
+    ),
+  );
+  await fs.writeFile(path.join(dir, 'prompt.md'), 'do node for book {{arg.bookId}}');
+}
+
+describe('piflowctl node --rerun — --arg parsing + recorded-args fallback (BUG A)', () => {
+  let root: string;
+  let templateDir: string;
+  let runDir: string;
+  let ran: Set<string>;
+  let nodeRunTemplate: (parsed: ParsedRunArgs) => Promise<{ status: RunStatus; outDir: string } | undefined>;
+
+  beforeEach(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-node-rerun-args-'));
+    templateDir = path.join(root, '.piflow', 'argt', 'template');
+    runDir = path.join(root, '.piflow', 'argt', 'runs', 'r1');
+    await writeArgTemplate(templateDir);
+
+    ran = new Set<string>();
+    const runDeps = makeRunDeps(ran);
+    nodeRunTemplate = (parsed: ParsedRunArgs) => realRunTemplate(parsed, runDeps);
+
+    // Seed run 1 — a FULL run WITH the arg the prompt needs, recorded into `.pi/run.json`.
+    await realRunTemplate({ templateDir, dryRun: false, run: 'r1', args: { bookId: '7' }, sandbox: 'inmemory' }, runDeps);
+    expect(ran.has('n0')).toBe(true);
+    const seeded = JSON.parse(await fs.readFile(runJsonFile(runDir), 'utf8')) as RunStatus;
+    expect(seeded.args).toEqual({ bookId: '7' }); // sanity: the recorded args really carry the arg
+    ran.clear();
+  });
+
+  afterEach(async () => {
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('a zero-flag --rerun falls back to the run\'s recorded args and resolves {{arg.*}}', async () => {
+    const errs: string[] = [];
+    const code = await runNodeCli([runDir, 'n0', '--rerun'], {
+      runTemplate: nodeRunTemplate,
+      print: () => {},
+      error: (s) => errs.push(s),
+    });
+
+    expect(code).toBe(0);
+    expect(errs).toHaveLength(0);
+    expect(ran.has('n0')).toBe(true); // re-executed (not preflight-halted)
+    const status = JSON.parse(await fs.readFile(runJsonFile(runDir), 'utf8')) as RunStatus;
+    expect(status.nodes.n0.status).toBe('ok'); // NOT 'error' — {{arg.bookId}} resolved
+  });
+
+  it('an explicit --arg on --rerun is parsed and forwarded (like the run verb)', async () => {
+    let seen: ParsedRunArgs | undefined;
+    const code = await runNodeCli([runDir, 'n0', '--rerun', '--arg', 'bookId=9'], {
+      runTemplate: (p: ParsedRunArgs) => {
+        seen = p;
+        return Promise.resolve(undefined);
+      },
+      print: () => {},
+      error: () => {},
+    });
+
+    expect(code).toBe(0);
+    expect(seen?.args).toEqual({ bookId: '9' });
+  });
+
+  it('without the fix, a zero-flag --rerun would run with args:{} and the node ends "error" (documents the live symptom)', async () => {
+    // Directly exercises the OLD hardcoded shape (`args: {}`) to pin the exact failure the fix removes —
+    // an unresolved {{arg.bookId}} fails the node with 'error', never a silent pass.
+    const runDeps2 = makeRunDeps(ran);
+    const { status } = (await realRunTemplate(
+      { templateDir, dryRun: false, run: 'r1', from: 'n0', until: 'n0', rerunNodes: new Set(['n0']), args: {}, sandbox: 'inmemory' },
+      runDeps2,
+    ))!;
+    expect(status.nodes.n0.status).toBe('error');
+    expect(status.nodes.n0.issues.join(' ')).toMatch(/unresolved run arg "bookId"/);
   });
 });
