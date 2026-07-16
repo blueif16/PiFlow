@@ -340,13 +340,19 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // grants the runner's OWN `.pi/**` internals (sessions/nodes/journal/state) — dead ends a node has no
       // business reading (W4 nodes burned 300-540s running `find` under `{{RUN}}/.pi/**`). DENY that whole
       // tree in the kernel jail, RE-allowing only the node's own staged inputs (`.pi/staged/<id>` prompt/
-      // extension/mcp) + shared `.pi/skills`. In-place (local) only — cloud/in-memory ignore these; a
-      // `fullAccess` node runs jail-off anyway. The deny is under `ctx.outDir` (the run dir == the in-place
-      // workdir), so it is a no-op for a throwaway provider whose workdir holds no run bookkeeping.
+      // extension/mcp) + shared `.pi/skills` + its OWN pi session dir. In-place (local) only — cloud/in-memory
+      // ignore these; a `fullAccess` node runs jail-off anyway. The deny is under `ctx.outDir` (the run dir ==
+      // the in-place workdir), so it is a no-op for a throwaway provider whose workdir holds no run bookkeeping.
+      // The session dir (`.pi/sessions`) is re-allowed because a WARM RESUME addresses the node's native session
+      // by its ABSOLUTE PATH (`--session '<abs>'`, d5c28cc) and pi `loadEntriesFromFile → openSync`s it — a READ
+      // that the bookkeeping deny would EPERM (run 260716-01/plan: pi died BEFORE any model turn, events.jsonl
+      // starved). CREATE (`--session-id`) only WROTE the session (the write jail grants the run dir), so the gap
+      // was READ-only; re-allowing the session dir is what makes warm-resume actually work under the seatbelt jail.
       readDeny: [path.join(ctx.outDir, '.pi')],
       readDenyExcept: [
         path.join(ctx.outDir, '.pi', 'staged', node.id),
         path.join(ctx.outDir, '.pi', 'skills'),
+        piSessionsDir(ctx.outDir),
       ],
       outputDir: sbLoc.outputDir,
       workdir: sbLoc.workdir,

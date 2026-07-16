@@ -153,6 +153,55 @@ describe('warm-resume L1 — same-model retry resumes the per-node session', () 
     await fs.rm(outDir, { recursive: true, force: true });
   });
 
+  it('a warm-eligible node RE-ALLOWS reading its OWN pi session dir under the bookkeeping .pi read-deny (else a warm resume EPERMs loading its session under the seatbelt jail)', async () => {
+    // ROOT-CAUSE REGRESSION (run 260716-01/plan). The seatbelt jail DENIES reading `<run>/.pi/**` (bookkeeping,
+    // run 260710-02), re-allowing ONLY `.pi/staged/<id>` + `.pi/skills`. But the pi NATIVE session lives at
+    // `<run>/.pi/sessions/<ISO-ts>_<nodeId>.jsonl` — INSIDE that denied tree and NOT re-allowed. So a warm
+    // resume's `--session '<abs path>'` (d5c28cc) makes pi `loadEntriesFromFile → openSync` → EPERM, dying
+    // BEFORE any model turn (events.jsonl starved). attempt-1's `--session-id` CREATE succeeded only because the
+    // WRITE jail grants the workdir-recursive run dir (no write-deny of `.pi`) — the deny is READ-only, so the
+    // asymmetry is precisely: pi can WRITE its session but not READ it back on resume. The runner MUST re-allow
+    // the per-run session dir alongside the node's other own inputs. This asserts the CreateOpts the runner hands
+    // the sandbox re-allows `piSessionsDir(outDir)`. FAILS pre-fix (readDenyExcept carries only staged + skills).
+    const node: NodeIntent = {
+      label: 'Producer', prompt: 'produce the artifact', tools: {},
+      io: { reads: [], produces: ['out.txt'], artifacts: [{ path: 'out.txt' }] },
+    };
+    const g = compile(wf([node]));
+    const outDir = await tmpOut();
+    let captured: CreateOpts | undefined;
+    const base = new InMemorySandboxProvider();
+    const provider: SandboxProvider = { kind: 'local', create: (opts) => { captured = opts; return base.create(opts); } };
+    const builder = (
+      nodeSpec: NodeSpec & { sandbox: { output: string } },
+      resolved: ResolveResult,
+      ctx: { promptFile: string; provider?: string; model?: string },
+      opts?: PiCommandOptions,
+    ): string => {
+      void defaultPiCommand(nodeSpec, resolved, ctx, opts);
+      const dest = path.join(outDir, nodeSpec.io.artifacts[0].path);
+      return `mkdir -p ${path.dirname(dest)} && printf '%s' ok > ${dest}`;
+    };
+
+    await runWorkflow(g, {
+      run: 'wr-deny',
+      outDir,
+      provider,
+      buildCommand: builder as Parameters<typeof runWorkflow>[1]['buildCommand'],
+    });
+
+    expect(captured, 'the runner must have created a sandbox').toBeDefined();
+    // The bookkeeping deny is still armed (the whole `.pi/` tree)…
+    expect(captured!.readDeny).toContain(path.join(outDir, '.pi'));
+    // …but the node's OWN session dir is re-allowed so a warm resume can READ its session file under the jail.
+    expect(
+      captured!.readDenyExcept,
+      'the node must be able to READ its own pi session dir under the `.pi` bookkeeping read-deny',
+    ).toContain(piSessionsDir(outDir));
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
   it('when attempt-1 left a real session FILE, the warm resume addresses it by PATH — not the bare id pi can\'t resolve', async () => {
     // ROOT-CAUSE REGRESSION (run 260715-02/plan): a bare `--session <nodeId>` under a custom `--session-dir`
     // makes pi SCAN + classify the session "different project" → an unanswerable fork prompt in headless `-p`
