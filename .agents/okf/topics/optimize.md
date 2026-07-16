@@ -61,7 +61,7 @@ SCORE
 - `packages/core/src/optimize/score.ts:93` — `scoreRun` — impure shell: read run dir + recorded verify reports, then fold
 - `packages/core/src/optimize/tier1.ts:38` — `readVerifyReport` — project a verify-milestone report → Tier1Result (abstain re-tag)
 TRIAGE
-- `packages/core/src/optimize/triage.ts:66` — `triage` — four-way LAPSE/SKILL/FUNCTIONALITY/ARCH projector → Defect[]
+- `packages/core/src/optimize/triage.ts:80` — `triage` — four-way LAPSE/SKILL/FUNCTIONALITY/ARCH projector → Defect[]
 - `packages/core/src/optimize/types.ts:110` — `DefectScope` — the two-leg scope-context a SKILL fixer reads (recurrence + root/prevention + the linked [[okf-slice]] KEY)
 - `packages/core/src/optimize/render.ts:33` — `renderRouting` — Defect[] → the proven HERMES-ROUTING.md worklist
 GATE
@@ -163,6 +163,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `7a4374c` 2026-07-02 — fix(optimize): persist the worklist + surface structural defects
 - `d6842bc` 2026-07-05 — Merge feat/context-composition-telemetry — run-layout under .piflow, per-node thinking, node --rerun, context-composition telemetry, Leg-C method-library sync
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
+- `7543c90` 2026-07-15 — fix(core): op-integrity WS-I5 — triage/blame read the VERDICT, not stderr noise
 
 ### Lessons — memory cluster
 
@@ -225,5 +226,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `distillLesson` (packages/core/src/optimize/distill.ts:87) — 5 callers in `packages/cli/src/optimize-fix.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-distill.test.ts`
 - `renderRouting` (packages/core/src/optimize/render.ts:33) — 6 callers in `packages/cli/src/optimize.ts`, `packages/core/src/index.ts`, `packages/core/src/optimize/index.ts`; tests: `packages/core/test/optimize-gs01.test.ts`, `packages/core/test/optimize-render.test.ts`
 
-<sub>derived 2026-07-16 · arc=29 commits · files=19 · lessons=49</sub>
+<sub>derived 2026-07-16 · arc=30 commits · files=19 · lessons=49</sub>
 <!-- okf:auto-end -->

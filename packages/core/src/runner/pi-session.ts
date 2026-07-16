@@ -30,6 +30,31 @@ export function locatePiSessionFile(sessionDir: string, sessionId: string): stri
   return pick ? path.join(sessionDir, pick) : null;
 }
 
+/**
+ * Archive aside a node's EXISTING pi session file (if any) so a subsequent COLD attempt's `--session-id
+ * <id>` truly mints a fresh file. pi's own CLI resolves `--session-id` as GET-OR-CREATE, not create-only:
+ * `createSessionManager` (dist/main.js, @earendil-works/pi-coding-agent) calls `findLocalSessionByExactId`
+ * FIRST and `SessionManager.open`s a match rather than creating (documented in `dist/cli/args.js` as "Use
+ * exact project session ID, creating it if missing") — so a stale file left by an EARLIER attempt (a
+ * `--rerun` of an already-executed node, a cold same-model retry, an escalation) makes pi silently RE-OPEN
+ * that prior conversation instead of starting fresh, even though the caller believes `--session-id` always
+ * creates. Renaming the file so it no longer ends in the `_<sessionId>.jsonl` suffix (both pi's own lookup
+ * and `locatePiSessionFile` scan for) is what makes the NEXT `--session-id <id>` genuinely mint a new file.
+ * SUPERSEDES, never deletes — the read-path recovery below + a human can still find the archived content.
+ * No-op (returns null) when there is nothing to archive (a node's first-ever attempt, the common case).
+ */
+export function supersedeStaleSession(sessionDir: string, sessionId: string): string | null {
+  const existing = locatePiSessionFile(sessionDir, sessionId);
+  if (!existing) return null;
+  const archived = `${existing}.superseded-${Date.now()}.bak`;
+  try {
+    fssync.renameSync(existing, archived);
+  } catch {
+    return null;
+  }
+  return archived;
+}
+
 /** Transcode a pi native-session file into the pi STREAM-event vocabulary the reducer folds. Each
  *  assistant `message` record becomes a `message_end` (its nested `message` carries role/model/usage/
  *  stopReason verbatim, exactly what the reducer reads), and its `thinking`/`toolCall` content blocks become

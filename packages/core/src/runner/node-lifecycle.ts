@@ -49,7 +49,7 @@ import {
   artifactState,
 } from './status.js';
 import { piSessionsDir, writeNodePid, clearNodePid, nodeDir, nodeEventsFile } from './layout.js';
-import { locatePiSessionFile } from './pi-session.js';
+import { locatePiSessionFile, supersedeStaleSession } from './pi-session.js';
 import {
   envelopeHash,
   inputFilesOf,
@@ -456,6 +456,14 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // SCAN + classify the session "different project" and prompt to fork (unanswerable in headless `-p`), which
     // starves the node's events.jsonl (run 260715-02/plan). Absent ⇒ fall back to the bare id (best-effort).
     const resumeRef = isResume ? (locatePiSessionFile(sessionDir, node.id) ?? undefined) : undefined;
+    // (fresh-session guard) On a COLD attempt (first attempt, a `--rerun`, a cold same-model retry, or an
+    // escalation), pi's OWN `--session-id <id>` is GET-OR-CREATE: if a session file already exists under this
+    // id — e.g. a PRIOR attempt in this SAME run, or a `--rerun` of an already-finished node reusing its run
+    // dir — pi silently RE-OPENS it instead of minting fresh, warm-resuming a call this runner believes is
+    // cold (the live bug: one `.pi/sessions/*.jsonl` grew across five `--rerun`s). Archive that stale file
+    // ASIDE (never delete — the read-path recovery above + observe/logs still need it) so pi's create-if-
+    // missing check finds nothing and truly creates new. A first-ever attempt is a no-op (nothing to find).
+    if (warmEligible && !isResume) supersedeStaleSession(sessionDir, node.id);
     const session = warmEligible
       ? { dir: sessionDir, id: node.id, resume: isResume, ...(resumeRef ? { resumeRef } : {}) }
       : undefined;

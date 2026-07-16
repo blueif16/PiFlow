@@ -230,6 +230,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `e4e9ec4` 2026-07-15 — feat(cli): optimize fix — no-prove by default, --prove to opt in
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
+- `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 
 ### Lessons — memory cluster
 
@@ -332,5 +333,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-16 · arc=170 commits · files=8 · lessons=89</sub>
+<sub>derived 2026-07-16 · arc=171 commits · files=8 · lessons=89</sub>
 <!-- okf:auto-end -->

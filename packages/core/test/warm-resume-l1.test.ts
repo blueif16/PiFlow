@@ -314,3 +314,120 @@ describe('warm-resume L1 — same-model retry resumes the per-node session', () 
     await fs.rm(outDir, { recursive: true, force: true });
   });
 });
+
+describe('fresh-session guard — a COLD attempt (piflowctl node --rerun) never inherits a prior session', () => {
+  it('a COLD attempt supersedes an EXISTING same-id session file instead of building --session-id over it (ROOT-CAUSE REGRESSION)', async () => {
+    // `piflowctl node <run> <id> --rerun` re-invokes `runNode` COLD (over={}, no resumeSessionId) in the
+    // EXISTING run dir — same session dir, same node id as the ORIGINAL run that already left a session file
+    // there. `runNode` builds `--session-id <nodeId>` believing this CREATES fresh, but pi's own CLI resolves
+    // `--session-id` as GET-OR-CREATE (`createSessionManager` in @earendil-works/pi-coding-agent dist/main.js:
+    // `findLocalSessionByExactId` → `SessionManager.open` on a match) — so pi silently RE-OPENS the prior
+    // conversation instead of starting fresh (the live bug: one session file grew across 5 `--rerun`s, ctx
+    // accumulating 153k→188k→205k). Plant a stale session file BEFORE the run to simulate that prior history,
+    // then run the node cold and assert the stale file is SUPERSEDED (renamed aside, content preserved) so a
+    // real pi process handed the same `--session-id` would find nothing and truly mint fresh.
+    const node: NodeIntent = {
+      label: 'Producer', prompt: 'produce the artifact', tools: {},
+      io: { reads: [], produces: ['out.txt'], artifacts: [{ path: 'out.txt' }] },
+    };
+    const g = compile(wf([node]));
+    const outDir = await tmpOut();
+    const sessDir = piSessionsDir(outDir);
+    const staleFile = path.join(sessDir, '2026-07-16T06-46-48-983Z_producer.jsonl');
+    const staleContent =
+      '{"type":"session","version":3,"id":"producer"}\n{"type":"message","message":{"role":"assistant","content":[]}}\n';
+    await fs.mkdir(sessDir, { recursive: true });
+    await fs.writeFile(staleFile, staleContent);
+
+    const attempts: Attempt[] = [];
+    const builder = (
+      nodeSpec: NodeSpec & { sandbox: { output: string } },
+      resolved: ResolveResult,
+      ctx: { promptFile: string; provider?: string; model?: string },
+      opts?: PiCommandOptions,
+    ): string => {
+      const cmd = defaultPiCommand(nodeSpec, resolved, ctx, opts);
+      attempts.push({ cmd, session: opts?.session, prompt: '' });
+      const dest = path.join(outDir, nodeSpec.io.artifacts[0].path);
+      return `mkdir -p ${path.dirname(dest)} && printf '%s' ok > ${dest}`;
+    };
+
+    await runWorkflow(g, {
+      run: 'wr-rerun-fresh',
+      outDir,
+      provider: localKindProvider(),
+      buildCommand: builder as Parameters<typeof runWorkflow>[1]['buildCommand'],
+    });
+
+    // The cold attempt is STILL a create (session.resume falsy) — the fix changes file handling, not the
+    // create/resume DECISION.
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].session!.resume).toBeFalsy();
+    expect(attempts[0].cmd).toContain("--session-id 'producer'");
+
+    // THE FIX: the stale file is GONE from its original path (superseded) — pi's own get-or-create lookup
+    // would find nothing there and mint a genuinely fresh file.
+    await expect(fs.access(staleFile)).rejects.toThrow();
+
+    // …but NOT deleted — it survives under an archived name with byte-identical content (observe/logs
+    // read-path recovery, and a human, can still find it).
+    const remaining = await fs.readdir(sessDir);
+    const archived = remaining.find((f) => f !== path.basename(staleFile));
+    expect(archived, 'the stale session must be archived, not deleted').toBeDefined();
+    const archivedContent = await fs.readFile(path.join(sessDir, archived as string), 'utf8');
+    expect(archivedContent).toBe(staleContent);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('the WARM op-retry lane still resumes the SAME session file — the fresh-session guard never fires on a resume', async () => {
+    // GUARD against overcorrection: the fresh-session archive must be scoped to COLD attempts only. This is
+    // the SAME scenario as "when attempt-1 left a real session FILE, the warm resume addresses it by PATH"
+    // above, with one added assertion — the resumed file must survive AT ITS ORIGINAL PATH.
+    const node: NodeIntent = {
+      label: 'Producer',
+      prompt: 'produce the artifact',
+      tools: {},
+      io: { reads: [], produces: ['out.txt'], artifacts: [{ path: 'out.txt' }], retry: { max: 1 } },
+      op: [{ when: 'on-failure', action: { kind: 'retry', max: 1, scope: 'feedback' } }],
+    };
+    const g = compile(wf([node]));
+    const outDir = await tmpOut();
+    const sessDir = piSessionsDir(outDir);
+    const sessFile = path.join(sessDir, '2026-07-16T06-46-48-983Z_producer.jsonl');
+
+    const attempts: Attempt[] = [];
+    const builder = (
+      nodeSpec: NodeSpec & { sandbox: { output: string } },
+      resolved: ResolveResult,
+      ctx: { promptFile: string; provider?: string; model?: string },
+      opts?: PiCommandOptions,
+    ): string => {
+      const cmd = defaultPiCommand(nodeSpec, resolved, ctx, opts);
+      const i = attempts.length;
+      attempts.push({ cmd, session: opts?.session, prompt: '' });
+      const art = nodeSpec.io.artifacts[0].path;
+      const dest = path.join(outDir, art);
+      const tail = i === 0
+        ? `mkdir -p '${sessDir}' && printf '%s' '{"type":"session","version":3,"id":"producer"}' > '${sessFile}' && exit 1`
+        : `mkdir -p ${path.dirname(dest)} && printf '%s' ok > ${dest}`;
+      return tail;
+    };
+
+    await runWorkflow(g, {
+      run: 'wr-warm-guard',
+      outDir,
+      provider: localKindProvider(),
+      buildCommand: builder as Parameters<typeof runWorkflow>[1]['buildCommand'],
+    });
+
+    expect(attempts).toHaveLength(2);
+    expect(attempts[1].session!.resume).toBe(true);
+
+    // THE GUARD: the file attempt-1 left (and attempt-2 resumed) survives AT ITS ORIGINAL PATH — the
+    // fresh-session guard (COLD-only) must never archive a file mid-resume.
+    await expect(fs.access(sessFile)).resolves.toBeUndefined();
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
