@@ -30,6 +30,7 @@ import {
   issueLifecycleDir,
   verifyStage,
   UNPROVEN_BY_RUN,
+  FIXER_SKILL,
   type SubstrateManifest,
   type SubstrateManifestRecord,
 } from '../src/optimize/substrate/fix.js';
@@ -568,6 +569,52 @@ describe('fixIssue — the oracle diff-guard is a FIXER-SIDE rejection (WS0 beha
   });
 });
 
+// ── GAP4: the fixer's PLAYBOOK skill must be staged INSIDE the candidate worktree, not just the live workspace ──
+// Live incident: `--dry-run` printed `skill: <workspace>/.claude/skills/piflow-fixer` while the fixer's own
+// cwd/readScope/owns were all the candidate WORKTREE (a separate git worktree checked out from the live repo).
+// `.claude/` is untracked in the product repo, so a fresh worktree checkout never has it at all — and Claude
+// Code discovers a project skill relative to ITS OWN cwd, never an arbitrary staged path (there is no `--skill`
+// flag for `claude -p`, confirmed via `claude --help`), so the fixer had NO way to find its playbook: it burned
+// its turn hunting the filesystem and landed 0 edits (observed 3 of 4 fixer spawns in one session). Unlike the
+// fixer, the GATE (gate.ts) and TRIAGE (judge.ts) spawns run with `cwd: workspace` directly (no worktree
+// isolation — they only read) and a BARE skill id that ring-searches `workspace` itself, so they do not share
+// this flaw (audited both; no fix needed there). blame/judge.ts stages no skill at all (documented as a v2
+// follow-up), so it is not applicable either.
+describe('fixIssue — the fixer PLAYBOOK skill is staged INSIDE the candidate worktree (GAP4)', () => {
+  it("the fixer spawn's skill path lies inside its own cwd/readScope, and the directory exists with SKILL.md", async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
+    // Seed the playbook where the CLI already resolves a bare skill id from — Ring 1 `.claude/skills/<id>`
+    // (skill-locate.ts), the SAME live-repo location `piflowctl skills install` lands it — never a NEW
+    // resolution order invented for this fix.
+    const liveSkillSrc = join(workspace, '.claude', 'skills', FIXER_SKILL);
+    await fs.mkdir(liveSkillSrc, { recursive: true });
+    await fs.writeFile(join(liveSkillSrc, 'SKILL.md'), '---\nname: piflow-fixer\ndescription: the playbook\n---\nbody\n');
+
+    let captured: RunBaseAgentOpts | undefined;
+    let skillFileAtSpawnTime: string | null = null;
+    await fixIssue(issuePath, {
+      parentRunDir, templateDir, workspace, prove: false,
+      runAgent: async (o) => {
+        captured = o;
+        // The candidate worktree is torn down in fixIssue's OWN `finally` (every exit — the branch/SHA are the
+        // durable artifact, not the checkout), so the directory must be checked NOW, at spawn time, not after
+        // `fixIssue` resolves.
+        skillFileAtSpawnTime = o.skill ? await fs.readFile(join(o.skill, 'SKILL.md'), 'utf8').catch(() => null) : null;
+        return editingAgent(o);
+      },
+    });
+
+    expect(captured?.skill).toBeDefined();
+    // The fixer's cwd is the ISOLATED candidate worktree, never the live workspace — the staged skill must
+    // live INSIDE that same jail (readable), not at the live-repo path the old bug pointed at.
+    expect(captured!.skill!.startsWith(captured!.cwd)).toBe(true);
+    expect(captured!.readScope).toContain(captured!.skill);
+    // … and the composition step actually COPIED the bytes there BEFORE the spawn ran — a computed-but-never-
+    // staged path would still pass the two assertions above while leaving the fixer with nothing to read.
+    expect(skillFileAtSpawnTime).toMatch(/the playbook/);
+  });
+});
+
 // ── WS0 behavior 5/7/8: prove against the worktree · cleanup · result shape ────────────────────────────────
 describe('fixIssue — prove path (edit → commit → child on the worktree → graded delta → accept → stage)', () => {
   it('proves against the candidate worktree, measures against the live root, stages baseSha/candidateSha', async () => {
@@ -1043,7 +1090,12 @@ describe('fixIssue — surfaces the fixer agent\'s runDir (Phase-3 observe wirin
 });
 
 describe('fixIssue — stages the piflow-fixer playbook for the fixer spawn', () => {
-  it('passes the EXACT piflow-fixer skill PATH (product-root .claude/skills) to runAgent', async () => {
+  // GAP4: this fixture seeds NO `.claude/skills/piflow-fixer` bundle in the live workspace, so
+  // `locateSkillStage`'s ring search misses — the composed spawn must degrade to NO `skill` declared
+  // (advisory, never a hard fail), never the OLD buggy live-workspace path (that path pointed OUTSIDE the
+  // fixer's own cwd/readScope — the candidate worktree — so Claude Code could never discover it there anyway;
+  // see the GAP4 describe block below for the found-a-skill case).
+  it('a MISSING piflow-fixer skill degrades to no `skill` declared on the fixer spawn', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture();
     let capturedSkill: string | undefined = 'UNSET';
     const capturingRunAgent = async (o: RunBaseAgentOpts): Promise<RunBaseAgentResult> => {
@@ -1058,7 +1110,7 @@ describe('fixIssue — stages the piflow-fixer playbook for the fixer spawn', ()
       spawnChild: async () => childResult('x', await scratch()),
       measure: async () => measureReport({}),
     });
-    expect(capturedSkill).toBe(join(workspace, '.claude', 'skills', 'piflow-fixer'));
+    expect(capturedSkill).toBeUndefined();
   });
 });
 
@@ -1145,7 +1197,10 @@ describe('fixIssue — dry-run (the inherited base-agent preview)', () => {
     const execCwd = res.dryRun?.sandbox?.execCwd as string;
     expect(res.dryRun?.prompt).toContain('The compose step burns long thinking spans'); // the issue body = the dispatch
     expect(res.dryRun?.executor).toBe('claude-code');
-    expect(res.dryRun?.skill).toBe(join(workspace, '.claude', 'skills', 'piflow-fixer'));
+    // GAP4: this fixture seeds no `.claude/skills/piflow-fixer` bundle in the live workspace, so the preview
+    // degrades to no `skill` declared (advisory miss) — never the OLD product-root path (that pointed OUTSIDE
+    // the fixer's own execCwd, invisible to Claude Code's own cwd-relative skill discovery).
+    expect(res.dryRun?.skill).toBeUndefined();
     // the jail is the candidate WORKTREE (execCwd), read/write = (include\oracle) under it, provider local.
     expect(execCwd.endsWith(join('soggy-crust', 'attempt-1'))).toBe(true);
     expect(res.dryRun?.sandbox?.read).toEqual([join(execCwd, 'templates'), join(execCwd, 'eval')]);
