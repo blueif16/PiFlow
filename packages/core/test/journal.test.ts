@@ -494,3 +494,102 @@ describe('runWorkflow journal resume — --from override', () => {
     await fs.rm(outDir, { recursive: true, force: true });
   });
 });
+
+// ── args PERSISTENCE across a resume (BUG B) ────────────────────────────────────────────────────
+// `.pi/run.json`'s `args` field is an OUT-OF-BAND record (optimize/substrate's measure stage, `node --rerun`'s
+// own recorded-args fallback) — NOT consulted for THIS run's own token resolution. A resume (`--from` or the
+// `node --rerun` `rerunNodes` mechanism) that is invoked with no/fewer `--arg`s than the ORIGINAL run must
+// never overwrite that record with `{}`/a partial set: the current invocation's args merge OVER the prior
+// recorded ones (current wins per-key), never replacing them wholesale. Reproduces the live bug: a failed
+// `node --rerun` (which always called through with `args: {}`) clobbered a run's recorded args to `{}`.
+describe('runWorkflow — a resume PRESERVES the prior run\'s recorded args (never wipes to {})', () => {
+  it('a `--from` resume invoked with NO args keeps the run\'s originally recorded args', async () => {
+    const spec = wf([n('A', [], ['a.txt']), n('B', ['a.txt'], ['b.txt'])]);
+    const outDir = await tmpOut();
+    await runWorkflow(compile(spec), { run: 'f', outDir, args: { lessonId: 'kp' }, buildCommand: stubBuilder() });
+
+    // Resume — from B, with NO `args` passed at all (the historical `node --rerun` shape: `args: {}`).
+    const { status } = await runWorkflow(compile(spec), {
+      run: 'f', outDir, from: 'b', buildCommand: stubBuilder(),
+    });
+
+    expect(status.args).toEqual({ lessonId: 'kp' }); // NOT {} — the recorded arg survives.
+    const onDisk = JSON.parse(await fs.readFile(path.join(outDir, '.pi', 'run.json'), 'utf8')) as { args?: Record<string, string> };
+    expect(onDisk.args).toEqual({ lessonId: 'kp' });
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  // The EXACT mechanism `piflowctl node <run> <id> --rerun` drives at the core level (window=[id,id] via
+  // `rerunNodes`, not `--from`/noResume) — the live-observed bug's actual call shape.
+  it('a rerunNodes (`node --rerun`) resume invoked with NO args keeps the run\'s originally recorded args', async () => {
+    const spec = wf([n('A', [], ['a.txt']), n('B', ['a.txt'], ['b.txt'])]);
+    const outDir = await tmpOut();
+    await runWorkflow(compile(spec), { run: 'g', outDir, args: { bookId: '7' }, buildCommand: stubBuilder() });
+
+    const { status } = await runWorkflow(compile(spec), {
+      run: 'g', outDir, from: 'b', until: 'b', rerunNodes: new Set(['b']), buildCommand: stubBuilder(),
+    });
+
+    expect(status.args).toEqual({ bookId: '7' });
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  // MERGE, not just fallback: a resume that DOES supply an arg overrides that key while an untouched
+  // recorded key survives — "current wins per-key", never a wholesale replace.
+  it('a resume that supplies SOME args merges them OVER the recorded set (current wins per-key)', async () => {
+    const spec = wf([n('A', [], ['a.txt']), n('B', ['a.txt'], ['b.txt'])]);
+    const outDir = await tmpOut();
+    await runWorkflow(compile(spec), {
+      run: 'h', outDir, args: { lessonId: 'kp', mode: 'fast' }, buildCommand: stubBuilder(),
+    });
+
+    const { status } = await runWorkflow(compile(spec), {
+      run: 'h', outDir, from: 'b', until: 'b', rerunNodes: new Set(['b']),
+      args: { lessonId: 'kp2' }, buildCommand: stubBuilder(),
+    });
+
+    expect(status.args).toEqual({ lessonId: 'kp2', mode: 'fast' });
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
+// ── node-RECORD persistence across a rerun that HALTS before it ever executes (BUG B, generalized) ────────
+// Live-observed alongside the args clobber: a `node --rerun` target's seeded record is written to
+// `.pi/run.json` BEFORE the resume preflight runs — so when that preflight HALTS (a missing upstream
+// artifact, `--rerun`'s existing frozen-upstream contract), the target's PRIOR real record (artifacts/
+// duration/summary from its last successful attempt) is already overwritten with a blank
+// `{ artifacts: [], issues: [] }` stub, even though `runNode` never ran this attempt and nothing on disk
+// actually changed. A failed rerun must not falsify the untouched node's history — carry its prior record
+// forward (status still `pending`, honestly reflecting "not run this attempt") exactly as a `reused` node
+// already does, so only a REAL re-execution (via `finishNode`) ever overwrites it.
+describe('runWorkflow — a rerunNodes target PRESERVES its prior record across a preflight HALT (never blanks to 0 artifacts)', () => {
+  it('keeps the target\'s prior ok record (artifacts/duration/summary) when the halt fires before it ever re-executes', async () => {
+    const spec = wf([n('A', [], ['a.txt']), n('B', ['a.txt'], ['b.txt'])]);
+    const outDir = await tmpOut();
+    const { status: first } = await runWorkflow(compile(spec), { run: 'k', outDir, buildCommand: stubBuilder() });
+    const priorB = first.nodes.b;
+    expect(priorB.status).toBe('ok');
+    expect(priorB.artifacts.length).toBeGreaterThan(0); // sanity: a real prior record, not a stub
+
+    // Delete the UPSTREAM artifact (A) so the `--from` preflight HALTS before B's `--rerun` ever executes.
+    await fs.rm(path.join(outDir, 'a.txt'));
+    const { status } = await runWorkflow(compile(spec), {
+      run: 'k', outDir, from: 'b', until: 'b', rerunNodes: new Set(['b']), buildCommand: stubBuilder(),
+    });
+
+    expect(status.nodes.__resume__).toBeDefined(); // confirms the halt actually fired
+
+    // THE fix: B's own record — never re-executed THIS attempt — still carries its PRIOR real data instead
+    // of a blank stub (the live-observed "0/0 artifacts" bug), while honestly reporting `pending` (not `ok`
+    // — it did NOT run this attempt).
+    expect(status.nodes.b.status).toBe('pending');
+    expect(status.nodes.b.artifacts).toEqual(priorB.artifacts);
+    expect(status.nodes.b.durationMs).toBe(priorB.durationMs);
+    expect(status.nodes.b.summary).toBe(priorB.summary);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});

@@ -597,6 +597,13 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   // accumulated-clock baseline below. Null on a fresh run (or a template swap), so neither carry fires.
   const prior = await loadPriorStatus(outDir, wf.meta.name);
 
+  // ARGS PERSISTENCE (BUG B): `status.args` is an OUT-OF-BAND record (optimize/substrate's measure stage,
+  // `node --rerun`'s own recorded-args fallback) — a resume invoked with no/fewer `--arg`s than the run
+  // originally recorded must never overwrite that record with `{}`/a partial set. Merge the CURRENT
+  // invocation's args OVER the prior recorded ones (current wins per-key, an untouched key survives) —
+  // never a wholesale replace. A fresh run has no prior ⇒ no-op (byte-identical to `opts.args ?? {}`).
+  if (prior?.args) ctx.status.args = { ...prior.args, ...(opts.args ?? {}) };
+
   // Seed the digest. A node in a `--from`-skipped stage is `reused`. WITHIN the selected window, the
   // journal decides each node: `reused` (skip exec) vs `pending` (run). The run loop below skips any
   // `reused` lane, so a later-stage node the journal proved unchanged is reused even if an earlier stage
@@ -607,12 +614,22 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
   // the identity from the current wf + forcing `reused`) instead of blanking it. The resume preflight below
   // re-stats its artifacts. Without a usable prior record (fresh run / pending-or-running prior) we seed the
   // empty record as before. This is what stops a rerun from "falsifying" the untouched prefix's data.
+  //
+  // The SAME carry-forward also covers a `node --rerun` TARGET (`opts.rerunNodes`, seeded `pending` below):
+  // this `writeStatus` (a few lines down) publishes the seed BEFORE the resume preflight runs, so a preflight
+  // HALT (a missing frozen-upstream artifact — `--rerun`'s existing contract) that fires before `runNode` ever
+  // executes this attempt must not falsify the target's history to a blank `{ artifacts: [], issues: [] }`
+  // stub (live-observed: a failed `--rerun` "0/0 artifacts, 0s" — the exact args-clobber symptom, generalized
+  // to the whole node record). `status` stays the seeded value (`pending` — honestly "not run this attempt"),
+  // never re-stamped `reused`; a REAL re-execution still fully overwrites this record via `finishNode`, so a
+  // successful rerun (and every non-rerun `pending` node, which has no prior to carry) is untouched.
   const seedNode = (id: string, status: NodeStatusRecord['status']): void => {
     const n = wf.nodes[id];
     const base = { id, label: n.label, ...(n.agentType ? { agentType: n.agentType } : {}) };
-    const priorRec = status === 'reused' ? prior?.nodes[id] : undefined;
+    const isRerunTarget = status === 'pending' && (opts.rerunNodes?.has(id) ?? false);
+    const priorRec = status === 'reused' || isRerunTarget ? prior?.nodes[id] : undefined;
     if (priorRec && priorRec.status !== 'pending' && priorRec.status !== 'running') {
-      ctx.status.nodes[id] = { ...priorRec, ...base, status: 'reused' };
+      ctx.status.nodes[id] = { ...priorRec, ...base, status };
     } else {
       ctx.status.nodes[id] = { ...base, status, artifacts: [], issues: [] };
     }
