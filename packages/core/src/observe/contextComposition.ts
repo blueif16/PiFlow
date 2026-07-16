@@ -23,6 +23,7 @@
 import fssync from 'node:fs';
 import { createHash } from 'node:crypto';
 import { readNodeObserveEvents } from '../runner/pi-session.js';
+import { CHECK_KINDS, escapeRegex } from '../checks.js';
 import type { ScopeKind } from './runView.js';
 
 /** pi's per-call read page: ~2000 lines / 50 KB. A no-offset read of a file under BOTH is whole-file. */
@@ -68,7 +69,15 @@ export interface ContextOp {
   preview?: string;            // bounded plaintext (reuse existing PREVIEW_CAP); opt-in
   ok: boolean;
   errorType?: string;
+  /** (op-integrity WS-I4) The IN-TURN STAGING BACKSTOP verdict — set only when a `readContract` entry
+   *  matches this read's path (by basename): does the file's ON-DISK content contain the declared marker
+   *  RIGHT NOW (checked at trace-build time, not run time)? Absent when no contract matches this path. */
+  contract?: { marker: string; ok: boolean };
 }
+
+/** (op-integrity WS-I4) One declared per-path content-marker contract — the in-turn staging backstop
+ *  (design doc §"the in-turn staging blind spot" option b). Mirrors `NodeIO.readContract` (types.ts). */
+export interface ReadContractEntry { path: string; marker: string }
 
 export interface NodeComposition {
   injectedBytes: number;       // staged prompt.md size
@@ -107,6 +116,10 @@ export interface ContextBuildCtx {
   manifest: ReadsManifest | null;
   /** opt-in: attach a bounded `preview` to each read op (kept off by default so the view stays lean). */
   includePreview?: boolean;
+  /** (op-integrity WS-I4) The node's declared `readContract` (`node.io.readContract`, mirrored via
+   *  `NodeConfig.readContract`) — checked against each matching read's on-disk bytes. Undefined/empty ⇒ no
+   *  op ever carries a `contract` field (byte-identical to today). */
+  readContract?: ReadContractEntry[];
 }
 
 interface RawEvent {
@@ -334,6 +347,29 @@ export function buildNodeContext(runDir: string, nodeId: string, ctx: ContextBui
     coverageByPath.set(p, coverageForPath(ranges, meta.lines, meta.bytes));
   }
 
+  // (op-integrity WS-I4) The IN-TURN STAGING BACKSTOP: for every distinct successfully-read path that
+  // matches a declared `readContract` entry BY BASENAME, check the file's CURRENT on-disk bytes for the
+  // marker — reusing the `regex-present` predicate (CHECK_KINDS, checks.ts) so this is NOT a parallel
+  // engine. Checked NOW (at trace-build time), not at run time — the point is to catch a staging producer
+  // that ran INSIDE the model's turn, invisible to `op[].expect`. Absent `readContract` ⇒ an empty map, so
+  // no op ever gains a `contract` field (byte-identical to today).
+  const contractByPath = new Map<string, { marker: string; ok: boolean }>();
+  if (ctx.readContract?.length) {
+    for (const p of rangesByPath.keys()) {
+      const entry = ctx.readContract.find((e) => baseName(e.path) === baseName(p));
+      if (!entry) continue;
+      let bytes: string | null;
+      try {
+        bytes = fssync.readFileSync(p, 'utf8');
+      } catch {
+        bytes = null;
+      }
+      const file = { bytes, size: bytes != null ? Buffer.byteLength(bytes, 'utf8') : 0 };
+      const r = CHECK_KINDS['regex-present'](file, escapeRegex(entry.marker));
+      contractByPath.set(p, { marker: entry.marker, ok: r.ok });
+    }
+  }
+
   const context: ContextOp[] = [];
 
   // seq 0 — the FORCE-INJECTED prompt.md (the staged context the model always receives, whole).
@@ -386,6 +422,7 @@ export function buildNodeContext(runDir: string, nodeId: string, ctx: ContextBui
       ok: rec.ok,
       ...(rec.errorType ? { errorType: rec.errorType } : {}),
       ...(rec.preview ? { preview: rec.preview } : {}),
+      ...(rec.path && READ_OPS.has(rec.toolName) && contractByPath.has(rec.path) ? { contract: contractByPath.get(rec.path)! } : {}),
     };
     context.push(op);
   }

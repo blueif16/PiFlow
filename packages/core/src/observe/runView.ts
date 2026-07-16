@@ -560,6 +560,9 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
         promptText: readTextSafe(path.join(runDir, '.pi', 'nodes', id, 'prompt.md')),
         promptPath: path.join(runResolved, '.pi', 'nodes', id, 'prompt.md'),
         manifest: readManifestSafe(path.join(runDir, '.pi', 'nodes', id, 'reads-manifest.json')),
+        // (op-integrity WS-I4) the node's mirrored `readContract` (NodeConfig, stamped by buildNodeConfig) —
+        // absent on a node with none, so the marker backstop is a no-op there (byte-identical to today).
+        readContract: node.config?.readContract,
       });
       if (nc.context.length) node.context = nc.context;
       node.composition = nc.composition;

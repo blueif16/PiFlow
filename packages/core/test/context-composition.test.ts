@@ -239,3 +239,72 @@ describe('emitReadsManifest — the ONE new collection (run-time sha)', () => {
     expect(Object.keys(manifest)).not.toContain('ls'); // bash is not a read
   });
 });
+
+// (op-integrity WS-I4) The IN-TURN STAGING BACKSTOP: a per-path content-marker contract (`readContract`,
+// declared on `node.io`, mirrored to `ContextBuildCtx`) checked against the file's ON-DISK bytes when the
+// trace element tree is built — the design doc's motivating incident (a bash script staged persona.md INSIDE
+// the model's turn; a cache miss silently dropped the `required_kp_ids` block; op[].expect cannot see
+// in-turn staging at all). This is the safety net: it fires on the traced READ regardless of who produced
+// the file.
+describe('buildNodeContext — the readContract marker backstop (op-integrity WS-I4)', () => {
+  /** Stage a tmp run with ONE real on-disk file at `<tmp>/run/<basename>` and a single successful `read`
+   *  event over it, then build the node context with the given `readContract` declaration. */
+  async function buildWithContract(
+    basename: string,
+    fileContent: string,
+    readContract: { path: string; marker: string }[] | undefined,
+  ): Promise<NodeContext> {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'ctxcontract-'));
+    const RUN = path.join(tmp, 'run');
+    await fs.mkdir(RUN, { recursive: true });
+    const abs = path.join(RUN, basename);
+    await fs.writeFile(abs, fileContent);
+    const nodeDir = path.join(tmp, '.pi', 'nodes', 'plan');
+    await fs.mkdir(nodeDir, { recursive: true });
+    const events = [
+      JSON.stringify({ type: 'tool_execution_start', toolName: 'read', toolCallId: 'a', args: { path: abs }, _t: 1 }),
+      JSON.stringify({ type: 'tool_execution_end', toolCallId: 'a', result: { content: [{ type: 'text', text: fileContent }] }, isError: false, _t: 2 }),
+    ].join('\n') + '\n';
+    await fs.writeFile(path.join(nodeDir, 'events.jsonl'), events);
+    return buildNodeContext(tmp, 'plan', {
+      displayPath: makeDisplayPath(RUN, tmp),
+      scopeOf: (a, dp) => (a === RUN || a.startsWith(RUN + '/') ? 'run' : scopeKind(dp)),
+      promptText: null,
+      promptPath: null,
+      manifest: null,
+      readContract,
+    });
+  }
+
+  it('marks a read whose on-disk content CONTAINS the declared marker as a PASSING contract', async () => {
+    const { context } = await buildWithContract(
+      'persona.md',
+      'persona body\nrequired_kp_ids: [1,2,3]\n',
+      [{ path: 'persona.md', marker: 'required_kp_ids' }],
+    );
+    const op = context.find((o) => o.op === 'read')!;
+    expect(op.contract).toEqual({ marker: 'required_kp_ids', ok: true });
+  });
+
+  it('marks a read whose on-disk content is MISSING the declared marker as a FAILING contract — the silent in-turn corruption case', async () => {
+    const { context } = await buildWithContract(
+      'persona.md',
+      'persona body with nothing required\n',
+      [{ path: 'persona.md', marker: 'required_kp_ids' }],
+    );
+    const op = context.find((o) => o.op === 'read')!;
+    expect(op.contract).toEqual({ marker: 'required_kp_ids', ok: false });
+  });
+
+  it('a read whose path has NO declared contract entry carries no `contract` field at all', async () => {
+    const { context } = await buildWithContract('persona.md', 'anything', [{ path: 'other.md', marker: 'x' }]);
+    const op = context.find((o) => o.op === 'read')!;
+    expect(op.contract).toBeUndefined();
+  });
+
+  it('with NO readContract declared at all, no op carries a `contract` field (byte-identical to today)', async () => {
+    const { context } = await buildWithContract('persona.md', 'anything', undefined);
+    const op = context.find((o) => o.op === 'read')!;
+    expect(op.contract).toBeUndefined();
+  });
+});

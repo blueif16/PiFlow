@@ -106,6 +106,13 @@ export interface NodeConfig {
    * node" straight off config. Omitted when the node has no gates/actions/checkpoint. See `summarizeGates`.
    */
   gates?: GateSummary;
+  /**
+   * (op-integrity WS-I4) The IN-TURN STAGING BACKSTOP contract (`node.io.readContract`) — a per-path
+   * content-marker declaration, mirrored verbatim so the observe path (`buildNodeContext`) can check it
+   * post-hoc against a node's traced reads without re-reading the compiled NodeSpec. Omitted when the node
+   * declares no contract.
+   */
+  readContract?: { path: string; marker: string }[];
 }
 
 /**

@@ -1172,6 +1172,9 @@ export function buildNodeConfig(node: NodeSpec): NodeConfig {
   // the node has no gates/actions/checkpoint (minimal-slice rule) so a gate-less node's slice is unchanged.
   const gates = summarizeGates(node);
   if (gates) cfg.gates = gates;
+  // (op-integrity WS-I4) The in-turn staging backstop contract, mirrored so `buildNodeContext` (observe path)
+  // can check it post-hoc without re-reading the compiled NodeSpec. Omitted when the node declares none.
+  if (node.io.readContract?.length) cfg.readContract = node.io.readContract; // types.ts: NodeIO.readContract
   return cfg;
 }
 
