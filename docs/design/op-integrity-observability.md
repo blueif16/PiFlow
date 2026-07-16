@@ -62,29 +62,36 @@ engine:
 
 ```jsonc
 // OpSpec.expect?: IntegrityExpectation[]  +  OpSpec.resultFile?: "persona.manifest.json"
+// DEFAULT — the simplest sufficient check: "did the staged file exist and get content?"
 { "kind": "file-exists",          "path": "persona.md" }
-{ "kind": "min-bytes",            "path": "persona.md", "param": 200000 }   // the silently-empty 205 KB persona
-// PREFERRED (structured) — assert over the op's resultFile MANIFEST, never over the artifact's prose:
+{ "kind": "min-bytes",            "path": "persona.md", "param": 200000 }   // the silently-empty 205 KB persona — caught here
+// STRUCTURED — only when the result IS structured and its integrity genuinely needs it:
 { "kind": "json-parses",          "path": "persona.manifest.json" }
-{ "kind": "json-pointer-exists",  "path": "persona.manifest.json", "param": { "pointer": "/required_kp_ids" } }  // the vanished block, as manifest data
-{ "kind": "json-pointer-equals",  "path": "persona.manifest.json", "param": { "pointer": "/ok", "value": true } }
 { "kind": "json-schema",          "path": "persona.manifest.json", "param": { "schema": { "type": "object", "required": ["required_kp_ids"] } } }
-// LAST RESORT — regex over opaque prose whose producer we do NOT control:
-{ "kind": "contains-marker",      "path": "persona.md", "param": "required_kp_ids" }
+// LOAD-BEARING FIELD ONLY — a pointer/marker assert couples the flow to a file internal, so reserve it for a
+// field the flow genuinely depends on (never for decoration):
+{ "kind": "json-pointer-exists",  "path": "persona.manifest.json", "param": { "pointer": "/required_kp_ids" } }  // the vanished block, as manifest data
+{ "kind": "contains-marker",      "path": "persona.md", "param": "required_kp_ids" }  // last resort: opaque prose we don't control
 ```
 
-- **The predicate vocabulary (updated — the center of gravity is STRUCTURED DATA, not text-matching).** `file-exists`
-  → `exists`; `min-bytes` → `non-empty` (extended to honor a numeric byte FLOOR, back-compat: no param ⇒ `>0`);
-  `contains-marker` → `regex-present` (escaped literal); `json-parses` already exists; and the added structured
-  predicates: `json-pointer-exists` (an RFC-6901 pointer resolves to a present, non-empty-array value),
-  `json-pointer-equals` (pointer resolve + deep-equal), and `json-schema` (validate the parsed file against an inline
-  `param.schema` via ajv — already a `@piflow/core` dep — through the runner's injected `SchemaValidator` seam). All
-  are pure — per the [[default-profile-programmatic-gates-only]] law, integrity is PROGRAMMATIC only.
-- **The three checking LAYERS, in order of preference for a result WE author** (encode the cheapest that could fail):
-  **(0) exit-code** — the op body's own non-zero exit (already routed via `onFailure`); **(1) the MANIFEST** —
-  `json-pointer-exists` / `json-pointer-equals` / `json-schema` over the op's `resultFile` (structured, robust to
-  reformatting, self-describing); **(2) `contains-marker`** — regex over opaque prose, the LAST RESORT for an artifact
-  whose producer we don't control. `min-bytes` / `file-exists` are the coarse file-shape floor beneath all three.
+- **SIMPLICITY LAW — the DEFAULT is the simplest sufficient check.** Reach FIRST for `file-exists` / `non-empty` /
+  `min-bytes` ("does the staged file exist and have content"). An exact-marker string or a deep json-pointer COUPLES
+  the flow to the file's internals — change the file and you must change the flow — the maintenance trap this system
+  exists to avoid. So do NOT push authors toward content assertions by default; keep the richer predicates for where
+  the contract genuinely demands them.
+- **The checking LADDER (default → escalate only as the contract demands):** **(0) op exit-code** — the body's own
+  non-zero exit (already routed via `onFailure`); **(1) `file-exists` / `non-empty` / `min-bytes`** — the DEFAULT
+  file-shape floor; **(2) `json-parses` / `json-schema`** — on a result that IS structured, when its shape matters;
+  **(3) `json-pointer-*` / `contains-marker`** — a specific field/marker assert, ONLY for a LOAD-BEARING contract
+  field the flow depends on, NEVER for decoration (`contains-marker` last, for opaque prose from a producer we don't
+  control). The manifest convention (§2.5) is how you STAY at the cheap end when a result is structured: assert the
+  manifest's shape, not the artifact's prose.
+- **The predicate vocabulary.** `file-exists` → `exists`; `min-bytes` → `non-empty` (extended to honor a numeric byte
+  FLOOR, back-compat: no param ⇒ `>0`); `contains-marker` → `regex-present` (escaped literal); `json-parses` already
+  exists; `json-pointer-exists` (an RFC-6901 pointer resolves to a present, non-empty-array value); `json-pointer-equals`
+  (pointer resolve + deep-equal); `json-schema` (validate the parsed file against an inline `param.schema` via ajv —
+  already a `@piflow/core` dep — through the runner's injected `SchemaValidator` seam). All are pure — per the
+  [[default-profile-programmatic-gates-only]] law, integrity is PROGRAMMATIC only.
 - **Default consequence = `warn`** (an author may set `onFailure:'block'`). The incident's real gate already blocked
   correctly; the missing thing was a LOUD, EARLY, correctly-labelled signal at the point of corruption. `expect`
   produces EVIDENCE (the `opFailures` philosophy — evidence for triage, never an auto-issue) surfaced as a WARN row.
@@ -103,19 +110,22 @@ instead of formatting stderr, and distills its structured content (e.g. the fail
 `detail`. The raw path rides the envelope so verbs can open it. Because triage already reads `opFailures[0].detail`
 (`triage.ts:61`), it then reads the VERDICT for free — same field, correct content.
 
-### 2.5 · The MANIFEST convention (structured-first — the design-upgrade centerpiece)
+### 2.5 · The MANIFEST convention (how to stay CHEAP when a result IS structured)
 
-An op that **stages or assembles** an artifact should EMIT a structured JSON **manifest** declaring what it produced —
-the ids it pulled, the sources, per-block presence flags, char/byte counts — and name it as the op's `resultFile`.
-`expect` then targets **the manifest** (`json-pointer-exists` / `json-pointer-equals` / `json-schema`), *never* a regex
-over the artifact's own prose. The manifest is the op's own account of its work, so an assertion over it is robust to
-reformatting, self-documenting, and reads back as the failure `detail` for free (via §2). Concretely, the incident's
-staging script emits `persona.manifest.json` = `{ "ok": true, "required_kp_ids": [7 ids], "chars": 205123, … }`; the
-`expect` asserts `json-pointer-exists /required_kp_ids` (the block is present as DATA) + `json-schema` (shape) — and the
-empty-cache-read failure surfaces as `required_kp_ids absent` at the pre-op, not a stderr WARNING.
+This is NOT "always assert content" — it is how you HONOR the ladder's simplicity law when a check genuinely must go
+structured. When an op **stages or assembles** an artifact AND a load-bearing field's integrity truly needs checking,
+prefer having the op EMIT a small JSON **manifest** (its own account of what it produced — ids, sources, per-block
+presence flags, char/byte counts) as its `resultFile`, and assert over **the manifest** (`json-schema` for shape;
+`json-pointer-exists` for one load-bearing field), *never* a regex over the artifact's own prose. The manifest is the
+op's structured self-report, so an assertion over it is robust to reformatting and reads back as the failure `detail`
+for free (via §2). Concretely: for most staging, `min-bytes` on the artifact is enough (default); ONLY if a specific
+required block is load-bearing does the staging script emit `persona.manifest.json` =
+`{ "ok": true, "required_kp_ids": [7 ids], "chars": 205123, … }` and the `expect` add `json-pointer-exists
+/required_kp_ids` — so the empty-cache-read surfaces as `required_kp_ids absent` at the pre-op, not a stderr WARNING.
 
-- **Precedence.** exit-code (0) → manifest json-pointer/json-schema (1) → `contains-marker` (2, last resort). Reach for
-  `contains-marker` ONLY when the artifact is opaque prose from a producer we do not control (no manifest is possible).
+- **Precedence (mirrors the §1 ladder).** exit-code → `min-bytes`/`file-exists` (default) → `json-parses`/`json-schema`
+  (structured shape) → `json-pointer-*` / `contains-marker` (a load-bearing field only). Reach for `contains-marker`
+  ONLY when the artifact is opaque prose from a producer we do not control (no manifest is possible).
 - **`json-schema`.** Validates the manifest (or any JSON result) against an inline `param.schema` through the runner's
   already-resolved `SchemaValidator` (ajv, a `@piflow/core` dep). Kept a *pure* predicate: the validator is injected
   (like the file reader), never imported into the predicate; a `param.schemaPath` is resolved to an object by the runner

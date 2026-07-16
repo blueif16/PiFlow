@@ -228,11 +228,13 @@ export type ActionBody =
 
 /**
  * (op-integrity §1) The integrity-facing vocabulary an `OpSpec.expect` entry declares. Each maps onto a
- * `CheckKind` predicate (op-integrity, the manifest convention): `file-exists`→`exists`, `min-bytes`→`non-empty`
- * (byte floor), `contains-marker`→`regex-present` (escaped literal), `json-parses`/`json-pointer-*`/`json-schema`
- * map to their same-named predicates. The RECOMMENDED predicates for a structured result are `json-pointer-*` +
- * `json-schema` over the op's `resultFile` MANIFEST; `contains-marker` is the LAST RESORT for opaque prose whose
- * producer we do not control (never the first tool for a result we author). */
+ * `CheckKind` predicate: `file-exists`→`exists`, `min-bytes`→`non-empty` (byte floor), `contains-marker`→
+ * `regex-present` (escaped literal), `json-parses`/`json-pointer-*`/`json-schema` to their same-named predicates.
+ * SIMPLICITY LADDER (default → escalate only as the contract demands): the DEFAULT is the simplest sufficient
+ * check — `file-exists`/`min-bytes` ("did the staged file exist and get content"); `json-parses`/`json-schema`
+ * for a result that IS structured; `json-pointer-*`/`contains-marker` ONLY for a LOAD-BEARING field the flow
+ * depends on (a pointer/marker couples the flow to a file internal — never for decoration). `contains-marker`
+ * is the last resort for opaque prose from a producer we do not control. */
 export type IntegrityKind =
   | 'file-exists'          // → exists: the written file is present
   | 'min-bytes'            // → non-empty (byte floor): the file is ≥ `param` bytes (the silently-empty 205 KB persona)

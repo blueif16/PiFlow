@@ -417,16 +417,18 @@ export const nodeSchema = {
         onFailure: { $ref: '#/$defs/policyAction', description: 'Consequence of THIS op failing (and of an `expect` violation). Default block for the body; an `expect` violation defaults to warn unless this is set to block.' },
         idempotent: { type: 'boolean', description: 'Skip when outputs fresh. Default true.' },
         note: { type: 'string', description: 'OPTIONAL author rationale (ignored at load) — records WHY this op exists.' },
-        // (op-integrity §1/§2) Deterministic post-conditions + the structured-verdict pointer. MANIFEST CONVENTION:
-        // an op that stages/assembles an artifact should EMIT a JSON manifest (its `resultFile`) declaring what it
-        // produced (ids · sources · per-block presence · char counts), and target `expect` at THE MANIFEST via
-        // json-pointer/json-schema — never regex over the artifact's prose (that is `contains-marker`, the last resort).
+        // (op-integrity §1/§2) Deterministic post-conditions + the structured-verdict pointer. SIMPLICITY LADDER:
+        // the DEFAULT integrity check is the simplest sufficient one — file-exists/non-empty/min-bytes ("did the
+        // staged file exist and get content"). Escalate to json-parses/json-schema only for a structured result, and
+        // to json-pointer/contains-marker ONLY for a load-bearing field (a pointer/marker couples the flow to a file
+        // internal — never for decoration). The MANIFEST convention (an op emits a JSON resultFile it then asserts
+        // over) is how you stay cheap when a structured field genuinely must be checked — not "always assert content".
         expect: {
           type: 'array',
-          description: 'Integrity post-conditions checked AFTER this op runs, over its writes. Default consequence warn (set onFailure:block to block). Reuses the check predicates; programmatic-only. Recommended: json-pointer/json-schema over the resultFile manifest.',
+          description: 'Integrity post-conditions checked AFTER this op runs, over its writes. Default consequence warn (set onFailure:block to block). Reuses the check predicates; programmatic-only. DEFAULT to file-exists/min-bytes; use json-parses/json-schema for structured results and json-pointer/contains-marker ONLY for a load-bearing field.',
           items: { $ref: '#/$defs/integrityExpectation' },
         },
-        resultFile: { type: 'string', minLength: 1, description: "Run-relative path to this op's STRUCTURED verdict — by convention a JSON manifest. On failure the runner builds the op-failure detail from THIS file (not stderr), and json-pointer/json-schema `expect`s target it." },
+        resultFile: { type: 'string', minLength: 1, description: "Run-relative path to this op's STRUCTURED verdict — by convention a JSON manifest. On failure the runner builds the op-failure detail from THIS file (not stderr), and json-schema/json-pointer `expect`s can target it when a structured field is load-bearing." },
         // The four bodies stay permissive (the loader/runner read body-specific params). EXACTLY ONE present.
         transform: { type: 'object', description: 'DERIVE — seed/project/merge/promote/projectRegistry (discriminated by kind).' },
         run: { type: 'object', description: 'ACT — a deterministic shell/fn side-effect. Never an LLM.' },
@@ -456,9 +458,9 @@ export const nodeSchema = {
     },
     integrityExpectation: {
       // (op-integrity §1) ONE integrity post-condition on an op's write(s). The integrity-facing `kind` vocabulary
-      // aliases the check predicates. LAYERS, in order of preference for a result WE author: exit-code (the op body,
-      // layer 0) → the MANIFEST (json-pointer-exists / json-pointer-equals / json-schema over the resultFile, layer 1)
-      // → contains-marker (regex over opaque prose whose producer we don't control, the LAST RESORT).
+      // aliases the check predicates. SIMPLICITY LADDER (default → escalate only as the contract demands):
+      // (0) op exit-code → (1) file-exists/non-empty/min-bytes DEFAULT → (2) json-parses/json-schema for a structured
+      // result → (3) json-pointer-*/contains-marker for a LOAD-BEARING field only (contains-marker last, opaque prose).
       type: 'object',
       additionalProperties: false,
       required: ['kind'],
@@ -466,7 +468,7 @@ export const nodeSchema = {
         kind: {
           type: 'string',
           minLength: 1,
-          description: 'file-exists | min-bytes | contains-marker | json-parses | json-pointer-exists | json-pointer-equals | json-schema. Prefer the structured (json-*) kinds over contains-marker.',
+          description: 'file-exists | min-bytes | contains-marker | json-parses | json-pointer-exists | json-pointer-equals | json-schema. DEFAULT to file-exists/min-bytes; escalate to json-*/pointer only as the contract demands.',
         },
         path: { type: 'string', minLength: 1, description: "The write to check, run-relative. Omit ⇒ each of the op's `writes` in turn." },
         param: { description: 'Kind-specific: a byte floor (min-bytes), a literal marker (contains-marker), { pointer } / { pointer, value } (json-pointer-*), or { schema } inline / { schemaPath } run-relative (json-schema).' },
