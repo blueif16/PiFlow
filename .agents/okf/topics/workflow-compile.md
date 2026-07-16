@@ -36,7 +36,7 @@ WORKFLOWSPEC → DAG (topo-order)
 - `packages/core/src/dag.ts:212` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
 - `packages/core/src/dag.ts:82` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
 - `packages/core/src/dag.ts:118` — `stagesOf` — longest-path topological stages (parallel lanes per level)
-- `packages/core/src/types.ts:1180` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
+- `packages/core/src/types.ts:1231` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the compiled `Workflow`/`NodeSpec`/`Stage`/`Edge` shapes all live in `packages/core/src/types.ts` (1026/17/1011/1019), NOT in dag.ts — dag.ts only computes them. This card is the STATIC compile spine carved out of the former `runtime-core`; the DYNAMIC exec spine (DAG → one pi per node → artifacts) is the sibling `runner` slice, and they meet at the `Workflow` object. `loadTemplate` is async (returns a `Promise<WorkflowSpec>`).
@@ -140,6 +140,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `df59fb0` 2026-07-09 — fix(core): make a judge gate's REJECT actually re-run its producer
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
+- `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
 
 ### Lessons — memory cluster
 
@@ -200,7 +201,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 4 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-list-profiles.test.ts`, `packages/cli/test/run.test.ts`
-- `NodeSpec` (packages/core/src/types.ts:17) — 12 callers in `packages/core/src/runner/command.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; tests: `packages/core/test/command-session.test.ts`, `packages/core/test/warm-resume-l1.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 16 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; tests: `packages/core/test/op-codec-roundtrip.test.ts`
 
-<sub>derived 2026-07-15 · arc=84 commits · files=5 · lessons=49</sub>
+<sub>derived 2026-07-16 · arc=85 commits · files=5 · lessons=49</sub>
 <!-- okf:auto-end -->

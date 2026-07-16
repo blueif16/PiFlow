@@ -30,7 +30,19 @@ describe('op-codec-roundtrip — the op[] envelope is a LOSSLESS codec profile',
       { when: 'pre', reads: ['{{RUN}}/spec/request.json'] },
       { when: 'pre', writes: ['spec/seed.json'], transform: { kind: 'seed', from: '{{WORKSPACE}}/seed.json' } },
       { when: 'pre', gate: { kind: 'json-parses', path: 'spec/request.json' }, onFailure: 'block' },
-      { when: 'post', writes: ['out/report.json'], run: { cmd: 'node', args: ['lint.mjs'] }, onFailure: 'warn' },
+      // (op-integrity WS-I0) an op carrying `expect` + `resultFile` must round-trip LOSSLESSLY — the codec's whole
+      // point. If markersFromNode/emit/parse ever whitelisted op fields, these two would drop and this reddens.
+      {
+        when: 'post',
+        writes: ['out/report.json'],
+        run: { cmd: 'node', args: ['lint.mjs'] },
+        onFailure: 'warn',
+        resultFile: 'out/report.manifest.json',
+        expect: [
+          { kind: 'min-bytes', path: 'out/report.json', param: 1024 },
+          { kind: 'json-pointer-equals', path: 'out/report.manifest.json', param: { pointer: '/ok', value: true } },
+        ],
+      },
       { when: 'on-failure', action: { kind: 'escalate', via: 'deep', evidence: ['out/report.json'] } },
     ];
 

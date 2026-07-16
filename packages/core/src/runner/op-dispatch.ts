@@ -110,10 +110,14 @@ export function gatesFromOp(op: OpSpec[] | undefined): { pre: Check[]; post: Che
   return out;
 }
 
-/** A dispatchable top-level `run` op: a `{cmd}` body that fires in a POST-ish lane, plus its failure consequence. */
+/** A dispatchable top-level `run` op: a `{cmd}` body that fires in a POST-ish lane, plus its failure consequence.
+ *  (op-integrity WS-I2) `id`/`resultFile` ride so a failing run op can build its `detail` from the structured
+ *  verdict file (the gate ledger) instead of the first stderr line. */
 export interface RunnableOp {
   body: { cmd: string; args?: string[]; cwd?: string };
   onFailure: OnFailure;
+  id?: string;
+  resultFile?: string;
 }
 /** A `run` op the runner has NO executor for — surfaced (never silently dropped) via `opFailures` (fail-loud). */
 export interface RejectedRunOp {
@@ -189,7 +193,7 @@ export function runOpsFromOp(op: OpSpec[] | undefined): { runnable: RunnableOp[]
     } else if (!dispatchableWhen) {
       rejected.push({ detail: `run op '${body.cmd}' with when:'${o.when}' has no executor (only post/always/on-success run)`, onFailure });
     } else {
-      runnable.push({ body: { cmd: body.cmd, args: body.args, cwd: body.cwd }, onFailure });
+      runnable.push({ body: { cmd: body.cmd, args: body.args, cwd: body.cwd }, onFailure, id: o.id, resultFile: o.resultFile });
     }
   }
   return { runnable, rejected };

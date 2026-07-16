@@ -231,5 +231,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadRunView` (gui/src/data/runView.ts:176) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 15 callers in `packages/cli/src/watch.ts`, `packages/cli/src/telemetry.ts`, `tui/model.mjs`, `packages/server/src/handlers.ts` +3 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/watch.test.ts` +1
 
-<sub>derived 2026-07-15 · arc=97 commits · files=8 · lessons=61</sub>
+<sub>derived 2026-07-16 · arc=97 commits · files=8 · lessons=61</sub>
 <!-- okf:auto-end -->

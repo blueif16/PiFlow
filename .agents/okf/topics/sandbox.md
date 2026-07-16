@@ -255,5 +255,5 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:255) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-15 · arc=98 commits · files=8 · lessons=59</sub>
+<sub>derived 2026-07-16 · arc=98 commits · files=8 · lessons=59</sub>
 <!-- okf:auto-end -->

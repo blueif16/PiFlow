@@ -137,5 +137,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-15 · arc=53 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-16 · arc=53 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

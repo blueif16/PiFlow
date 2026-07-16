@@ -212,6 +212,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `f4a959d` 2026-07-15 — fix(observe): backfill a 0-usage events.jsonl from pi's native session
+- `37ce71b` 2026-07-15 — refactor(observe): extract pi native-session locate+transcode into runner/pi-session
+- `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
 
 ### Lessons — memory cluster
 
@@ -239,5 +241,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 
-<sub>derived 2026-07-15 · arc=152 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-16 · arc=154 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

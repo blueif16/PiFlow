@@ -17,7 +17,7 @@ import { defaultSecretResolver } from '../types.js';
 import { verifyToolBinding } from '../tools/verify.js';
 import { preflightScriptTools, isScriptToolAddress } from '../tools/script-discover.js';
 import { markersFromNode, emitMarkers } from '../contract.js';
-import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } from '../checks.js';
+import { effectiveChecks, evaluateChecks, actionForVerdict, opIntegrityFailures, distillResultFile, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
@@ -649,7 +649,19 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // a merge `run` op's non-zero exit is DISCARDED (the `runMerge` return is dropped); now it routes — a
     // `block`/`stop` op blocks the node, a `warn` op surfaces an issue but stays ok. Collected here, applied
     // in the status ladder below. The legacy `ops`/`op` executors are reused UNCHANGED; only the exit is read.
-    const opFailures: { detail: string; onFailure: OnFailure }[] = [];
+    // (op-integrity WS-I1/I2) The op-failure entry gains `integrity?` (the expect verdicts) + `resultFile?` (the
+    // structured verdict path — WS-I2 builds `detail` from it on a run-op failure instead of the stderr line).
+    const opFailures: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[] = [];
+    // A file reader rooted at the run dir — hoisted above the run loop so the WS-I1 integrity pass reuses the
+    // SAME reader the post-node checks use (below), reading the exact bytes the node will actually see (jail-correct).
+    const readBytes = (rel: string): FileBytes => {
+      try {
+        const absPath = path.resolve(ctx.outDir, rel);
+        return { bytes: readFileSync(absPath, 'utf8'), size: statSync(absPath).size };
+      } catch {
+        return { bytes: null, size: 0 };
+      }
+    };
     if (killed === null && result.code === 0) {
       // project: derive from a FROZEN source JSON read once (graceful no-op on an authoring-only spec).
       for (const rawOp of derived.projects) {
@@ -680,20 +692,31 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // derive/side-effect step (the now-authorable Hook.run). Reuse the merge executor's `run` impl, then
       // route a non-zero exit through the op's `onFailure` (default 'block').
       const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
-      for (const { body, onFailure } of runOps.runnable) {
+      for (const { body, onFailure, id, resultFile } of runOps.runnable) {
         // The body resolves at dispatch like the sibling merge/promote specs — merge.ts's own sub() handles
         // only {project}, so a raw {{WORKSPACE}} cwd joins literally under the project base → spawnSync ENOENT.
         const rb = resolveDeep({ cmd: body.cmd, args: body.args, cwd: body.cwd }, resolveCtx) as { cmd: string; args?: string[]; cwd?: string };
         const r = await applyMergeOp({ run: rb }, ctx.outDir);
         if (r.failed) {
-          // include r.skipped — the spawn-error branch (res.error: ENOENT/EAGAIN/EPERM) reports THERE, not in
-          // exit/stderr; without it the issue reads a causeless "run npm failed" (live: w3a count-three-e2e-1)
-          opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure });
+          // (op-integrity WS-I2) When the op declares a `resultFile` (its structured verdict/ledger), build the
+          // detail from THAT file's content — the gate's real verdict — instead of the first stderr line; the raw
+          // path rides the envelope. Else the legacy stderr-derived detail (include r.skipped — the spawn-error
+          // branch reports THERE, not in exit/stderr; else a causeless "run npm failed", live: w3a count-three-e2e-1).
+          const detail = resultFile
+            ? `op ${id ?? '?'} failed — ${distillResultFile(resultFile, readBytes(resultFile).bytes)}`
+            : `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`;
+          opFailures.push({ detail, onFailure, ...(resultFile ? { resultFile } : {}) });
         }
       }
       // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant,
       // or a cmd-less body) is surfaced as an op failure here — never the old silent `continue` that dropped it.
       for (const rej of runOps.rejected) opFailures.push(rej);
+      // (op-integrity WS-I1) After the run loop, evaluate each op's `expect` post-conditions over its writes —
+      // the JAIL-CORRECT integrity contract (the check runs where the op ran, over the bytes the node will read).
+      // A violation is EVIDENCE on this same opFailures channel (default consequence warn); reuses the check
+      // engine via `opIntegrityFailures` (the shared pass the no-pi lane calls too). `ctx.validateSchema` seeds
+      // the `json-schema` predicate; absent ⇒ that predicate degrades to pass (never a false breach).
+      opFailures.push(...opIntegrityFailures(node.op, readBytes, { validate: ctx.validateSchema }));
     }
 
     // VERIFY by host-stat (run.mjs: a node is `ok` only if its declared artifacts exist on disk).
@@ -718,14 +741,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
 
     // DECLARATIVE INTEGRITY CHECKS (explicit ∪ the auto fill-sentinel completeness check) folded through
     // the verdict→action POLICY (detection ⊥ consequence). A failed check at block severity is a breach.
-    const readBytes = (rel: string): FileBytes => {
-      try {
-        const absPath = path.resolve(ctx.outDir, rel);
-        return { bytes: readFileSync(absPath, 'utf8'), size: statSync(absPath).size };
-      } catch {
-        return { bytes: null, size: 0 };
-      }
-    };
+    // (`readBytes` is hoisted above the run loop — the WS-I1 op-integrity pass reuses it.)
     const checkResults = evaluateChecks(
       effectiveChecks(node.io.checks, node.io.fillSentinel, node.io.artifacts.map((a) => a.path)),
       readBytes,

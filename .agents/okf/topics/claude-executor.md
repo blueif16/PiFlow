@@ -129,6 +129,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `059b071` 2026-07-14 — feat(core): record idle-watchdog actions into the node event stream
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
+- `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
 
 ### Lessons — memory cluster
 
@@ -174,5 +175,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-15 · arc=56 commits · files=5 · lessons=33</sub>
+<sub>derived 2026-07-16 · arc=57 commits · files=5 · lessons=33</sub>
 <!-- okf:auto-end -->

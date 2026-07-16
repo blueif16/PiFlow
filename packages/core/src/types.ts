@@ -155,6 +155,21 @@ export interface OpSpec {
   /** OPTIONAL author rationale for this op — IGNORED at load (rides verbatim, never rendered). The one place
    * to record WHY a gate/run exists, since node.json is otherwise strict (additionalProperties:false). */
   note?: string;
+  /**
+   * (op-integrity §1) Deterministic post-conditions checked by the runner AFTER this op's body runs, over the
+   * op's `writes` (or each expectation's explicit `path`) — the JAIL-CORRECT integrity contract (the check runs
+   * where the op runs, over the bytes the node will actually read). REUSES the CHECK_KINDS predicate family (no
+   * parallel engine); PROGRAMMATIC-only (never an LLM). A violation is EVIDENCE on the `opFailures` channel;
+   * default consequence `warn` (loud+early+correctly-labelled), an author may set this op's `onFailure:'block'`.
+   * Absent ⇒ no integrity pass (byte-identical to today). */
+  expect?: IntegrityExpectation[];
+  /**
+   * (op-integrity §2) Run-relative path to this op's STRUCTURED verdict — by convention a JSON MANIFEST the op
+   * emits declaring what it produced (ids · sources · per-block presence · char counts). On failure the runner
+   * distills THIS file's content into the op-failure `detail` instead of the first stderr line, and `expect`
+   * assertions target it (json-pointer / json-schema) rather than regex over an artifact's prose. Absent ⇒ the
+   * legacy stderr-derived detail. */
+  resultFile?: string;
 
   // EXACTLY ONE body (the discriminator; the loader rejects a multi-body op — the `mergeHook` oneOf precedent):
   /** DERIVE — declarative data transform (seed/project/merge/promote/projectRegistry). */
@@ -210,6 +225,38 @@ export type ActionBody =
   | { kind: 'escalate'; via: string; evidence?: string[] }
   | { kind: 'notify'; channel: string; payload?: string[] }
   | { kind: 'rerouteTo'; node: string; max: number; evidence?: string[] };
+
+/**
+ * (op-integrity §1) The integrity-facing vocabulary an `OpSpec.expect` entry declares. Each maps onto a
+ * `CheckKind` predicate: `file-exists`→`exists`, `min-bytes`→`non-empty` (byte floor), `contains-marker`→
+ * `regex-present` (escaped literal), `json-parses`/`json-pointer-*`/`json-schema` to their same-named predicates.
+ * SIMPLICITY LADDER (default → escalate only as the contract demands): the DEFAULT is the simplest sufficient
+ * check — `file-exists`/`min-bytes` ("did the staged file exist and get content"); `json-parses`/`json-schema`
+ * for a result that IS structured; `json-pointer-*`/`contains-marker` ONLY for a LOAD-BEARING field the flow
+ * depends on (a pointer/marker couples the flow to a file internal — never for decoration). `contains-marker`
+ * is the last resort for opaque prose from a producer we do not control. */
+export type IntegrityKind =
+  | 'file-exists'          // → exists: the written file is present
+  | 'min-bytes'            // → non-empty (byte floor): the file is ≥ `param` bytes (the silently-empty 205 KB persona)
+  | 'contains-marker'      // → regex-present: the literal `param` string appears (LAST RESORT — opaque prose)
+  | 'json-parses'          // → json-parses: the file is valid JSON
+  | 'json-pointer-exists'  // → json-pointer-exists: `param.pointer` resolves to a present, non-empty-array value
+  | 'json-pointer-equals'  // → json-pointer-equals: `param.pointer` resolves and deep-equals `param.value`
+  | 'json-schema';         // → json-schema: the file validates against `param.schema` (inline) or `param.schemaPath`
+
+/**
+ * (op-integrity §1) One deterministic integrity post-condition on an op's write(s). `path` names the target
+ * (relative to the run dir); omit it to check EACH of the op's `writes` in turn. `param` is kind-specific: a
+ * byte floor (`min-bytes`), a literal marker (`contains-marker`), `{ pointer }` / `{ pointer, value }` (the
+ * json-pointer kinds), or `{ schema }` inline / `{ schemaPath }` run-relative (`json-schema`). Pure/programmatic. */
+export interface IntegrityExpectation {
+  /** The predicate (see IntegrityKind). An unknown kind degrades to a warn (skipped), like any check. */
+  kind: IntegrityKind | string;
+  /** The write to check, run-relative. Omit ⇒ the check runs once per entry in the op's `writes`. */
+  path?: string;
+  /** Kind-specific parameter (byte floor · marker string · `{ pointer[, value] }` · `{ schema | schemaPath }`). */
+  param?: unknown;
+}
 
 // 6 ── HUMAN CHECKPOINT (G5 — HITL) ────────────────────────────────────────────
 
@@ -353,13 +400,17 @@ export interface ArtifactReq {
 /** A pure predicate kind run over a single artifact's bytes. Unknown kinds degrade to a warn (skip). */
 export type CheckKind =
   | 'exists'        // the file is present
-  | 'non-empty'     // size > 0
+  | 'non-empty'     // size ≥ param (a numeric byte floor; default > 0) — the `min-bytes` integrity kind rides this
   | 'regex-absent'  // param (a regex string) does NOT match (e.g. an unfilled <FILL:> sentinel is gone)
   | 'regex-present' // param matches
   | 'json-parses'   // the bytes are valid JSON
   | 'field-present' // param (a dotted path) resolves to a non-null value in the parsed JSON
   | 'count-floor'   // param { path, min }: the array at `path` has ≥ `min` items
-  | 'fenced-tail';  // param { lang?, field?, minItems? }: the last fenced block parses and has ≥ minItems
+  | 'fenced-tail'   // param { lang?, field?, minItems? }: the last fenced block parses and has ≥ minItems
+  // ── structured-data predicates (op-integrity · manifest convention) — assert over parsed JSON, never prose ──
+  | 'json-pointer-equals' // param { pointer, value }: the RFC-6901 pointer resolves and deep-equals `value`
+  | 'json-pointer-exists' // param { pointer } | pointer-string: the pointer resolves to a present, non-empty-array value
+  | 'json-schema';        // param { schema } (inline JSON-Schema): the parsed bytes validate against it (ajv, injected)
 
 /** The outcome of one check. `pass` is clean; otherwise the check's `severity`. */
 export type Verdict = 'pass' | 'warn' | 'fail';
