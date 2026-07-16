@@ -45,8 +45,8 @@ DISTILL (rich per-node reducer)
 - `packages/core/src/observe/models.ts:66` — `contextWindowFor()` — pi-native context-window stamp
 RUNVIEW (the contract + builder + the SHARED assembly)
 - `packages/core/src/observe/runView.ts:445` — `buildRunView()` — superset run-view (replays events, prefers workflow.json DAG, stamps deriveNode)
-- `packages/core/src/observe/runView.ts:319` — `nodeTokenSpine()` — the `rec.usage`-first-vs-event-replay token precedence (the AgentDriver seam — Thrust 3)
-- `packages/core/src/observe/runView.ts:380` — `assembleNode()` — the whole per-node build (reads/writes/tokens/spine), then `node.derived = deriveNode(node)` — SHARED by buildRunView + watchRun
+- `packages/core/src/observe/runView.ts:346` — `nodeTokenSpine()` — the `rec.usage`-first-vs-event-replay token precedence (the AgentDriver seam — Thrust 3)
+- `packages/core/src/observe/runView.ts:407` — `assembleNode()` — the whole per-node build (reads/writes/tokens/spine), then `node.derived = deriveNode(node)` — SHARED by buildRunView + watchRun
 - `packages/core/src/observe/types.ts:142` — `RunModel` — the shared snapshot contract (stages+edges+nodes)
 - `packages/core/src/observe/types.ts:177` — the `node-enriched` `RunUpdate` kind (the FULL node delta — must also be in cli/remote.ts RUN_UPDATE_KINDS)
 DERIVE (the display projection) + STRUCTURE (parity)

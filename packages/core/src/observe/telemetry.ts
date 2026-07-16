@@ -91,7 +91,7 @@ export interface NodeDigest {
   issues: string[];
   /** (A1) op[] action failures on their DEDICATED TYPED channel — decision-grade evidence a triage/fixer
    *  reads WITHOUT grepping the `issues[]` string (op failures leave that bucket entirely). Absent when none. */
-  opFailures?: { detail: string; onFailure: OnFailure }[];
+  opFailures?: { detail: string; onFailure: OnFailure; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
   /** which thresholds this node tripped (the per-node anomaly kinds). */
   anomalies: AnomalyKind[];
   // (turn-dissection) reasoning-effort — RECORD-mode-only (a projection over events.jsonl on disk); absent
@@ -185,7 +185,7 @@ interface NodeMetrics {
   issues: string[];
   /** (A1) op[] action failures on their DEDICATED TYPED channel — carried through the projection so the digest
    *  surfaces op failures as evidence without an `issues[]` grep. Absent when the node ran no failing op. */
-  opFailures?: { detail: string; onFailure: OnFailure }[];
+  opFailures?: { detail: string; onFailure: OnFailure; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
   // (turn-dissection) RECORD-mode-only — see NodeDigest. Absent/undefined ⇒ no turn data (never anomalous).
   turns?: TurnRecord[];
   totalThinkChars?: number;

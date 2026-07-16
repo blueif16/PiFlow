@@ -17,7 +17,7 @@ import { defaultSecretResolver } from '../types.js';
 import { verifyToolBinding } from '../tools/verify.js';
 import { preflightScriptTools, isScriptToolAddress } from '../tools/script-discover.js';
 import { markersFromNode, emitMarkers } from '../contract.js';
-import { effectiveChecks, evaluateChecks, actionForVerdict, type FileBytes } from '../checks.js';
+import { effectiveChecks, evaluateChecks, actionForVerdict, opIntegrityFailures, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
@@ -642,7 +642,19 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // a merge `run` op's non-zero exit is DISCARDED (the `runMerge` return is dropped); now it routes — a
     // `block`/`stop` op blocks the node, a `warn` op surfaces an issue but stays ok. Collected here, applied
     // in the status ladder below. The legacy `ops`/`op` executors are reused UNCHANGED; only the exit is read.
-    const opFailures: { detail: string; onFailure: OnFailure }[] = [];
+    // (op-integrity WS-I1) The op-failure entry gains `integrity?` (the expect verdicts) — extended here so the
+    // integrity pass below can record it. (WS-I2 adds `resultFile?` + the file-derived detail.)
+    const opFailures: { detail: string; onFailure: OnFailure; integrity?: { kind: string; ok: boolean; detail: string }[] }[] = [];
+    // A file reader rooted at the run dir — hoisted above the run loop so the WS-I1 integrity pass reuses the
+    // SAME reader the post-node checks use (below), reading the exact bytes the node will actually see (jail-correct).
+    const readBytes = (rel: string): FileBytes => {
+      try {
+        const absPath = path.resolve(ctx.outDir, rel);
+        return { bytes: readFileSync(absPath, 'utf8'), size: statSync(absPath).size };
+      } catch {
+        return { bytes: null, size: 0 };
+      }
+    };
     if (killed === null && result.code === 0) {
       // project: derive from a FROZEN source JSON read once (graceful no-op on an authoring-only spec).
       for (const rawOp of derived.projects) {
@@ -687,6 +699,12 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant,
       // or a cmd-less body) is surfaced as an op failure here — never the old silent `continue` that dropped it.
       for (const rej of runOps.rejected) opFailures.push(rej);
+      // (op-integrity WS-I1) After the run loop, evaluate each op's `expect` post-conditions over its writes —
+      // the JAIL-CORRECT integrity contract (the check runs where the op ran, over the bytes the node will read).
+      // A violation is EVIDENCE on this same opFailures channel (default consequence warn); reuses the check
+      // engine via `opIntegrityFailures` (the shared pass the no-pi lane calls too). `ctx.validateSchema` seeds
+      // the `json-schema` predicate; absent ⇒ that predicate degrades to pass (never a false breach).
+      opFailures.push(...opIntegrityFailures(node.op, readBytes, { validate: ctx.validateSchema }));
     }
 
     // VERIFY by host-stat (run.mjs: a node is `ok` only if its declared artifacts exist on disk).
@@ -711,14 +729,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
 
     // DECLARATIVE INTEGRITY CHECKS (explicit ∪ the auto fill-sentinel completeness check) folded through
     // the verdict→action POLICY (detection ⊥ consequence). A failed check at block severity is a breach.
-    const readBytes = (rel: string): FileBytes => {
-      try {
-        const absPath = path.resolve(ctx.outDir, rel);
-        return { bytes: readFileSync(absPath, 'utf8'), size: statSync(absPath).size };
-      } catch {
-        return { bytes: null, size: 0 };
-      }
-    };
+    // (`readBytes` is hoisted above the run loop — the WS-I1 op-integrity pass reuses it.)
     const checkResults = evaluateChecks(
       effectiveChecks(node.io.checks, node.io.fillSentinel, node.io.artifacts.map((a) => a.path)),
       readBytes,

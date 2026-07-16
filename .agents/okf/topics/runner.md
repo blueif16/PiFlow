@@ -33,7 +33,7 @@ PER-NODE RUNNER EXEC
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
 - `packages/core/src/runner/node-lifecycle.ts:490` — artifact host-stat — a node is `ok` only if its declared artifacts exist
-- `packages/core/src/runner/node-lifecycle.ts:1190` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
+- `packages/core/src/runner/node-lifecycle.ts:1197` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode`/`finishNode` no longer live in `packages/core/src/runner/runner.ts` (the §2.1 split moved the per-node lifecycle to `packages/core/src/runner/node-lifecycle.ts`; runner.ts only re-exports them) — the stage loop is the run-level concern in runner.ts, the per-node concern is in node-lifecycle.ts. This is the DYNAMIC exec spine carved out of the former `runtime-core`; its static sibling (`workflow-compile`) ends at the compiled `Workflow`, which is exactly where this slice begins. Threads that cross this spine each have their own slice: `sandbox` (the jail runNode creates), `per-node-routing-and-fusion` (the model on the pi command), `node-action-protocol` (the gates between exec and finish).

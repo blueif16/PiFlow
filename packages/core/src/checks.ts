@@ -6,7 +6,7 @@
 // lastFencedBlock). A check NEVER judges GOODNESS — `count-floor` asserts "≥N items EXIST", never
 // "the items are good"; the human-judged quality bar lives in the criteria fixture, not here.
 
-import type { Check, Verdict, Policy, PolicyAction, FailureClass, RetrySpec, IntegrityExpectation } from './types.js';
+import type { Check, Verdict, Policy, PolicyAction, FailureClass, RetrySpec, IntegrityExpectation, OpSpec, OnFailure } from './types.js';
 import type { SchemaValidator } from './runner/schema.js';
 
 /** A file as read for a check: its bytes (null = unreadable/absent) and size. */
@@ -262,6 +262,60 @@ export function evaluateChecks(checks: Check[], read: (path: string) => FileByte
     const r = fn(file, c.param, opts);
     return { kind: c.kind, path: c.path ?? null, verdict: r.ok ? 'pass' : severity, reason: r.reason, severity };
   });
+}
+
+/** One op's integrity violation, in the shape the runner pushes onto its `opFailures` channel (op-integrity §1/§2).
+ *  `integrity` carries EVERY expect verdict for the op (ok + failing); `detail` summarizes the FAILING ones. */
+export interface IntegrityFailure {
+  detail: string;
+  onFailure: OnFailure;
+  integrity: { kind: string; ok: boolean; detail: string }[];
+}
+
+/**
+ * (op-integrity WS-I1) Evaluate every op's `expect` post-conditions over its writes — the SINGLE, pure home for
+ * the integrity pass (both the pi lane `node-lifecycle.ts` and the no-pi lane `node-lanes.ts` call this; the
+ * OKF DRIFT NOTE requires those parallel run-op loops to move together). Each expectation is aliased to a
+ * CHECK_KIND via `integrityToCheck` and run through `evaluateChecks` (no parallel engine). An expectation with
+ * no `path` fans out over the op's `writes`. `json-schema` resolves a `param.schemaPath` via the SAME injected
+ * reader before the pure predicate runs. Returns ONE entry per op that has ≥1 FAILING expectation (a fully
+ * passing op is SILENT); the consequence is the op's `onFailure` DEFAULTING TO `warn` (loud+early, not block).
+ */
+export function opIntegrityFailures(ops: OpSpec[] | undefined, read: (path: string) => FileBytes, opts?: EvaluateOpts): IntegrityFailure[] {
+  const out: IntegrityFailure[] = [];
+  for (const o of ops ?? []) {
+    if (!o.expect?.length) continue;
+    const pairs: { kind: string; path: string; check: Check }[] = [];
+    for (const exp of o.expect) {
+      const targets = exp.path ? [exp.path] : o.writes ?? [];
+      for (const rel of targets) {
+        let ex = exp;
+        if (exp.kind === 'json-schema') {
+          const pr = (exp.param ?? {}) as { schema?: unknown; schemaPath?: string };
+          if (pr.schema == null && typeof pr.schemaPath === 'string') {
+            const sf = read(pr.schemaPath);
+            let schemaObj: unknown = null;
+            try {
+              schemaObj = sf.bytes != null ? JSON.parse(sf.bytes) : null;
+            } catch {
+              schemaObj = null;
+            }
+            ex = { ...exp, param: { schema: schemaObj } };
+          }
+        }
+        pairs.push({ kind: String(exp.kind), path: rel, check: integrityToCheck(ex, rel) });
+      }
+    }
+    if (!pairs.length) continue;
+    const results = evaluateChecks(pairs.map((p) => p.check), read, opts);
+    const integrity = results.map((r, i) => ({ kind: pairs[i].kind, ok: r.verdict === 'pass', detail: `${pairs[i].path}: ${r.reason}` }));
+    const failing = integrity.filter((v) => !v.ok);
+    if (!failing.length) continue; // a fully-passing op is silent
+    const onFailure: OnFailure = o.onFailure ?? 'warn';
+    const label = failing.map((v) => `${v.kind} ${v.detail}`).join('; ');
+    out.push({ detail: `op ${o.id ?? '?'} integrity — ${label}`, onFailure, integrity });
+  }
+  return out;
 }
 
 /**
