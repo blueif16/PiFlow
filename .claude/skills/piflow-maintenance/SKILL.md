@@ -111,10 +111,26 @@ interface OpSpec {
   reads?; writes?;    // files read/written — fold into DAG edge inference (+ pre-op reads fold into the prompt)
   onFailure?;         // 'block' | 'warn' | 'stop' | 'retry' | 'escalate'                (default 'block')
   idempotent?;        // skip when outputs fresh                                          (default true)
+  expect?;            // IntegrityExpectation[] — deterministic post-conditions over this op's writes (below)
+  resultFile?;        // run-relative path to this op's structured verdict (below)
   // EXACTLY ONE body (the discriminator — a multi-body op is rejected at load):
   transform?; run?; gate?; action?;
 }
 ```
+
+**`expect`/`resultFile` — op-level integrity, ON TOP of `onFailure`.** `expect?: IntegrityExpectation[]`
+declares deterministic post-conditions the runner checks AFTER the op's body runs, over the op's `writes` (or
+each expectation's explicit `path`) — jail-correct (checked where the op ran, over the bytes the node will
+actually read). Kinds: `file-exists` · `min-bytes` · `contains-marker` · `json-parses` · `json-schema` ·
+`json-pointer-exists` · `json-pointer-equals`. **Default consequence is `warn`** (evidence on the `opFailures`
+channel with an `integrity: {kind,ok,detail}[]` entry), never auto-block — set this op's `onFailure:'block'` to
+escalate. **The simplicity ladder (reach for the cheapest sufficient check; never default to a content assert):**
+(0) op exit code (already routed via `onFailure`) → (1) `file-exists`/`min-bytes` — the DEFAULT file-shape floor
+→ (2) `json-parses`/`json-schema` — only when the result IS structured → (3) `json-pointer-*`/`contains-marker`
+— ONLY for a LOAD-BEARING field the flow genuinely depends on, never for decoration (a pointer/marker couples
+the flow to a file's internals). `resultFile?: string` names a run-relative structured verdict (e.g. a manifest
+or gate ledger); on that op's failure the runner distills `detail` from THIS file's content instead of the first
+stderr line. Ground truth: `docs/design/op-integrity-observability.md`.
 
 The four **bodies** (an op is exactly one of them):
 

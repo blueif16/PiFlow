@@ -40,6 +40,10 @@ Run everything from the product repo. Runs live under `.piflow/<wf>/runs/<id>` (
 
 Live monitoring variants: `telemetry --watch` (stream then record), `status --every <s>`.
 
+An `op FAILED`/`op warn` row may carry an `integrity` entry (a failed `expect` predicate) and a `resultFile`
+path (the op's structured verdict) — when set, the row's `detail` is already distilled from that file's
+content, not the first stderr line, so read the row as the real verdict.
+
 ## The performance-forensics ladder (default reading order)
 1. **`telemetry <rundir>`** (no nodeId) — the run-level rollup: which node holds the time/tokens/anomalies.
 2. **`telemetry <rundir> <nodeId>`** — read the per-turn table and RANK the sinks before forming any theory
