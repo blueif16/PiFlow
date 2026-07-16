@@ -1011,7 +1011,15 @@ export function runFailureReport(status: RunResult['status'], runDir: string): s
     for (const issue of n.issues ?? []) lines.push(`  ✗ ${n.id}: ${issue}`);
     // (A1) op[] action failures ride their OWN typed channel (not `issues[]`) — print them too so the human
     // still sees the op cause on the terminal (a blocking op failure blocked the node with an empty issues list).
-    for (const f of n.opFailures ?? []) lines.push(`  ✗ ${n.id}: op ${f.onFailure === 'warn' ? 'warn' : 'FAILED'} — ${f.detail}`);
+    // (op-integrity WS-I3) A `warn`-consequence entry (the DEFAULT for an `expect` integrity violation — loud,
+    // early, but non-blocking) gets its OWN icon (⚠), never the block ✗ — so a human scanning the report can
+    // tell "evidence recorded" from "this is why the node blocked" at a glance. `f.detail` already carries the
+    // op's structured verdict (the ledger content, WS-I2's distillResultFile) instead of the first stderr line
+    // whenever the op declares a `resultFile` — this render layer never re-derives or overrides that content.
+    for (const f of n.opFailures ?? []) {
+      const icon = f.onFailure === 'warn' ? '⚠' : '✗';
+      lines.push(`  ${icon} ${n.id}: op ${f.onFailure === 'warn' ? 'warn' : 'FAILED'} — ${f.detail}`);
+    }
   }
   lines.push(`  → inspect: piflowctl status ${runDir}`);
   return lines.join('\n');

@@ -219,6 +219,36 @@ describe('triage — the four-way projector', () => {
     expect(d.evidence.join('\n')).toContain('exit 3'); // the op-failure detail reached the fixer's evidence
   });
 
+  // (op-integrity WS-I5) THE priority fix: a declared `resultFile` ledger's structured `integrity[]`
+  // verdicts must reach the fixer's evidence as a NAMED check — not just embedded prose inside `detail` —
+  // exactly the "answer_in_choices" gate blocker the design doc's incident names. Also pins the `resultFile`
+  // path itself as evidence (a verb can open the ledger directly).
+  it('an opFailure carrying `integrity[]` (a resultFile ledger verdict) names the FAILING CHECK as its own evidence entry', () => {
+    const scores: NodeScore[] = [{
+      node: 'verify', tier0: { anomalies: ['failed'], disqualified: true, reason: 'failed' }, abstained: false, scalar: 0,
+      tier1: null,
+    }];
+    const nd = {
+      ...nodeDigest('verify', []),
+      opFailures: [{
+        detail: 'op verify failed — ledger/verify/output.json — ok=false · failing: answer_in_choices: choice not in options',
+        onFailure: 'block' as const,
+        resultFile: 'ledger/verify/output.json',
+        integrity: [{ kind: 'answer_in_choices', ok: false, detail: 'choice not in options' }],
+      }],
+    } as NodeDigest;
+    const digest = digestWith([{ failed: 'verify', earliestUpstream: 'verify', viaPath: '', chain: ['verify'] }], [nd]);
+    const [d] = triage(scores, digest);
+    expect(d.bucket).toBe('FUNCTIONALITY');
+    const evidence = d.evidence.join('\n');
+    // the failing CHECK is a named evidence entry (not merely substring-present inside the flattened detail).
+    expect(d.evidence).toContain('check:answer_in_choices choice not in options');
+    // the raw ledger path rides evidence too, so the fixer can open the structured verdict directly.
+    expect(evidence).toContain('resultFile:ledger/verify/output.json');
+    // still never the stderr noise (this op-failure entry never carried any — regression guard).
+    expect(evidence).not.toMatch(/MCP client unavailable|\[kp_cache\]/);
+  });
+
   it('a bare structural failure with NO recorded issue text still defaults to LAPSE (no regression)', () => {
     // Same shape as the "defaults to LAPSE" test above, but now digest.nodes carries an entry with NO
     // structural-signal text — proves the new reader does not over-fire on an unrelated/empty issues list.

@@ -117,3 +117,48 @@ describe('renderDigest — run-level worklist: the mega-think icon', () => {
     expect(out).toMatch(/Θ\s+mega-think\s+gameplay/);
   });
 });
+
+// (op-integrity WS-I3) The per-node ops table — id · exit · duration · integrity verdict — sourced from
+// `NodeDigest.ops` (every DISPATCHED run op, pass or fail; distinct from `opFailures`, which is failing-only).
+describe('renderDigest — node detail: the per-node ops table', () => {
+  it('renders one row per op: id · exit · duration · a "pass" verdict when no integrity failed', () => {
+    const d = rdigest([
+      ndigest({
+        id: 'plan',
+        ops: [{ id: 'stage', exit: 0, durationMs: 1234 }],
+      }),
+    ]);
+    const out = renderDigest(d, 'plan');
+    expect(out).toMatch(/ops \(1\):/);
+    expect(out).toMatch(/stage\s+0\s+1\.2s\s+-/); // no `expect` declared ⇒ the verdict column shows "-", not blank
+  });
+
+  it('names the FAILING check kind in the verdict column — never a raw stderr line', () => {
+    const d = rdigest([
+      ndigest({
+        id: 'verify',
+        ops: [{
+          id: 'gate',
+          exit: 1,
+          durationMs: 500,
+          integrity: [{ kind: 'answer_in_choices', ok: false, detail: 'output.json: choice not in options' }],
+        }],
+      }),
+    ]);
+    const out = renderDigest(d, 'verify');
+    expect(out).toMatch(/gate\s+1\s+0\.5s\s+FAIL answer_in_choices/);
+    expect(out).not.toMatch(/MCP client unavailable|\[kp_cache\]/);
+  });
+
+  it('shows PASS when every declared integrity verdict passed', () => {
+    const d = rdigest([
+      ndigest({ id: 'n', ops: [{ id: 'stage', exit: 0, durationMs: 10, integrity: [{ kind: 'min-bytes', ok: true, detail: 'persona.md: 500 bytes' }] }] }),
+    ]);
+    expect(renderDigest(d, 'n')).toMatch(/stage\s+0\s+0\.0s\s+PASS min-bytes/);
+  });
+
+  it('omits the ops table when the node dispatched no run op (empty array, not just undefined)', () => {
+    const out = renderDigest(rdigest([ndigest({ id: 'n', ops: [] })]), 'n');
+    expect(out).not.toMatch(/ops \(/);
+  });
+});

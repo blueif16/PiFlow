@@ -48,12 +48,18 @@ const covStr = (op: ContextOp): string => {
   if (!isRead(op) && op.op !== 'inject') return '—';
   return op.coverage == null ? `?(${op.covered})` : `${Math.round(op.coverage * 100)}%(${op.covered})`;
 };
+/** (op-integrity WS-I4) the readContract marker verdict, when a declared contract matched this read —
+ *  `✓ <marker>` (present) / `✗ <marker> missing` — the in-turn staging backstop, rendered so it never
+ *  hides behind coverage/sha (which only prove BYTES arrived, not that the REQUIRED content was among them). */
+const contractStr = (op: ContextOp): string => (op.contract ? (op.contract.ok ? `✓ ${op.contract.marker}` : `✗ ${op.contract.marker} missing`) : '');
 
-/** One `context` row: seq · op · displayPath · range · coverage(covered) · sha-short · via(toolCallId|inject). */
+/** One `context` row: seq · op · displayPath · range · coverage(covered) · sha-short · via(toolCallId|inject)
+ *  · the readContract marker verdict when declared (blank otherwise — byte-identical layout to today). */
 function opRow(op: ContextOp): string {
   const via = op.toolCallId ?? 'inject';
-  return `  ${pad(op.seq, 3)} ${pad(op.op, 6)} ${pad(op.displayPath, 40)} ${pad(rangeStr(op), 9)} ` +
+  const base = `  ${pad(op.seq, 3)} ${pad(op.op, 6)} ${pad(op.displayPath, 40)} ${pad(rangeStr(op), 9)} ` +
     `${pad(covStr(op), 14)} ${pad(shortSha(op.sha256), 8)} ${via}`;
+  return op.contract ? `${base}  ${contractStr(op)}` : base;
 }
 
 /** The `composition` roll-up block — injectedBytes, advertised, the `advertisedUnread` BLIND-SPOT, partialReads. */

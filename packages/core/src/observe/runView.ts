@@ -113,8 +113,13 @@ export interface RunViewNode {
   summary?: string;
   issues?: string[];
   /** (A1) op[] action failures on their DEDICATED TYPED channel — carried verbatim from the record so an
-   *  op failure stays VISIBLE in the observe surface even though it left `issues[]` entirely. Absent when none. */
-  opFailures?: { detail: string; onFailure: OnFailure }[];
+   *  op failure stays VISIBLE in the observe surface even though it left `issues[]` entirely. Absent when none.
+   *  (op-integrity WS-I1/I2) `resultFile?`/`integrity?` ride verbatim too — kept in sync with
+   *  `NodeStatusRecord.opFailures` (status.ts) so a verb reading THIS field sees the same verdict content. */
+  opFailures?: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
+  /** (op-integrity WS-I3) Every DISPATCHED run op — pass or fail — carried verbatim from `NodeStatusRecord.ops`
+   *  (status.ts); the telemetry per-node ops table's source. Absent when the node dispatched no run op. */
+  ops?: { id: string; exit?: number; durationMs?: number; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
   stageIndex?: number;
   lane?: number;
   /**
@@ -300,7 +305,10 @@ interface RunJsonNode {
   summary?: string; issues?: string[];
   /** (A1) op[] action failures on their DEDICATED TYPED channel (NodeStatusRecord.opFailures) — read off
    *  `.pi/run.json` and carried onto the wire node so an op failure stays visible after leaving `issues[]`. */
-  opFailures?: { detail: string; onFailure: OnFailure }[];
+  opFailures?: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
+  /** (op-integrity WS-I3) Every DISPATCHED run op — pass or fail (NodeStatusRecord.ops) — read off
+   *  `.pi/run.json` and carried onto the wire node for the telemetry per-node ops table. */
+  ops?: { id: string; exit?: number; durationMs?: number; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
   config?: NodeConfig;
   /** the effective model recorded on the node (fallback when message events carried none — e.g. Claude). */
   model?: string | null;
@@ -458,6 +466,7 @@ export function assembleNode(
     loopScore: rich.loopScore, // (P6) consecutive-repeat loop signal, folded from the reducer.
     summary: rec.summary, issues: rec.issues || [],
     ...(rec.opFailures ? { opFailures: rec.opFailures } : {}), // (A1) typed op-failure channel → observe surface
+    ...(rec.ops ? { ops: rec.ops } : {}), // (op-integrity WS-I3) per-op execution record → the telemetry ops table
     ...(checkpoint ? { checkpoint } : {}),
   };
   // Compute the DISPLAY zones ONCE, from the assembled node's own fields (tokens/tools/timeline/context/
@@ -551,6 +560,9 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
         promptText: readTextSafe(path.join(runDir, '.pi', 'nodes', id, 'prompt.md')),
         promptPath: path.join(runResolved, '.pi', 'nodes', id, 'prompt.md'),
         manifest: readManifestSafe(path.join(runDir, '.pi', 'nodes', id, 'reads-manifest.json')),
+        // (op-integrity WS-I4) the node's mirrored `readContract` (NodeConfig, stamped by buildNodeConfig) —
+        // absent on a node with none, so the marker backstop is a no-op there (byte-identical to today).
+        readContract: node.config?.readContract,
       });
       if (nc.context.length) node.context = nc.context;
       node.composition = nc.composition;

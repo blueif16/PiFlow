@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { opIntegrityFailures, type FileBytes } from '../src/checks.js';
+import { opIntegrityFailures, evaluateOpExpect, type FileBytes } from '../src/checks.js';
 import { compile } from '../src/index.js';
 import { runWorkflow } from '../src/runner/index.js';
 import type { OpSpec, NodeIntent, WorkflowSpec } from '../src/types.js';
@@ -20,6 +20,37 @@ const tmpOut = (): Promise<string> => fs.mkdtemp(path.join(os.tmpdir(), 'piflow-
 function reader(files: Record<string, string>): (p: string) => FileBytes {
   return (p) => (p in files ? { bytes: files[p], size: Buffer.byteLength(files[p]) } : { bytes: null, size: 0 });
 }
+
+// (op-integrity WS-I3) evaluateOpExpect — the per-op ALL-VERDICTS evaluator (opIntegrityFailures' sibling):
+// where opIntegrityFailures returns ONE entry per op with ≥1 failing expectation (silent on full-pass, the
+// opFailures-channel shape), evaluateOpExpect returns EVERY verdict for ONE op (pass + fail) — the source the
+// telemetry per-node ops table (rec.ops[].integrity) needs, since a clean op's integrity must still show
+// "pass", not be silently absent from the table.
+describe('evaluateOpExpect — every verdict for ONE op (pass + fail), the ops-table source', () => {
+  it('returns [] for an op with no expect declared', () => {
+    expect(evaluateOpExpect({ id: 'r', run: { cmd: 'x' } }, reader({}))).toEqual([]);
+  });
+
+  it('returns a PASSING verdict (ok:true) for a satisfied expectation — NOT silent like opIntegrityFailures', () => {
+    const op: OpSpec = { id: 'stage', writes: ['persona.md'], expect: [{ kind: 'min-bytes', path: 'persona.md', param: 5 }] };
+    const out = evaluateOpExpect(op, reader({ 'persona.md': 'plenty of bytes here' }));
+    expect(out).toEqual([{ kind: 'min-bytes', ok: true, detail: expect.stringContaining('persona.md') }]);
+  });
+
+  it('returns a FAILING verdict for a violated expectation, matching opIntegrityFailures\' own per-entry shape', () => {
+    const op: OpSpec = { id: 'stage', writes: ['persona.md'], expect: [{ kind: 'min-bytes', path: 'persona.md', param: 200000 }] };
+    const out = evaluateOpExpect(op, reader({ 'persona.md': '' }));
+    expect(out).toEqual([{ kind: 'min-bytes', ok: false, detail: expect.stringContaining('persona.md') }]);
+  });
+
+  it('fans an unpathed expectation over the op writes (mirrors opIntegrityFailures\' fan-out)', () => {
+    const op: OpSpec = { id: 'g', writes: ['a.json', 'b.json'], expect: [{ kind: 'json-parses' }] };
+    const out = evaluateOpExpect(op, reader({ 'a.json': '{"ok":true}', 'b.json': 'NOT JSON' }));
+    expect(out).toHaveLength(2);
+    expect(out.find((v) => v.detail.includes('a.json'))?.ok).toBe(true);
+    expect(out.find((v) => v.detail.includes('b.json'))?.ok).toBe(false);
+  });
+});
 
 describe('opIntegrityFailures — the integrity pass over op.expect', () => {
   it('is SILENT when every expectation passes (no entry for a clean op)', () => {

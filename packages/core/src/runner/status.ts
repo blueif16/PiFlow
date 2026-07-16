@@ -106,6 +106,13 @@ export interface NodeConfig {
    * node" straight off config. Omitted when the node has no gates/actions/checkpoint. See `summarizeGates`.
    */
   gates?: GateSummary;
+  /**
+   * (op-integrity WS-I4) The IN-TURN STAGING BACKSTOP contract (`node.io.readContract`) — a per-path
+   * content-marker declaration, mirrored verbatim so the observe path (`buildNodeContext`) can check it
+   * post-hoc against a node's traced reads without re-reading the compiled NodeSpec. Omitted when the node
+   * declares no contract.
+   */
+  readContract?: { path: string; marker: string }[];
 }
 
 /**
@@ -160,6 +167,14 @@ export interface NodeStatusRecord {
    * that file's content (the verdict), not the first stderr line — so a verb/triage reads the verdict, not noise.
    */
   opFailures?: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
+  /**
+   * (op-integrity WS-I3) One record per DISPATCHED run op — pass OR fail, unlike `opFailures` (which only
+   * carries FAILING ops). The telemetry per-node ops table (`piflowctl telemetry <run> <node>`) projects
+   * this directly: id · exit code · durationMs · the op's OWN `expect` integrity verdicts (kind/ok/detail),
+   * every verdict — not just the failing ones (a clean op still shows `ok:true`, so the table proves what
+   * ran, not just what broke). Absent when the node dispatched no run op (the minimal-record rule).
+   */
+  ops?: { id: string; exit?: number; durationMs?: number; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
   summary?: string;
   /** Set when a watchdog killed the node (classifies the `error`). */
   killedTimeout?: boolean;

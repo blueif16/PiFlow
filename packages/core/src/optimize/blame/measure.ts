@@ -36,7 +36,7 @@ import type { ResolveCtx } from '../../workflow/resolver.js';
 import { resolveDeep } from '../../workflow/resolver.js';
 import { loadState } from '../../workflow/state.js';
 import { gatesFromOp, runOpsFromOp } from '../../runner/op-dispatch.js';
-import { evaluateChecks, type FileBytes } from '../../checks.js';
+import { evaluateChecks, distillResultFile, type FileBytes } from '../../checks.js';
 import { applyMergeOp } from '../../workflow/ops/merge.js';
 import { runJsonFile } from '../../runner/layout.js';
 import { buildRunView } from '../../observe/runView.js';
@@ -153,16 +153,8 @@ export async function runBlameMeasure(runDir: string, opts: RunBlameMeasureOpts)
     }
   }
 
-  // (1) runnable `run` ops FIRST — same node-lifecycle.ts:588 / substrate/measure.ts pattern.
-  const { runnable, rejected } = runOpsFromOp(resolvedOps);
-  const runs: OpRunResult[] = [];
-  for (const { body } of runnable) {
-    const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, runDir);
-    runs.push({ cmd: (r.cmd as string | undefined) ?? body.cmd, wrote: !!r.wrote, failed: !!r.failed, exit: r.exit, stderr: r.stderr, stdout: r.stdout });
-  }
-
-  // (2) POST gates AFTER the run ops (so a gate may assert on a file a run-op just produced).
-  const { post } = gatesFromOp(resolvedOps);
+  // A file reader rooted at the run dir — hoisted above the run loop so a failing resultFile op (below)
+  // reuses the SAME reader the post gates use (jail-correct: the exact bytes a live run would see).
   const readBytes = (rel: string): FileBytes => {
     try {
       const abs = path.resolve(runDir, rel);
@@ -171,6 +163,29 @@ export async function runBlameMeasure(runDir: string, opts: RunBlameMeasureOpts)
       return { bytes: null, size: 0 };
     }
   };
+
+  // (1) runnable `run` ops FIRST — same node-lifecycle.ts:588 / substrate/measure.ts pattern.
+  const { runnable, rejected } = runOpsFromOp(resolvedOps);
+  const runs: OpRunResult[] = [];
+  for (const { body, resultFile } of runnable) {
+    const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, runDir);
+    // (op-integrity WS-I5) IDENTICAL to substrate/measure.ts: a FAILING op declaring a `resultFile` gets its
+    // `detail` from the ledger's content — naming the failing CHECK — never left as raw stderr noise.
+    const detail = r.failed && resultFile ? distillResultFile(resultFile, readBytes(resultFile).bytes) : undefined;
+    runs.push({
+      cmd: (r.cmd as string | undefined) ?? body.cmd,
+      wrote: !!r.wrote,
+      failed: !!r.failed,
+      exit: r.exit,
+      stderr: r.stderr,
+      stdout: r.stdout,
+      ...(detail ? { detail } : {}),
+      ...(resultFile ? { resultFile } : {}),
+    });
+  }
+
+  // (2) POST gates AFTER the run ops (so a gate may assert on a file a run-op just produced).
+  const { post } = gatesFromOp(resolvedOps);
   const checks = evaluateChecks(post, readBytes);
 
   // (3) graded numeric metrics from any `run` op's OWN declared `writes[]` JSON report (best-effort).

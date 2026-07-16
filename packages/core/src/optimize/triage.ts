@@ -50,17 +50,31 @@ const isDefect = (s: NodeScore): boolean => !s.abstained && (s.tier0.disqualifie
 // issue-string vocabulary node-lifecycle.ts writes (op failures are read off the typed field, not this regex).
 const CODE_SIGNAL = /contract breach|schema (gate skipped|invalid)|killed:|integrity check failed|staging/i;
 
+/** A structural code/contract signal — the flattened text (for `symptom`, back-compat) plus (op-integrity
+ *  WS-I5) the STRUCTURED verdict data a resultFile-declared op failure carries, when present: `integrity[]`
+ *  (every expect verdict — the SAME shape `opFailures[].integrity` carries) and the raw `resultFile` path. */
+interface CodeSignal {
+  text: string;
+  integrity?: { kind: string; ok: boolean; detail: string }[];
+  resultFile?: string;
+}
+
 /** The first recorded signal (if any) on `node`'s own digest entry that names a code/contract-level cause. */
-function codeSignalOf(node: string, digest: RunDigest): string | null {
+function codeSignalOf(node: string, digest: RunDigest): CodeSignal | null {
   const nd = digest.nodes.find((n) => n.id === node);
   if (!nd) return null;
   // (A1) An op[] action failure rides the DEDICATED TYPED `opFailures` channel — never the `issues[]` string
   // (the user's law: op has nothing to do with the issue system). Read it directly as the op-failure signal
   // (replacing the old `op failed` grep of `issues[]`). Purely additive EVIDENCE: it feeds the SAME structural
   // routing op failures always drove — it mints no issue and introduces no new coupling.
+  // (op-integrity WS-I5) `opFail.detail` ALREADY carries the resultFile ledger's distilled verdict (WS-I2's
+  // distillResultFile), never the raw stderr line — this reader ALSO forwards the structured `integrity[]`/
+  // `resultFile` fields (when the failure came from an `expect` check) so the fixer's evidence names the
+  // failing CHECK as its own entry, not merely a substring inside a flattened detail string.
   const opFail = nd.opFailures?.[0];
-  if (opFail) return `op failed — ${opFail.detail}`;
-  return nd.issues.find((i) => CODE_SIGNAL.test(i)) ?? null;
+  if (opFail) return { text: `op failed — ${opFail.detail}`, integrity: opFail.integrity, resultFile: opFail.resultFile };
+  const hit = nd.issues.find((i) => CODE_SIGNAL.test(i));
+  return hit ? { text: hit } : null;
 }
 
 export function triage(scores: NodeScore[], digest: RunDigest, opts: TriageOpts = {}): Defect[] {
@@ -136,12 +150,22 @@ function functionalityDefect(s: NodeScore, t1: Tier1Result): Defect {
 // ── ③b STRUCTURAL — a self-originating failure whose OWN recorded issues name a code/contract-level cause
 // (a schema breach, a skipped schema gate, a watchdog kill, a staged-input race) — a concrete, actionable
 // signal, so it does NOT collapse into the low-confidence LAPSE default the way a truly signal-less slip does.
-function structuralDefect(s: NodeScore, signal: string): Defect {
+function structuralDefect(s: NodeScore, signal: CodeSignal): Defect {
+  // (op-integrity WS-I5) When the signal came from a resultFile-declared op failure whose `expect` FAILED,
+  // name each failing check as its OWN evidence entry (mirrors functionalityDefect's `check:${c.id}`
+  // convention) — the fixer reads the CHECK, not just a substring buried in the flattened `signal.text`. The
+  // raw `resultFile` path rides too, so a verb/human can open the structured verdict directly.
+  const failingChecks = (signal.integrity ?? []).filter((v) => !v.ok);
   return {
     node: s.node,
     bucket: 'FUNCTIONALITY',
-    symptom: `${s.node} ${s.tier0.reason ?? 'failed'} — ${signal}`,
-    evidence: [`issue:${signal}`, `fix-surface: product code/config in ${s.node}'s owns/readScope or its staging setup`],
+    symptom: `${s.node} ${s.tier0.reason ?? 'failed'} — ${signal.text}`,
+    evidence: [
+      `issue:${signal.text}`,
+      ...failingChecks.map((v) => `check:${v.kind} ${v.detail}`),
+      ...(signal.resultFile ? [`resultFile:${signal.resultFile}`] : []),
+      `fix-surface: product code/config in ${s.node}'s owns/readScope or its staging setup`,
+    ],
     confidence: 'medium',
   };
 }

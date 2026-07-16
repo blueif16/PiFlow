@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildRunView, piDir, runJsonFile, nodeDir } from '@piflow/core';
+import { buildRunView, piDir, runJsonFile, nodeDir, type ContextOp, type RunViewNode } from '@piflow/core';
 import { renderTrace, parseTraceArgs } from '../src/trace.js';
 
 const FIX = path.join(__dirname, '..', '..', 'core', 'test', 'fixtures', 'context-composition');
@@ -94,5 +94,40 @@ describe('renderTrace — over the REAL buildRunView data path', () => {
   it('an unknown node id reports the miss (not a crash)', () => {
     const { view } = buildRunView(dir);
     expect(renderTrace(view, 'no-such-node')).toMatch(/no node "no-such-node"/);
+  });
+});
+
+// (op-integrity WS-I4) The `contract` column — renders a declared read-marker verdict (`ContextOp.contract`,
+// computed post-hoc by `buildNodeContext`/checked by `readContract`) as `✓ marker` / `✗ marker missing`. Uses
+// a hand-built RunViewNode (mirrors the CLI telemetry.test.ts convention) to prove the RENDER layer directly,
+// not the reducer (that's context-composition.test.ts's job).
+describe('renderTrace — the readContract marker column (op-integrity WS-I4)', () => {
+  function mkOp(p: Partial<ContextOp> & { seq: number; op: ContextOp['op']; toolCallId: string }): ContextOp {
+    return {
+      tMs: null, path: '/ws/run/persona.md', displayPath: 'persona.md', scope: 'run',
+      range: null, fileLines: null, fileBytes: null, returnedBytes: null, coverage: null, covered: 'unknown',
+      sha256: null, logPreviewCapped: false, ok: true,
+      ...p,
+    };
+  }
+
+  it('renders ✓ <marker> for a PASSING contract and ✗ <marker> missing for a FAILING one', () => {
+    const node = {
+      id: 'plan',
+      label: 'plan',
+      context: [
+        mkOp({ seq: 0, op: 'read', toolCallId: 'c1', contract: { marker: 'required_kp_ids', ok: true } }),
+        mkOp({ seq: 1, op: 'read', toolCallId: 'c2', contract: { marker: 'required_kp_ids', ok: false } }),
+      ],
+    } as unknown as RunViewNode;
+    const out = renderTrace({ nodes: [node] }, 'plan');
+    expect(out).toMatch(/✓ required_kp_ids/);
+    expect(out).toMatch(/✗ required_kp_ids missing/);
+  });
+
+  it('a read with NO declared contract renders no marker verdict at all (byte-identical to today)', () => {
+    const node = { id: 'n', label: 'n', context: [mkOp({ seq: 0, op: 'read', toolCallId: 'c1' })] } as unknown as RunViewNode;
+    const out = renderTrace({ nodes: [node] }, 'n');
+    expect(out).not.toMatch(/✓|✗ .*missing/);
   });
 });

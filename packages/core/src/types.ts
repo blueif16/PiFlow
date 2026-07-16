@@ -524,6 +524,16 @@ export interface NodeIO {
    * schema miss SKIPS the repair lane and falls straight through to retry/escalate.
    */
   maxRepairAttempts?: number;
+  /**
+   * (op-integrity WS-I4) The IN-TURN STAGING BACKSTOP (design doc §"the in-turn staging blind spot", option
+   * b) — a per-path content-marker contract checked against the file's ON-DISK bytes when the trace element
+   * tree is built (`contextComposition.ts`), NEVER at run time (no runtime behavior change; the node's
+   * verdict/gates are unaffected). Declares "the staged input read here must contain marker X" for staging
+   * that runs INSIDE the model's turn (invisible to `op[].expect`, which only sees op[] entries). Matched by
+   * BASENAME against a read/grep's path (mirrors the `advertisedUnread` blind-spot's own basename matching).
+   * Undefined ⇒ no contract declared (byte-identical to today — `trace` renders no `contract` column).
+   */
+  readContract?: { path: string; marker: string }[];
 }
 
 /**

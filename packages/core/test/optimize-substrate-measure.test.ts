@@ -331,3 +331,73 @@ describe('runSubstrateMeasure — run-arg ({{arg.*}}) threading from .pi/run.jso
     expect(report.ops.rejected).toEqual([]);
   });
 });
+
+// (op-integrity WS-I5) THE motivating incident, reproduced: a measure `run` op declaring a `resultFile` (the
+// gate ledger) FAILS, writing the ledger AND unrelated stderr noise. Pre-fix, `report.ops.runs[].stderr` was
+// the ONLY reason a judge/triage could read — the ledger's real verdict (naming the failing CHECK) was
+// invisible to the out-of-band substrate measure pass entirely (unlike the LIVE run, which already threads
+// `resultFile` through `opFailures` since WS-I2). This is the exact "measure feed carried '[kp_cache] MCP
+// client unavailable' instead of the gate ledger's verdict" cost the design doc names.
+describe('runSubstrateMeasure — a failing resultFile op distills the LEDGER verdict, not stderr noise (WS-I5)', () => {
+  let tmpRoot: string;
+  let templateDir: string;
+  let runDir: string;
+  let piflowHome: string;
+  let savedPiflowHome: string | undefined;
+
+  const LEDGER_NODE = {
+    id: 'verifynode',
+    optimize: {
+      measure: [
+        {
+          id: 'verify',
+          when: 'post',
+          writes: ['{{RUN}}/optimize/substrate/ledger.json'],
+          resultFile: '{{RUN}}/optimize/substrate/ledger.json',
+          run: {
+            cmd: 'node',
+            args: [
+              '-e',
+              "const fs=require('fs');const dir='{{RUN}}/optimize/substrate';fs.mkdirSync(dir,{recursive:true});" +
+                "fs.writeFileSync(dir+'/ledger.json',JSON.stringify({ok:false,checks:[{name:'answer_in_choices',ok:false,detail:'choice not in options'}]}));" +
+                "process.stderr.write('[kp_cache] MCP client unavailable');process.exit(1)",
+            ],
+          },
+        },
+      ],
+    },
+  };
+
+  beforeAll(async () => {
+    piflowHome = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-home-substrate-measure-resultfile-'));
+    savedPiflowHome = process.env.PIFLOW_HOME;
+    process.env.PIFLOW_HOME = piflowHome;
+
+    tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-substrate-measure-resultfile-'));
+    templateDir = path.join(tmpRoot, 'template');
+    await fs.cp(FIXTURE, templateDir, { recursive: true });
+    runDir = path.join(tmpRoot, 'runs', 'run-1');
+    const res = await runFromTemplate(templateDir, { run: 'run-1', runDir, buildCommand: stubBuilder() });
+    expect(res.status.ok).toBe(true);
+
+    const dir = path.join(templateDir, 'nodes', LEDGER_NODE.id);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, 'node.json'), JSON.stringify(LEDGER_NODE, null, 2));
+  });
+  afterAll(async () => {
+    if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+    else process.env.PIFLOW_HOME = savedPiflowHome;
+    await fs.rm(piflowHome, { recursive: true, force: true });
+    await fs.rm(tmpRoot, { recursive: true, force: true });
+  });
+
+  it('names the failing CHECK from the ledger in `detail`, never the stderr noise', async () => {
+    const report = await runSubstrateMeasure(runDir, LEDGER_NODE.id, { workspace: templateDir });
+    expect(report.ops.runs).toHaveLength(1);
+    const [run] = report.ops.runs;
+    expect(run.failed).toBe(true);
+    expect(run.detail, 'the failing CHECK is named').toContain('answer_in_choices');
+    expect(run.detail, 'never the raw stderr WARNING').not.toMatch(/MCP client unavailable|\[kp_cache\]/);
+    expect(run.resultFile, 'the raw path rides so a verb can open it').toContain('ledger.json');
+  });
+});
