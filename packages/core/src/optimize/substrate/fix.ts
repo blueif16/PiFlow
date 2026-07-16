@@ -72,11 +72,12 @@
 // ── RESTING STATE AFTER THE GATE (the issue's status is never stranded) ──────────────────────────────────
 // The prove path moves the issue to `verifying` before the rerun. After the gate decides, the issue must land
 // on an honest resting state — a proven-REJECT must NOT strand it at `verifying` (M2 originally had no back-edge
-// out of `verifying` for a rejected candidate; TASK 0 added `verifying → open`). So: a `discarded` decision that
-// went through a prove-rerun (childId !== null) walks the issue BACK to `open` — reason stays null, NO attempt is
-// stamped (nothing landed), so a later triage/fix re-attempts it. A `staged` candidate stays at `verifying`
-// awaiting the human adopt (verifying → resolved); the skip-proof/unmeasured/no-edit/oracle-touched paths never
-// entered `verifying` (they rest at `fix-landed`/`active`), so they need no walk-back.
+// out of `verifying` for a rejected candidate; TASK 0 added `verifying → open`). So: ANY `discarded` decision on
+// this hard (non-soft-gated) path walks the issue BACK to `open` — reason stays null, NO attempt is stamped
+// (nothing landed), so a later triage/fix re-attempts it. This covers a proven-reject (childId !== null, was
+// `verifying`) AND a 0-edit/oracle-touched discard (GAP3 — childId stays null, was never past `active`): either
+// stranding crashed a later `fixIssue`'s re-activation ("invalid transition: active -> active"). A `staged`
+// candidate stays at `verifying` awaiting the human adopt (verifying → resolved).
 
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -84,6 +85,7 @@ import { execFileSync } from 'node:child_process';
 
 import type { DefectBucket } from '../types.js';
 import { evaluateGate, type GateVerdict, type LandPolicy } from '../gate.js';
+import { locateSkillStage } from '../../workflow/ops/skill-locate.js';
 import { parseIssueFile, stampAttempt, transitionIssue, assertTransition, type VerifyTier, type Severity } from './issues.js';
 import { assessStaleness, orderRecords, pathInClosure } from './train.js';
 import {
@@ -574,7 +576,10 @@ export async function readSubstrateManifest(runDir: string): Promise<SubstrateMa
 // ── the fixer prompt (agentic-prompt-design: the issue file IS the dispatch; a tight fix contract) ──────────
 
 /** The DEFAULT fixer playbook skill — staged for EVERY fixer spawn (fixed id, no per-node knob in v1). The
- *  runner resolves it via `locateSkillStage` (Ring 1 `<piflowHome>/skills/piflow-fixer`); a miss is advisory. */
+ *  bare id is resolved against the LIVE workspace via `locateSkillStage`'s ring search (`.agents/skills/<id>`,
+ *  then `.claude/skills/<id>`); the resolved source is then COPIED into the candidate worktree itself (GAP4 —
+ *  the fixer's cwd is that isolated worktree, never `workspace`, and Claude Code discovers a project skill only
+ *  relative to its own cwd). A miss is advisory — the fixer runs with no `skill` declared, never a hard fail. */
 export const FIXER_SKILL = 'piflow-fixer';
 
 /** A rejected prior attempt's residue, threaded into the NEXT fixer so a retry DIVERSIFIES instead of repeating.
@@ -781,15 +786,30 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   // from the parent's state stays absent here too, so an actually-wrong token still fails exactly as before.
   const pinnedState = await loadState(parentRunDir);
 
+  // GAP4 — the fixer's PLAYBOOK skill must be staged INSIDE the candidate worktree, never left at the live
+  // workspace. Unlike the gate/judge spawns (cwd = workspace directly, no isolation — they only read), the
+  // fixer's cwd is the ISOLATED candidate worktree; Claude Code discovers a project skill relative to its OWN
+  // cwd (there is no `--skill <path>` flag for `claude -p`), so a skill that exists only at
+  // `<workspace>/.claude/skills/<id>` is invisible to a fixer whose cwd is a DIFFERENT directory — it burns its
+  // turn hunting the filesystem and lands 0 edits (observed live). Resolve the SOURCE via the SAME resolution
+  // the CLI already uses (`locateSkillStage`'s bare-id ring search against `workspace` — Ring 0 `.agents/skills`,
+  // Ring 1 `.claude/skills`) — a read-only `fs.stat`, safe to run under dry-run — and compute the in-candidate
+  // DESTINATION. A miss stays advisory (no `skill` declared) — never a hard fail, mirroring every other skill
+  // resolution in the SDK.
+  const skillLocated = await locateSkillStage(FIXER_SKILL, { run: parentRunDir, workspace });
+  const skillDir = skillLocated?.found ? path.join(worktreeDir, '.claude', 'skills', skillLocated.stage.name) : undefined;
+
   // The ONE fixer spawn composition — shared VERBATIM by the dry-run preview and the live spawn (never two
-  // hand-copies that can drift apart). `cwd` is the worktree; the jail is the fence; the playbook is the
-  // product-root skill PATH (a path-like ref the runner uses directly, no ring-search from the worktree).
+  // hand-copies that can drift apart). `cwd` is the worktree; the jail is the fence PLUS the staged skill dir
+  // (an extra read grant — the fence itself may be narrower than the whole worktree). The dry-run preview
+  // shows this in-candidate path WITHOUT copying anything (the worktree does not exist yet); the live path
+  // (below, once `prepareCandidateWorktree` has made it real) performs the actual copy.
   const fixerSpawn = (issueFileText: string): RunBaseAgentOpts => ({
     prompt: buildFixerPrompt(issueFileText, node, opts.retry),
     cwd: worktreeDir,
-    readScope: fencePaths,
+    readScope: skillDir ? [...fencePaths, skillDir] : fencePaths,
     owns: fencePaths,
-    skill: path.join(workspace, '.claude', 'skills', FIXER_SKILL),
+    ...(skillDir ? { skill: skillDir } : {}),
     state: pinnedState,
     ...inheritedAgentOpts(opts),
   });
@@ -826,6 +846,15 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
   const wt = await prepareCandidateWorktree(repoRoot, { node, issue: issue.name, attempt });
   const baseSha = wt.baseSha;
   try {
+    // GAP4 — the worktree is now real: physically copy the resolved skill source into it (fixerSpawn's composed
+    // `skill`/readScope already point at this exact destination). A miss (no skill found in the live workspace)
+    // is advisory — the fixer simply runs without a playbook, matching the existing "a miss degrades, never a
+    // hard fail" convention for skill resolution. Inside the try so a genuine copy failure is caught by the
+    // GAP1 crash drop-back below (never strands the issue at `active`).
+    if (skillLocated?.found && skillDir) {
+      await fs.mkdir(path.dirname(skillDir), { recursive: true });
+      await fs.cp(skillLocated.stage.source, skillDir, { recursive: true, force: true });
+    }
     emit({ type: 'candidate-prepared', issue: issue.name, candidateRef: worktreeDir, included: fencePaths.length, excluded: exclude.length });
 
     // (c) fixer — edits the worktree; `git add -A && commit` → candidateSha; editsApplied = the diff name-count.
@@ -948,12 +977,16 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
       reason = numericVerdict.reason;
     }
 
-    // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
-    // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
-    // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). The SOFT path's verifyStage
-    // already did this walk-back (guarded by `!record`); a staged candidate stays at `verifying` awaiting adopt;
-    // the no-edit / oracle-touched / skip-proof paths never entered `verifying`.
-    if (!record && childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
+    // (e2) ANY discard on this hard (non-soft-gated) path must not strand the issue at its in-flight status —
+    // `active` and `verifying` both have NO self-loop in ALLOWED_TRANSITIONS, so leaving either one behind makes
+    // every later `fixIssue` call throw "invalid issue status transition: X -> X" the moment it re-activates.
+    // This covers THREE discard shapes, not just the proven-reject: a PROVEN-REJECT (childId !== null — we
+    // entered `verifying` and the gate/numeric verdict discarded it), a 0-EDIT discard (GAP3 — editsApplied<1,
+    // childId stays null, status never left `active`), and an ORACLE-TOUCHED discard (childId also stays null —
+    // the prove step is skipped on purpose, status never left `active`). All three walk back to `open` (reason
+    // null, NO attempt stamped — nothing landed), so a later triage/fix can re-attempt it. The SOFT path's
+    // verifyStage already did its own walk-back (guarded by `!record`); a staged candidate stays put awaiting adopt.
+    if (!record && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
 
     // (g) stage the record.json (adopt is the separate human step). The SOFT path's verifyStage already wrote it.
     if (!record) {
