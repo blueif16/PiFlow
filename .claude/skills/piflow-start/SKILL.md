@@ -111,16 +111,23 @@ A needle matches a stage by substring against its **phase, node-id, or node labe
   via a stat preflight). `--only X` = both.
 
 ## Fix ONE node in a failed run — `node --rerun`, NOT `--from` (verified 2026-07-10)
-- **`piflowctl node <run> <nodeId> --rerun [--sandbox local --thinking low --provider <gw>]`** re-runs EXACTLY
-  that node and **force-reuses every other node's artifact unconditionally** (bypasses the envelope-hash
-  comparison for non-targets). It does NOT continue downstream — chain
+- **`piflowctl node <run> <nodeId> --rerun [--sandbox local --thinking low --provider <gw>] [--arg k=v …]`**
+  re-runs EXACTLY that node and **force-reuses every other node's artifact unconditionally** (bypasses the
+  envelope-hash comparison for non-targets). It does NOT continue downstream — chain
   `piflowctl run <templateDir> --run <id> --from <next-stage> …` afterwards (the fixed stage joins the
   unconditionally-pinned prefix, so nothing re-runs spuriously).
-- **Resume args are NOT carried forward.** `--arg` values come ONLY from the current invocation (`state.json`
-  carries forward; args do not), and each node's reuse hash bakes in its realized prompt. On ANY `--from`
-  resume, re-pass the ORIGINAL `--arg prompt="…"` **byte-identical** — read it back from the run's
-  `.pi/run.json` `args`, never retype it. A differing arg flips every windowed node REUSE→RUN — the classic
-  "why did all 7 parallel siblings re-run when only one failed" trap.
+- **`node --rerun` now falls back to the run's OWN recorded args with ZERO flags** (fixed 2026-07-15):
+  repeated `--arg k=v` still overrides, but with none passed it reads `.pi/run.json`'s recorded `args`
+  itself — re-running a fixed node just works. A plain **`run --from` resume is unchanged: args are NOT
+  carried forward there** — `--arg` comes ONLY from that invocation (`state.json` carries forward; args do
+  not), and each node's reuse hash bakes in its realized prompt, so re-pass the ORIGINAL `--arg` **byte-
+  identical** — read it back from `.pi/run.json`, never retype it — or a differing/missing arg flips every
+  windowed node REUSE→RUN — the classic "why did all 7 parallel siblings re-run when only one failed" trap.
+- **After `optimize adopt` (or any edit) changes a node's inputs, re-run it via cold `node --rerun`, never
+  `--from`.** A node's automatic op[] retry is WARM by default (resumes its existing pi session with a
+  feedback-only turn, not the full prompt) — a `--from` re-run can hit that same lane and continue a stale/
+  errored session instead of re-staging the fix (live-observed on run 260715-02's `plan` node); `--rerun`
+  runs outside that retry FSM and always mints a fresh execution.
 
 ## Profiles — match the user's intent to a declared profile, then run
 A template may declare named run PROFILES in its `meta.json` (`profiles` + `defaultProfile`); each ELIDES a
