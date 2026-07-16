@@ -948,12 +948,16 @@ export async function fixIssue(issuePath: string, opts: FixIssueOpts): Promise<F
       reason = numericVerdict.reason;
     }
 
-    // (e2) a PROVEN-REJECT (we entered `verifying` — childId !== null — and the gate discarded it) must not
-    // strand the issue at `verifying`: walk it back to `open` (reason null, NO attempt stamped — nothing landed),
-    // so a later triage/fix can re-attempt it (the `verifying → open` back-edge). The SOFT path's verifyStage
-    // already did this walk-back (guarded by `!record`); a staged candidate stays at `verifying` awaiting adopt;
-    // the no-edit / oracle-touched / skip-proof paths never entered `verifying`.
-    if (!record && childId !== null && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
+    // (e2) ANY discard on this hard (non-soft-gated) path must not strand the issue at its in-flight status —
+    // `active` and `verifying` both have NO self-loop in ALLOWED_TRANSITIONS, so leaving either one behind makes
+    // every later `fixIssue` call throw "invalid issue status transition: X -> X" the moment it re-activates.
+    // This covers THREE discard shapes, not just the proven-reject: a PROVEN-REJECT (childId !== null — we
+    // entered `verifying` and the gate/numeric verdict discarded it), a 0-EDIT discard (GAP3 — editsApplied<1,
+    // childId stays null, status never left `active`), and an ORACLE-TOUCHED discard (childId also stays null —
+    // the prove step is skipped on purpose, status never left `active`). All three walk back to `open` (reason
+    // null, NO attempt stamped — nothing landed), so a later triage/fix can re-attempt it. The SOFT path's
+    // verifyStage already did its own walk-back (guarded by `!record`); a staged candidate stays put awaiting adopt.
+    if (!record && decision === 'discarded') await transitionIssue(issuePathAbs, 'open');
 
     // (g) stage the record.json (adopt is the separate human step). The SOFT path's verifyStage already wrote it.
     if (!record) {

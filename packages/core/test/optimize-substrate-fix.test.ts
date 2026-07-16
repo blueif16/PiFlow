@@ -535,7 +535,7 @@ describe('fixIssue fence — a BARE {{WORKSPACE}} read grant fences to the WHOLE
 
 // ── WS0 behavior 4 wired: the oracle diff-guard is a FIXER-SIDE rejection ──────────────────────────────────
 describe('fixIssue — the oracle diff-guard is a FIXER-SIDE rejection (WS0 behavior 4 wired)', () => {
-  it('a candidate whose commit touches an oracle path is discarded (never proved/gated); status stays active', async () => {
+  it('a candidate whose commit touches an oracle path is discarded (never proved/gated); status walks back to open', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture({ baseGraded: { 'feas.score': 0.5 } });
     let spawned = false;
     const res = await fixIssue(issuePath, {
@@ -549,7 +549,9 @@ describe('fixIssue — the oracle diff-guard is a FIXER-SIDE rejection (WS0 beha
     expect(res.decision).toBe('discarded'); // … but touching the oracle is rejected outright.
     expect(spawned).toBe(false); // NEVER proved a scorer-touching candidate
     expect(res.record?.reason).toMatch(/oracle path/i);
-    expect((await parseIssueFile(issuePath)).status).toBe('active'); // never advanced to fix-landed
+    // GAP3: never advanced to fix-landed, and (same drop-back as the 0-edit case) never stranded at `active` —
+    // the issue must walk back to `open` so a later fixIssue can re-select it.
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
   });
 
   it('a candidate that touches ONLY non-oracle paths proceeds to prove + gate (the other way)', async () => {
@@ -872,7 +874,9 @@ describe('fixIssue — WS3 verify-tier dispatch (none | rerun | full)', () => {
     });
     expect(res.editsApplied).toBe(0);
     expect(res.decision).toBe('discarded');
-    expect((await parseIssueFile(issuePath)).status).toBe('active'); // never advanced
+    // GAP3: never advanced to fix-landed, and walked back to `open` (not stranded `active`) — same drop-back
+    // as the general 0-edit case; `verify:none` changes nothing about the discard's re-selectability.
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
   });
 
   it('verify:rerun ⇒ proves but NEVER the gate agent, even when the node has criteria (unmeasurable ⇒ numeric stage-for-human)', async () => {
@@ -1164,7 +1168,7 @@ describe('fixIssue — dry-run (the inherited base-agent preview)', () => {
 });
 
 describe('fixIssue — a no-op fixer is rejected', () => {
-  it('editsApplied 0 ⇒ gate "no edit applied", decision discarded, status stays active, prove never runs', async () => {
+  it('editsApplied 0 ⇒ gate "no edit applied", decision discarded, status walks back to open, prove never runs', async () => {
     const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture({ baseGraded: { 'feas.score': 0.5 } });
     let spawned = false;
     const res = await fixIssue(issuePath, {
@@ -1178,7 +1182,28 @@ describe('fixIssue — a no-op fixer is rejected', () => {
     expect(res.decision).toBe('discarded');
     expect(res.verdict?.reason).toMatch(/no edit applied/);
     expect(spawned).toBe(false); // never proves a 0-edit proposal
-    expect((await parseIssueFile(issuePath)).status).toBe('active'); // never advanced to fix-landed
+    // GAP3 (0-edit discard drop-back): a 0-edit proposal never advances to fix-landed, but it must NOT strand
+    // the issue at `active` either — `active` has no self-loop, so a stranded issue makes every later `fixIssue`
+    // call throw "invalid issue status transition: active -> active" the moment it tries to re-activate.
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
+  });
+
+  // GAP3: the live-hit symptom — a 0-edit discard used to leave the issue at `active` forever (no self-loop in
+  // ALLOWED_TRANSITIONS), so a SUBSEQUENT `optimize fix` on the same issue crashed trying to re-activate it. The
+  // walk-back to `open` must make the issue re-selectable, exactly like the crash drop-back (75b5e04) and the
+  // proven-reject drop-back (e2) already do for their own stranding paths.
+  it('a 0-edit discard is re-selectable: a follow-up fixIssue call re-activates without throwing', async () => {
+    const { templateDir, workspace, parentRunDir, issuePath } = await setupFixture({ baseGraded: { 'feas.score': 0.5 } });
+
+    const first = await fixIssue(issuePath, { parentRunDir, templateDir, workspace, runAgent: noopAgent });
+    expect(first.decision).toBe('discarded');
+    expect((await parseIssueFile(issuePath)).status).toBe('open');
+
+    // A follow-up attempt must proceed (re-activate cleanly), never "invalid transition: active -> active".
+    const second = await fixIssue(issuePath, { parentRunDir, templateDir, workspace, prove: false, runAgent: editingAgent });
+    expect(second.editsApplied).toBe(1);
+    expect(second.candidateSha).toBeDefined();
+    expect((await parseIssueFile(issuePath)).status).toBe('fix-landed');
   });
 });
 
