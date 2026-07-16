@@ -36,11 +36,11 @@ POST
 - `packages/core/src/runner/node-lifecycle.ts:517` — `evaluateChecks(effectiveChecks(io.checks, io.fillSentinel, …))` — the post-gate engine
 GATE
 - `packages/core/src/checks.ts:116` — `CHECK_KINDS` — pure predicate registry (exists/non-empty/json-parses/count-floor/…)
-- `packages/core/src/checks.ts:366` — `effectiveChecks` — explicit checks ∪ the auto fill-sentinel completeness check
+- `packages/core/src/checks.ts:378` — `effectiveChecks` — explicit checks ∪ the auto fill-sentinel completeness check
 POLICY
-- `packages/core/src/checks.ts:382` — `actionForVerdict` — verdict → `block|warn|stop|retry|escalate` via `io.policy`
+- `packages/core/src/checks.ts:394` — `actionForVerdict` — verdict → `block|warn|stop|retry|escalate` via `io.policy`
 - `packages/core/src/runner/node-lifecycle.ts:653` — `blockingChecks` clause in the status ladder ⇒ `blocked`
-- `packages/core/src/checks.ts:444` — `classifyFailure` — failed checks → `quality-gap`, feeding `retry.ts` retry/escalate
+- `packages/core/src/checks.ts:456` — `classifyFailure` — failed checks → `quality-gap`, feeding `retry.ts` retry/escalate
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode` lives in `packages/core/src/runner/node-lifecycle.ts` (NOT `runner.ts`, which only re-exports it at :296); the no-pi lanes in `packages/core/src/runner/node-lanes.ts` carry a PARALLEL copy of the pre-gate/check/hook blocks (:289/:391/:320/:429) — both must move together. This card is the authored `node-action-protocol` (design: `docs/design/node-action-protocol.md`); it supersedes the hand-guessed `checks-hooks` name and absorbs the centrality-flagged one-file `packages/core/src/hooks/index.ts` (a standalone hooks slice would be a single file).
@@ -166,6 +166,15 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
+- `ce26c7c` 2026-07-15 — feat(core): op-integrity WS-I0 — expect/resultFile schema+types + structured predicates
+- `ec517dd` 2026-07-15 — docs(op-integrity): temper the expect vocabulary to the SIMPLICITY LADDER
+- `7e70b0f` 2026-07-15 — feat(core): op-integrity WS-I1 — runner integrity pass over op.expect
+- `4db87f5` 2026-07-15 — feat(core): op-integrity WS-I2 — resultFile verdict surfacing (not stderr)
+- `dd2d8d2` 2026-07-15 — merge: op-integrity mechanism — expect predicates + runner pass + resultFile verdicts, simplicity-ladder guidance (feat/op-expect-integrity)
+- `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
+- `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
+- `4480653` 2026-07-15 — fix(runner): re-allow a node's own .pi/sessions dir under the bookkeeping read-deny
+- `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
 
 ### Lessons — memory cluster
 
@@ -259,10 +268,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `CHECK_KINDS` (packages/core/src/checks.ts:116) — 1 caller; tests: `packages/core/test/checks.test.ts`
+- `CHECK_KINDS` (packages/core/src/checks.ts:116) — 1 caller in `packages/core/src/observe/contextComposition.ts`; ⚠ no covering tests found
 - `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
-- `evaluateChecks` (packages/core/src/checks.ts:253) — 6 callers in `packages/core/src/checks.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`; tests: `packages/core/test/checks.test.ts`
+- `evaluateChecks` (packages/core/src/checks.ts:253) — 9 callers in `packages/core/src/checks.ts`, `packages/core/src/optimize/blame/measure.ts`, `packages/core/src/optimize/substrate/measure.ts`, `packages/core/src/runner/node-lanes.ts` +1 more; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-16 · arc=103 commits · files=8 · lessons=86</sub>
+<sub>derived 2026-07-16 · arc=112 commits · files=8 · lessons=86</sub>
 <!-- okf:auto-end -->

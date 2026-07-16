@@ -130,6 +130,13 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
+- `7e70b0f` 2026-07-15 — feat(core): op-integrity WS-I1 — runner integrity pass over op.expect
+- `4db87f5` 2026-07-15 — feat(core): op-integrity WS-I2 — resultFile verdict surfacing (not stderr)
+- `dd2d8d2` 2026-07-15 — merge: op-integrity mechanism — expect predicates + runner pass + resultFile verdicts, simplicity-ladder guidance (feat/op-expect-integrity)
+- `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
+- `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
+- `4480653` 2026-07-15 — fix(runner): re-allow a node's own .pi/sessions dir under the bookkeeping read-deny
+- `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
 
 ### Lessons — memory cluster
 
@@ -175,5 +182,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-16 · arc=57 commits · files=5 · lessons=33</sub>
+<sub>derived 2026-07-16 · arc=64 commits · files=5 · lessons=33</sub>
 <!-- okf:auto-end -->

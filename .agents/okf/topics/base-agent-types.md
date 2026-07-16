@@ -214,6 +214,15 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `f4a959d` 2026-07-15 — fix(observe): backfill a 0-usage events.jsonl from pi's native session
 - `37ce71b` 2026-07-15 — refactor(observe): extract pi native-session locate+transcode into runner/pi-session
 - `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
+- `ce26c7c` 2026-07-15 — feat(core): op-integrity WS-I0 — expect/resultFile schema+types + structured predicates
+- `ec517dd` 2026-07-15 — docs(op-integrity): temper the expect vocabulary to the SIMPLICITY LADDER
+- `7e70b0f` 2026-07-15 — feat(core): op-integrity WS-I1 — runner integrity pass over op.expect
+- `4db87f5` 2026-07-15 — feat(core): op-integrity WS-I2 — resultFile verdict surfacing (not stderr)
+- `dd2d8d2` 2026-07-15 — merge: op-integrity mechanism — expect predicates + runner pass + resultFile verdicts, simplicity-ladder guidance (feat/op-expect-integrity)
+- `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
+- `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
+- `4480653` 2026-07-15 — fix(runner): re-allow a node's own .pi/sessions dir under the bookkeeping read-deny
+- `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
 
 ### Lessons — memory cluster
 
@@ -241,5 +250,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 
-<sub>derived 2026-07-16 · arc=154 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-16 · arc=163 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

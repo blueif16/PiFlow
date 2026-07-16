@@ -33,7 +33,7 @@ PER-NODE RUNNER EXEC
 - `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
 - `packages/core/src/runner/node-lifecycle.ts:490` — artifact host-stat — a node is `ok` only if its declared artifacts exist
-- `packages/core/src/runner/node-lifecycle.ts:1213` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
+- `packages/core/src/runner/node-lifecycle.ts:1245` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode`/`finishNode` no longer live in `packages/core/src/runner/runner.ts` (the §2.1 split moved the per-node lifecycle to `packages/core/src/runner/node-lifecycle.ts`; runner.ts only re-exports them) — the stage loop is the run-level concern in runner.ts, the per-node concern is in node-lifecycle.ts. This is the DYNAMIC exec spine carved out of the former `runtime-core`; its static sibling (`workflow-compile`) ends at the compiled `Workflow`, which is exactly where this slice begins. Threads that cross this spine each have their own slice: `sandbox` (the jail runNode creates), `per-node-routing-and-fusion` (the model on the pi command), `node-action-protocol` (the gates between exec and finish).
@@ -215,7 +215,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `0626691` 2026-07-15 — fix(core): runWorkflow — seed RunState from opts.initialState
 - `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
+- `ce26c7c` 2026-07-15 — feat(core): op-integrity WS-I0 — expect/resultFile schema+types + structured predicates
 - `13eddb4` 2026-07-15 — merge: pi session capture by path + logs/trace native-session recovery + changesets (fix/pi-session-capture)
+- `ec517dd` 2026-07-15 — docs(op-integrity): temper the expect vocabulary to the SIMPLICITY LADDER
+- `7e70b0f` 2026-07-15 — feat(core): op-integrity WS-I1 — runner integrity pass over op.expect
+- `4db87f5` 2026-07-15 — feat(core): op-integrity WS-I2 — resultFile verdict surfacing (not stderr)
+- `dd2d8d2` 2026-07-15 — merge: op-integrity mechanism — expect predicates + runner pass + resultFile verdicts, simplicity-ladder guidance (feat/op-expect-integrity)
+- `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
+- `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
+- `4480653` 2026-07-15 — fix(runner): re-allow a node's own .pi/sessions dir under the bookkeeping read-deny
+- `c7c7960` 2026-07-15 — fix(core): a resume's run.json record survives a failed/partial rerun
+- `c5d9dfc` 2026-07-15 — merge: seatbelt re-allows a node's own .pi/sessions under the bookkeeping read-deny (fix/fresh-session-regression)
+- `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
 
 ### Lessons — memory cluster
 
@@ -235,10 +246,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 10 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run-baseline.test.ts`, `packages/cli/test/run.test.ts`
+- `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 10 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run-baseline.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 17 callers in `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:817) — 3 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
+- `RunScope` (packages/core/src/types.ts:827) — 3 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-16 · arc=161 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-16 · arc=172 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

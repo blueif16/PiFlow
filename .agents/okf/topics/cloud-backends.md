@@ -38,7 +38,7 @@ EXECUTE
 - `packages/core/src/runner/env-staging.ts:23` — `CLOUD_KINDS` — `{daytona,e2b}`: the no-host-trust gate
 - `packages/core/src/runner/env-staging.ts:50` — `effectiveSandboxLocation` — per-node workdir/output by kind (isolated for cloud)
 SECRETS
-- `packages/core/src/types.ts:856` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
+- `packages/core/src/types.ts:866` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
 - `packages/core/src/runner/env-staging.ts:146` — `cloudCredEnvAdditions` — resolve the DECLARED cred allowlist into the VM (cloud-only)
 
 # Freshness (anti-drift)
@@ -174,6 +174,11 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
+- `ce26c7c` 2026-07-15 — feat(core): op-integrity WS-I0 — expect/resultFile schema+types + structured predicates
+- `ec517dd` 2026-07-15 — docs(op-integrity): temper the expect vocabulary to the SIMPLICITY LADDER
+- `dd2d8d2` 2026-07-15 — merge: op-integrity mechanism — expect predicates + runner pass + resultFile verdicts, simplicity-ladder guidance (feat/op-expect-integrity)
+- `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
+- `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
 
 ### Lessons — memory cluster
 
@@ -245,5 +250,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-16 · arc=112 commits · files=8 · lessons=58</sub>
+<sub>derived 2026-07-16 · arc=117 commits · files=8 · lessons=58</sub>
 <!-- okf:auto-end -->

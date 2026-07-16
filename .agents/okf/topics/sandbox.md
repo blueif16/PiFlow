@@ -183,6 +183,9 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - `2b66404` 2026-07-15 — fix(cli): thread PI_RUNNER_* watchdog env knobs into the live template run
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
+- `ce26c7c` 2026-07-15 — feat(core): op-integrity WS-I0 — expect/resultFile schema+types + structured predicates
+- `ec517dd` 2026-07-15 — docs(op-integrity): temper the expect vocabulary to the SIMPLICITY LADDER
+- `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 
 ### Lessons — memory cluster
 
@@ -255,5 +258,5 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:255) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-16 · arc=98 commits · files=8 · lessons=59</sub>
+<sub>derived 2026-07-16 · arc=101 commits · files=8 · lessons=59</sub>
 <!-- okf:auto-end -->
