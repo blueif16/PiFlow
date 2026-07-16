@@ -32,7 +32,7 @@ import type { ResolveCtx } from '../../workflow/resolver.js';
 import { resolveDeep } from '../../workflow/resolver.js';
 import { loadState } from '../../workflow/state.js';
 import { gatesFromOp, runOpsFromOp } from '../../runner/op-dispatch.js';
-import { evaluateChecks, type CheckResult, type FileBytes } from '../../checks.js';
+import { evaluateChecks, distillResultFile, type CheckResult, type FileBytes } from '../../checks.js';
 import { applyMergeOp } from '../../workflow/ops/merge.js';
 import { nodeEventsFile, runJsonFile } from '../../runner/layout.js';
 import { buildRunView } from '../../observe/runView.js';
@@ -55,6 +55,16 @@ export interface OpRunResult {
   exit?: number;
   stderr?: string;
   stdout?: string;
+  /**
+   * (op-integrity WS-I5) When the op declares a `resultFile` (its structured verdict — by convention the
+   * gate ledger) and FAILED, this is the DISTILLED verdict (`distillResultFile`) — the gate's real reason
+   * (naming the failing CHECK), never the first stderr line. Mirrors the LIVE run's opFailures.detail
+   * (node-lifecycle.ts/node-lanes.ts, WS-I2) so a triage/blame judge reading THIS out-of-band report sees the
+   * SAME verdict a live run would have surfaced. Absent when the op declares no `resultFile`, or passed.
+   */
+  detail?: string;
+  /** The raw resultFile path, so a verb/judge can open the structured verdict directly. */
+  resultFile?: string;
 }
 
 /** The op[]-execution half of the report. */
@@ -164,16 +174,8 @@ export async function runSubstrateMeasure(
     }
   }
 
-  // (1) runnable `run` ops FIRST — same node-lifecycle.ts:588 pattern (`{run}` wrapped for applyMergeOp).
-  const { runnable, rejected } = runOpsFromOp(resolvedOps);
-  const runs: OpRunResult[] = [];
-  for (const { body } of runnable) {
-    const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, runDir);
-    runs.push({ cmd: (r.cmd as string | undefined) ?? body.cmd, wrote: !!r.wrote, failed: !!r.failed, exit: r.exit, stderr: r.stderr, stdout: r.stdout });
-  }
-
-  // (2) POST gates AFTER the run ops (so a gate may assert on a file a run-op just produced).
-  const { post } = gatesFromOp(resolvedOps);
+  // A file reader rooted at the run dir — hoisted above the run loop so a failing resultFile op (below)
+  // reuses the SAME reader the post gates use (jail-correct: the exact bytes a live run would see).
   const readBytes = (rel: string): FileBytes => {
     try {
       const abs = path.resolve(runDir, rel);
@@ -182,6 +184,31 @@ export async function runSubstrateMeasure(
       return { bytes: null, size: 0 };
     }
   };
+
+  // (1) runnable `run` ops FIRST — same node-lifecycle.ts:588 pattern (`{run}` wrapped for applyMergeOp).
+  const { runnable, rejected } = runOpsFromOp(resolvedOps);
+  const runs: OpRunResult[] = [];
+  for (const { body, resultFile } of runnable) {
+    const r = await applyMergeOp({ run: { cmd: body.cmd, args: body.args, cwd: body.cwd } }, runDir);
+    // (op-integrity WS-I5) A FAILING op that declares a `resultFile` (its structured verdict, by convention
+    // the gate ledger) gets its `detail` built from THAT file's content — the gate's real reason, naming the
+    // failing CHECK — instead of leaving only `stderr` (the raw noise a triage/blame judge used to read
+    // verbatim; the design doc's motivating incident). Mirrors node-lifecycle.ts's opFailures.detail exactly.
+    const detail = r.failed && resultFile ? distillResultFile(resultFile, readBytes(resultFile).bytes) : undefined;
+    runs.push({
+      cmd: (r.cmd as string | undefined) ?? body.cmd,
+      wrote: !!r.wrote,
+      failed: !!r.failed,
+      exit: r.exit,
+      stderr: r.stderr,
+      stdout: r.stdout,
+      ...(detail ? { detail } : {}),
+      ...(resultFile ? { resultFile } : {}),
+    });
+  }
+
+  // (2) POST gates AFTER the run ops (so a gate may assert on a file a run-op just produced).
+  const { post } = gatesFromOp(resolvedOps);
   const checks = evaluateChecks(post, readBytes);
 
   // (3) graded numeric metrics from any `run` op's OWN declared `writes[]` JSON report (best-effort).

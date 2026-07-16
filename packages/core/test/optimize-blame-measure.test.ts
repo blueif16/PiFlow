@@ -234,4 +234,43 @@ describe('runBlameMeasure — degrade paths (no live run needed)', () => {
     const onDisk = JSON.parse(await fs.readFile(blameMeasurePath(rd), 'utf8'));
     expect(onDisk.digest).toEqual({ nodes: [], rootCauses: [] });
   });
+
+  // (op-integrity WS-I5) The RUN-LEVEL twin of the substrate fix: a failing `run` op declaring a
+  // `resultFile` must distill the ledger's verdict (naming the failing CHECK) into `detail`, never leave
+  // only `stderr` noise for a blame judge to read — the exact incident the design doc names, one level up.
+  it('a failing resultFile op distills the LEDGER verdict, not stderr noise (WS-I5)', async () => {
+    const meta = {
+      id: 'x',
+      name: 'x',
+      description: 'x',
+      optimize: {
+        measure: [
+          {
+            id: 'verify',
+            when: 'post',
+            writes: ['{{RUN}}/optimize/blame/ledger.json'],
+            resultFile: '{{RUN}}/optimize/blame/ledger.json',
+            run: {
+              cmd: 'node',
+              args: [
+                '-e',
+                "const fs=require('fs');const dir='{{RUN}}/optimize/blame';fs.mkdirSync(dir,{recursive:true});" +
+                  "fs.writeFileSync(dir+'/ledger.json',JSON.stringify({ok:false,checks:[{name:'answer_in_choices',ok:false,detail:'choice not in options'}]}));" +
+                  "process.stderr.write('[kp_cache] MCP client unavailable');process.exit(1)",
+              ],
+            },
+          },
+        ],
+      },
+    };
+    const rd = await makeRoot('resultfile-run', meta, { run: 'r1', done: true, ok: true, nodes: {} });
+    const report = await runBlameMeasure(rd, { workspace: path.dirname(path.dirname(rd)) });
+
+    expect(report.ops.runs).toHaveLength(1);
+    const [run] = report.ops.runs;
+    expect(run.failed).toBe(true);
+    expect(run.detail, 'the failing CHECK is named').toContain('answer_in_choices');
+    expect(run.detail, 'never the raw stderr WARNING').not.toMatch(/MCP client unavailable|\[kp_cache\]/);
+    expect(run.resultFile, 'the raw path rides so a verb can open it').toContain('ledger.json');
+  });
 });
