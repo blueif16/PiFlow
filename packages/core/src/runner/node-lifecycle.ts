@@ -12,12 +12,13 @@ import type {
   RunScope,
   ResolveResult,
   OnFailure,
+  OpSpec,
 } from '../types.js';
 import { defaultSecretResolver } from '../types.js';
 import { verifyToolBinding } from '../tools/verify.js';
 import { preflightScriptTools, isScriptToolAddress } from '../tools/script-discover.js';
 import { markersFromNode, emitMarkers } from '../contract.js';
-import { effectiveChecks, evaluateChecks, actionForVerdict, opIntegrityFailures, distillResultFile, type FileBytes } from '../checks.js';
+import { effectiveChecks, evaluateChecks, actionForVerdict, opIntegrityFailures, evaluateOpExpect, distillResultFile, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { NodeRecorder, recordingSandbox, type EventSink } from './events.js';
@@ -652,6 +653,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // (op-integrity WS-I1/I2) The op-failure entry gains `integrity?` (the expect verdicts) + `resultFile?` (the
     // structured verdict path — WS-I2 builds `detail` from it on a run-op failure instead of the stderr line).
     const opFailures: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[] = [];
+    // (op-integrity WS-I3) One record per DISPATCHED run op — pass OR fail — the telemetry per-node ops
+    // table's source (`rec.ops[]`, status.ts). Distinct from `opFailures` (failing-only): a clean op still
+    // gets a row here, so `piflowctl telemetry <run> <node>` shows what RAN, not just what broke.
+    const nodeOps: { id: string; exit?: number; durationMs?: number; integrity?: { kind: string; ok: boolean; detail: string }[] }[] = [];
     // A file reader rooted at the run dir — hoisted above the run loop so the WS-I1 integrity pass reuses the
     // SAME reader the post-node checks use (below), reading the exact bytes the node will actually see (jail-correct).
     const readBytes = (rel: string): FileBytes => {
@@ -692,11 +697,13 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // derive/side-effect step (the now-authorable Hook.run). Reuse the merge executor's `run` impl, then
       // route a non-zero exit through the op's `onFailure` (default 'block').
       const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
-      for (const { body, onFailure, id, resultFile } of runOps.runnable) {
+      for (const { body, onFailure, id, resultFile, expect, writes } of runOps.runnable) {
         // The body resolves at dispatch like the sibling merge/promote specs — merge.ts's own sub() handles
         // only {project}, so a raw {{WORKSPACE}} cwd joins literally under the project base → spawnSync ENOENT.
         const rb = resolveDeep({ cmd: body.cmd, args: body.args, cwd: body.cwd }, resolveCtx) as { cmd: string; args?: string[]; cwd?: string };
+        const opT0 = Date.now();
         const r = await applyMergeOp({ run: rb }, ctx.outDir);
+        const opDurationMs = Date.now() - opT0;
         if (r.failed) {
           // (op-integrity WS-I2) When the op declares a `resultFile` (its structured verdict/ledger), build the
           // detail from THAT file's content — the gate's real verdict — instead of the first stderr line; the raw
@@ -707,6 +714,11 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
             : `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`;
           opFailures.push({ detail, onFailure, ...(resultFile ? { resultFile } : {}) });
         }
+        // (op-integrity WS-I3) Record THIS op's own outcome — pass or fail — for the telemetry ops table.
+        // `expect`/`writes` ride the RunnableOp (op-dispatch.ts) so its OWN integrity verdicts (every one, not
+        // just failing) are computed here, in the SAME loop, without a second id-keyed lookup pass.
+        const opIntegrity = expect?.length ? evaluateOpExpect({ expect, writes } as OpSpec, readBytes, { validate: ctx.validateSchema }) : undefined;
+        nodeOps.push({ id: id ?? rb.cmd, exit: r.exit, durationMs: opDurationMs, ...(opIntegrity?.length ? { integrity: opIntegrity } : {}) });
       }
       // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant,
       // or a cmd-less body) is surfaced as an op failure here — never the old silent `continue` that dropped it.
@@ -891,6 +903,9 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // generic `issues[]` string (the user's law: op has nothing to do with the issue system). The blocking-op
     // branch below still sets `st='blocked'`; only the carrier of the reason moved here. Absent when none failed.
     if (opFailures.length) rec.opFailures = opFailures;
+    // (op-integrity WS-I3) Every dispatched run op — pass or fail — for the telemetry ops table. Absent when
+    // the node dispatched no run op (the minimal-record rule, mirrors opFailures' own absence convention).
+    if (nodeOps.length) rec.ops = nodeOps;
 
     let st: NodeStatusRecord['status'];
     const issues: string[] = [];

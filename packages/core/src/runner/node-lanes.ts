@@ -6,9 +6,9 @@
 
 import { promises as fs, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import type { NodeSpec, CheckpointSpec, OnFailure } from '../types.js';
+import type { NodeSpec, CheckpointSpec, OnFailure, OpSpec } from '../types.js';
 import type { RunContext } from './run-context.js';
-import { effectiveChecks, evaluateChecks, actionForVerdict, opIntegrityFailures, distillResultFile, type FileBytes } from '../checks.js';
+import { effectiveChecks, evaluateChecks, actionForVerdict, opIntegrityFailures, evaluateOpExpect, distillResultFile, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { resolveTokens, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
@@ -342,6 +342,10 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // (op-integrity WS-I1/I2) The op-failure entry gains `integrity?` + `resultFile?` (parity with runNode); the
     // integrity pass records the expect verdicts, and a resultFile run-op failure builds detail from the ledger.
     const opFailures: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[] = [];
+    // (op-integrity WS-I3) One record per DISPATCHED run op — pass OR fail — the telemetry ops table's source
+    // (`rec.ops[]`, status.ts). IDENTICAL to runNode's `nodeOps` (the OKF DRIFT NOTE: the parallel run-op
+    // loops move together).
+    const nodeOps: { id: string; exit?: number; durationMs?: number; integrity?: { kind: string; ok: boolean; detail: string }[] }[] = [];
     // A file reader rooted at the run dir — hoisted above the run loop so the WS-I1 integrity pass reuses the
     // SAME reader the post-node checks use below (jail-correct: the bytes the node will actually read).
     const readBytes = (rel: string): FileBytes => {
@@ -377,11 +381,13 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic derive/side-
     // effect step. Reuse the merge executor's `run` impl, then route a non-zero exit through `onFailure`.
     const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
-    for (const { body, onFailure, id, resultFile } of runOps.runnable) {
+    for (const { body, onFailure, id, resultFile, expect, writes } of runOps.runnable) {
       // The body resolves at dispatch like the sibling merge/promote specs — merge.ts's own sub() handles
       // only {project}, so a raw {{WORKSPACE}} cwd joins literally under the project base → spawnSync ENOENT.
       const rb = resolveDeep({ cmd: body.cmd, args: body.args, cwd: body.cwd }, resolveCtx) as { cmd: string; args?: string[]; cwd?: string };
+      const opT0 = Date.now();
       const r = await applyMergeOp({ run: rb }, ctx.outDir);
+      const opDurationMs = Date.now() - opT0;
       if (r.failed) {
         // (op-integrity WS-I2) A resultFile op builds its detail from the structured verdict, not stderr — IDENTICAL
         // to runNode. Else the legacy detail (include r.skipped — the spawn-error branch reports THERE, not stderr).
@@ -390,6 +396,9 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
           : `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`;
         opFailures.push({ detail, onFailure, ...(resultFile ? { resultFile } : {}) });
       }
+      // (op-integrity WS-I3) Record THIS op's own outcome — pass or fail — for the telemetry ops table.
+      const opIntegrity = expect?.length ? evaluateOpExpect({ expect, writes } as OpSpec, readBytes, { validate: ctx.validateSchema }) : undefined;
+      nodeOps.push({ id: id ?? rb.cmd, exit: r.exit, durationMs: opDurationMs, ...(opIntegrity?.length ? { integrity: opIntegrity } : {}) });
     }
     // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant, or
     // a cmd-less body) is surfaced as an op failure here — never the old silent `continue` that dropped it.
@@ -430,6 +439,8 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // generic `issues[]` string (the user's law: op has nothing to do with the issue system). The blocking-op
     // branch below still sets `st='blocked'`; only the carrier of the reason moved here. Absent when none failed.
     if (opFailures.length) rec.opFailures = opFailures;
+    // (op-integrity WS-I3) Every dispatched run op — pass or fail — for the telemetry ops table.
+    if (nodeOps.length) rec.ops = nodeOps;
 
     // The status ladder — the driver-verified contract breaches (no model exit to read, no return handshake:
     // a programmatic node proves its work by its artifacts + checks, never a fenced-JSON tail). missing →

@@ -310,42 +310,54 @@ export function distillResultFile(path: string, bytes: string | null): string {
 }
 
 /**
+ * (op-integrity WS-I1/WS-I3) Evaluate ONE op's `expect` post-conditions over its writes — the SINGLE, pure
+ * per-op evaluator both `opIntegrityFailures` (the opFailures-channel pass, failing-only) and the telemetry
+ * per-node ops table (rec.ops[].integrity, EVERY verdict — pass rows must still show "pass", not vanish) build
+ * on. Each expectation is aliased to a CHECK_KIND via `integrityToCheck` and run through `evaluateChecks` (no
+ * parallel engine). An expectation with no `path` fans out over the op's `writes`. `json-schema` resolves a
+ * `param.schemaPath` via the SAME injected reader before the pure predicate runs. `[]` when the op has no
+ * `expect` declared.
+ */
+export function evaluateOpExpect(op: OpSpec, read: (path: string) => FileBytes, opts?: EvaluateOpts): { kind: string; ok: boolean; detail: string }[] {
+  if (!op.expect?.length) return [];
+  const pairs: { kind: string; path: string; check: Check }[] = [];
+  for (const exp of op.expect) {
+    const targets = exp.path ? [exp.path] : op.writes ?? [];
+    for (const rel of targets) {
+      let ex = exp;
+      if (exp.kind === 'json-schema') {
+        const pr = (exp.param ?? {}) as { schema?: unknown; schemaPath?: string };
+        if (pr.schema == null && typeof pr.schemaPath === 'string') {
+          const sf = read(pr.schemaPath);
+          let schemaObj: unknown = null;
+          try {
+            schemaObj = sf.bytes != null ? JSON.parse(sf.bytes) : null;
+          } catch {
+            schemaObj = null;
+          }
+          ex = { ...exp, param: { schema: schemaObj } };
+        }
+      }
+      pairs.push({ kind: String(exp.kind), path: rel, check: integrityToCheck(ex, rel) });
+    }
+  }
+  if (!pairs.length) return [];
+  const results = evaluateChecks(pairs.map((p) => p.check), read, opts);
+  return results.map((r, i) => ({ kind: pairs[i].kind, ok: r.verdict === 'pass', detail: `${pairs[i].path}: ${r.reason}` }));
+}
+
+/**
  * (op-integrity WS-I1) Evaluate every op's `expect` post-conditions over its writes — the SINGLE, pure home for
  * the integrity pass (both the pi lane `node-lifecycle.ts` and the no-pi lane `node-lanes.ts` call this; the
- * OKF DRIFT NOTE requires those parallel run-op loops to move together). Each expectation is aliased to a
- * CHECK_KIND via `integrityToCheck` and run through `evaluateChecks` (no parallel engine). An expectation with
- * no `path` fans out over the op's `writes`. `json-schema` resolves a `param.schemaPath` via the SAME injected
- * reader before the pure predicate runs. Returns ONE entry per op that has ≥1 FAILING expectation (a fully
- * passing op is SILENT); the consequence is the op's `onFailure` DEFAULTING TO `warn` (loud+early, not block).
+ * OKF DRIFT NOTE requires those parallel run-op loops to move together). Built on `evaluateOpExpect` (per-op,
+ * every verdict); this layer filters to ops with ≥1 FAILING expectation (a fully passing op is SILENT) and
+ * tags the consequence with the op's `onFailure` DEFAULTING TO `warn` (loud+early, not block).
  */
 export function opIntegrityFailures(ops: OpSpec[] | undefined, read: (path: string) => FileBytes, opts?: EvaluateOpts): IntegrityFailure[] {
   const out: IntegrityFailure[] = [];
   for (const o of ops ?? []) {
-    if (!o.expect?.length) continue;
-    const pairs: { kind: string; path: string; check: Check }[] = [];
-    for (const exp of o.expect) {
-      const targets = exp.path ? [exp.path] : o.writes ?? [];
-      for (const rel of targets) {
-        let ex = exp;
-        if (exp.kind === 'json-schema') {
-          const pr = (exp.param ?? {}) as { schema?: unknown; schemaPath?: string };
-          if (pr.schema == null && typeof pr.schemaPath === 'string') {
-            const sf = read(pr.schemaPath);
-            let schemaObj: unknown = null;
-            try {
-              schemaObj = sf.bytes != null ? JSON.parse(sf.bytes) : null;
-            } catch {
-              schemaObj = null;
-            }
-            ex = { ...exp, param: { schema: schemaObj } };
-          }
-        }
-        pairs.push({ kind: String(exp.kind), path: rel, check: integrityToCheck(ex, rel) });
-      }
-    }
-    if (!pairs.length) continue;
-    const results = evaluateChecks(pairs.map((p) => p.check), read, opts);
-    const integrity = results.map((r, i) => ({ kind: pairs[i].kind, ok: r.verdict === 'pass', detail: `${pairs[i].path}: ${r.reason}` }));
+    const integrity = evaluateOpExpect(o, read, opts);
+    if (!integrity.length) continue;
     const failing = integrity.filter((v) => !v.ok);
     if (!failing.length) continue; // a fully-passing op is silent
     const onFailure: OnFailure = o.onFailure ?? 'warn';

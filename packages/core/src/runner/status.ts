@@ -160,6 +160,14 @@ export interface NodeStatusRecord {
    * that file's content (the verdict), not the first stderr line — so a verb/triage reads the verdict, not noise.
    */
   opFailures?: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
+  /**
+   * (op-integrity WS-I3) One record per DISPATCHED run op — pass OR fail, unlike `opFailures` (which only
+   * carries FAILING ops). The telemetry per-node ops table (`piflowctl telemetry <run> <node>`) projects
+   * this directly: id · exit code · durationMs · the op's OWN `expect` integrity verdicts (kind/ok/detail),
+   * every verdict — not just the failing ones (a clean op still shows `ok:true`, so the table proves what
+   * ran, not just what broke). Absent when the node dispatched no run op (the minimal-record rule).
+   */
+  ops?: { id: string; exit?: number; durationMs?: number; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
   summary?: string;
   /** Set when a watchdog killed the node (classifies the `error`). */
   killedTimeout?: boolean;

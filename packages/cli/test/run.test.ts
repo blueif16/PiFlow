@@ -760,6 +760,43 @@ describe('runFailureReport — the loud verdict for a finished failed run', () =
     expect(runFailureReport({ done: true, ok: true, nodes: {} } as never, 'out/x')).toBeNull();
     expect(runFailureReport({ done: false, ok: null, nodes: {} } as never, 'out/x')).toBeNull();
   });
+
+  // (op-integrity WS-I3) A node can carry MULTIPLE opFailures entries of DIFFERENT consequence — a warn
+  // integrity violation (silent-unless-failing evidence) alongside the real BLOCKING reason. The report must
+  // tell them apart by icon (⚠ warn vs ✗ block) — never a flat ✗ for both — and when the blocking entry
+  // declares a `resultFile`, its `detail` already carries the LEDGER verdict (WS-I2), so the report must show
+  // that verdict (the named failing check), never raw stderr noise.
+  it('renders ⚠ for a warn-consequence op failure and keeps ✗ for the blocking one, showing the ledger verdict', () => {
+    const blocked = {
+      done: true,
+      ok: false,
+      nodes: {
+        verify: {
+          id: 'verify', label: 'verify', status: 'blocked', artifacts: [], issues: [],
+          opFailures: [
+            {
+              detail: 'op stage integrity — min-bytes persona.md: 0 bytes (min 200000)',
+              onFailure: 'warn' as const,
+              integrity: [{ kind: 'min-bytes', ok: false, detail: 'persona.md: 0 bytes (min 200000)' }],
+            },
+            {
+              detail: 'op verify failed — ledger/verify/output.json — ok=false · failing: answer_in_choices: choice not in options',
+              onFailure: 'block' as const,
+              resultFile: 'ledger/verify/output.json',
+            },
+          ],
+        },
+      },
+    } as never;
+    const report = runFailureReport(blocked, 'out/r1');
+    expect(report).not.toBeNull();
+    // the warn entry gets a DISTINCT icon — never the block ✗.
+    expect(report).toMatch(/⚠ verify: op warn — op stage integrity/);
+    // the blocking entry keeps ✗ and carries the LEDGER verdict, not a stderr line.
+    expect(report).toMatch(/✗ verify: op FAILED — op verify failed — ledger\/verify\/output\.json/);
+    expect(report).toContain('answer_in_choices');
+    expect(report).not.toMatch(/MCP client unavailable|\[kp_cache\]/);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -25,7 +25,7 @@
 // (no `ops`) still reconstructs `{to: writes[0], from}` (lower.ts:104-105). Both reach `applyProjectionOp`
 // byte-identically to the legacy `node.ops.project[]` site.
 
-import type { OpSpec, Reducer, Check, OnFailure, ActionBody } from '../types.js';
+import type { OpSpec, Reducer, Check, OnFailure, ActionBody, IntegrityExpectation } from '../types.js';
 import type { Seed } from '../workflow/ops/seed.js';
 import type { MergeSpec } from '../workflow/ops/merge.js';
 
@@ -112,12 +112,16 @@ export function gatesFromOp(op: OpSpec[] | undefined): { pre: Check[]; post: Che
 
 /** A dispatchable top-level `run` op: a `{cmd}` body that fires in a POST-ish lane, plus its failure consequence.
  *  (op-integrity WS-I2) `id`/`resultFile` ride so a failing run op can build its `detail` from the structured
- *  verdict file (the gate ledger) instead of the first stderr line. */
+ *  verdict file (the gate ledger) instead of the first stderr line. (op-integrity WS-I3) `expect`/`writes` ride
+ *  so the runner can compute THIS op's own integrity verdicts (via `evaluateOpExpect`) for the telemetry
+ *  per-node ops table (`rec.ops[]`) in the SAME loop that dispatches it — no second id-keyed lookup pass. */
 export interface RunnableOp {
   body: { cmd: string; args?: string[]; cwd?: string };
   onFailure: OnFailure;
   id?: string;
   resultFile?: string;
+  expect?: IntegrityExpectation[];
+  writes?: string[];
 }
 /** A `run` op the runner has NO executor for — surfaced (never silently dropped) via `opFailures` (fail-loud). */
 export interface RejectedRunOp {
@@ -193,7 +197,7 @@ export function runOpsFromOp(op: OpSpec[] | undefined): { runnable: RunnableOp[]
     } else if (!dispatchableWhen) {
       rejected.push({ detail: `run op '${body.cmd}' with when:'${o.when}' has no executor (only post/always/on-success run)`, onFailure });
     } else {
-      runnable.push({ body: { cmd: body.cmd, args: body.args, cwd: body.cwd }, onFailure, id: o.id, resultFile: o.resultFile });
+      runnable.push({ body: { cmd: body.cmd, args: body.args, cwd: body.cwd }, onFailure, id: o.id, resultFile: o.resultFile, expect: o.expect, writes: o.writes });
     }
   }
   return { runnable, rejected };

@@ -68,6 +68,23 @@ function turnRow(t: TurnRecord): string {
   return `    ${pad(t.turnIndex, 4)} ${pad(secs(t.startMs), 8)} ${pad(secs(t.durMs), 8)} ${pad(k(t.thinkChars), 7)} ${tools}`;
 }
 
+type NodeOp = NonNullable<NodeDigest['ops']>[number];
+
+/** (op-integrity WS-I3) The ops-table verdict column: "-" when the op declared no `expect` (nothing to
+ *  check); "FAIL <kind,…>" naming the FAILING check kind(s) — the gate ledger's own verdict, never a raw
+ *  stderr line; "PASS <kind,…>" when every declared expectation held. */
+function opVerdict(o: NodeOp): string {
+  if (!o.integrity?.length) return '-';
+  const failing = o.integrity.filter((v) => !v.ok);
+  if (failing.length) return `FAIL ${failing.map((v) => v.kind).join(',')}`;
+  return `PASS ${o.integrity.map((v) => v.kind).join(',')}`;
+}
+
+/** One ops-table row: op id · exit code · duration · the integrity verdict (never the first stderr line). */
+function opRow(o: NodeOp): string {
+  return `    ${pad(o.id, 16)} ${pad(o.exit ?? '', 6)} ${pad(o.durationMs != null ? secs(o.durationMs) : '', 8)} ${opVerdict(o)}`;
+}
+
 /** One per-node row: outcome · model-calls · tool-calls · tokens · cost · ctx% · loop/trunc flags. */
 function nodeRow(n: NodeDigest): string {
   const flags = [
@@ -105,6 +122,14 @@ export function renderDigest(d: RunDigest, nodeId?: string): string {
       lines.push(`  turns (${n.turns.length}):`);
       lines.push(`    turn t+s      dur      think   tools`);
       lines.push(...n.turns.map(turnRow));
+    }
+    // (op-integrity WS-I3) The per-node ops table — every DISPATCHED run op (id · exit · duration · integrity
+    // verdict), from the recorded envelope. Distinct from `issues`/`opFailures` above: this shows what RAN,
+    // pass or fail, so a clean op is visible too — not just the ones that broke.
+    if (n.ops?.length) {
+      lines.push(`  ops (${n.ops.length}):`);
+      lines.push(`    id               exit   dur      verdict`);
+      lines.push(...n.ops.map(opRow));
     }
     return lines.join('\n');
   }
