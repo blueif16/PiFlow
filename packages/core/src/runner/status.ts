@@ -154,10 +154,12 @@ export interface NodeStatusRecord {
    * `blocked`; only the CARRIER of the reason changed. The optimize substrate reads THIS field, never an
    * issue-string grep. Absent when the node ran no failing op (the minimal-record rule).
    *
-   * (op-integrity WS-I1) `integrity?` carries the op's `expect` verdicts (kind · ok · detail) when the failure
-   * is an integrity violation — evidence for triage, surfaced as a WARN by default. (WS-I2 adds `resultFile?`.)
+   * (op-integrity WS-I1/I2) `integrity?` carries the op's `expect` verdicts (kind · ok · detail) when the failure
+   * is an integrity violation — evidence for triage, surfaced as a WARN by default. `resultFile?` is the raw path
+   * to the op's structured verdict (the gate ledger); on a resultFile run-op failure the `detail` is built from
+   * that file's content (the verdict), not the first stderr line — so a verb/triage reads the verdict, not noise.
    */
-  opFailures?: { detail: string; onFailure: OnFailure; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
+  opFailures?: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[];
   summary?: string;
   /** Set when a watchdog killed the node (classifies the `error`). */
   killedTimeout?: boolean;

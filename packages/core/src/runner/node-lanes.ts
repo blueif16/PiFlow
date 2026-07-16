@@ -8,7 +8,7 @@ import { promises as fs, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { NodeSpec, CheckpointSpec, OnFailure } from '../types.js';
 import type { RunContext } from './run-context.js';
-import { effectiveChecks, evaluateChecks, actionForVerdict, opIntegrityFailures, type FileBytes } from '../checks.js';
+import { effectiveChecks, evaluateChecks, actionForVerdict, opIntegrityFailures, distillResultFile, type FileBytes } from '../checks.js';
 import { validateArtifactSchemas } from './schema.js';
 import { runHooks } from '../hooks/index.js';
 import { resolveTokens, resolveDeep, type ResolveCtx } from '../workflow/resolver.js';
@@ -339,9 +339,9 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // SAME order — only there is no model exit to gate on (the deterministic ops always run). A `run`/`merge`
     // op's non-zero exit routes through the op's `onFailure` (default 'block'), collected here and applied in
     // the status ladder below.
-    // (op-integrity WS-I1) The op-failure entry gains `integrity?` (parity with runNode); the integrity pass
-    // below records the expect verdicts here. (WS-I2 adds `resultFile?`.)
-    const opFailures: { detail: string; onFailure: OnFailure; integrity?: { kind: string; ok: boolean; detail: string }[] }[] = [];
+    // (op-integrity WS-I1/I2) The op-failure entry gains `integrity?` + `resultFile?` (parity with runNode); the
+    // integrity pass records the expect verdicts, and a resultFile run-op failure builds detail from the ledger.
+    const opFailures: { detail: string; onFailure: OnFailure; resultFile?: string; integrity?: { kind: string; ok: boolean; detail: string }[] }[] = [];
     // A file reader rooted at the run dir — hoisted above the run loop so the WS-I1 integrity pass reuses the
     // SAME reader the post-node checks use below (jail-correct: the bytes the node will actually read).
     const readBytes = (rel: string): FileBytes => {
@@ -377,14 +377,18 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
     // AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic derive/side-
     // effect step. Reuse the merge executor's `run` impl, then route a non-zero exit through `onFailure`.
     const runOps = runOpsFromOp(node.op); // (C2) the SINGLE run→executor-input adapter (was inlined here).
-    for (const { body, onFailure } of runOps.runnable) {
+    for (const { body, onFailure, id, resultFile } of runOps.runnable) {
       // The body resolves at dispatch like the sibling merge/promote specs — merge.ts's own sub() handles
       // only {project}, so a raw {{WORKSPACE}} cwd joins literally under the project base → spawnSync ENOENT.
       const rb = resolveDeep({ cmd: body.cmd, args: body.args, cwd: body.cwd }, resolveCtx) as { cmd: string; args?: string[]; cwd?: string };
       const r = await applyMergeOp({ run: rb }, ctx.outDir);
       if (r.failed) {
-        // include r.skipped — the spawn-error branch (res.error) reports THERE, not in exit/stderr
-        opFailures.push({ detail: `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`, onFailure });
+        // (op-integrity WS-I2) A resultFile op builds its detail from the structured verdict, not stderr — IDENTICAL
+        // to runNode. Else the legacy detail (include r.skipped — the spawn-error branch reports THERE, not stderr).
+        const detail = resultFile
+          ? `op ${id ?? '?'} failed — ${distillResultFile(resultFile, readBytes(resultFile).bytes)}`
+          : `run ${r.cmd ?? body.cmd} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}${r.skipped ? `: ${r.skipped}` : ''}`;
+        opFailures.push({ detail, onFailure, ...(resultFile ? { resultFile } : {}) });
       }
     }
     // (B-fix) FAIL LOUD: a run op the runner has NO executor for (when:'pre'/'on-failure', the {fn} variant, or

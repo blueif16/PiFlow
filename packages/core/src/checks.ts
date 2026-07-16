@@ -265,11 +265,48 @@ export function evaluateChecks(checks: Check[], read: (path: string) => FileByte
 }
 
 /** One op's integrity violation, in the shape the runner pushes onto its `opFailures` channel (op-integrity §1/§2).
- *  `integrity` carries EVERY expect verdict for the op (ok + failing); `detail` summarizes the FAILING ones. */
+ *  `integrity` carries EVERY expect verdict for the op (ok + failing); `detail` summarizes the FAILING ones.
+ *  `resultFile` (WS-I2) rides the raw path so verbs can open the structured verdict. */
 export interface IntegrityFailure {
   detail: string;
   onFailure: OnFailure;
+  resultFile?: string;
   integrity: { kind: string; ok: boolean; detail: string }[];
+}
+
+/**
+ * (op-integrity WS-I2) Distill an op's `resultFile` (a structured verdict, by convention a JSON ledger/manifest)
+ * into a concise op-failure `detail` — the gate's REAL verdict, in place of the first stderr line. Surfaces the
+ * top-level verdict (`ok`/`verdict`/`status`) + the FAILING entries of a `checks`/`verify`/`results`/`entries`
+ * array (name + detail/reason/message). Pure + total: a missing/unparseable file degrades to a labelled fallback,
+ * never a throw. STUB (RED).
+ */
+export function distillResultFile(path: string, bytes: string | null): string {
+  if (bytes == null) return `${path} (missing)`;
+  let doc: unknown;
+  try {
+    doc = JSON.parse(bytes);
+  } catch {
+    return `${path} (unparseable JSON)`;
+  }
+  const parts: string[] = [];
+  const o = (doc ?? {}) as Record<string, unknown>;
+  const verdict = o.ok ?? o.verdict ?? o.status;
+  if (verdict !== undefined) parts.push(`ok=${JSON.stringify(verdict)}`);
+  // The first array of check-like records under a conventional key; list the FAILING ones only.
+  const arr = ['checks', 'verify', 'results', 'entries'].map((k) => o[k]).find(Array.isArray) as unknown[] | undefined;
+  if (arr) {
+    const isFailing = (e: Record<string, unknown>): boolean =>
+      e.ok === false || e.pass === false || (e.status !== undefined && e.status !== 'ok' && e.status !== 'pass');
+    const failing = arr.filter((e): e is Record<string, unknown> => !!e && typeof e === 'object' && isFailing(e as Record<string, unknown>));
+    const desc = failing.slice(0, 3).map((e) => {
+      const name = e.name ?? e.kind ?? e.id ?? e.path ?? '?';
+      const why = e.detail ?? e.reason ?? e.message ?? 'failed';
+      return `${String(name)}: ${String(why)}`;
+    });
+    if (desc.length) parts.push(`failing: ${desc.join('; ')}`);
+  }
+  return `${path} — ${parts.join(' · ') || 'verdict recorded'}`;
 }
 
 /**
@@ -313,7 +350,8 @@ export function opIntegrityFailures(ops: OpSpec[] | undefined, read: (path: stri
     if (!failing.length) continue; // a fully-passing op is silent
     const onFailure: OnFailure = o.onFailure ?? 'warn';
     const label = failing.map((v) => `${v.kind} ${v.detail}`).join('; ');
-    out.push({ detail: `op ${o.id ?? '?'} integrity — ${label}`, onFailure, integrity });
+    // (WS-I2) The raw resultFile path rides the envelope so verbs can open the structured verdict.
+    out.push({ detail: `op ${o.id ?? '?'} integrity — ${label}`, onFailure, integrity, ...(o.resultFile ? { resultFile: o.resultFile } : {}) });
   }
   return out;
 }
