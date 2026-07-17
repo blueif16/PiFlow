@@ -675,6 +675,28 @@ describe('runWorkflow — claude-code node derives its verdict from parseClaudeR
     expect(status.nodes.fix.status).toBe('ok');
     await fs.rm(outDir, { recursive: true, force: true });
   });
+
+  // ── fix/claude-return-tail-evidence — node-lifecycle now WIRES the driver's returnBlock into `parsed`,
+  //    so a claude node's fenced return tail (recovered off the `result` event's OWN text) is honored by the
+  //    SAME status ladder clause that already honors a pi node's self-report. Proves the wiring at node-
+  //    lifecycle.ts, not just the driver's parseResult (already pinned in claude-code-driver.test.ts).
+  it("a claude-code node's fenced ```json tail (off the result event text) drives the status ladder to `gap`, carrying its issues — exactly like a pi self-report", async () => {
+    const stdout = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-tail' }),
+      JSON.stringify({
+        type: 'result', subtype: 'success', is_error: false, session_id: 'sess-tail',
+        result: 'Wrote the file but one thing is off.\n\n```json\n{"status":"gap","summary":"partial","issues":["needs a follow-up"]}\n```',
+      }),
+    ].join('\n');
+    const g = compile(wf([n('Fix', [], ['fix.txt'], { executor: 'claude-code' })]));
+    const outDir = await tmpOut();
+    const { status } = await claudeRun(g, outDir, stdout);
+    // Pre-fix this fell to `ok` (a clean exit 0, artifact present, `parsed` hard-nulled for claude) — the
+    // tail's `status:"gap"` never had a chance to run through the ladder's `parsed?.status` clause.
+    expect(status.nodes.fix.status).toBe('gap');
+    expect((status.nodes.fix.issues ?? []).join(' ')).toContain('needs a follow-up');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
 });
 
 // ── command builder (the production default's flag shape) ────────────────────────────────────────

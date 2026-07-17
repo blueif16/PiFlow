@@ -812,29 +812,31 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // breaches (missing → schema-invalid → blocking integrity check), each beating any self-report; then
     // a non-ok self-report is honored; then a MISSING handshake errors ONLY when it was required; else ok.
     //
-    // EXECUTOR-AWARE SELF-REPORT: the pi RETURN PROTOCOL (a fenced `{status,summary,issues}` tail recovered
-    // by `lastJsonBlock`) is a PI convention — it DOES NOT APPLY to a self-report-less executor (claude,
-    // whose stdout is `--output-format stream-json` NDJSON — running `lastJsonBlock` over it MISREADS a benign
-    // `rate_limit_event` as the node's structured return → a false `gap`). So for such an executor we (a)
-    // NEUTER the pi `parsed` self-report (the return-protocol clauses below — the self-report, the
-    // no-handshake, the return-schema gate, the G8 re-parse, the `parsed.issues` carry — can never fire) and
-    // (b) let its DRIVER's verdict decide: `selfReportedError ⇒ error`; else the driver-verified gates alone
-    // decide (success ⇒ ok). The driver gates (missing/schema/integrity/op breaches above the self-report
-    // clause) are executor-agnostic and STILL beat the self-report — a success with a missing required
-    // artifact still blocks.
-    // (P3 — Fork D) The verdict + telemetry now route through the node's DRIVER's `parseResult`, replacing the
-    // `isClaude` ternary. `usesSelfReport` (the driver descriptor's `telemetry.usageRollup === false`) is the
-    // agent-neutral replacement for `!isClaude`: pi (usageRollup:false) keeps the pi return-protocol
-    // self-report + handshake live; claude (usageRollup:true) neuters them, matching today. `verdict` carries
-    // ok/sessionId, the OPTIONAL NodeUsage spine (claude), and `selfReportedError` (claude's result-event
-    // failure) — the driver-neutral inputs the status ladder reads below.
+    // EXECUTOR-AWARE RETURN TAIL: every node finishes via ONE return contract — a fenced `{status,summary,
+    // issues}` JSON tail the driver parses as the structured return. The RECOVERY SOURCE differs by executor:
+    // pi's stdout IS the tail-bearing text, so `lastJsonBlock` runs over it directly (raw-stdout tail-parse
+    // stays PI-ONLY — claude's stdout is `--output-format stream-json` NDJSON, and running the raw-stdout
+    // parser over it once MISREAD a benign `rate_limit_event` line as the node's return → a false `gap`).
+    // Claude's fenced tail instead rides the ONE authoritative `result` event's OWN text (`ClaudeRunResult
+    // .text`) — the driver tail-parses THAT (never raw stdout) and carries it as `verdict.returnBlock`. So
+    // `parsed` below is populated for EVERY executor once it has a tail to recover, and the return-protocol
+    // clauses (self-report status, the return-schema gate, the G8 re-parse, the `parsed.issues` carry,
+    // promote's `@return:<field>`) are live for claude exactly as they are for pi. The ONE clause that stays
+    // executor-gated is the missing-handshake requirement below (`usesSelfReport`-only): a claude node's
+    // handshake is proven by the `result` event itself (`selfReportedError` / the driver-verified gates), so
+    // a claude node with NO tail must not newly fail on that account.
+    // (P3 — Fork D) The verdict + telemetry route through the node's DRIVER's `parseResult`. `usesSelfReport`
+    // (the driver descriptor's `telemetry.usageRollup === false`) distinguishes pi (raw-stdout tail-parse,
+    // the pi return-protocol handshake) from claude (result-event tail via `returnBlock`, handshake via
+    // `selfReportedError`). `verdict` carries ok/sessionId, the OPTIONAL NodeUsage spine (claude), and
+    // `selfReportedError` (claude's result-event failure) — the driver-neutral inputs the status ladder reads.
     const usesSelfReport = drv.describe().telemetry.usageRollup === false;
     const { verdict, usage } = drv.parseResult({ stdout: result.stdout, exitCode: result.code, killed });
-    // `parsed` is the pi self-report block — recovered from the FULL `lastJsonBlock` (NOT the narrowed
-    // `verdict.selfReport`) so a promote's `@return:<field>` + the returnSchema gate still read arbitrary
-    // fields. Gated by the driver: a non-self-reporting executor (claude, usageRollup:true) yields null,
-    // neutering the pi return-protocol clauses exactly like the old `isClaude ? null : …`.
-    let parsed = usesSelfReport ? lastJsonBlock(result.stdout) : null;
+    // `parsed` is the FULL structured return the node produced (NOT the narrowed `verdict.selfReport`) so a
+    // promote's `@return:<field>` + the returnSchema gate still read arbitrary fields. pi recovers it from its
+    // OWN raw stdout (`lastJsonBlock`); every other executor rides its driver's `returnBlock` (claude: tail-
+    // parsed off the result event's text) — `?? null` covers a driver that leaves `returnBlock` undefined.
+    let parsed = usesSelfReport ? lastJsonBlock(result.stdout) : (verdict.returnBlock ?? null);
 
     // (agent-neutral spine) Persist the executor's authoritative token/cost/context telemetry (claude's ONE
     // `result` event) from `parseResult`, so observe sources it from the record instead of the pi-only event
@@ -922,7 +924,13 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         artifacts = await Promise.all(node.io.artifacts.map((a) => artifactState(path.resolve(ctx.outDir, a.path), a.path)));
         missing = artifacts.filter((a) => !a.exists).map((a) => a.path);
         schema = await validateArtifactSchemas(node.io.artifacts, { outDir: ctx.outDir, roots: [ctx.outDir, scope.root], validate: ctx.validateSchema });
-        parsed = usesSelfReport ? lastJsonBlock(result.stdout) : null; // claude: never re-introduce the stream-json misread
+        // Re-parse the repaired output through the SAME claude-aware path as the first parse (above): pi
+        // recovers its own raw stdout; every other executor goes back through its DRIVER's `parseResult` on
+        // the FRESH stdout and takes `returnBlock` — never `lastJsonBlock` over claude stdout directly (that
+        // is the `rate_limit_event` misread this design exists to avoid).
+        parsed = usesSelfReport
+          ? lastJsonBlock(result.stdout)
+          : (drv.parseResult({ stdout: result.stdout, exitCode: result.code, killed: repairExec.killed }).verdict.returnBlock ?? null);
         returnSchemaInvalid = validateReturn();
         returnSchemaBreach = returnSchemaInvalid.length > 0 && returnMode === 'required';
       }
@@ -1095,6 +1103,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         exitCode: result.code,
         stderrTail: (result.stderr || '').slice(-400),
         parsedOk: parsed != null,
+        // (M5 · #18 fix/claude-return-tail-evidence) BLOCKING-only op-gate evidence (a `warn` didn't fail the
+        // node and must not steer classification) — the merge/run op's own check output, which usually names
+        // the exact fix. Omitted when empty (the minimal-record convention every other field here follows).
+        ...(blockingOpFailures.length ? { opFailures: blockingOpFailures.map((f) => f.detail) } : {}),
         // (P3 · inline hitl) A human rejection at the inline gate — the reviewer's WHY (→ consultPreamble on
         // the warm re-run) + the discriminator that forces the re-attempt retry-only (never escalate, H1).
         ...(humanRejected ? { humanReject: true } : {}),

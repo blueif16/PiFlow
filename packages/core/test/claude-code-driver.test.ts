@@ -109,6 +109,49 @@ describe('claudeCodeDriver — wraps the shipped claude functions with zero beha
   });
 });
 
+// ── returnBlock — the claude-aware fenced-tail fallback (fix/claude-return-tail-evidence) ──────────────
+//   Canon: every node finishes via ONE return contract — `submit_result` where deliverable, else a fenced-
+//   JSON tail the driver parses as fallback. Claude never implemented the fallback: node-lifecycle.ts hard-
+//   nulled `parsed` for a non-self-reporting executor because raw-stdout tail-parsing once misread a benign
+//   `rate_limit_event` NDJSON line as the return. The fix: parse the tail from the claude `result` event's
+//   OWN text (`ClaudeRunResult.text`), never raw stdout — `returnBlock` carries that parse on the verdict.
+describe('claudeCodeDriver.parseResult — returnBlock (the fenced-tail fallback off the result event text)', () => {
+  it('a result event whose text ends with a fenced ```json tail parses that tail onto verdict.returnBlock', () => {
+    const stdout = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-1' }),
+      JSON.stringify({
+        type: 'result', subtype: 'success', is_error: false, session_id: 'sess-1',
+        result: 'I fixed the bug.\n\n```json\n{"status":"gap","summary":"s","issues":["i"]}\n```',
+      }),
+    ].join('\n');
+    const { verdict } = claudeCodeDriver.parseResult(raw(stdout));
+    expect(verdict.returnBlock).toEqual({ status: 'gap', summary: 's', issues: ['i'] });
+  });
+
+  it('a result event whose text has NO fenced tail leaves verdict.returnBlock null', () => {
+    const stdout = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-2' }),
+      JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: 'sess-2', result: 'Done.' }),
+    ].join('\n');
+    const { verdict } = claudeCodeDriver.parseResult(raw(stdout));
+    expect(verdict.returnBlock).toBeNull();
+  });
+
+  it('a rate_limit_event NDJSON line does NOT get misread as the return — only the result event TEXT is tail-parsed, never raw stdout', () => {
+    // The exact misread this design exists to avoid: a benign rate_limit_event payload looks like balanced
+    // JSON to a raw-stdout tail-parser. Guard: the rate_limit_event line has NO fenced ```json marker at all,
+    // so even a naive scan of raw stdout would only find one if it wrongly targeted the whole stdout blob for
+    // fencing; the real guard is behavioral — the result text here carries no tail, so returnBlock must be null.
+    const stdout = [
+      JSON.stringify({ type: 'system', subtype: 'init', session_id: 'sess-3' }),
+      JSON.stringify({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour' }, session_id: 'sess-3' }),
+      JSON.stringify({ type: 'result', subtype: 'success', is_error: false, session_id: 'sess-3', result: 'Done, no tail here.' }),
+    ].join('\n');
+    const { verdict } = claudeCodeDriver.parseResult(raw(stdout));
+    expect(verdict.returnBlock).toBeNull();
+  });
+});
+
 describe('builtinDrivers() — the table now holds pi AND claude-code (P2)', () => {
   it('get("claude-code") is the claudeCodeDriver and ids() contains both "pi" and "claude-code"', () => {
     const drivers = builtinDrivers();

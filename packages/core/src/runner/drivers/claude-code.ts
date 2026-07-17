@@ -19,6 +19,7 @@ import { parseClaudeResult, nodeUsageFromClaude } from '../claude-result.js';
 import { claudeExecutorEnvAdditions } from '../claude-executor.js';
 import { contextWindowFor } from '../../observe/models.js';
 import { createClaudeAccumulator } from '../../observe/claude-distill.js';
+import { lastJsonBlock } from '../return-parse.js';
 
 /**
  * The `claude-code` driver — wraps the shipped claude functions with ZERO behavior change. Registered under id
@@ -105,6 +106,10 @@ export const claudeCodeDriver: AgentDriver = {
     if (cv.isError && cv.subtype !== undefined) {
       verdict.selfReportedError = { subtype: cv.subtype, ...(cv.text !== undefined ? { text: cv.text } : {}) };
     }
+    // (fix/claude-return-tail-evidence) The fenced-JSON return tail, off the result event's OWN text ONLY —
+    // NEVER raw stdout (that is the `rate_limit_event` misread this design exists to avoid). No `result`
+    // event ⇒ cv.text undefined ⇒ null (nothing to parse), matching a present-but-tail-less result.
+    verdict.returnBlock = cv.text != null ? lastJsonBlock(cv.text) : null;
     return { verdict, usage: nodeUsageFromClaude(cv) };
   },
 
