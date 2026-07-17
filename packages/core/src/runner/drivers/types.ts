@@ -15,6 +15,7 @@ import type { ModelCatalog } from '../../observe/models.js';
 import type { CommandContext } from '../command.js';
 import type { NodeRouting, RunRouting } from '../model-routing.js';
 import type { PiEvent } from '../events.js';
+import type { NodeReturn } from '../return-parse.js';
 
 /** The raw output of one node's executor run, as the runner has it at the spawn seam. */
 export interface RawRun {
@@ -40,6 +41,15 @@ export interface AgentVerdict {
    * claude self-reported-error clause byte-identically. Does NOT change the frozen parseResult contract.
    */
   selfReportedError?: { subtype?: string; text?: string };
+  /**
+   * (fix/claude-return-tail-evidence, ADDITIVE — non-parity) The FULL parsed fenced-JSON return tail, for an
+   * executor whose raw stdout is NOT tail-parseable (claude's `--output-format stream-json` NDJSON — running
+   * the pi tail-parser over it once misread a benign `rate_limit_event` line as the return). pi leaves this
+   * undefined — node-lifecycle.ts parses pi's raw stdout itself via `lastJsonBlock`, unaffected by this field.
+   * claude sets it by tail-parsing its OWN `result` event's text (`ClaudeRunResult.text`) — NEVER raw stdout.
+   * `undefined` ⇒ not applicable to this executor; `null` ⇒ applicable but no fenced tail was found.
+   */
+  returnBlock?: NodeReturn | null;
 }
 
 /** The static "what this driver brings" card — product-agnostic, a-priori, node-independent (§2.5). */
