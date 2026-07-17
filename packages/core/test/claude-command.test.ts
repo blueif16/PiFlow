@@ -38,6 +38,28 @@ describe('claudeCommand — headless Claude Code builder', () => {
     expect(cmd).toContain("--disallowedTools 'Bash Write'");
   });
 
+  it('script tools (a compiled -e extension) degrade to Bash — the CLI on disk IS the tool on claude', () => {
+    // gameplay-shaped loadout: builtins + two script tools; the script tools have no Claude builtin, but
+    // they are node CLIs under readScope — Bash is claude's native way to run them. Without this grant the
+    // tool surface silently shrinks to Read/Write/Edit and the node's ritual (measure/feasibility) strands.
+    const resolved: ResolveResult = { piTools: ['read', 'write', 'edit', 'measure', 'feasibility_calc'], extension: '// generated binding' };
+    const cmd = claudeCommand(node, resolved, { promptFile: 'p.md' });
+    expect(cmd).toContain("--tools 'Read Write Edit Bash'");
+  });
+
+  it('no extension → no implicit Bash (a builtins-only loadout keeps its exact surface)', () => {
+    const resolved: ResolveResult = { piTools: ['read'] };
+    const cmd = claudeCommand(node, resolved, { promptFile: 'p.md' });
+    expect(cmd).toContain("--tools 'Read'");
+    expect(cmd).not.toContain('Bash');
+  });
+
+  it('extension + an explicit bash grant never doubles Bash', () => {
+    const resolved: ResolveResult = { piTools: ['read', 'bash'], extension: '// generated binding' };
+    const cmd = claudeCommand(node, resolved, { promptFile: 'p.md' });
+    expect(cmd).toContain("--tools 'Read Bash'");
+  });
+
   it('effort: emitted only when thinking is a valid Claude effort level', () => {
     const resolved: ResolveResult = { piTools: ['read'] };
     expect(claudeCommand(node, resolved, { promptFile: 'p.md' }, { thinking: 'medium' })).toContain('--effort medium');

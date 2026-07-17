@@ -27,7 +27,7 @@ a claude success still falls through to the executor-agnostic driver gates, so s
 
 # Anchors
 SELECT (route + credential + model)
-- `packages/core/src/runner/command.ts:170` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
+- `packages/core/src/runner/command.ts:175` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
 - `packages/core/src/runner/node-lifecycle.ts:208` — `runNode` — builds the claude env additions (`claudeExecutorEnvAdditions`) before sandbox create
 - `packages/core/src/runner/claude-executor.ts:124` — `claudeExecutorEnvAdditions` — injects `CLAUDE_CODE_OAUTH_TOKEN` + `CLAUDE_CONFIG_DIR`, empties the API-key vars (subscription-only, never silent API billing)
 - `packages/core/src/runner/claude-executor.ts:100` — `resolveClaudeOAuthToken` — layered host-side token resolve: SecretResolver env → `~/.piflow/claude-code.json` → local Keychain/`.credentials.json`
@@ -137,6 +137,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
 - `4480653` 2026-07-15 — fix(runner): re-allow a node's own .pi/sessions dir under the bookkeeping read-deny
 - `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
+- `fe15631` 2026-07-16 — fix(core): --rerun (and cold retry/escalation) mints a fresh pi session, never warm-resumes
 
 ### Lessons — memory cluster
 
@@ -170,6 +171,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[railway-deploy-from-main-not-worktree]]
 - [[roadmap-bookkeeping-linear]]
 - [[runs-live-in-product-runs-folder]]
+- [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
@@ -178,9 +180,10 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 ### Code anchors / blast radius (codegraph)
 
 - `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:15) — 3 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
+- `claudeCommand` (packages/core/src/runner/command.ts:141) — 1 caller; tests: `packages/core/test/claude-command.test.ts`
 - `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 8 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/optimize/substrate/agent.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-16 · arc=64 commits · files=5 · lessons=33</sub>
+<sub>derived 2026-07-17 · arc=65 commits · files=5 · lessons=34</sub>
 <!-- okf:auto-end -->
