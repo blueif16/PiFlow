@@ -54,7 +54,7 @@ import {
   type RunResult,
   type FinalizeResult,
 } from '@piflow/core';
-import { runTemplate, runFailureReport, type ParsedRunArgs, type SandboxChoice } from './run.js';
+import { runTemplate, runFailureReport, parseExecutorValue, type ParsedRunArgs, type SandboxChoice } from './run.js';
 
 /** Shell-quote a single token (paths may contain spaces). Mirrors command.ts `q`. */
 function q(s: string): string {
@@ -335,6 +335,8 @@ export interface ParsedNodeArgs {
   thinking?: string;
   provider?: string;
   workspace?: string;
+  /** `--rerun`'s `--executor <pi|claude-code>` — a PER-TARGET executor override (never a run-level default). */
+  executor?: string;
   /**
    * `--rerun`'s repeated `--arg k=v` (BUG A) — parsed EXACTLY like the `run` verb's `parseRunArgs` (first
    * `=` splits key from value; a value may itself contain `=`). `{}` when none were passed — the `--rerun`
@@ -363,6 +365,7 @@ export function parseNodeArgs(argv: string[]): ParsedNodeArgs {
     else if (k === '--thinking') out.thinking = argv[++i];
     else if (k === '--provider') out.provider = argv[++i];
     else if (k === '--workspace') out.workspace = argv[++i];
+    else if (k === '--executor') out.executor = argv[++i];
     else if (k === '--arg') {
       const kv = argv[++i] ?? '';
       const eq = kv.indexOf('='); // only the FIRST '=' splits k from v (values may contain '=') — mirrors run.ts.
@@ -504,6 +507,18 @@ export async function runNodeCli(argv: string[], deps: NodeDeps = {}): Promise<n
     // SAME values the run originally used — a `--rerun` used to always execute with `args: {}`, which the
     // resolver rejects loudly: `unresolved run arg "<key>"`).
     const rerunArgs = Object.keys(parsed.args).length ? parsed.args : (loadRunStatus(runDir)?.args ?? {});
+    // `--executor <v>` — a PER-TARGET override (the one-run "run this node on claude-code" door; the
+    // template's authored executor is untouched). Validated with the run verb's own narrowing, so a typo
+    // errors loudly here too, before any run machinery spins up.
+    let rerunExecutor: 'pi' | 'claude-code' | undefined;
+    if (parsed.executor !== undefined) {
+      try {
+        rerunExecutor = parseExecutorValue(parsed.executor, `(node --rerun) `);
+      } catch (e) {
+        error((e as Error).message);
+        return 1;
+      }
+    }
     // Build the run args: window=[nodeId,nodeId] + an EXPLICIT rerun-set (force-RUN exactly this node,
     // force-REUSE every sibling/upstream) over the EXISTING run dir (its canonical home resolves back to
     // `runDir`). NOT `noResume:true` — that would re-run every sibling sharing the target's parallel stage.
@@ -521,6 +536,7 @@ export async function runNodeCli(argv: string[], deps: NodeDeps = {}): Promise<n
       ...(parsed.workspace ? { workspace: parsed.workspace } : {}),
       ...(parsed.provider ? { provider: parsed.provider } : {}),
       ...(parsed.thinking ? { thinking: parsed.thinking } : {}),
+      ...(rerunExecutor ? { executorOverride: { [parsed.nodeId]: rerunExecutor } } : {}),
       args: rerunArgs,
     };
     print(

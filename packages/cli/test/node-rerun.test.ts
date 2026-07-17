@@ -232,6 +232,46 @@ describe('piflowctl node --rerun — cold single-node re-execution from frozen u
     expect(seen?.provider).toBe('mmgw');
     expect(seen?.workspace).toBe('/w');
   });
+
+  // `--executor <v>` on `node --rerun` — a PER-TARGET override (the one-run "run this node on claude-code"
+  // door; the template's authored executor is untouched). Lands as executorOverride={[nodeId]: v}, exactly
+  // the run verb's per-node form; a typo errors loudly (parity with run's parseExecutorValue).
+  it('threads --executor <v> as executorOverride for the target node', async () => {
+    let seen: ParsedRunArgs | undefined;
+    const code = await runNodeCli(
+      [runDir, 'n1', '--rerun', '--executor', 'claude-code'],
+      {
+        runTemplate: (p: ParsedRunArgs) => {
+          seen = p;
+          return Promise.resolve(undefined);
+        },
+        print: () => {},
+        error: () => {},
+      },
+    );
+    expect(code).toBe(0);
+    expect(seen?.executorOverride).toEqual({ n1: 'claude-code' });
+    expect(seen?.executor).toBeUndefined(); // per-target only — never a run-level default
+  });
+
+  it('rejects an unknown --executor value loudly (never a silent wrong binary)', async () => {
+    const errors: string[] = [];
+    let called = false;
+    const code = await runNodeCli(
+      [runDir, 'n1', '--rerun', '--executor', 'claud-code'],
+      {
+        runTemplate: () => {
+          called = true;
+          return Promise.resolve(undefined);
+        },
+        print: () => {},
+        error: (m: string) => errors.push(m),
+      },
+    );
+    expect(code).toBe(1);
+    expect(called).toBe(false);
+    expect(errors.join('\n')).toMatch(/unknown --executor/);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
