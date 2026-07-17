@@ -80,6 +80,12 @@ describe('claudeCommand — headless Claude Code builder', () => {
     expect(claudeCommand(node, resolved, { promptFile: 'p.md' }, { session: sess })).not.toContain('--resume');
     // no session → NO --resume
     expect(claudeCommand(node, resolved, { promptFile: 'p.md' })).not.toContain('--resume');
+    // resumeRef (the claude-minted UUID, captured off the prior attempt's result event) WINS over the
+    // pi-convention id — `--resume <nodeId>` is fatal in `claude -p` (live: 260715-01 gameplay retries).
+    const uuid = '051c8666-f8c3-45e2-81ce-7f2edd03aa64';
+    expect(
+      claudeCommand(node, resolved, { promptFile: 'p.md' }, { session: { ...sess, resume: true, resumeRef: uuid } }),
+    ).toContain(`--resume '${uuid}'`);
   });
 
   it('omits --model when none is resolved (rides the subscription default)', () => {

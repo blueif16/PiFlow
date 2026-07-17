@@ -114,6 +114,9 @@ export function resolveNodeWriteScope(node: NodeSpec, resolveCtx: ResolveCtx): s
   return resolveAll(node.sandbox.write, resolveCtx);
 }
 
+/** A claude-minted session id (the `result` event's `session_id`) — the ONLY valid `--resume` ref. */
+const CLAUDE_SESSION_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Exported as the lifecycle seam: ./retry.ts drives the retry/escalate loop around `runNode`.
 export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, over: AttemptOverride = {}): Promise<NodeStatusRecord> {
   const rec = ctx.status.nodes[node.id];
@@ -449,13 +452,26 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // RESUMES (`--session <id>`) and the prompt is FEEDBACK-ONLY; the first attempt CREATES (`--session-id <id>`).
     // An escalation never sets it (stays cold).
     const warmEligible = IN_PLACE_KINDS.has(ctx.providerKind);
-    const isResume = warmEligible && over.resumeSessionId !== undefined;
+    // CLAUDE arm: a claude session is addressed ONLY by the UUID claude ITSELF minted — captured off the
+    // prior attempt's `result` event into `rec.sessionId` (the verdict-capture below). The pi node-id
+    // convention is NOT a claude session ref: `claude -p --resume <nodeId>` is FATAL, and it killed both
+    // feedback retries of run 260715-01's gameplay at spawn (0 tokens — the gate critique never reached the
+    // model). No captured UUID ⇒ the attempt DEGRADES COLD (full prompt + critique prefix), never a
+    // guaranteed-fatal resume.
+    const isClaudeExec = node.executor === 'claude-code';
+    const claudeResumeId =
+      isClaudeExec && rec.sessionId && CLAUDE_SESSION_ID_RE.test(rec.sessionId) ? rec.sessionId : undefined;
+    const isResume =
+      warmEligible && over.resumeSessionId !== undefined && (!isClaudeExec || claudeResumeId !== undefined);
     const sessionDir = piSessionsDir(path.resolve(ctx.outDir));
     // On a warm RESUME, LOCATE the session file attempt-1 minted (`<ISO-ts>_<nodeId>.jsonl`) so the resume can
     // address it by its ABSOLUTE PATH — a bare `--session <nodeId>` under this custom `--session-dir` makes pi
     // SCAN + classify the session "different project" and prompt to fork (unanswerable in headless `-p`), which
     // starves the node's events.jsonl (run 260715-02/plan). Absent ⇒ fall back to the bare id (best-effort).
-    const resumeRef = isResume ? (locatePiSessionFile(sessionDir, node.id) ?? undefined) : undefined;
+    // (claude: the ref IS the captured UUID — there is no pi session file to locate.)
+    const resumeRef = isResume
+      ? (isClaudeExec ? claudeResumeId : (locatePiSessionFile(sessionDir, node.id) ?? undefined))
+      : undefined;
     // (fresh-session guard) On a COLD attempt (first attempt, a `--rerun`, a cold same-model retry, or an
     // escalation), pi's OWN `--session-id <id>` is GET-OR-CREATE: if a session file already exists under this
     // id — e.g. a PRIOR attempt in this SAME run, or a `--rerun` of an already-finished node reusing its run
@@ -467,7 +483,9 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     const session = warmEligible
       ? { dir: sessionDir, id: node.id, resume: isResume, ...(resumeRef ? { resumeRef } : {}) }
       : undefined;
-    if (session) { rec.sessionId = session.id; rec.sessionDir = session.dir; }
+    // The pi-convention stamp (session id = node id) must NOT clobber a claude node's record — its real
+    // session id is the UUID the verdict-capture below adopts, and the next warm retry resolves from it.
+    if (session) { if (!isClaudeExec) rec.sessionId = session.id; rec.sessionDir = session.dir; }
 
     // The prompt carries the machine-readable contract markers (artifacts/owns/read-scope/tools) so a
     // future node-contract extension can self-gate; we append them exactly as run.mjs does. An escalation
@@ -818,7 +836,11 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     // `result` event) from `parseResult`, so observe sources it from the record instead of the pi-only event
     // replay. Also rescue the minted session id. pi/echo yield no usage ⇒ these are no-ops (byte-identical).
     if (usage) rec.usage = usage;
-    if (verdict.sessionId && !rec.sessionId) rec.sessionId = verdict.sessionId;
+    // Always ADOPT the executor's minted id (only the claude driver sets it; pi/echo leave it undefined ⇒
+    // no-op). The newest id wins — each claude attempt mints its own session, and the warm-resume seam above
+    // resolves the NEXT retry from this exact field; the old `!rec.sessionId` guard let the pi-convention
+    // node-id stamp shadow the real UUID (the fatal `--resume gameplay` bug).
+    if (verdict.sessionId) rec.sessionId = verdict.sessionId;
 
     // POST-NODE RETURN-SCHEMA GATE (mirrors the artifact schema gate, runner.ts above): a node's authored
     // `returnSchema` (node.json top-level `return`) constrains the SHAPE of its structured result. We

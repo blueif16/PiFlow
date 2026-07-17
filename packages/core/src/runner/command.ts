@@ -162,7 +162,10 @@ export const claudeCommand: CommandBuilder = (node, resolved, ctx, opts = {}) =>
   if (tools.length) parts.push('--tools', q(tools.join(' ')));
   const deny = resolved.excludeTools ? toClaudeTools(resolved.excludeTools) : [];
   if (deny.length) parts.push('--disallowedTools', q(deny.join(' ')));
-  if (opts.session?.resume) parts.push('--resume', q(opts.session.id));
+  // RESUME: address the session by the id CLAUDE minted (threaded in as `resumeRef`, captured off the prior
+  // attempt's `result` event) — the pi node-id convention is NOT a claude session ref: `claude -p --resume
+  // <nodeId>` is fatal ("--resume requires a valid session ID"), observed live killing every feedback retry.
+  if (opts.session?.resume) parts.push('--resume', q(opts.session.resumeRef ?? opts.session.id));
   // Prompt on stdin (no `@file` in Claude `-p`).
   return `${parts.join(' ')} < ${q(ctx.promptFile)}`;
 };
