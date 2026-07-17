@@ -30,7 +30,7 @@ export type { FinalizeRunOpts, FinalizeResult } from './finalize.js';
 // (op⊖ops) derivesFromOp / gatesFromOp / runOpsFromOp — the SINGLE OpSpec→executor-input adapter home (the
 // SOLE derive rep is `op[]`). Surfaced so consumers (the CLI inspector) render derives from `op[]` instead of
 // the retired `node.ops`; gatesFromOp/runOpsFromOp unify the gate/run reads the runner inlined per lane (C2).
-export { derivesFromOp, gatesFromOp, runOpsFromOp, actionsFromOp } from './op-dispatch.js';
+export { derivesFromOp, gatesFromOp, runOpsFromOp, actionsFromOp, mergeFailureDetail } from './op-dispatch.js';
 // In-place exec location — the seam that anchors a `local` (in-place) node's cwd + output to the run dir
 // (so a relative artifact write lands under {{RUN}}); isolated kinds keep their throwaway workspace + out/<id>.
 export { effectiveSandboxLocation } from './env-staging.js';

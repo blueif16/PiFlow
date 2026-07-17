@@ -113,6 +113,7 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
+- `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
 
 ### Lessons — memory cluster
 
@@ -120,9 +121,11 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - [[agentic-design-library]]
 - [[blueprints-layer]]
 - [[cloud-control-plane-local-cloud-switch]]
+- [[dryrun-clobbers-existing-run-record]]
 - [[frozen-input-reruns]]
 - [[model-provider-single-default-fixture]]
 - [[omniscience-piflow-setup]]
+- [[optimize-substrate-loop-live-proven]]
 - [[optimize-substrate-program]]
 - [[piflow-optimize-layer-built]]
 - [[piflow-rollout-enablement]]
@@ -138,5 +141,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-16 · arc=54 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-17 · arc=55 commits · files=7 · lessons=14</sub>
 <!-- okf:auto-end -->

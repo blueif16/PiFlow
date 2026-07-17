@@ -17,7 +17,7 @@ import { runMerge, applyMergeOp } from '../workflow/ops/merge.js';
 import { applyProjectionOp, runProjection } from '../workflow/ops/project.js';
 import { readJsonSafe, absUnder } from '../workflow/ops/util.js';
 import { parsePromote, extractPromoteValue, type ResolvedPromote } from '../workflow/ops/promote.js';
-import { derivesFromOp, gatesFromOp, runOpsFromOp } from './op-dispatch.js';
+import { derivesFromOp, gatesFromOp, runOpsFromOp, mergeFailureDetail } from './op-dispatch.js';
 import { effectiveSandboxLocation } from './env-staging.js';
 import {
   type NodeStatusRecord,
@@ -375,7 +375,7 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
       const mergeOnFailure = ((node.op ?? []).find((o) => o.transform?.kind === 'merge')?.onFailure ?? 'block') as OnFailure;
       const merged = await runMerge(resolveDeep(m, resolveCtx), ctx.outDir);
       for (const r of merged?.ops ?? []) {
-        if (r.failed) opFailures.push({ detail: `merge ${r.op} failed${r.exit != null ? ` (exit ${r.exit})` : ''}${r.stderr ? `: ${r.stderr}` : ''}`, onFailure: mergeOnFailure });
+        if (r.failed) opFailures.push({ detail: mergeFailureDetail(r), onFailure: mergeOnFailure });
       }
     }
     // AUTHORABLE `run` body — a POST `op` with a `run:{cmd,args,cwd}` body is a deterministic derive/side-

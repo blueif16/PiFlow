@@ -215,7 +215,10 @@ export async function applyMergeOp(
     if (res.error)
       return { op: 'run', wrote: false, failed: true, skipped: `spawn error: ${res.error.message}`, cmd: subCmd };
     if (res.status !== 0)
-      return { op: 'run', wrote: false, failed: true, exit: res.status ?? 1, stderr: err.slice(0, 400), cmd: subCmd };
+      // `stdout` rides here too (not just stderr) — a failing check script commonly reports its verdict on
+      // stdout (stderr is reserved for actual errors), and the caller's failure-detail construction
+      // (op-dispatch.ts's mergeFailureDetail) falls back to it when stderr is empty.
+      return { op: 'run', wrote: false, failed: true, exit: res.status ?? 1, stderr: err.slice(0, 400), stdout: out.slice(0, 400), cmd: subCmd };
     return { op: 'run', wrote: true, exit: 0, cmd: subCmd, stdout: out.slice(0, 200), note: note || undefined };
   }
 

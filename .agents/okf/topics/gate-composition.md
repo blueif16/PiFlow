@@ -91,6 +91,8 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[first-fleet-video-e2e]]
 - [[flexibility-over-hardcoded-plans]]
 - [[issue-lifecycle-gate-redesign]]
+- [[no-rerun-before-digest-confirmed]]
+- [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
 - [[piflow-ci-cd-pipeline]]
@@ -102,6 +104,7 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[sandbox-readscope-default-on]]
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
+- [[uniformity-whole-contract-deferrals-block]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
 
@@ -113,5 +116,5 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:129) — 8 callers in `packages/core/src/workflow/gate-list.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-authoring.ts`; tests: `packages/core/test/gate-authoring.test.ts`
 - `GateListError` (packages/core/src/workflow/gate-list.ts:25) — 6 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-list.ts`; tests: `packages/core/test/inline-hitl-fanout.test.ts`
 
-<sub>derived 2026-07-16 · arc=6 commits · files=3 · lessons=23</sub>
+<sub>derived 2026-07-17 · arc=6 commits · files=3 · lessons=26</sub>
 <!-- okf:auto-end -->

@@ -191,6 +191,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[piflowctl-bin-rename]]
 - [[roadmap-bookkeeping-linear]]
 - [[run-level-blame-design]]
+- [[sandbox-readscope-default-on]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
@@ -204,8 +205,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `toNodeIntent` (packages/core/src/workflow/template/loader.ts:129) — 1 caller in `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
-- `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 8 callers in `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-list-profiles.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/core/test/journal.test.ts`, `packages/cli/test/run.test.ts`
-- `NodeSpec` (packages/core/src/types.ts:17) — 15 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; tests: `packages/core/test/warm-resume-l1.test.ts`
+- `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 10 callers in `packages/core/src/optimize/substrate/child-run.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-list-profiles.test.ts`, `packages/core/test/journal.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 28 callers in `packages/core/src/runner/stash.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/drivers/types.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; tests: `packages/core/test/warm-resume-l1.test.ts`, `packages/core/test/rerun-stash.test.ts`, `packages/core/test/claude-command.test.ts`, `packages/core/test/claude-warm-resume.test.ts` +3
 
-<sub>derived 2026-07-16 · arc=89 commits · files=5 · lessons=49</sub>
+<sub>derived 2026-07-17 · arc=89 commits · files=5 · lessons=50</sub>
 <!-- okf:auto-end -->

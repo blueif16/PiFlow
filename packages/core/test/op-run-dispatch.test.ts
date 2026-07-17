@@ -9,8 +9,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { compile, gatesFromOp, runOpsFromOp } from '../src/index.js';
+import { mergeFailureDetail } from '../src/runner/op-dispatch.js';
 import { runWorkflow } from '../src/runner/index.js';
 import type { NodeIntent, WorkflowSpec } from '../src/index.js';
+import type { MergeResult } from '../src/index.js';
 
 const wf = (nodes: NodeIntent[]): WorkflowSpec => ({ meta: { name: 't', description: 'd' }, nodes });
 const tmpOut = (): Promise<string> => fs.mkdtemp(path.join(os.tmpdir(), 'piflow-oprun-'));
@@ -55,6 +57,42 @@ describe('gatesFromOp — partition gate ops by firing lane (pre vs post)', () =
       { kind: 'exists', path: 'x', severity: 'warn' },
       { kind: 'regex-absent', path: 'y', severity: 'warn' },
     ]);
+  });
+});
+
+describe('mergeFailureDetail — the SINGLE merge-op-failure detail construction (was duplicated at node-lifecycle.ts + node-lanes.ts)', () => {
+  // Live gap (run 260715-01, gameplay): a failing merge `run` op's captured stderr was empty (the check script
+  // reported its verdict on stdout), so the detail rendered as the causeless "merge run failed (exit 1)" — the
+  // gate's real verdict text never rode. mergeFailureDetail prefers stderr, falls back to stdout, and always
+  // keeps today's short form when there is no output at all.
+  const base: MergeResult = { op: 'run', wrote: false, failed: true };
+
+  it('stdout-only output (stderr empty) lands in the detail', () => {
+    const r: MergeResult = { ...base, exit: 1, stdout: 'capability-refs: bad id at mechanics[4]' };
+    expect(mergeFailureDetail(r)).toBe('merge run failed (exit 1): capability-refs: bad id at mechanics[4]');
+  });
+
+  it('stderr takes precedence over stdout when both are present', () => {
+    const r: MergeResult = { ...base, exit: 1, stderr: 'the real error', stdout: 'noise on stdout' };
+    expect(mergeFailureDetail(r)).toBe('merge run failed (exit 1): the real error');
+  });
+
+  it('no output at all keeps today\'s short form (no trailing colon segment)', () => {
+    const r: MergeResult = { ...base, exit: 1 };
+    expect(mergeFailureDetail(r)).toBe('merge run failed (exit 1)');
+  });
+
+  it('a spawn error (skipped, no exit/stderr/stdout) still surfaces via `skipped`', () => {
+    const r: MergeResult = { ...base, skipped: 'spawn error: ENOENT' };
+    expect(mergeFailureDetail(r)).toBe('merge run failed: spawn error: ENOENT');
+  });
+
+  it('caps the embedded output at ~600 chars — a runaway script cannot blow out the digest', () => {
+    const long = 'x'.repeat(1000);
+    const r: MergeResult = { ...base, exit: 1, stdout: long };
+    const detail = mergeFailureDetail(r);
+    expect(detail.length).toBeLessThan(650);
+    expect(detail).not.toContain(long); // the full 1000-char run must NOT ride verbatim
   });
 });
 
@@ -129,6 +167,38 @@ describe('run op spawn error — the errno surfaces in the op-failure detail (no
       /spawn error|ENOENT/,
     );
     expect((rec.issues ?? []).join(' '), 'op failures never leak into issues[]').not.toMatch(/spawn error|ENOENT/);
+  });
+});
+
+describe('merge run-op failure detail (programmatic lane) — the STDOUT verdict rides, not a bare "failed"', () => {
+  it('a failing merge `run` sub-op whose script reports on stdout (not stderr) lands that text in opFailures[].detail', async () => {
+    // Live gap (run 260715-01, gameplay): rec.opFailures details were exactly "merge run failed (exit 1)" —
+    // empty stderr — because the check script's real verdict rode stdout, which node-lanes.ts's merge-op-failure
+    // detail construction never read. RED before the fix: the detail contains only the causeless "failed" text.
+    const node: NodeIntent = {
+      label: 'gen',
+      programmatic: true,
+      tools: {},
+      io: {
+        reads: ['src.json'],
+        produces: ['out.json'],
+        externalInputs: ['src.json'],
+        artifacts: [{ path: 'out.json' }],
+      },
+      op: [
+        { when: 'pre', writes: ['out.json'], transform: { kind: 'seed', from: '{{RUN}}/src.json' } },
+        { when: 'post', transform: { kind: 'merge', ops: [{ run: { cmd: 'node', args: ['-e', "console.log('capability-refs: bad id at mechanics[4]'); process.exit(1)"] } }] } },
+      ],
+    };
+    const outDir = await tmpOut();
+    await fs.writeFile(path.join(outDir, 'src.json'), '{"v":1}');
+    const { status } = await runWorkflow(compile(wf([node])), { run: 'mergestdoutprog', outDir });
+    const rec = status.nodes.gen;
+    expect(rec.status, 'a failing merge run op defaults to onFailure:block').toBe('blocked');
+    expect(
+      (rec.opFailures ?? []).map((f) => f.detail).join(' '),
+      'the gate\'s own stdout verdict must ride the op-failure detail',
+    ).toContain('capability-refs: bad id at mechanics[4]');
   });
 });
 

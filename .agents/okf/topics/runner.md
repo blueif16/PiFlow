@@ -232,6 +232,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `bccdfcc` 2026-07-16 — feat(core): claude executor degrades script tools to Bash
 - `ee9c874` 2026-07-16 — fix(core): claude warm resume uses the claude-minted session UUID
 - `7712f56` 2026-07-16 — fix(core): driver-fit judges the effective run-level backend
+- `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
+- `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
 
 ### Lessons — memory cluster
 
@@ -256,5 +258,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 17 callers in `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; ⚠ no covering tests found
 - `RunScope` (packages/core/src/types.ts:827) — 5 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=177 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-17 · arc=179 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

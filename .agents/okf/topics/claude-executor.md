@@ -139,6 +139,10 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
 - `fe15631` 2026-07-16 — fix(core): --rerun (and cold retry/escalation) mints a fresh pi session, never warm-resumes
 - `bccdfcc` 2026-07-16 — feat(core): claude executor degrades script tools to Bash
+- `ee9c874` 2026-07-16 — fix(core): claude warm resume uses the claude-minted session UUID
+- `7712f56` 2026-07-16 — fix(core): driver-fit judges the effective run-level backend
+- `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
+- `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
 
 ### Lessons — memory cluster
 
@@ -149,6 +153,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[cloud-control-plane-local-cloud-switch]]
 - [[competitive-gaps-pdw]]
 - [[design-at-init-architecture]]
+- [[dryrun-clobbers-existing-run-record]]
 - [[expert-representations]]
 - [[g6-agenttype-presets]]
 - [[game-omni-reference-product]]
@@ -158,6 +163,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[guidance-node-sonnet5-routing]]
 - [[loop-prevention-laws]]
 - [[mastra-competitive-analysis]]
+- [[no-rerun-before-digest-confirmed]]
 - [[omniscience-piflow-setup]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
@@ -176,15 +182,16 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[sdk-data-boundaries]]
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
+- [[uniformity-whole-contract-deferrals-block]]
 - [[use-understanding-system-first]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:15) — 3 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
-- `claudeCommand` (packages/core/src/runner/command.ts:141) — 1 caller; tests: `packages/core/test/claude-command.test.ts`
-- `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 8 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/optimize/substrate/agent.ts`; tests: `packages/core/test/claude-code-driver.test.ts`, `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`
-- `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
+- `claudeCommand` (packages/core/src/runner/command.ts:141) — 5 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-command.test.ts`, `packages/core/test/claude-code-driver.test.ts`
+- `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 8 callers in `packages/core/src/optimize/substrate/agent.ts`, `packages/core/src/runner/drivers/claude-code.ts`; tests: `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`, `packages/core/test/claude-code-driver.test.ts`
+- `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=66 commits · files=5 · lessons=34</sub>
+<sub>derived 2026-07-17 · arc=70 commits · files=5 · lessons=37</sub>
 <!-- okf:auto-end -->

@@ -186,6 +186,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - `ce26c7c` 2026-07-15 — feat(core): op-integrity WS-I0 — expect/resultFile schema+types + structured predicates
 - `ec517dd` 2026-07-15 — docs(op-integrity): temper the expect vocabulary to the SIMPLICITY LADDER
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
+- `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
 
 ### Lessons — memory cluster
 
@@ -194,6 +195,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - [[always-no-ff-merge-to-main]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
+- [[capability-pipeline-contract]]
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
@@ -226,6 +228,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - [[npm-run-is-system-contract]]
 - [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
+- [[optimize-substrate-loop-live-proven]]
 - [[optimize-substrate-program]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
@@ -247,6 +250,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[uniformity-whole-contract-deferrals-block]]
 - [[verify-nodes-never-in-dev-arms]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
 
@@ -258,5 +262,5 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:255) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-16 · arc=101 commits · files=8 · lessons=59</sub>
+<sub>derived 2026-07-17 · arc=102 commits · files=8 · lessons=62</sub>
 <!-- okf:auto-end -->

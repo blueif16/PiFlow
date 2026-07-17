@@ -26,7 +26,7 @@ deterministic hook engine this protocol drives — it is covered HERE, not as a 
 
 # Anchors
 DISPATCH
-- `packages/core/src/runner/op-dispatch.ts:103` — `gatesFromOp` — partitions op[] gate bodies into pre/post `Check[]`
+- `packages/core/src/runner/op-dispatch.ts:123` — `gatesFromOp` — partitions op[] gate bodies into pre/post `Check[]`
 - `packages/core/src/workflow/template/render.ts:33` — `collectChecks` — folds op[] POST gates into `io.checks` (two-layer)
 PRE
 - `packages/core/src/runner/node-lifecycle.ts:353` — `runHooks(node.hooks?.pre …)` — deterministic pre-hook plumbing; blocking failure ⇒ error
@@ -175,6 +175,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
 - `4480653` 2026-07-15 — fix(runner): re-allow a node's own .pi/sessions dir under the bookkeeping read-deny
 - `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
+- `fe15631` 2026-07-16 — fix(core): --rerun (and cold retry/escalation) mints a fresh pi session, never warm-resumes
+- `ee9c874` 2026-07-16 — fix(core): claude warm resume uses the claude-minted session UUID
+- `7712f56` 2026-07-16 — fix(core): driver-fit judges the effective run-level backend
+- `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
+- `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
 
 ### Lessons — memory cluster
 
@@ -185,6 +190,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
+- [[capability-pipeline-contract]]
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
@@ -198,10 +204,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[default-profile-programmatic-gates-only]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
+- [[dryrun-clobbers-existing-run-record]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[first-fleet-video-e2e]]
+- [[fix-dont-respin-blocked-nodes]]
 - [[fixer-two-half-law]]
+- [[fixes-go-to-subagents]]
 - [[flexibility-over-hardcoded-plans]]
 - [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
@@ -225,15 +234,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[never-blame-the-model-harness-fault]]
+- [[no-rerun-before-digest-confirmed]]
 - [[node-illustration-pipeline]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
 - [[observe-single-data-path]]
 - [[okf-coverage-boundary]]
+- [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-loop-live-proven]]
 - [[optimize-substrate-program]]
 - [[overthinking-is-the-defect-not-token-caps]]
 - [[per-node-routing-fusion]]
@@ -261,6 +273,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[swarm-consensus-deferred]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[uniformity-whole-contract-deferrals-block]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
@@ -268,10 +281,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 
 ### Code anchors / blast radius (codegraph)
 
-- `CHECK_KINDS` (packages/core/src/checks.ts:116) — 1 caller in `packages/core/src/observe/contextComposition.ts`; ⚠ no covering tests found
 - `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
-- `evaluateChecks` (packages/core/src/checks.ts:253) — 9 callers in `packages/core/src/checks.ts`, `packages/core/src/optimize/blame/measure.ts`, `packages/core/src/optimize/substrate/measure.ts`, `packages/core/src/runner/node-lanes.ts` +1 more; ⚠ no covering tests found
+- `evaluateChecks` (packages/core/src/checks.ts:253) — 5 callers in `packages/core/src/checks.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-16 · arc=112 commits · files=8 · lessons=86</sub>
+<sub>derived 2026-07-17 · arc=117 commits · files=8 · lessons=94</sub>
 <!-- okf:auto-end -->
