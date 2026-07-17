@@ -154,6 +154,11 @@ export const claudeCommand: CommandBuilder = (node, resolved, ctx, opts = {}) =>
   const effort = typeof think === 'string' && CLAUDE_EFFORTS.has(think) ? think : undefined;
   if (effort) parts.push('--effort', effort);
   const tools = toClaudeTools(resolved.piTools);
+  // Script/sdk tools (anything that compiled the pi `-e` extension) cannot be wired as Claude builtins —
+  // DEGRADE to Bash so the node can still run the same CLIs from disk (the tool defs live under paths the
+  // node's readScope already covers; the jail still bounds writes). Without this the tool surface silently
+  // shrinks and a ruler-tool ritual (measure/feasibility) strands on a claude node.
+  if (resolved.extension && !tools.includes('Bash')) tools.push('Bash');
   if (tools.length) parts.push('--tools', q(tools.join(' ')));
   const deny = resolved.excludeTools ? toClaudeTools(resolved.excludeTools) : [];
   if (deny.length) parts.push('--disallowedTools', q(deny.join(' ')));
