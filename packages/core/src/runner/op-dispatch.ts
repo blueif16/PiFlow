@@ -27,7 +27,7 @@
 
 import type { OpSpec, Reducer, Check, OnFailure, ActionBody, IntegrityExpectation } from '../types.js';
 import type { Seed } from '../workflow/ops/seed.js';
-import type { MergeSpec } from '../workflow/ops/merge.js';
+import type { MergeSpec, MergeResult } from '../workflow/ops/merge.js';
 
 /** A loose project op obj — the shape `applyProjectionOp` consumes (project.ts:73). Bare = `{to,from}`
  *  (a `hooks.project`); RICH = `{to, source/copy/assemble/union/…}` (D6/opt-A, carried via `transform.ops`). */
@@ -84,6 +84,26 @@ export function derivesFromOp(op: OpSpec[] | undefined): DerivedExecInputs {
     }
   }
   return out;
+}
+
+/** Cap on the raw op output embedded in a merge-op-failure detail — mirrors consultPreamble's own per-entry
+ *  cap (checks.ts) so one runaway script can't blow out the retry-critique digest. */
+const MERGE_DETAIL_OUTPUT_CAP = 600;
+
+/**
+ * (op-evidence) Build a failing merge `run` sub-op's detail line — the SINGLE construction both node-lifecycle.ts
+ * and node-lanes.ts need (was inlined + drifting between the two: only node-lifecycle.ts folded in `skipped`).
+ * Prefers `stderr`; falls back to `stdout` when stderr is empty — a failing check script commonly reports its
+ * real verdict on stdout (stderr is reserved for actual errors), and that verdict was previously dropped
+ * entirely (live: run 260715-01, an empty-stderr "merge run failed (exit 1)" with the gate's own text never
+ * riding). `skipped` (the spawn-error case, mutually exclusive with stderr/stdout) always appends when present.
+ */
+export function mergeFailureDetail(r: MergeResult): string {
+  const exit = r.exit != null ? ` (exit ${r.exit})` : '';
+  const output = r.stderr || r.stdout;
+  const text = output ? `: ${output.slice(0, MERGE_DETAIL_OUTPUT_CAP)}` : '';
+  const skipped = r.skipped ? `: ${r.skipped}` : '';
+  return `merge ${r.op} failed${exit}${text}${skipped}`;
 }
 
 /** The severity a `gate` op carries (mirrors the runner's pre-gate map, runner.ts:1029 + lower.ts:25-28):

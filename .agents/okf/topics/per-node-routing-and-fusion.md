@@ -128,6 +128,8 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `a788ad4` 2026-07-10 — feat(core): unify GatePolicy + a first-class warm/cold session knob (P2)
 - `99e98c6` 2026-07-10 — feat(core): inline hitl gate — run the producer's model, THEN pause for a human (P3)
 - `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
+- `bccdfcc` 2026-07-16 — feat(core): claude executor degrades script tools to Bash
+- `ee9c874` 2026-07-16 — fix(core): claude warm resume uses the claude-minted session UUID
 
 ### Lessons — memory cluster
 
@@ -165,6 +167,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[model-provider-single-default-fixture]]
 - [[never-blame-the-model-harness-fault]]
 - [[observe-single-data-path]]
+- [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
@@ -199,5 +202,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/runner/runner.ts`, `packages/cli/src/run.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-16 · arc=55 commits · files=10 · lessons=58</sub>
+<sub>derived 2026-07-17 · arc=57 commits · files=10 · lessons=59</sub>
 <!-- okf:auto-end -->

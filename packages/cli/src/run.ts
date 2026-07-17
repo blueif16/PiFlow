@@ -43,6 +43,7 @@ import {
   stageBaselineRun,
   runJsonFile,
   writeStatus,
+  readRunJson,
   nowISO,
   type Workflow,
   type WorkflowSpec,
@@ -724,6 +725,17 @@ export async function runTemplate(parsed: ParsedRunArgs, deps: RunDeps = {}): Pr
     // preview shows the SAME expanded DAG the live run (core's runFromTemplate) executes. Never lie.
     spec = expandFusion(spec, { defaults: loadFusionConfig().defaults, tiers: loadModelTiers() });
     const wf = compile(spec);
+    // GUARD (BEFORE any write): a `--dry-run --run <id>` targeting a run dir that ALREADY has a NON-DRY
+    // `.pi/run.json` (a completed/in-progress real run) must never clobber it — reproduced live: the dry plan
+    // materialized straight into the existing run dir and REWROTE run.json, losing the recorded args/usage/
+    // node history (the journal was untouched, but the record was gone). An ABSENT record (a fresh id) or one
+    // that is ITSELF a dry plan (every node status 'dry') stays allowed — a free preview / idempotent re-dry.
+    const existingRunRecord = await readRunJson(outDir);
+    if (existingRunRecord && Object.values(existingRunRecord.nodes ?? {}).some((n) => n.status !== 'dry')) {
+      throw new Error(
+        `piflowctl run: --dry-run refuses to overwrite the EXISTING run record at ${outDir} (--run ${runId} already has a real run — its recorded args/usage/node history would be lost). Dry-run WITHOUT --run to preview into a fresh dir, or pick a different --run id.`,
+      );
+    }
     await instantiateRun(templateDir, outDir, { workspace });
     // Make the dry-run plan VIEWABLE, not just printable: persist the resolved DAG + a `dry`-status run.json
     // so discovery + every observe surface (GUI/TUI/`status`) render the SAME expanded graph the plan prints

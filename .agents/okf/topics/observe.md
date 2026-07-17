@@ -209,9 +209,11 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[daytona-cloud-path]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
+- [[dryrun-clobbers-existing-run-record]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[first-fleet-video-e2e]]
+- [[fix-dont-respin-blocked-nodes]]
 - [[fixer-two-half-law]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
@@ -229,11 +231,14 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[minimax-m3-framing]]
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
+- [[no-rerun-before-digest-confirmed]]
 - [[node-illustration-pipeline]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[observe-single-data-path]]
+- [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-loop-live-proven]]
 - [[optimize-substrate-program]]
 - [[overthinking-is-the-defect-not-token-caps]]
 - [[piflow-ci-cd-pipeline]]
@@ -272,5 +277,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `RunView` (packages/core/src/observe/runView.ts:144) — 5 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `RunView` (gui/src/data/runView.ts:153) — 8 callers in `gui/src/data/runView.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-16 · arc=99 commits · files=13 · lessons=71</sub>
+<sub>derived 2026-07-17 · arc=99 commits · files=13 · lessons=76</sub>
 <!-- okf:auto-end -->

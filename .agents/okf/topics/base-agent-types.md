@@ -223,6 +223,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
 - `4480653` 2026-07-15 — fix(runner): re-allow a node's own .pi/sessions dir under the bookkeeping read-deny
 - `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
+- `fe15631` 2026-07-16 — fix(core): --rerun (and cold retry/escalation) mints a fresh pi session, never warm-resumes
+- `ee9c874` 2026-07-16 — fix(core): claude warm resume uses the claude-minted session UUID
+- `7712f56` 2026-07-16 — fix(core): driver-fit judges the effective run-level backend
+- `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
+- `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
 
 ### Lessons — memory cluster
 
@@ -250,5 +255,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 
-<sub>derived 2026-07-16 · arc=163 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-17 · arc=168 commits · files=8 · lessons=14</sub>
 <!-- okf:auto-end -->

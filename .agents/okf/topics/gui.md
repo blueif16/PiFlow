@@ -166,6 +166,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
+- [[capability-pipeline-contract]]
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[codebase-memory-mcp-analysis]]
@@ -175,9 +176,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[config-is-truth-gui-is-projection]]
 - [[context-composition-telemetry]]
 - [[daytona-cloud-path]]
+- [[dryrun-clobbers-existing-run-record]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[first-fleet-video-e2e]]
+- [[fix-dont-respin-blocked-nodes]]
 - [[fixer-two-half-law]]
 - [[flexibility-over-hardcoded-plans]]
 - [[g6-agenttype-presets]]
@@ -193,6 +196,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[merge-workspace-token-bug]]
 - [[minimax-m3-framing]]
 - [[minimax-thinking-cap-noop]]
+- [[no-rerun-before-digest-confirmed]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
@@ -231,5 +235,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadRunView` (gui/src/data/runView.ts:176) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 15 callers in `packages/cli/src/watch.ts`, `tui/model.mjs`, `packages/server/src/handlers.ts`, `packages/cli/src/telemetry.ts` +3 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/watch.test.ts` +1
 
-<sub>derived 2026-07-16 · arc=97 commits · files=8 · lessons=61</sub>
+<sub>derived 2026-07-17 · arc=97 commits · files=8 · lessons=65</sub>
 <!-- okf:auto-end -->

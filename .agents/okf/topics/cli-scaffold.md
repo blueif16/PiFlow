@@ -231,6 +231,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `84e5f2b` 2026-07-15 — feat(core): dedicated opFailures typed channel — op failures leave issues[]
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
+- `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
 
 ### Lessons — memory cluster
 
@@ -240,6 +241,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[analysis-questions-inline-not-fanout]]
 - [[blueprints-layer]]
 - [[capability-catalog-feed]]
+- [[capability-pipeline-contract]]
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
@@ -253,10 +255,13 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[default-profile-programmatic-gates-only]]
 - [[delegate-inspection-to-subagents]]
 - [[design-at-init-architecture]]
+- [[dryrun-clobbers-existing-run-record]]
 - [[eval-bulk-agents-use-cheaper-model]]
 - [[expert-representations]]
 - [[first-fleet-video-e2e]]
+- [[fix-dont-respin-blocked-nodes]]
 - [[fixer-two-half-law]]
+- [[fixes-go-to-subagents]]
 - [[flexibility-over-hardcoded-plans]]
 - [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
@@ -281,15 +286,18 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
+- [[no-rerun-before-digest-confirmed]]
 - [[node-illustration-pipeline]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
 - [[observe-single-data-path]]
 - [[okf-coverage-boundary]]
+- [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
+- [[optimize-substrate-loop-live-proven]]
 - [[optimize-substrate-program]]
 - [[overthinking-is-the-defect-not-token-caps]]
 - [[per-node-routing-fusion]]
@@ -333,5 +341,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-16 · arc=171 commits · files=8 · lessons=89</sub>
+<sub>derived 2026-07-17 · arc=172 commits · files=8 · lessons=96</sub>
 <!-- okf:auto-end -->

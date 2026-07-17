@@ -2128,6 +2128,32 @@ describe('runWorkflow — project/merge POST DERIVE ops (S4)', () => {
     await fs.rm(outDir, { recursive: true, force: true });
   });
 
+  it('a failing merge `run` sub-op\'s STDOUT verdict rides opFailures[].detail (not a bare "failed") — the pi lane', async () => {
+    // Live gap (run 260715-01, gameplay): rec.opFailures details were exactly "merge run failed (exit 1)" —
+    // empty stderr — because the check script's real verdict rode stdout, which node-lifecycle.ts's merge-op-
+    // failure detail construction never read. RED before the fix: the detail carries only the causeless "failed".
+    const node: NodeIntent = {
+      label: 'Gameplay',
+      prompt: 'author the level',
+      tools: {},
+      io: { reads: [], produces: ['level.json'], artifacts: [{ path: 'level.json' }] },
+      op: [{ when: 'post', transform: { kind: 'merge', ops: [{ run: { cmd: 'node', args: ['-e', "console.log('capability-refs: bad id at mechanics[4]'); process.exit(1)"] } }] } }],
+    };
+    const outDir = await tmpOut();
+    const { status } = await runWorkflow(compile(wf([node])), {
+      run: 'mergestdoutpi',
+      outDir,
+      buildCommand: filesBuilder(() => ({ 'level.json': '{}' })),
+    });
+    const rec = status.nodes.gameplay;
+    expect(rec.status, 'a failing merge run op defaults to onFailure:block').toBe('blocked');
+    expect(
+      (rec.opFailures ?? []).map((f) => f.detail).join(' '),
+      'the gate\'s own stdout verdict must ride the op-failure detail',
+    ).toContain('capability-refs: bad id at mechanics[4]');
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
   it('resolves {{WORKSPACE}}/{{RUN}} tokens in a `run` merge op before the executor runs', async () => {
     // A run op whose cmd path tokens must be made physical by the per-node resolver ctx (not the executor's
     // own {project} token). The node script reads {{RUN}}/marker.txt (proving {{RUN}} resolved) + a script at

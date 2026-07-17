@@ -19,7 +19,10 @@ import {
   nodeDir,
   nodePromptFile,
   LocalSandboxProvider,
+  writeStatus,
+  readRunJson,
   type RunFromTemplateOpts,
+  type RunStatus,
 } from '@piflow/core';
 
 // loadTemplate (re)writes the template's generated workflow.json lock, so we run over a CLONE in a tmp
@@ -267,6 +270,105 @@ describe('piflowctl run --dry-run — realized commands, no model', () => {
     expect(printed).toMatch(/\[draft-p2\][^\n]*--model deep/);
     expect(printed).toContain('4 nodes');
     for (const d of [tplFusion, ws, out]) await fs.rm(d, { recursive: true, force: true });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (op-evidence/dry-run-guard) DRY-RUN × AN EXISTING RUN RECORD — reproduced live: `--dry-run --run <id>`
+// against an id that ALREADY has a completed run materialized the dry plan INTO that run dir and REWROTE
+// .pi/run.json, losing the real run's recorded args/usage/node history. The guard: refuse loudly when the
+// target `--run <id>`'s `.pi/run.json` already records a NON-DRY run; stay a no-op (allowed) when the
+// record is absent (fresh id) or is ITSELF a dry plan (idempotent re-dry — every node status 'dry').
+// ─────────────────────────────────────────────────────────────────────────────
+describe('piflowctl run --dry-run --run <id> — refuses to clobber an existing NON-DRY run record', () => {
+  const realRunStatus = (id: string): RunStatus => ({
+    run: id,
+    startedAt: '2026-07-15T00:00:00.000Z',
+    updatedAt: '2026-07-15T00:05:00.000Z',
+    done: true,
+    ok: true,
+    durationMs: 300000,
+    stage: null,
+    totals: { nodes: 1, ok: 1, failed: 0 },
+    args: { marker: 'REAL-RUN-DO-NOT-CLOBBER' },
+    nodes: { n1: { id: 'n1', label: 'N1', status: 'ok', artifacts: [], issues: [] } },
+  });
+  const dryPlanStatus = (id: string): RunStatus => ({
+    run: id,
+    startedAt: '2026-07-15T00:00:00.000Z',
+    updatedAt: '2026-07-15T00:00:00.000Z',
+    done: true,
+    ok: null,
+    durationMs: null,
+    stage: null,
+    totals: null,
+    nodes: { n1: { id: 'n1', label: 'N1', status: 'dry', artifacts: [], issues: [] } },
+  });
+
+  it('a --run id whose .pi/run.json already records a REAL run is refused loudly, naming the run dir — the record is left byte-for-byte untouched', async () => {
+    const out = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-dryguard-real-'));
+    const ws = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-dryguard-ws-'));
+    try {
+      await writeStatus(out, realRunStatus('clobber1'));
+      const before = await readRunJson(out);
+
+      let err: Error | undefined;
+      try {
+        await runTemplate(
+          { templateDir: TEMPLATE_MIN, dryRun: true, run: 'clobber1', args: { projectDir: out }, workspace: ws, outDir: out },
+          { print: () => {} },
+        );
+      } catch (e) {
+        err = e as Error;
+      }
+      expect(err, 'a dry-run targeting an existing REAL run must refuse loudly (throw), never silently clobber').toBeDefined();
+      expect(err!.message, 'the refusal names the run dir').toContain(out);
+      expect(err!.message, 'the refusal suggests the escape hatch').toMatch(/--run/);
+
+      // THE LOAD-BEARING PROOF: the original record — args, node history, usage — survived untouched.
+      const after = await readRunJson(out);
+      expect(after, 'the run record must be byte-for-byte unchanged, not partially overwritten').toEqual(before);
+      expect(after?.args).toEqual({ marker: 'REAL-RUN-DO-NOT-CLOBBER' });
+      expect(after?.nodes.n1.status).toBe('ok');
+    } finally {
+      await fs.rm(out, { recursive: true, force: true });
+      await fs.rm(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('a --run id with NO existing record dry-runs normally (a fresh preview, nothing to clobber)', async () => {
+    const out = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-dryguard-fresh-'));
+    const ws = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-dryguard-ws-'));
+    try {
+      await runTemplate(
+        { templateDir: TEMPLATE_MIN, dryRun: true, run: 'freshdry1', args: { projectDir: out }, workspace: ws, outDir: out },
+        { print: () => {} },
+      );
+      const after = await readRunJson(out);
+      expect(after, 'the dry plan materialized').not.toBeNull();
+      expect(Object.values(after!.nodes).every((n) => n.status === 'dry')).toBe(true);
+    } finally {
+      await fs.rm(out, { recursive: true, force: true });
+      await fs.rm(ws, { recursive: true, force: true });
+    }
+  });
+
+  it('re-dry-running the SAME --run id whose existing record is ITSELF a dry plan is allowed (idempotent re-dry)', async () => {
+    const out = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-dryguard-redry-'));
+    const ws = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-dryguard-ws-'));
+    try {
+      await writeStatus(out, dryPlanStatus('redry1'));
+      await runTemplate(
+        { templateDir: TEMPLATE_MIN, dryRun: true, run: 'redry1', args: { projectDir: out }, workspace: ws, outDir: out },
+        { print: () => {} },
+      );
+      const after = await readRunJson(out);
+      expect(after, 'the re-dry must succeed and still be a dry plan').not.toBeNull();
+      expect(Object.values(after!.nodes).every((n) => n.status === 'dry')).toBe(true);
+    } finally {
+      await fs.rm(out, { recursive: true, force: true });
+      await fs.rm(ws, { recursive: true, force: true });
+    }
   });
 });
 

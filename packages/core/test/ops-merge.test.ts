@@ -128,6 +128,21 @@ describe('applyMergeOp — run', () => {
     expect(res.exit).not.toBe(0);
   });
 
+  it('captures stdout on a non-zero exit — a check script that prints its verdict to stdout (not stderr) must not go dark', async () => {
+    // Live gap (run 260715-01): a failing gate script's real verdict text rode ONLY stderr in the MergeResult,
+    // so a check that reports on stdout (common — most CLIs reserve stderr for actual errors) silently dropped
+    // its verdict; the op-failure detail fell back to a bare "merge run failed (exit 1)". `spawnSync` already
+    // captures stdout into `out` (line ~213) but the failure branch discarded it — this pins that it now rides.
+    tmp = await mkTmp();
+    const res = await applyMergeOp(
+      { run: { cmd: 'node', args: ['-e', "console.log('capability-refs: bad id at mechanics[4]'); process.exit(1)"] } },
+      tmp,
+    );
+    expect(res.failed).toBe(true);
+    expect(res.stderr ?? '').toBe(''); // this failure mode has NOTHING on stderr — the live shape
+    expect(res.stdout).toContain('capability-refs: bad id at mechanics[4]');
+  });
+
   it('succeeds (exit 0) on a true command', async () => {
     tmp = await mkTmp();
     const res = await applyMergeOp({ run: { cmd: '/usr/bin/true' } }, tmp);
