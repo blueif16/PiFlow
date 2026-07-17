@@ -138,6 +138,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `4480653` 2026-07-15 — fix(runner): re-allow a node's own .pi/sessions dir under the bookkeeping read-deny
 - `2fdad4a` 2026-07-15 — merge: op-integrity surfacing — status/telemetry ops table + trace content contract + triage/blame read the verdict (feat/op-integrity-surfacing)
 - `fe15631` 2026-07-16 — fix(core): --rerun (and cold retry/escalation) mints a fresh pi session, never warm-resumes
+- `bccdfcc` 2026-07-16 — feat(core): claude executor degrades script tools to Bash
 
 ### Lessons — memory cluster
 
@@ -185,5 +186,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=65 commits · files=5 · lessons=34</sub>
+<sub>derived 2026-07-17 · arc=66 commits · files=5 · lessons=34</sub>
 <!-- okf:auto-end -->
