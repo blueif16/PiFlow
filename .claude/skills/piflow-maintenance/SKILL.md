@@ -299,6 +299,18 @@ A profile is a named, per-product run MODE, declared as DATA (the SDK carries no
   authority; write-disjoint `owns` = a parallel lane) · `readScope` · `schema` · `returnMode` · `fillSentinel`.
 - **Ground truth:** `docs/design/template-format.md` §3 / §6a / §7.
 
+## 10. The CAPABILITY-ISSUING pattern — when the workflow must GROW new logic
+When a producing workflow keeps meeting requirements its executors weren't built for, the canonical answer
+is a dedicated ISSUER node that authors the missing logic as a **registered, battery-verified capability**
+— never an executor improvising it in-head (the canonical mega-think / false-green source). Four node
+roles over the standard surfaces above: a DECLARER names each gap (a 5-field prose spec, the issuer's
+prompt), the ISSUER authors every leg + double-registers (run-local + global, fail-closed blocking
+post-op), a PROVER binds registered ids with ruler-proved params (a refs check as one more `merge.ops`
+gate), and the WIRER wires-or-HALTs (no author branch, ever). The invariant: **issued ≡ built-in — no
+downstream consumer can tell them apart.** The full contract, wiring pitfalls (jail write-globs, test
+pruning at the seed), and the porting checklist for a new product:
+**`references/capability-issuing.md`** (reference implementation: game-omni).
+
 ## The laws (the standards, condensed)
 - **The template is the single source of truth; author by DATA, verify by `piflowctl extract`.** `workflow.json`
   is generated, never hand-edited.
