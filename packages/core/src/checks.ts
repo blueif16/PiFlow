@@ -428,8 +428,14 @@ export interface FailureSignals {
   exitCode: number;
   /** The tail of the agent's stderr (matched against the infra-noise regex). */
   stderrTail: string;
-  /** Whether a return-protocol block parsed from stdout. */
+  /** Whether a return-protocol block parsed — genuinely, for EVERY executor: pi off its raw stdout, claude
+   *  off its driver's `returnBlock` (tail-parsed from the `result` event's own text, fix/claude-return-tail-
+   *  evidence). False only when the node truly produced no recoverable tail, in which case the critique's
+   *  "no parseable return-protocol block" demand is something the executor CAN act on. */
   parsedOk: boolean;
+  /** (M5 · #18) Failed post-op gate DETAILS (`rec.opFailures[].detail` — the merge/run op's check output,
+   *  incl. its actionable suggestion). The evidence the retry critique must carry. */
+  opFailures?: string[];
   /**
    * (P3 · inline hitl) A human reviewer REJECTED this node at its inline checkpoint — set the node `error`.
    * `rejectReason` is the reviewer's free-text WHY, surfaced by `consultPreamble` so the warm re-run fixes
@@ -462,6 +468,9 @@ export function classifyFailure(n: FailureSignals): FailureClass {
   if (n.missing && n.missing.length) return 'contract';
   // A declarative integrity check FAILED on an otherwise-present artifact (#6: a QUALITY verdict).
   if (n.failedChecks && n.failedChecks.length) return 'quality-gap';
+  // A post-op GATE failed (merge/run op, blocking onFailure) — same class: a quality verdict on a present
+  // artifact. Must beat the degenerate fallback below (a claude node has no return protocol to parse).
+  if (n.opFailures && n.opFailures.length) return 'quality-gap';
   // A request-level idle EXHAUSTION (every in-place re-exec stayed silent) is a TRANSIENT gateway hang, not a
   // model capability gap — a fresh same-model re-run is the right fix (a stronger model can't un-hang a
   // gateway), so it classes as INFRA (retry), NOT quality-gap (escalate). Checked before the stall/timeout arm.
@@ -493,6 +502,9 @@ export function consultPreamble(n: FailureSignals): string {
   if (n.schemaInvalid && n.schemaInvalid.length) ev.push(`artifact(s) violate the declared schema: ${n.schemaInvalid.map((x) => `${x.path} [${(x.errors || []).slice(0, 3).join('; ')}]`).join(' | ')}`);
   if (n.returnSchemaInvalid && n.returnSchemaInvalid.length) ev.push(`return violates the declared returnSchema: ${n.returnSchemaInvalid.slice(0, 3).join('; ')}`);
   if (n.failedChecks && n.failedChecks.length) ev.push(`failed integrity check(s): ${n.failedChecks.map((c) => `${c.kind} ${c.path || ''}: ${c.reason}`).join(' | ')}`);
+  // The op detail IS the gate's own output (check-* stderr / distilled resultFile) — it usually names the
+  // exact fix (a suggestion, a threshold). Cap per-entry + entry count so a verbose gate can't flood the prompt.
+  if (n.opFailures && n.opFailures.length) ev.push(`failed post-op gate(s): ${n.opFailures.slice(0, 4).map((d) => d.slice(0, 600)).join(' | ')}`);
   if (n.killedStall) ev.push('went silent with no tool running (model stalled)');
   if (n.killedIdle) ev.push('the request went silent past the idle window and every in-place re-exec stayed silent (gateway hang)');
   if (n.killedTimeout) ev.push('exceeded the node time budget');

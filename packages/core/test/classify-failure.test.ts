@@ -67,6 +67,38 @@ describe('consultPreamble — the escalation feeds VERIFIED evidence, never a se
     expect(pre).toMatch(/Failure class: contract/);
     expect(pre).toMatch(/verify\/report\.json/);
   });
+
+  it('carries FAILED POST-OP GATE evidence — the op detail (check output incl. its suggestion) rides the critique', () => {
+    // Live 260715-01/gameplay: the merge gates failed with actionable stderr (capability-refs suggestion,
+    // distribution details) but the critique never carried it — the retry was told nothing fixable.
+    const detail = "merge run failed (exit 1): [capability-refs] '$custom:Bad' at mechanics[4] — closest registered id: 'good-id'";
+    const pre = consultPreamble(base({ opFailures: [detail] }));
+    expect(pre).toMatch(/failed post-op gate/);
+    expect(pre).toContain("closest registered id: 'good-id'");
+    expect(pre).toMatch(/Failure class: quality-gap/);
+  });
+
+  it('parsedOk true (a claude tail parsed via the driver returnBlock) gets no degenerate class and no "no parseable" complaint', () => {
+    // Claude now parses its fenced return tail off the result event's OWN text (claude-code.ts parseResult),
+    // so `parsedOk` is genuinely "did a return block parse" for EVERY executor — not neutered true for claude.
+    // A node that parsed a tail (whatever its outcome) must never be told it produced nothing parseable.
+    const pre = consultPreamble(base({ opFailures: ['merge run failed (exit 1): kind-monotony'], parsedOk: true }));
+    const cls = classifyFailure(base({ opFailures: ['merge run failed (exit 1): kind-monotony'], parsedOk: true }));
+    expect(cls).not.toBe('degenerate');
+    expect(pre).not.toMatch(/no parseable return-protocol block/);
+  });
+
+  it('a protocol executor that produced no block still gets the return-protocol demand (pi unchanged)', () => {
+    const pre = consultPreamble(base({ parsedOk: false }));
+    expect(pre).toMatch(/return-protocol JSON block/);
+    expect(pre).toMatch(/Failure class: degenerate/);
+  });
+});
+
+describe('classifyFailure — op-failure evidence', () => {
+  it('classes a failed post-op gate as quality-gap, beating the degenerate fallback', () => {
+    expect(classifyFailure(base({ opFailures: ['merge run failed (exit 1)'], parsedOk: false }))).toBe('quality-gap');
+  });
 });
 
 describe('legacyRetry — io.retries reproduces today exactly (retry on ANY error/blocked)', () => {

@@ -1103,6 +1103,10 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         exitCode: result.code,
         stderrTail: (result.stderr || '').slice(-400),
         parsedOk: parsed != null,
+        // (M5 · #18 fix/claude-return-tail-evidence) BLOCKING-only op-gate evidence (a `warn` didn't fail the
+        // node and must not steer classification) — the merge/run op's own check output, which usually names
+        // the exact fix. Omitted when empty (the minimal-record convention every other field here follows).
+        ...(blockingOpFailures.length ? { opFailures: blockingOpFailures.map((f) => f.detail) } : {}),
         // (P3 · inline hitl) A human rejection at the inline gate — the reviewer's WHY (→ consultPreamble on
         // the warm re-run) + the discriminator that forces the re-attempt retry-only (never escalate, H1).
         ...(humanRejected ? { humanReject: true } : {}),

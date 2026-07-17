@@ -512,6 +512,9 @@ export async function runProgrammatic(ctx: RunContext, srcNode: NodeSpec): Promi
         exitCode: 0,
         stderrTail: '',
         parsedOk: false,
+        // (M5 · #18 fix/claude-return-tail-evidence) BLOCKING-only op-gate evidence — mirrors node-lifecycle.ts's
+        // capture site. Omitted when empty (the minimal-record convention every other field here follows).
+        ...(blockingOpFailures.length ? { opFailures: blockingOpFailures.map((f) => f.detail) } : {}),
       });
     }
 
