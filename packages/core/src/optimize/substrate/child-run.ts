@@ -25,6 +25,7 @@ import type { CommandBuilder } from '../../runner/command.js';
 import type { SandboxProvider } from '../../types.js';
 import { selectWindow } from '../../runner/window.js';
 import { resolveNodeWriteScope } from '../../runner/node-lifecycle.js';
+import { ownsPath } from '../../runner/stash.js';
 import type { ResolveCtx } from '../../workflow/resolver.js';
 import { loadState } from '../../workflow/state.js';
 import { stageBaselineRun } from '../../runner/migrate.js';
@@ -84,15 +85,8 @@ async function readParentStatus(parentDir: string): Promise<{ provider?: string;
   }
 }
 
-/**
- * Strip an owns entry's trailing glob suffix (`/**`, `/*`, `**`) to its concrete directory/file — the
- * SAME normalization `checkParallelOwns` uses for collision detection (template/checks.ts), reused here
- * to turn a resolved `contract.owns` entry into a real fs path to reset. A glob-only entry (e.g. `"**"`)
- * normalizes to `''` — the caller MUST skip it (never resolves to the run root itself).
- */
-function ownsPath(glob: string): string {
-  return glob.replace(/\/?\*+$/, '').replace(/\/+$/, '');
-}
+// `ownsPath` (the owns→fs-path normalization) now lives in runner/stash.ts — ONE copy, shared with the
+// `node --rerun` fresh-production stash (same semantics: turn a resolved owns entry into a resettable path).
 
 /** pi names a per-node warm session `<timestamp>_<sessionId>.jsonl` (session-manager.js); the session id
  *  IS the node id (node-lifecycle.ts, the warm-resume PER-NODE SESSION block). Best-effort — an absent

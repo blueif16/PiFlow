@@ -44,6 +44,7 @@ import {
   artifactState,
 } from './status.js';
 import { descendantsMap, loadJournal } from './journal.js';
+import { stashNodeOwns } from './stash.js';
 // P6 — mid-run migration: the single-writer lease + the freeze-at-node-boundary signal.
 import { acquireLease, LeaseHeldError, type Lease, type AcquireOpts } from './lease.js';
 import { defaultFreezeSignal } from './migrate.js';
@@ -737,6 +738,22 @@ export async function runWorkflow(wf: Workflow, opts: RunOptions = {}): Promise<
     }
   }
   await writeStatus(outDir, ctx.status);
+
+  // RERUN FRESH-PRODUCTION STASH (after every preflight bail, before any lane runs): a `node --rerun`
+  // TARGET's prior artifacts are MOVED to `.pi/stash/<node>/<stamp>/` so the seed re-stages fresh content
+  // and the node PRODUCES again instead of confirming its own stale output (stash.ts has the full why).
+  // Only still-`pending` targets stash — a preflight HALT above returns before this point, so a bailed
+  // run never moves a byte.
+  if (opts.rerunNodes?.size) {
+    const stashCtx: ResolveCtx = { run: outDir, workspace: ctx.workspace, state: ctx.runState, args: ctx.args };
+    const stamp = new Date(t0).toISOString().replace(/[:.]/g, '-');
+    for (const id of opts.rerunNodes) {
+      const node = wf.nodes[id];
+      if (!node || ctx.status.nodes[id]?.status !== 'pending') continue;
+      const res = await stashNodeOwns(outDir, node, stashCtx, stamp);
+      if (res) console.log(`[rerun] stashed ${res.stashed.join(', ')} → ${path.relative(outDir, res.stashDir)}`);
+    }
+  }
 
   // Open the run scope AFTER the resume preflight (so a preflight bail never boots a VM / makes a
   // worktree). A provider with a shared per-run resource (worktree/cloud) sets it up here; a local
