@@ -306,7 +306,11 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // tier-vs-model-pin); loadout/skill fit stays on the shipped `preflightSkills`. DEFAULT is ADVISORY: a
   // misfit is `console.warn`ed and the run PROCEEDS (the executor may still cope) — it NEVER throws.
   // `ctx.strict` (opt-in `--strict`) BLOCKS instead: the node HALTs with a loud error record.
-  const fit = driverFits(node, drv);
+  // Judge the EFFECTIVE backend (`ctx.providerKind` — the run-level sandbox choice), never the authored
+  // per-node `sandbox.provider`: the backend is run-level (per-node sandbox fields are SCOPING), and the
+  // authored field is usually the materialize default 'inmemory' — judging it warned "claude-code cannot
+  // run on inmemory" on every `--sandbox local --executor claude-code` node (live 260715-01, 3× per node).
+  const fit = driverFits({ ...node, sandbox: { ...node.sandbox, provider: ctx.providerKind } }, drv);
   if (!fit.ok) {
     const msg = `driver "${drv.id}" does not fit node "${node.id}": ${fit.problems.join('; ')}`;
     if (ctx.strict) {
