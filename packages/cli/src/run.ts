@@ -241,7 +241,7 @@ export const SANDBOX_CHOICES: readonly SandboxChoice[] = ['inmemory', 'local', '
 export const EXECUTOR_CHOICES: readonly ['pi', 'claude-code'] = ['pi', 'claude-code'];
 
 /** Validate + narrow a `--executor` value; throws loudly on a typo (so a mistyped executor never silently degrades). */
-function parseExecutorValue(v: string, ctxLabel: string): 'pi' | 'claude-code' {
+export function parseExecutorValue(v: string, ctxLabel: string): 'pi' | 'claude-code' {
   if ((EXECUTOR_CHOICES as readonly string[]).includes(v)) return v as 'pi' | 'claude-code';
   throw new Error(`piflowctl run: unknown --executor ${ctxLabel}"${v}" (expected one of ${EXECUTOR_CHOICES.join(', ')}).`);
 }
