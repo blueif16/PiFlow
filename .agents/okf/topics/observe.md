@@ -230,13 +230,16 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[merge-workspace-token-bug]]
 - [[minimax-m3-framing]]
 - [[model-provider-single-default-fixture]]
+- [[next-session-other-archetypes]]
 - [[no-demo-html-wire-into-screen]]
 - [[no-rerun-before-digest-confirmed]]
+- [[no-taxonomy-free-text-search]]
 - [[node-illustration-pipeline]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[observe-single-data-path]]
 - [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
+- [[omniscience-taste-laws]]
 - [[optimize-loop-native-not-adhoc]]
 - [[optimize-substrate-loop-live-proven]]
 - [[optimize-substrate-program]]
@@ -261,13 +264,16 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - [[sdk-data-boundaries]]
 - [[skill-marketplace-gui-design]]
 - [[skill-trigger-generalize-not-keyword-match]]
+- [[snippet-corpus-doctrine]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[two-front-reporting]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w1-prd-direction]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -277,5 +283,5 @@ anchors ✓ (re-verified 2026-07-01 after the SSE single-source landing) · scop
 - `RunView` (packages/core/src/observe/runView.ts:144) — 5 callers in `packages/core/src/observe/telemetry.ts`, `packages/core/src/observe/runView.ts`; ⚠ no covering tests found
 - `RunView` (gui/src/data/runView.ts:153) — 8 callers in `gui/src/data/runView.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=99 commits · files=13 · lessons=76</sub>
+<sub>derived 2026-07-21 · arc=99 commits · files=13 · lessons=82</sub>
 <!-- okf:auto-end -->

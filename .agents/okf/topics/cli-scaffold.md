@@ -232,6 +232,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
+- `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
 
 ### Lessons — memory cluster
 
@@ -247,6 +248,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
+- [[combination-methodology-direction]]
 - [[competitive-gaps-pdw]]
 - [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
@@ -285,8 +287,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[minimax-m3-framing]]
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
+- [[next-session-other-archetypes]]
 - [[no-demo-html-wire-into-screen]]
 - [[no-rerun-before-digest-confirmed]]
+- [[no-taxonomy-free-text-search]]
 - [[node-illustration-pipeline]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
@@ -294,6 +298,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[okf-coverage-boundary]]
 - [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
+- [[omniscience-taste-laws]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
@@ -323,6 +328,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[site-piflow-no-unrequested-chrome]]
 - [[skill-marketplace-gui-design]]
 - [[skill-trigger-generalize-not-keyword-match]]
+- [[snippet-corpus-doctrine]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
@@ -330,8 +336,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - [[two-front-reporting]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w1-prd-direction]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -341,5 +349,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · BRANCH-S
 - `runNewCli` (packages/cli/src/scaffold.ts:715) — 3 callers in `packages/cli/src/cli.ts`; tests: `packages/cli/test/scaffold.test.ts`
 - `scaffoldNew` (packages/cli/src/scaffold.ts:409) — 2 callers in `packages/cli/src/scaffold.ts`; tests: `packages/cli/test/scaffold.test.ts`
 
-<sub>derived 2026-07-17 · arc=172 commits · files=8 · lessons=96</sub>
+<sub>derived 2026-07-21 · arc=173 commits · files=8 · lessons=103</sub>
 <!-- okf:auto-end -->

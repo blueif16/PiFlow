@@ -192,6 +192,11 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // run stays SELF-CONTAINED — no stray `_pi/` at the run root.
   const nodeStage = path.posix.join('.pi', 'staged', node.id);
   const MCP_CONFIG_FILE = path.posix.join(nodeStage, 'mcp.json');
+  // (feat/claude-mcp-wiring) The CLAUDE-NATIVE mcp config path — a DISTINCT file from the pi-bridge
+  // `mcp.json` above (different shape: Claude's own `{mcpServers}` wrapper, not the bridge's `{servers}`).
+  // Just a path constant here; whether anything is actually staged there is decided after the node's
+  // executor is resolved, below.
+  const CLAUDE_MCP_CONFIG_FILE = path.posix.join(nodeStage, 'claude-mcp.json');
   // The in-sandbox ROOT that staged files resolve under (for the absolute paths advertised to pi). An
   // IN-PLACE provider's per-node sandbox is rooted at the RUN DIR (the cwd-anchoring at scope.create below),
   // so `.pi/staged/<id>/mcp.json` and `.pi/skills/<name>` live under `outDir` — NOT `scope.root` (LocalRunScope.root
@@ -264,6 +269,13 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   } catch (e) {
     return finishNode(ctx, srcNode, rec, t0, 'error', `io token resolution failed: ${(e as Error).message}`, [], [(e as Error).message]);
   }
+
+  // (feat/claude-mcp-wiring) CLAUDE NATIVE MCP — decided HERE (after the executor override above resolves)
+  // so it reaches BOTH the env additions below (MCP_CONNECTION_NONBLOCKING) and the staging block further
+  // down. Scoped to THIS node's OWN declared servers only (`node.mcp.servers`) — NEVER the run-wide
+  // pi-bridge union (`ctx.mcpConfig`) — so a claude-code node is offered exactly what it declared, never a
+  // sibling node's servers (the sealed-node boundary). `ref` (a pointer form) is not consumed here.
+  const claudeMcpServers = node.executor === 'claude-code' ? node.mcp?.servers : undefined;
 
   // (E10 prompt-staging) A node whose build runs from an `execCwd` OUTSIDE the run dir has its process cwd
   // set to execCwd — so the command's `@<prompt>` / `-e <ext>` / `< <prompt>` refs (which pi/claude resolve
@@ -368,8 +380,13 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       // Merge the MCP env additions + the cloud provider-cred additions over the node's declared env (so
       // PIFLOW_MCP_CONFIG + the referenced MCP secrets + the pi gateway key land in the child via the
       // provider's exec merge). Both additions are {} when inapplicable, so a local/keyless run is unchanged.
-      env: mcpEnv || Object.keys(credEnv).length || Object.keys(claudeEnv).length
-        ? { ...node.sandbox.env, ...mcpEnv, ...credEnv, ...claudeEnv }
+      // (feat/claude-mcp-wiring) `MCP_CONNECTION_NONBLOCKING=0` ONLY when this node stages a claude-native
+      // mcp config: since Claude Code 2.1.142, MCP server connect is non-blocking by default, so a headless
+      // print-mode node (ONE turn, no follow-up) would see its tool list frozen BEFORE the stdio handshake
+      // finishes and never get the tool — live-proven (a real server: 'pending'→tool absent without this var,
+      // 'connected'→tool present and callable with it, docs.claude.com/en/env-vars).
+      env: mcpEnv || Object.keys(credEnv).length || Object.keys(claudeEnv).length || claudeMcpServers
+        ? { ...node.sandbox.env, ...mcpEnv, ...credEnv, ...claudeEnv, ...(claudeMcpServers ? { MCP_CONNECTION_NONBLOCKING: '0' } : {}) }
         : node.sandbox.env,
       timeoutMs: nodeTimeoutMs, // cloud per-command cap = the watchdog cap (NOT undefined → E2B's 60s default)
     });
@@ -521,6 +538,18 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
       await sandbox.writeFile(MCP_CONFIG_FILE, JSON.stringify(ctx.mcpConfig));
     }
 
+    // (feat/claude-mcp-wiring) Stage THIS claude-code node's OWN mcp.servers as Claude's native config —
+    // `resolveDeep` makes {{WORKSPACE}}/{{RUN}}/{{state.*}}/{{arg.*}} physical throughout the (possibly
+    // nested) server definitions, exactly like every other staged path. Wrapped in Claude's OWN
+    // `{"mcpServers": {...}}` shape (distinct from the pi-bridge's bare `{servers}` above). Absent
+    // `claudeMcpServers` (no mcp declared, or not a claude-code node) ⇒ no file, no flag (byte-identical).
+    let mcpConfigFile: string | undefined;
+    if (claudeMcpServers) {
+      const resolvedServers = resolveDeep(claudeMcpServers, resolveCtx);
+      await sandbox.writeFile(CLAUDE_MCP_CONFIG_FILE, JSON.stringify({ mcpServers: resolvedServers }));
+      mcpConfigFile = stageRef(CLAUDE_MCP_CONFIG_FILE);
+    }
+
     // SKILL stage: a node's `skill` (an Agent-Skill dir) is a forced read-only PRE-stage — so it REUSES the
     // seed seam. The ref resolves through `locateSkillStage`: a PATH-LIKE ref keeps the pure workspace-rooted
     // `resolveSkillStage` semantics byte-identically; a BARE id searches the two local rings (workspace
@@ -594,7 +623,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
     rec.model = effModel ?? null; // record the effective model (null ⇒ pi's provider default)
     // (warm-resume) Merge the per-node `session` into the builder opts (DROPs `--no-session`, emits
     // `--session-dir` + `--session-id`/`--session`). `undefined` ⇒ no merge ⇒ today's `--no-session` default.
-    const cmd = ctx.buildCommand(node, resolved, { promptFile: stageRef(promptFile), model: effModel, provider: effProvider, extensionFile: extensionRef, skillPath }, session ? { ...ctx.commandOpts, session } : ctx.commandOpts);
+    const cmd = ctx.buildCommand(node, resolved, { promptFile: stageRef(promptFile), model: effModel, provider: effProvider, extensionFile: extensionRef, skillPath, mcpConfigFile }, session ? { ...ctx.commandOpts, session } : ctx.commandOpts);
     rec.command = cmd;
     // (P5 — early driver stamp) Stamp the executor driver id/version NOW, at node start, not only at
     // finishNode. The live observe fold (watch.ts) selects the per-node accumulator by rec.driverId; without
@@ -909,7 +938,7 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
         ].join('\n');
         const repairFile = path.posix.join(nodeStage, `repair-${repairs}.md`);
         await sandbox.writeFile(repairFile, repairPrompt);
-        const repairCmd = ctx.buildCommand(node, resolved, { promptFile: stageRef(repairFile), model: effModel, provider: effProvider, extensionFile: extensionRef, skillPath }, ctx.commandOpts);
+        const repairCmd = ctx.buildCommand(node, resolved, { promptFile: stageRef(repairFile), model: effModel, provider: effProvider, extensionFile: extensionRef, skillPath, mcpConfigFile }, ctx.commandOpts);
         const repairExec = await ctx.execRunner(execSandbox, repairCmd, { ...ctx.watchdog, nodeTimeoutMs, onSpawn });
         result = repairExec.result;
         // Re-collect (a fresh artifact may have been rewritten) under the same serialized collect mutex.

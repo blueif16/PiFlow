@@ -48,7 +48,7 @@ FUSION — config + expand
 FUSION — expand-then-compile (terminal)
 - `packages/core/src/runner/entry.ts:64` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromConfig path)
 - `packages/core/src/runner/entry.ts:67` — `spec = expandFusion(spec, fusionExpandOpts())` — expand before compile (runFromTemplate path)
-- `packages/core/src/dag.ts:212` — `compile` — folds the expanded siblings+judge into stages/edges (the DAG the author never wrote)
+- `packages/core/src/dag.ts:221` — `compile` — folds the expanded siblings+judge into stages/edges (the DAG the author never wrote)
 
 # Freshness (anti-drift)
 anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an `effectiveModel` front door — there is none, the single resolver is `resolveNodeModel`) · scope = the seeds above · re-derive when `model-routing.ts`'s precedence or `expand.ts`'s shape changes. DRIFT NOTE: precedence is resolved in ONE place per concern (`model-routing.ts` for routing; `expand.ts`/`fusion-config.ts` for fusion params) — the spec (`docs/specs/per-node-routing-and-fusion.md` §2) is the override contract. Fusion is a PORT of the DAG-expansion idea, not the vendor `pi-fusion`. `FUSION_PRESETS` (presets.ts:24) is shared with the `base-agent-types` slice (preset SHAPE) — this slice owns the EXPANSION, that one owns the preset lifecycle. The CLI dry-run also calls `expandFusion` (`packages/cli/src/run.ts:436`) so previews show the real expanded DAG + resolved models.
@@ -130,6 +130,8 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
 - `bccdfcc` 2026-07-16 — feat(core): claude executor degrades script tools to Bash
 - `ee9c874` 2026-07-16 — fix(core): claude warm resume uses the claude-minted session UUID
+- `d92ae6b` 2026-07-21 — chore(okf): resync code-map anchors after mcp-wiring line shifts
+- `ff66ef7` 2026-07-21 — feat(core): emit --mcp-config/--strict-mcp-config for a claude-code node
 
 ### Lessons — memory cluster
 
@@ -169,6 +171,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[observe-single-data-path]]
 - [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
+- [[omniscience-taste-laws]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
@@ -193,6 +196,7 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - [[verify-nodes-never-in-dev-arms]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -202,5 +206,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/runner/runner.ts`, `packages/cli/src/run.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=57 commits · files=10 · lessons=59</sub>
+<sub>derived 2026-07-21 · arc=59 commits · files=10 · lessons=61</sub>
 <!-- okf:auto-end -->

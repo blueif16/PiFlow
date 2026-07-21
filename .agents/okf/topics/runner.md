@@ -30,10 +30,10 @@ TEMPLATE-RUN JOIN
 PER-NODE RUNNER EXEC
 - `packages/core/src/runner/runner.ts:424` — `runWorkflow` — stage-by-stage loop, parallel lanes, HALT-on-failure
 - `packages/core/src/runner/node-lifecycle.ts:113` — `runNode` — create→stage→exec→collect→verify→finish (one pi)
-- `packages/core/src/runner/command.ts:69` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
+- `packages/core/src/runner/command.ts:78` — `defaultPiCommand` — builds the headless `pi -p --mode json` invocation
 ARTIFACTS ON DISK (verify → finish)
 - `packages/core/src/runner/node-lifecycle.ts:490` — artifact host-stat — a node is `ok` only if its declared artifacts exist
-- `packages/core/src/runner/node-lifecycle.ts:1283` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
+- `packages/core/src/runner/node-lifecycle.ts:1312` — `finishNode` — stamp the verdict into the run's `.pi/` tree + journal
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: `runNode`/`finishNode` no longer live in `packages/core/src/runner/runner.ts` (the §2.1 split moved the per-node lifecycle to `packages/core/src/runner/node-lifecycle.ts`; runner.ts only re-exports them) — the stage loop is the run-level concern in runner.ts, the per-node concern is in node-lifecycle.ts. This is the DYNAMIC exec spine carved out of the former `runtime-core`; its static sibling (`workflow-compile`) ends at the compiled `Workflow`, which is exactly where this slice begins. Threads that cross this spine each have their own slice: `sandbox` (the jail runNode creates), `per-node-routing-and-fusion` (the model on the pi command), `node-action-protocol` (the gates between exec and finish).
@@ -234,6 +234,10 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `7712f56` 2026-07-16 — fix(core): driver-fit judges the effective run-level backend
 - `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
 - `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
+- `659fb31` 2026-07-17 — fix(core): failing merge-op detail carries the gate's own stdout verdict
+- `d92ae6b` 2026-07-21 — chore(okf): resync code-map anchors after mcp-wiring line shifts
+- `ff66ef7` 2026-07-21 — feat(core): emit --mcp-config/--strict-mcp-config for a claude-code node
+- `a1d8fd4` 2026-07-21 — feat(core): stage a claude-code node's own MCP servers natively
 
 ### Lessons — memory cluster
 
@@ -256,7 +260,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `instantiateRun` (packages/core/src/workflow/template/instantiate.ts:98) — 10 callers in `packages/core/src/runner/entry.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/instantiate.test.ts`, `packages/cli/test/run-baseline.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run.test.ts`
 - `runNode` (templates/legacy/run.mjs:1411) — 1 caller in `templates/legacy/run.mjs`; ⚠ no covering tests found
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 17 callers in `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; ⚠ no covering tests found
-- `RunScope` (packages/core/src/types.ts:827) — 5 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
+- `RunScope` (packages/core/src/types.ts:838) — 3 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=179 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-21 · arc=183 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

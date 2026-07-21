@@ -43,6 +43,13 @@ export interface CommandContext {
    * on `.pi/skills/` auto-discovery surviving the headless flag set). Absent when the node declares no skill.
    */
   skillPath?: string;
+  /**
+   * (feat/claude-mcp-wiring) In-sandbox path to the node's staged CLAUDE-NATIVE MCP config file
+   * (`{"mcpServers": {...}}`), when a claude-code node declared `node.mcp.servers`. Emitted ONLY by
+   * `claudeCommand` as `--mcp-config <file> --strict-mcp-config`; `defaultPiCommand` ignores it (the pi
+   * bridge's `_pi/mcp.json`/`PIFLOW_MCP_CONFIG` is a wholly separate mechanism). Absent ⇒ no flag.
+   */
+  mcpConfigFile?: string;
 }
 
 /** Shell-quote a single token (the prompt path / extension path may contain spaces). */
@@ -109,9 +116,10 @@ export const defaultPiCommand: CommandBuilder = (node, resolved, ctx, opts = {})
 };
 
 // pi builtin bare name → Claude Code builtin tool name (the read/write/fix/debug set). `ls` has no
-// Claude-native tool (Bash/Glob cover it), so it is intentionally dropped; sdk/mcp tools are OUT of
-// scope for the Claude executor (builtins only), so unmapped names fall away. See
-// docs/design/agent-executor-interface.md §5.
+// Claude-native tool (Bash/Glob cover it), so it is intentionally dropped; pi's `sdk`/bridged `mcp.*`
+// TOOL ADDRESSES are still out of scope for the Claude executor (unmapped names fall away) — Claude's
+// OWN native MCP wiring (feat/claude-mcp-wiring, `--mcp-config`) is a separate, additive mechanism below,
+// not routed through this builtin map. See docs/design/agent-executor-interface.md §5.
 export const CLAUDE_TOOL_BY_PI_NAME: Record<string, string> = {
   read: 'Read',
   write: 'Write',
@@ -162,6 +170,13 @@ export const claudeCommand: CommandBuilder = (node, resolved, ctx, opts = {}) =>
   if (tools.length) parts.push('--tools', q(tools.join(' ')));
   const deny = resolved.excludeTools ? toClaudeTools(resolved.excludeTools) : [];
   if (deny.length) parts.push('--disallowedTools', q(deny.join(' ')));
+  // (feat/claude-mcp-wiring) NATIVE MCP — the staged Claude-format config file (node-lifecycle.ts, off this
+  // node's OWN `mcp.servers`, never the pi-bridge run-wide union). `--strict-mcp-config` restricts the
+  // session to ONLY these servers, ignoring the operator's own project/user/plugin MCP config — a fleet
+  // node never inherits capabilities it did not declare. `--tools` above does NOT gate MCP tools at all
+  // (docs.claude.com/en/cli-reference), so no `mcp__<server>__<tool>` entry belongs in that allowlist —
+  // proven live (2026-07-21: `--tools 'Read'` + this flag still bound and called an mcp__ tool).
+  if (ctx.mcpConfigFile) parts.push('--mcp-config', q(ctx.mcpConfigFile), '--strict-mcp-config');
   // RESUME: address the session by the id CLAUDE minted (threaded in as `resumeRef`, captured off the prior
   // attempt's `result` event) — the pi node-id convention is NOT a claude session ref: `claude -p --resume
   // <nodeId>` is fatal ("--resume requires a valid session ID"), observed live killing every feedback retry.

@@ -105,3 +105,28 @@ describe('compile — materialize carries the sandbox exec-scope (E10)', () => {
     expect(node.sandbox.execReads).toBeUndefined();
   });
 });
+
+describe('compile — materialize carries the per-node MCP config (feat/claude-mcp-wiring)', () => {
+  // `mcp` previously stopped at NodeIntent (assembleRunTools reads it off the pre-compile WorkflowSpec for
+  // the pi-bridge union) and was never copied onto the dense NodeSpec. A claude-code node's OWN native
+  // `--mcp-config` staging (node-lifecycle.ts) reads `node.mcp` off the COMPILED NodeSpec, so a materialize
+  // drop here would silently strand every claude-code node's declared MCP servers (the executor carry-through
+  // precedent this mirrors: `dag.ts` `executor: intent.executor` two fields up).
+  it('carries mcp.servers from the authored intent onto the dense NodeSpec', () => {
+    const authored: NodeIntent = {
+      label: 'writer',
+      prompt: 'do writer',
+      tools: {},
+      executor: 'claude-code',
+      io: { reads: [], produces: ['w.txt'], artifacts: [{ path: 'w.txt' }] },
+      mcp: { servers: { snippets: { command: 'node', args: ['{{WORKSPACE}}/server.mjs'] } } },
+    };
+    const node = Object.values(compile(wf([authored])).nodes)[0];
+    expect(node.mcp?.servers).toEqual({ snippets: { command: 'node', args: ['{{WORKSPACE}}/server.mjs'] } });
+  });
+
+  it('omits mcp when the intent declares none (byte-identical default)', () => {
+    const node = Object.values(compile(wf([n('plain', [], ['p.txt'])])).nodes)[0];
+    expect(node.mcp).toBeUndefined();
+  });
+});

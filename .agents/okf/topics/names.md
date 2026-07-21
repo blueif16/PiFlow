@@ -114,6 +114,7 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
+- `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
 
 ### Lessons — memory cluster
 
@@ -141,5 +142,5 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-17 · arc=55 commits · files=7 · lessons=14</sub>
+<sub>derived 2026-07-21 · arc=56 commits · files=7 · lessons=14</sub>
 <!-- okf:auto-end -->

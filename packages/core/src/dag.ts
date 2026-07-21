@@ -75,6 +75,15 @@ function materialize(intent: NodeIntent, id: string): NodeSpec {
     // (PROGRAMMATIC NODE) Carry the no-pi marker verbatim — the runner dispatches a `programmatic` node to
     // `runProgrammatic` (declarative ops only, no `buildCommand`/exec). Additive: undefined ⇒ the pi lane.
     programmatic: intent.programmatic,
+    // (feat/claude-mcp-wiring) Carry the per-node MCP config onto the dense NodeSpec — but ONLY for the
+    // claude-code executor, which is its SOLE consumer there (node-lifecycle.ts stages `mcp.servers` as
+    // Claude's own native `--mcp-config`). Every OTHER consumer (`assembleRunTools`, the pi-bridge union)
+    // still reads `mcp` off the pre-compile `NodeIntent`, unaffected. A pi node authoring `mcp` (the bridge
+    // form, e.g. `{ ref }`) must stay BYTE-IDENTICAL on the compiled spec — carrying it unconditionally
+    // broke a golden compile snapshot (template-min's w2b-assets, a pi node with `mcp.ref`). Absent/non-
+    // claude ⇒ undefined (byte-identical — WITHOUT this carry a claude-code node's declared servers survive
+    // load but are dropped here, the `executor`/`execCwd` past-bug pattern this mirrors).
+    ...(intent.executor === 'claude-code' && intent.mcp ? { mcp: intent.mcp } : {}),
   };
 }
 

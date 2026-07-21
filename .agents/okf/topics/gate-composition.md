@@ -84,6 +84,7 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[claude-code-executor]]
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
+- [[combination-methodology-direction]]
 - [[compose-gate-drag-audit]]
 - [[default-profile-programmatic-gates-only]]
 - [[design-at-init-architecture]]
@@ -91,6 +92,7 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[first-fleet-video-e2e]]
 - [[flexibility-over-hardcoded-plans]]
 - [[issue-lifecycle-gate-redesign]]
+- [[next-session-other-archetypes]]
 - [[no-rerun-before-digest-confirmed]]
 - [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
@@ -105,8 +107,10 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
 - [[uniformity-whole-contract-deferrals-block]]
+- [[w1-prd-direction]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -116,5 +120,5 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:129) — 8 callers in `packages/core/src/workflow/gate-list.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-authoring.ts`; tests: `packages/core/test/gate-authoring.test.ts`
 - `GateListError` (packages/core/src/workflow/gate-list.ts:25) — 6 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-list.ts`; tests: `packages/core/test/inline-hitl-fanout.test.ts`
 
-<sub>derived 2026-07-17 · arc=6 commits · files=3 · lessons=26</sub>
+<sub>derived 2026-07-21 · arc=6 commits · files=3 · lessons=30</sub>
 <!-- okf:auto-end -->

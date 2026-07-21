@@ -120,6 +120,17 @@ export interface NodeSpec {
    * repo-authored, and the read-jail exists to contain an LLM, of which there is none here.
    */
   programmatic?: true;
+  /**
+   * 10. (feat/claude-mcp-wiring) The per-node external MCP gateway config, carried onto the dense NodeSpec
+   * FOR THE CLAUDE-CODE EXECUTOR ONLY (`node-lifecycle.ts` reads `node.mcp?.servers` when `executor ===
+   * 'claude-code'`): each server stages as CLAUDE'S OWN native `--mcp-config <file> --strict-mcp-config`
+   * (`{"mcpServers": {...}}`) — a SEPARATE mechanism from the pi bridge (pi has no native MCP; Claude
+   * does). Every OTHER consumer (`assembleRunTools`/the pi-bridge union/`_pi/mcp.json`) still reads `mcp`
+   * off the pre-compile `NodeIntent`/`WorkflowSpec` exactly as before (design §G11) — this carry is
+   * ADDITIVE and does not change that path. `ref` (a pointer form) is not consumed by the claude-code
+   * staging; only inline `servers` is. Undefined ⇒ no `--mcp-config` for this node (byte-identical).
+   */
+  mcp?: { servers?: Record<string, unknown>; ref?: string };
 }
 
 // 8 ── THE UNIFIED OP ENVELOPE (G13 — M5) ───────────────────────────────────────
@@ -1169,10 +1180,12 @@ export type NodeIntent = Pick<NodeSpec, 'label' | 'prompt' | 'skill' | 'agentTyp
    */
   reroute?: RerouteSpec;
   /**
-   * (G11) Per-node external MCP gateway config (the authored `node.json.mcp`). Lives ONLY on the
-   * authoring/intent layer: `assembleRunTools` reads `mcp.servers` off the spec to assemble the run's
-   * merged `mcpConfig` and the runner stages it into a bridge-tool node's `_pi/mcp.json`. It never reaches
-   * the dense `NodeSpec` (the `fusion?`/`checkpoint?` precedent). Secret-bearing values carry `$VAR` refs.
+   * (G11) Per-node external MCP gateway config (the authored `node.json.mcp`). `assembleRunTools` reads
+   * `mcp.servers` off THIS pre-compile spec to assemble the run's merged `mcpConfig`, which the runner
+   * stages into a bridge-tool node's `_pi/mcp.json` — that path is unchanged. (feat/claude-mcp-wiring)
+   * UNLIKE `fusion?`/`checkpoint?`, this field is now ALSO carried onto the dense `NodeSpec` (materialize,
+   * dag.ts) so a claude-code node can stage it as Claude's own native `--mcp-config` — see `NodeSpec.mcp`.
+   * Secret-bearing values carry `$VAR` refs (checked at load, `checks.ts` #8).
    */
   mcp?: { servers?: Record<string, unknown>; ref?: string };
   /** (G9) Subworkflow activation — consumed by `expandSubworkflow` BEFORE compile/fusion; never reaches the dense NodeSpec. */

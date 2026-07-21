@@ -33,10 +33,10 @@ CONTRACT CODEC (DRIVER-* markers)
 SCHEMA (authored shape)
 - `packages/core/src/workflow/template/schema/node.schema.ts:55` — `agentType` field — one example of the authored node.json surface `toNodeIntent` reads
 WORKFLOWSPEC → DAG (topo-order)
-- `packages/core/src/dag.ts:212` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
-- `packages/core/src/dag.ts:82` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
-- `packages/core/src/dag.ts:118` — `stagesOf` — longest-path topological stages (parallel lanes per level)
-- `packages/core/src/types.ts:1241` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
+- `packages/core/src/dag.ts:221` — `compile` — `WorkflowSpec` → dense `Workflow` (or `WorkflowError`)
+- `packages/core/src/dag.ts:91` — `inferEdges` — data-flow edges from `io.reads ⋈ io.produces`
+- `packages/core/src/dag.ts:127` — `stagesOf` — longest-path topological stages (parallel lanes per level)
+- `packages/core/src/types.ts:1254` — `Workflow` — the compiled `{meta, nodes, stages, edges}` (the seam to the runner)
 
 # Freshness (anti-drift)
 anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NOTE: the compiled `Workflow`/`NodeSpec`/`Stage`/`Edge` shapes all live in `packages/core/src/types.ts` (1026/17/1011/1019), NOT in dag.ts — dag.ts only computes them. This card is the STATIC compile spine carved out of the former `runtime-core`; the DYNAMIC exec spine (DAG → one pi per node → artifacts) is the sibling `runner` slice, and they meet at the `Workflow` object. `loadTemplate` is async (returns a `Promise<WorkflowSpec>`).
@@ -145,6 +145,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `ec517dd` 2026-07-15 — docs(op-integrity): temper the expect vocabulary to the SIMPLICITY LADDER
 - `dd2d8d2` 2026-07-15 — merge: op-integrity mechanism — expect predicates + runner pass + resultFile verdicts, simplicity-ladder guidance (feat/op-expect-integrity)
 - `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
+- `d92ae6b` 2026-07-21 — chore(okf): resync code-map anchors after mcp-wiring line shifts
 
 ### Lessons — memory cluster
 
@@ -173,9 +174,11 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[mastra-competitive-analysis]]
 - [[merge-workspace-token-bug]]
 - [[minimax-thinking-cap-noop]]
+- [[no-taxonomy-free-text-search]]
 - [[node-illustration-pipeline]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[omniscience-piflow-setup]]
+- [[omniscience-taste-laws]]
 - [[optimize-loop-native-not-adhoc]]
 - [[optimize-substrate-program]]
 - [[per-node-routing-fusion]]
@@ -192,13 +195,16 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[roadmap-bookkeeping-linear]]
 - [[run-level-blame-design]]
 - [[sandbox-readscope-default-on]]
+- [[snippet-corpus-doctrine]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[use-understanding-system-first]]
+- [[w1-prd-direction]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -206,7 +212,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 10 callers in `packages/core/src/optimize/substrate/child-run.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-list-profiles.test.ts`, `packages/core/test/journal.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run.test.ts`
-- `NodeSpec` (packages/core/src/types.ts:17) — 28 callers in `packages/core/src/runner/stash.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/drivers/types.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; tests: `packages/core/test/warm-resume-l1.test.ts`, `packages/core/test/rerun-stash.test.ts`, `packages/core/test/claude-command.test.ts`, `packages/core/test/claude-warm-resume.test.ts` +3
+- `NodeSpec` (packages/core/src/types.ts:17) — 19 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; tests: `packages/core/test/claude-command.test.ts`, `packages/core/test/runner.test.ts`
 
-<sub>derived 2026-07-17 · arc=89 commits · files=5 · lessons=50</sub>
+<sub>derived 2026-07-21 · arc=90 commits · files=5 · lessons=55</sub>
 <!-- okf:auto-end -->

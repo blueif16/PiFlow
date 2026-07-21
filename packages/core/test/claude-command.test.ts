@@ -100,6 +100,24 @@ describe('claudeCommand — headless Claude Code builder', () => {
     expect(cmd).not.toContain('--provider');
     expect(cmd).not.toContain("@'"); // pi's `@file` prompt ref must not appear
   });
+
+  // ── native MCP wiring (feat/claude-mcp-wiring): a claude-code node's own `mcp.servers` stages a
+  // Claude-format `--mcp-config <file>` (docs.claude.com/en/cli-reference: `--mcp-config` loads server
+  // configs from a JSON file; `--strict-mcp-config` — used together here — restricts the session to
+  // ONLY those servers, ignoring the operator's own project/user/plugin MCP config so a fleet node never
+  // inherits capabilities it did not declare). `--tools` (the builtin allowlist above) does NOT gate MCP
+  // tools at all (same docs page) — no `mcp__<server>__<tool>` entry is needed there, proven live too
+  // (2026-07-21 probe: `--tools 'Read'` + `--mcp-config` still bound and called `mcp__snippets__search_snippets`).
+  it('ctx.mcpConfigFile set → emits --mcp-config <path> --strict-mcp-config', () => {
+    const cmd = claudeCommand(node, { piTools: ['read'] }, { promptFile: 'p.md', mcpConfigFile: '.pi/staged/w/claude-mcp.json' });
+    expect(cmd).toContain("--mcp-config '.pi/staged/w/claude-mcp.json' --strict-mcp-config");
+  });
+
+  it('ctx.mcpConfigFile absent → no --mcp-config / --strict-mcp-config (today\'s behavior, unchanged)', () => {
+    const cmd = claudeCommand(node, { piTools: ['read'] }, { promptFile: 'p.md' });
+    expect(cmd).not.toContain('--mcp-config');
+    expect(cmd).not.toContain('--strict-mcp-config');
+  });
 });
 
 describe('dispatchCommand — routes by node.executor (the default builder)', () => {
@@ -119,5 +137,14 @@ describe('dispatchCommand — routes by node.executor (the default builder)', ()
   it('executor === "pi" → the pi builder', () => {
     const cmd = dispatchCommand({ executor: 'pi' } as NodeSpec, resolved, ctx);
     expect(cmd.startsWith('pi ')).toBe(true);
+  });
+
+  // GUARD: mcpConfigFile is a claude-only emission — a pi node must stay byte-identical even if the
+  // runner ever handed it one (it never does, since node-lifecycle gates staging on executor==='claude-code',
+  // but the builder itself must not silently start honoring it for pi too).
+  it('mcpConfigFile is IGNORED on the pi path — defaultPiCommand never emits --mcp-config', () => {
+    const cmd = dispatchCommand({} as NodeSpec, resolved, { ...ctx, mcpConfigFile: '.pi/staged/w/claude-mcp.json' });
+    expect(cmd).not.toContain('--mcp-config');
+    expect(cmd).not.toContain('--strict-mcp-config');
   });
 });
