@@ -182,6 +182,20 @@ describe('piflowctl run --dry-run — realized commands, no model', () => {
     expect(dryRunPlan(wf, { promptDir: '/run/_pi' })).not.toContain('--thinking');
   });
 
+  it('renders --mcp-config for a claude-code node with mcp.servers, never for a pi node (same lying-preview law)', async () => {
+    const wf = compile({
+      meta: { name: 't', description: 'd' },
+      nodes: [
+        { label: 'Writer', prompt: 'x', executor: 'claude-code', mcp: { servers: { snippets: { command: 'node', args: ['srv.mjs'] } } }, io: { reads: [], produces: ['index.html'], artifacts: [{ path: 'index.html' }] } },
+        { label: 'Plain', prompt: 'y', tools: {}, io: { reads: [], produces: ['p.txt'], artifacts: [{ path: 'p.txt' }] } },
+      ],
+    });
+    const plan = dryRunPlan(wf, { promptDir: '/run/_pi' });
+    // mirrors node-lifecycle's CLAUDE_MCP_CONFIG_FILE staging layout (<stage>/<id>/claude-mcp.json)
+    expect(plan).toMatch(/\[writer\][^\n]*--mcp-config '?\/run\/_pi\/writer\/claude-mcp\.json'?[^\n]*--strict-mcp-config/);
+    expect(plan).not.toMatch(/\[plain\][^\n]*--mcp-config/);
+  });
+
   it('run --dry-run materializes ${RUN}/.pi via instantiateRun and invokes NO model (runFromConfig not called)', async () => {
     let runFromConfigCalls = 0;
     const lines: string[] = [];

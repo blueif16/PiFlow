@@ -36,7 +36,7 @@ ADD-NODE
 - `packages/cli/src/scaffold.ts:206` — `buildNode` — PURE: id/phase/deps/contract + optional blocks + derives folded into `op[]`
 - `packages/cli/src/scaffold.ts:236` — `seedNodeMemory`/`seedNodeCodeMap` — seed memory.md + code-map.md create-if-absent (never clobbers prompt.md)
 RUN
-- `packages/cli/src/run.ts:586` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
+- `packages/cli/src/run.ts:593` — `runTemplate` — dry-run (print commands) vs live (`runFromTemplate`); injectable `RunDeps` seam
 - `packages/core/src/runner/entry.ts:163` — `runFromTemplate` — the core template-run join the CLI delegates to
 
 # Freshness (anti-drift)

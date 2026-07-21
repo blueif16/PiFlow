@@ -500,8 +500,13 @@ export function dryRunPlan(wf: Workflow, opts: DryRunPlanOpts = {}): string {
       // node-lifecycle's nodeStage) so the preview command shows the SAME `-e` the run will emit.
       // Absent when the node resolved to builtins only (the live run stages nothing either).
       const extensionFile = resolved.extension ? `${promptDir}/${id}/tools.ts` : undefined;
+      // (claude-mcp-wiring) The staged Claude MCP config: mirror the LIVE layout (node-lifecycle's
+      // CLAUDE_MCP_CONFIG_FILE = `<stage>/<id>/claude-mcp.json`) so a claude-code node's preview
+      // carries the SAME `--mcp-config` the run will emit — a dry-run that drops a flag the LIVE run
+      // emits is a lying preview. Absent otherwise (pi path unchanged).
+      const mcpConfigFile = eNode.executor === 'claude-code' && eNode.mcp?.servers ? `${promptDir}/${id}/claude-mcp.json` : undefined;
       // dispatchCommand routes pi vs claude-code off `eNode.executor` (the same seam the runner uses).
-      const cmd = dispatchCommand(eNode, resolved, { promptFile, provider: eff.provider ?? provider, model: eff.model, extensionFile }, { thinking: opts.thinking });
+      const cmd = dispatchCommand(eNode, resolved, { promptFile, provider: eff.provider ?? provider, model: eff.model, extensionFile, mcpConfigFile }, { thinking: opts.thinking });
       lines.push(`    [${id}] ${cmd}${note}`);
     }
   }
