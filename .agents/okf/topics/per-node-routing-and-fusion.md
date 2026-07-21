@@ -130,6 +130,8 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `d5c28cc` 2026-07-15 — fix(runner): warm-resume addresses the pi session by PATH, not the bare id
 - `bccdfcc` 2026-07-16 — feat(core): claude executor degrades script tools to Bash
 - `ee9c874` 2026-07-16 — fix(core): claude warm resume uses the claude-minted session UUID
+- `d92ae6b` 2026-07-21 — chore(okf): resync code-map anchors after mcp-wiring line shifts
+- `ff66ef7` 2026-07-21 — feat(core): emit --mcp-config/--strict-mcp-config for a claude-code node
 
 ### Lessons — memory cluster
 
@@ -204,5 +206,5 @@ anchors ✓ (opened + line-verified; corrected from a recon that hallucinated an
 - `loadModelTiers` (packages/core/src/runner/model-routing.ts:196) — 12 callers in `packages/server/src/handlers.ts`, `packages/core/src/runner/entry.ts`, `packages/core/src/runner/runner.ts`, `packages/cli/src/run.ts` +2 more; tests: `packages/core/test/model-routing.test.ts`
 - `expandNode` (packages/core/src/workflow/reroute/expand.ts:121) — 1 caller in `packages/core/src/workflow/reroute/expand.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-21 · arc=57 commits · files=10 · lessons=61</sub>
+<sub>derived 2026-07-21 · arc=59 commits · files=10 · lessons=61</sub>
 <!-- okf:auto-end -->

@@ -144,6 +144,8 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
 - `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
 - `659fb31` 2026-07-17 — fix(core): failing merge-op detail carries the gate's own stdout verdict
+- `ff66ef7` 2026-07-21 — feat(core): emit --mcp-config/--strict-mcp-config for a claude-code node
+- `a1d8fd4` 2026-07-21 — feat(core): stage a claude-code node's own MCP servers natively
 
 ### Lessons — memory cluster
 
@@ -195,5 +197,5 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-21 · arc=71 commits · files=5 · lessons=38</sub>
+<sub>derived 2026-07-21 · arc=73 commits · files=5 · lessons=38</sub>
 <!-- okf:auto-end -->

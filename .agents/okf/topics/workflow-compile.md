@@ -145,6 +145,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `ec517dd` 2026-07-15 — docs(op-integrity): temper the expect vocabulary to the SIMPLICITY LADDER
 - `dd2d8d2` 2026-07-15 — merge: op-integrity mechanism — expect predicates + runner pass + resultFile verdicts, simplicity-ladder guidance (feat/op-expect-integrity)
 - `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
+- `d92ae6b` 2026-07-21 — chore(okf): resync code-map anchors after mcp-wiring line shifts
 
 ### Lessons — memory cluster
 
@@ -213,5 +214,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 10 callers in `packages/core/src/optimize/substrate/child-run.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-list-profiles.test.ts`, `packages/core/test/journal.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run.test.ts`
 - `NodeSpec` (packages/core/src/types.ts:17) — 19 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; tests: `packages/core/test/claude-command.test.ts`, `packages/core/test/runner.test.ts`
 
-<sub>derived 2026-07-21 · arc=89 commits · files=5 · lessons=55</sub>
+<sub>derived 2026-07-21 · arc=90 commits · files=5 · lessons=55</sub>
 <!-- okf:auto-end -->

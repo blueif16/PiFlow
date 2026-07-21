@@ -181,6 +181,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
 - `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
+- `d92ae6b` 2026-07-21 — chore(okf): resync code-map anchors after mcp-wiring line shifts
 
 ### Lessons — memory cluster
 
@@ -257,5 +258,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-21 · arc=119 commits · files=8 · lessons=63</sub>
+<sub>derived 2026-07-21 · arc=120 commits · files=8 · lessons=63</sub>
 <!-- okf:auto-end -->

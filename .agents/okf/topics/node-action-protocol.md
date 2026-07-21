@@ -181,6 +181,8 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
 - `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
 - `659fb31` 2026-07-17 — fix(core): failing merge-op detail carries the gate's own stdout verdict
+- `d92ae6b` 2026-07-21 — chore(okf): resync code-map anchors after mcp-wiring line shifts
+- `a1d8fd4` 2026-07-21 — feat(core): stage a claude-code node's own MCP servers natively
 
 ### Lessons — memory cluster
 
@@ -293,5 +295,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:253) — 5 callers in `packages/core/src/checks.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-21 · arc=118 commits · files=8 · lessons=101</sub>
+<sub>derived 2026-07-21 · arc=120 commits · files=8 · lessons=101</sub>
 <!-- okf:auto-end -->
