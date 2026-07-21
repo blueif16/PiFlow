@@ -1770,6 +1770,107 @@ describe('runWorkflow — MCP config staging (.pi/staged/<id>/mcp.json + PIFLOW_
   });
 });
 
+// ── claude-code NATIVE MCP config staging: .pi/staged/<id>/claude-mcp.json + --mcp-config/--strict-mcp-config ──
+// A claude-code node's OWN authored `mcp.servers` (node.json `mcp`, carried onto the compiled NodeSpec — see
+// dag.test.ts) stages Claude's NATIVE MCP config file (`{"mcpServers": {...}}`, docs.claude.com/en/mcp) — a
+// SEPARATE mechanism from the pi-bridge `.pi/staged/<id>/mcp.json` above (pi has no native MCP; Claude does).
+// Scoped to THIS node's own servers only (never the run-wide pi-bridge union) and to the claude-code executor
+// only — a pi node's `mcp.servers` stays exclusively on the bridge path, proven by the negative test below.
+describe('runWorkflow — claude-code native MCP config staging (--mcp-config)', () => {
+  /** Same recorder shape as the pi-bridge block above (writes + create-env capture). */
+  function recordingProvider() {
+    const writes: { path: string; data: string }[] = [];
+    const createEnvs: (Record<string, string> | undefined)[] = [];
+    const base = new InMemorySandboxProvider();
+    const provider: SandboxProvider = {
+      kind: 'inmemory',
+      async create(opts: CreateOpts): Promise<Sandbox> {
+        createEnvs.push(opts.env);
+        const sb = await base.create(opts);
+        const orig = sb.writeFile.bind(sb);
+        sb.writeFile = async (p: string, d: Uint8Array | string) => {
+          writes.push({ path: p, data: typeof d === 'string' ? d : Buffer.from(d).toString('utf8') });
+          return orig(p, d);
+        };
+        return sb;
+      },
+    };
+    return { provider, writes, createEnvs };
+  }
+
+  /** A claude-code node run on InMemory: writes the declared artifact, exits 0. */
+  function claudeRun(g: ReturnType<typeof compile>, provider: SandboxProvider, outDir: string) {
+    const execRunner: ExecRunner = async (sandbox) => {
+      for (const a of Object.values(g.nodes)[0].io.artifacts) await sandbox.writeFile(`out/${Object.keys(g.nodes)[0]}/${a.path}`, 'claude-wrote-this');
+      return { result: { stdout: '', stderr: '', code: 0 }, killed: null };
+    };
+    return runWorkflow(g, {
+      run: 'claude-mcp', outDir, provider, execRunner,
+      secretResolver: (name) => (name === 'CLAUDE_CODE_OAUTH_TOKEN' ? 'test-oauth-token' : undefined),
+    });
+  }
+
+  const claudeMcp = { servers: { snippets: { command: 'node', args: ['{{RUN}}/server.mjs'] } } };
+
+  it("stages .pi/staged/<id>/claude-mcp.json in Claude's {mcpServers} shape (tokens resolved) and the command carries --mcp-config <path> --strict-mcp-config", async () => {
+    const g = compile(wf([n('Writer', [], ['w.txt'], { executor: 'claude-code', mcp: claudeMcp })]));
+    const outDir = await tmpOut();
+    const { provider, writes } = recordingProvider();
+
+    const { status } = await claudeRun(g, provider, outDir);
+    expect(status.nodes.writer.status).toBe('ok');
+
+    const staged = writes.find((w) => w.path === stagedPath('writer', 'claude-mcp.json'));
+    expect(staged).toBeTruthy();
+    // {{RUN}} resolved to the physical outDir — proves resolveDeep ran (never a literal `{{RUN}}` on disk) —
+    // and the shape is Claude's OWN `{mcpServers}` wrapper, NOT the bridge's bare `{servers}`.
+    expect(JSON.parse(staged!.data)).toEqual({ mcpServers: { snippets: { command: 'node', args: [`${outDir}/server.mjs`] } } });
+
+    expect(status.nodes.writer.command).toMatch(/--mcp-config '[^']*claude-mcp\.json' --strict-mcp-config/);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('injects MCP_CONNECTION_NONBLOCKING=0 for a claude-code node that stages an mcp config (else a single print-mode turn races the non-blocking connect and never sees the tool — live-proven)', async () => {
+    const g = compile(wf([n('Writer', [], ['w.txt'], { executor: 'claude-code', mcp: claudeMcp })]));
+    const outDir = await tmpOut();
+    const { provider, createEnvs } = recordingProvider();
+
+    await claudeRun(g, provider, outDir);
+    const env = createEnvs.find((e) => e && 'MCP_CONNECTION_NONBLOCKING' in e);
+    expect(env?.MCP_CONNECTION_NONBLOCKING).toBe('0');
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a claude-code node with NO mcp declared stages nothing and stays byte-identical (no flag, no env var)', async () => {
+    const g = compile(wf([n('Plain', [], ['p.txt'], { executor: 'claude-code' })]));
+    const outDir = await tmpOut();
+    const { provider, writes, createEnvs } = recordingProvider();
+
+    const { status } = await claudeRun(g, provider, outDir);
+    expect(status.nodes.plain.status).toBe('ok');
+    expect(writes.find((w) => w.path.endsWith('claude-mcp.json'))).toBeUndefined();
+    expect(status.nodes.plain.command).not.toContain('--mcp-config');
+    expect(createEnvs.every((e) => !(e && 'MCP_CONNECTION_NONBLOCKING' in e))).toBe(true);
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+
+  it('a PI node (no executor) with mcp.servers declared does NOT get the native claude-mcp.json staged and its command carries no --mcp-config (the native path is executor-gated; the bridge path is untouched)', async () => {
+    const g = compile(wf([n('Plain', [], ['p.txt'], { mcp: claudeMcp })]));
+    const outDir = await tmpOut();
+    const { provider, writes } = recordingProvider();
+
+    const { status } = await runWorkflow(g, { run: 'pi-mcp', outDir, provider, buildCommand: stubBuilder() });
+    expect(status.nodes.plain.status).toBe('ok');
+    expect(writes.find((w) => w.path.endsWith('claude-mcp.json'))).toBeUndefined();
+    expect(status.nodes.plain.command).not.toContain('--mcp-config');
+
+    await fs.rm(outDir, { recursive: true, force: true });
+  });
+});
+
 // ── unified node contract: the schema gate, integrity checks, fill-sentinel, generalized handshake ─
 
 describe('runWorkflow — post-node SCHEMA gate (DRIVER-SCHEMA / ArtifactReq.schema)', () => {
