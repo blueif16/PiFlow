@@ -27,13 +27,13 @@ a claude success still falls through to the executor-agnostic driver gates, so s
 
 # Anchors
 SELECT (route + credential + model)
-- `packages/core/src/runner/command.ts:175` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
+- `packages/core/src/runner/command.ts:193` — `dispatchCommand` — the one buildCommand seam; routes `node.executor==='claude-code'` → `claudeCommand`, else `defaultPiCommand`
 - `packages/core/src/runner/node-lifecycle.ts:208` — `runNode` — builds the claude env additions (`claudeExecutorEnvAdditions`) before sandbox create
 - `packages/core/src/runner/claude-executor.ts:124` — `claudeExecutorEnvAdditions` — injects `CLAUDE_CODE_OAUTH_TOKEN` + `CLAUDE_CONFIG_DIR`, empties the API-key vars (subscription-only, never silent API billing)
 - `packages/core/src/runner/claude-executor.ts:100` — `resolveClaudeOAuthToken` — layered host-side token resolve: SecretResolver env → `~/.piflow/claude-code.json` → local Keychain/`.credentials.json`
 BUILD (`claude -p` command)
-- `packages/core/src/runner/command.ts:141` — `claudeCommand` — assembles `claude -p --permission-mode bypassPermissions --output-format stream-json --verbose` (prompt on stdin)
-- `packages/core/src/runner/command.ts:141` — `claudeCommand` — `if (ctx.model) parts.push('--model', ctx.model)` — the model wiring
+- `packages/core/src/runner/command.ts:149` — `claudeCommand` — assembles `claude -p --permission-mode bypassPermissions --output-format stream-json --verbose` (prompt on stdin)
+- `packages/core/src/runner/command.ts:149` — `claudeCommand` — `if (ctx.model) parts.push('--model', ctx.model)` — the model wiring
 SPAWN
 - `packages/core/src/runner/node-lifecycle.ts:398` — `runNode` — `ctx.buildCommand(...)` (dispatch happens here) produces the command
 - `packages/core/src/runner/node-lifecycle.ts:415` — `runNode` — `ctx.execRunner(execSandbox, cmd, …)` spawns claude inside the sandbox jail
@@ -143,6 +143,7 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - `7712f56` 2026-07-16 — fix(core): driver-fit judges the effective run-level backend
 - `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
 - `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
+- `659fb31` 2026-07-17 — fix(core): failing merge-op detail carries the gate's own stdout verdict
 
 ### Lessons — memory cluster
 
@@ -184,14 +185,15 @@ spawn path. Open: escalation-on-claude (a claude node in the shared retry/escala
 - [[telemetry-legibility-tracks]]
 - [[uniformity-whole-contract-deferrals-block]]
 - [[use-understanding-system-first]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
 - `ClaudeRunResult` (packages/core/src/runner/claude-result.ts:15) — 3 callers in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
-- `claudeCommand` (packages/core/src/runner/command.ts:141) — 5 callers in `packages/core/src/runner/drivers/claude-code.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-command.test.ts`, `packages/core/test/claude-code-driver.test.ts`
+- `claudeCommand` (packages/core/src/runner/command.ts:149) — 1 caller; tests: `packages/core/test/claude-command.test.ts`
 - `parseClaudeResult` (packages/core/src/runner/claude-result.ts:30) — 8 callers in `packages/core/src/optimize/substrate/agent.ts`, `packages/core/src/runner/drivers/claude-code.ts`; tests: `packages/core/test/claude-result.test.ts`, `packages/core/test/driver-parity.test.ts`, `packages/core/test/claude-code-driver.test.ts`
 - `resolveClaudeOAuthToken` (packages/core/src/runner/claude-executor.ts:100) — 5 callers in `packages/core/src/runner/claude-executor.ts`, `packages/cli/src/cloud.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/index.ts`; tests: `packages/core/test/claude-executor.test.ts`
 - `findResultEvent` (packages/core/src/runner/claude-result.ts:90) — 1 caller in `packages/core/src/runner/claude-result.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=70 commits · files=5 · lessons=37</sub>
+<sub>derived 2026-07-21 · arc=71 commits · files=5 · lessons=38</sub>
 <!-- okf:auto-end -->

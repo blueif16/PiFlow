@@ -180,6 +180,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `7712f56` 2026-07-16 — fix(core): driver-fit judges the effective run-level backend
 - `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
 - `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
+- `659fb31` 2026-07-17 — fix(core): failing merge-op detail carries the gate's own stdout verdict
 
 ### Lessons — memory cluster
 
@@ -196,6 +197,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
 - [[codegraph-best-practices]]
+- [[combination-methodology-direction]]
 - [[competitive-gaps-pdw]]
 - [[compose-gate-drag-audit]]
 - [[config-is-truth-gui-is-projection]]
@@ -234,7 +236,9 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[minimax-thinking-cap-noop]]
 - [[model-provider-single-default-fixture]]
 - [[never-blame-the-model-harness-fault]]
+- [[next-session-other-archetypes]]
 - [[no-rerun-before-digest-confirmed]]
+- [[no-taxonomy-free-text-search]]
 - [[node-illustration-pipeline]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
@@ -242,6 +246,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[okf-coverage-boundary]]
 - [[omniscience-lesson-quality-phase]]
 - [[omniscience-piflow-setup]]
+- [[omniscience-taste-laws]]
 - [[op-consumption-two-layer]]
 - [[optimize-fixer-tier-finding]]
 - [[optimize-loop-native-not-adhoc]]
@@ -270,14 +275,17 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[sdk-data-boundaries]]
 - [[site-piflow-no-unrequested-chrome]]
 - [[skill-marketplace-gui-design]]
+- [[snippet-corpus-doctrine]]
 - [[swarm-consensus-deferred]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
 - [[uniformity-whole-contract-deferrals-block]]
 - [[use-understanding-system-first]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w1-prd-direction]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -285,5 +293,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `evaluateChecks` (packages/core/src/checks.ts:253) — 5 callers in `packages/core/src/checks.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-17 · arc=117 commits · files=8 · lessons=94</sub>
+<sub>derived 2026-07-21 · arc=118 commits · files=8 · lessons=101</sub>
 <!-- okf:auto-end -->

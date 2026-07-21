@@ -197,6 +197,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[minimax-m3-framing]]
 - [[minimax-thinking-cap-noop]]
 - [[no-rerun-before-digest-confirmed]]
+- [[no-taxonomy-free-text-search]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[observe-single-data-path]]
 - [[omniscience-piflow-setup]]
@@ -220,6 +221,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[sandbox-readscope-default-on]]
 - [[sdk-data-boundaries]]
 - [[skill-marketplace-gui-design]]
+- [[snippet-corpus-doctrine]]
 - [[telemetry-first-node-diagnosis]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
@@ -235,5 +237,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadRunView` (gui/src/data/runView.ts:176) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 - `watchRun` (packages/cli/src/watch.ts:61) — 15 callers in `packages/cli/src/watch.ts`, `tui/model.mjs`, `packages/server/src/handlers.ts`, `packages/cli/src/telemetry.ts` +3 more; tests: `gui/src/data/sseParity.test.ts`, `packages/cli/test/remote-wiring.test.ts`, `packages/core/test/legacy-unstamped-replay.test.ts`, `packages/core/test/watch.test.ts` +1
 
-<sub>derived 2026-07-17 · arc=97 commits · files=8 · lessons=65</sub>
+<sub>derived 2026-07-21 · arc=97 commits · files=8 · lessons=67</sub>
 <!-- okf:auto-end -->

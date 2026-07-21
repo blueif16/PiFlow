@@ -228,6 +228,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `7712f56` 2026-07-16 — fix(core): driver-fit judges the effective run-level backend
 - `afd4533` 2026-07-17 — fix(core): claude driver parses the fenced return tail from its result text
 - `9c9d7a6` 2026-07-17 — fix(core): failed op-gate evidence rides the retry critique
+- `659fb31` 2026-07-17 — fix(core): failing merge-op detail carries the gate's own stdout verdict
 
 ### Lessons — memory cluster
 
@@ -246,6 +247,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[skill-marketplace-gui-design]]
 - [[telemetry-legibility-tracks]]
 - [[tui-dag-structure-source]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -255,5 +257,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `loadAgentPreset` (packages/core/src/workflow/agent-preset.ts:218) — 4 callers in `packages/core/src/workflow/agent-preset.ts`, `packages/cli/src/scaffold.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `toFlowGraph` (gui/src/data/runView.ts:802) — 2 callers in `gui/src/components/WorkflowCanvas.tsx`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=168 commits · files=8 · lessons=14</sub>
+<sub>derived 2026-07-21 · arc=169 commits · files=8 · lessons=15</sub>
 <!-- okf:auto-end -->

@@ -146,6 +146,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `fa84362` 2026-07-15 — merge: schema-dialect gate fix + request-level idle watchdog (fix/schema-dialect-and-watchdog)
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
+- `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
 
 ### Lessons — memory cluster
 
@@ -174,6 +175,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[model-provider-single-default-fixture]]
 - [[no-demo-html-wire-into-screen]]
 - [[no-rerun-before-digest-confirmed]]
+- [[no-taxonomy-free-text-search]]
 - [[observe-single-data-path]]
 - [[optimize-substrate-loop-live-proven]]
 - [[optimize-substrate-program]]
@@ -187,8 +189,11 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[roadmap-bookkeeping-linear]]
 - [[run-level-blame-design]]
 - [[sandbox-readscope-default-on]]
+- [[snippet-corpus-doctrine]]
 - [[telemetry-legibility-tracks]]
 - [[use-understanding-system-first]]
+- [[w1-prd-direction]]
+- [[workflow-v2-codegen-first]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -198,5 +203,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-17 · arc=60 commits · files=3 · lessons=39</sub>
+<sub>derived 2026-07-21 · arc=61 commits · files=3 · lessons=43</sub>
 <!-- okf:auto-end -->

@@ -38,7 +38,7 @@ EXECUTE
 - `packages/core/src/runner/env-staging.ts:23` — `CLOUD_KINDS` — `{daytona,e2b}`: the no-host-trust gate
 - `packages/core/src/runner/env-staging.ts:50` — `effectiveSandboxLocation` — per-node workdir/output by kind (isolated for cloud)
 SECRETS
-- `packages/core/src/types.ts:866` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
+- `packages/core/src/types.ts:877` — `SecretResolver` — `(varName,{nodeId,isCloud}) => value`; mint scoped tokens cloud-side
 - `packages/core/src/runner/env-staging.ts:146` — `cloudCredEnvAdditions` — resolve the DECLARED cred allowlist into the VM (cloud-only)
 
 # Freshness (anti-drift)
@@ -180,6 +180,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 - `7afc24f` 2026-07-15 — feat(core,cli): op-integrity WS-I4 — trace content contract (in-turn staging backstop)
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
+- `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
 
 ### Lessons — memory cluster
 
@@ -192,6 +193,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[cloud-control-plane-local-cloud-switch]]
 - [[cloud-sandbox-portability]]
 - [[codebase-memory-mcp-analysis]]
+- [[combination-methodology-direction]]
 - [[competitive-gaps-pdw]]
 - [[compose-gate-drag-audit]]
 - [[daytona-cloud-path]]
@@ -216,11 +218,13 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[mastra-competitive-analysis]]
 - [[minimax-m3-framing]]
 - [[model-provider-single-default-fixture]]
+- [[next-session-other-archetypes]]
 - [[no-demo-html-wire-into-screen]]
 - [[node-illustration-pipeline]]
 - [[nodes-clear-instructions-no-mega-think]]
 - [[npm-run-is-system-contract]]
 - [[omniscience-piflow-setup]]
+- [[omniscience-taste-laws]]
 - [[optimize-substrate-program]]
 - [[per-node-routing-fusion]]
 - [[piflow-ci-cd-pipeline]]
@@ -242,6 +246,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - [[skill-trigger-generalize-not-keyword-match]]
 - [[telemetry-legibility-tracks]]
 - [[verify-nodes-never-in-dev-arms]]
+- [[w1-prd-direction]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
 
 ### Code anchors / blast radius (codegraph)
@@ -252,5 +257,5 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
 - `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-17 · arc=118 commits · files=8 · lessons=59</sub>
+<sub>derived 2026-07-21 · arc=119 commits · files=8 · lessons=63</sub>
 <!-- okf:auto-end -->
