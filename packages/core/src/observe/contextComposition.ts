@@ -30,15 +30,13 @@
 import fssync from 'node:fs';
 import { createHash } from 'node:crypto';
 import { CHECK_KINDS, escapeRegex } from '../checks.js';
-import { READ_KINDS, TRANSCRIPT_TEXT_CAP, type TranscriptOp } from './transcript.js';
+import { READ_KINDS, type TranscriptOp } from './transcript.js';
 import type { ScopeKind } from './runView.js';
 
 /** An agent's per-call read page: ~2000 lines / 50 KB (pi's `truncateHead`; Claude's Read is the same order).
  *  A no-offset read of a file under BOTH is whole-file. */
 const READ_PAGE_LINES = 2000;
 const READ_PAGE_BYTES = 50 * 1024;
-/** Bounded plaintext cap for the opt-in `preview` (the port already caps `resultText` to the same value). */
-const PREVIEW_CAP = TRANSCRIPT_TEXT_CAP;
 /** coverage ≥ this counts as full (floating-point-safe threshold). */
 const FULL_THRESHOLD = 0.999;
 
@@ -60,7 +58,7 @@ export interface ContextOp {
   covered: 'full' | 'partial' | 'unknown';
   sha256: string | null;       // file content hash at RUN time (from reads-manifest; else build-time file)
   logPreviewCapped: boolean;   // cosmetic: the events.jsonl 2048 preview was capped — NOT a model truncation
-  preview?: string;            // bounded plaintext (reuse existing PREVIEW_CAP); opt-in
+  preview?: string;            // bounded plaintext (the port caps it at TRANSCRIPT_TEXT_CAP); opt-in
   ok: boolean;
   errorType?: string;
   /** (op-integrity WS-I4) The IN-TURN STAGING BACKSTOP verdict — set only when a `readContract` entry
