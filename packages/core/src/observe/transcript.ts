@@ -116,7 +116,15 @@ export interface TranscriptCapabilities {
   opRanges: boolean;
   /** do ops carry their returned payload? (false ⇒ returnedBytes/preview are omitted, not zeroed) */
   opResults: boolean;
-  /** can it segment model turns? (false ⇒ the turn table SKIPs) */
+  /**
+   * Does the source carry real TURN BOUNDARIES? False ⇒ a per-turn TABLE must SKIP: the rows would be a
+   * fabricated segmentation, not the model's actual turns.
+   *
+   * NOTE — `turns()` still returns records when this is false: with no boundaries in the source an adapter
+   * returns ONE synthesized bucket holding the run's text/thinking/tool calls. That bucket is honest as
+   * CONTENT (it is what the model said and did) and dishonest as SEGMENTATION (its `index`/`startMs`/`durMs`
+   * are not real). So: gate any per-turn RENDERING on this capability; read `turns()` freely for the text.
+   */
   turns: boolean;
   /** do turns carry thinking VOLUME? (false ⇒ think-chars SKIP rather than render 0) */
   turnThinking: boolean;
@@ -153,7 +161,8 @@ export interface TranscriptSource {
   limitation(cap: keyof TranscriptCapabilities): string | null;
   /** every tool call the agent made, in stream order. Empty when `capabilities().ops` is false. */
   ops(): TranscriptOp[];
-  /** every model turn, in stream order. Empty when `capabilities().turns` is false. */
+  /** every model turn, in stream order — or ONE synthesized bucket when the source carries no boundaries
+   *  (see `TranscriptCapabilities.turns`). Empty only when there was no content at all. */
   turns(): TranscriptTurn[];
 }
 

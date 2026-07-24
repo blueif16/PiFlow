@@ -196,13 +196,35 @@ export const piTranscript: TranscriptReader = (runDir, nodeId, ref = {}) => {
 
   let opsCache: TranscriptOp[] | null = null;
   let turnsCache: TranscriptTurn[] | null = null;
-  const caps: TranscriptCapabilities = { ...ALL_CAPABILITIES };
+
+  // Capabilities are computed from THE BYTES THIS NODE LANDED ON, not from the executor id. pi's live stdout
+  // stream carries everything; its NATIVE SESSION does not — `transcodePiSession` reconstructs tool calls and
+  // thinking from the persisted messages but emits NO `turn_start` and NO per-event clock, so a recovered node
+  // has neither real turn boundaries nor real turn spans. Declaring them true there would print a fabricated
+  // one-row "turns (1) · 0.0s" table over the whole run — a made-up segmentation dressed as measurement.
+  const hasTurnBoundaries = events.some((e) => e.type === 'turn_start');
+  const hasClock = events.some((e) => typeof e._t === 'number');
+  const caps: TranscriptCapabilities = {
+    ...ALL_CAPABILITIES,
+    turns: hasTurnBoundaries,
+    turnDurations: hasClock,
+  };
+  const NO_BOUNDARIES = origin.kind === 'native-session'
+    ? "recovered from pi's native session, which persists messages but no `turn_start` boundaries — turn segmentation would be synthesized, not measured"
+    : 'this pi archive carries no `turn_start` events — turn segmentation would be synthesized, not measured';
+  const NO_CLOCK = 'this pi record carries no per-event `_t` clock — turn spans would be synthesized, not measured';
+  const reasons: Record<keyof TranscriptCapabilities, string | null> = {
+    ops: null, opRanges: null, opResults: null,
+    turns: hasTurnBoundaries ? null : NO_BOUNDARIES,
+    turnThinking: null,
+    turnDurations: hasClock ? null : NO_CLOCK,
+  };
 
   return {
     executorId: 'pi',
     origin: () => origin,
     capabilities: () => caps,
-    limitation: () => null, // every capability is true — pi's stream carries the full signal
+    limitation: (cap) => reasons[cap],
     ops: () => (opsCache ??= decodeOps(events)),
     turns: () => (turnsCache ??= decodeTurns(events)),
   } satisfies TranscriptSource;

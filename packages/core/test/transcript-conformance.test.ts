@@ -256,6 +256,36 @@ describe('transcript conformance — the registry contract', () => {
   });
 });
 
+describe('transcript conformance — a SYNTHESIZED signal is declared, never rendered as measurement', () => {
+  it('pi declares turns FALSE on a record with no `turn_start` — the bucket is content, not segmentation', async () => {
+    // The pi ARCHIVE fixture has zero turn_start events (as does every session-recovered node, since
+    // transcodePiSession persists messages but no boundaries). Rendering "turns (1) · 0.0s · <every tool>"
+    // off that would be a made-up segmentation dressed as measurement.
+    const s = piTranscript(await stagePiArchive(), 'gameplay');
+    expect(s.capabilities().turns).toBe(false);
+    expect(s.limitation('turns')).toMatch(/synthesized, not measured/);
+    // …and the bucket is still returned, because its TEXT is real (it is what `logs --summary` quotes).
+    expect(s.turns().length).toBeGreaterThan(0);
+  });
+
+  it('pi declares turns TRUE the moment the record carries real boundaries', async () => {
+    const run = await tmpdir('pi-turns');
+    await put(path.join(run, '.pi', 'nodes', 'n', 'events.jsonl'), [
+      JSON.stringify({ type: 'turn_start', _t: 0 }),
+      JSON.stringify({ type: 'message_update', _t: 5, assistantMessageEvent: { type: 'thinking_delta', delta: 'hmm' } }),
+      JSON.stringify({ type: 'turn_start', _t: 100 }),
+      JSON.stringify({ type: 'message_update', _t: 105, assistantMessageEvent: { type: 'text_delta', delta: 'done' } }),
+    ].join('\n') + '\n');
+    const s = piTranscript(run, 'n');
+    expect(s.capabilities().turns).toBe(true);
+    expect(s.capabilities().turnDurations).toBe(true);
+    expect(s.capabilities().turnThinking).toBe(true);
+    expect(s.turns()).toHaveLength(2);
+    expect(s.turns()[0].thinkChars).toBe(3);
+    expect(s.turns()[0].durMs).toBe(100);
+  });
+});
+
 describe('transcript conformance — the cross-executor mutation guard', () => {
   it('the claude record is INVISIBLE to the pi adapter and FULLY visible to its own — routing is what fixes it', async () => {
     const run = await stageClaudeNative('claude-native', CLAUDE_SESSION);
