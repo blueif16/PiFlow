@@ -32,16 +32,22 @@ export interface ParsedTelemetryArgs {
   watch: boolean;
   verbosity: Verbosity;
   json: boolean;
+  /** Flags this verb does not define. A silently-swallowed unknown flag is its own reporting defect: the
+   *  caller believes they asked for something and reads the DEFAULT output as the answer (`--turns` looked
+   *  like it returned "no per-turn table" when it had simply been dropped on the floor). The bin REFUSES. */
+  unknownFlags: string[];
 }
+const TELEMETRY_FLAGS = ['--watch', '-w', '--verbose', '-v', '--json'];
 export function parseTelemetryArgs(argv: string[]): ParsedTelemetryArgs {
-  const out: ParsedTelemetryArgs = { dir: '.', nodeId: undefined, watch: false, verbosity: 'important', json: false };
+  const out: ParsedTelemetryArgs = { dir: '.', nodeId: undefined, watch: false, verbosity: 'important', json: false, unknownFlags: [] };
   const positionals: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--watch' || k === '-w') out.watch = true;
     else if (k === '--verbose' || k === '-v') out.verbosity = 'verbose';
     else if (k === '--json') out.json = true;
-    else if (!k.startsWith('-')) positionals.push(k);
+    else if (k.startsWith('-')) out.unknownFlags.push(k);
+    else positionals.push(k);
   }
   if (positionals[0]) out.dir = positionals[0];
   out.nodeId = positionals[1];
@@ -62,10 +68,12 @@ function anomalyLine(a: Anomaly): string {
   return `    ${ANOM_ICON[a.kind] ?? '!'} ${pad(a.kind, 17)} ${pad(a.nodeId, 16)} ${a.detail}`;
 }
 
-/** One per-turn timeline row: turn · t+s (start, relative to the first event) · dur · thinkChars · tools. */
-function turnRow(t: TurnRecord): string {
+/** One per-turn timeline row: turn · t+s (start, relative to the first event) · dur · thinkChars · tools.
+ *  `thinkKnown=false` (the node's executor record does not carry thinking volume) renders `—`, NEVER `0` —
+ *  a reader must not mistake "the record is silent" for "the model did not think". */
+function turnRow(t: TurnRecord, thinkKnown: boolean): string {
   const tools = t.toolCalls.length ? t.toolCalls.map((c) => c.name).join(',') : '-';
-  return `    ${pad(t.turnIndex, 4)} ${pad(secs(t.startMs), 8)} ${pad(secs(t.durMs), 8)} ${pad(k(t.thinkChars), 7)} ${tools}`;
+  return `    ${pad(t.turnIndex, 4)} ${pad(secs(t.startMs), 8)} ${pad(secs(t.durMs), 8)} ${pad(thinkKnown ? k(t.thinkChars) : '—', 7)} ${tools}`;
 }
 
 type NodeOp = NonNullable<NodeDigest['ops']>[number];
@@ -112,16 +120,28 @@ export function renderDigest(d: RunDigest, nodeId?: string): string {
     if (n.missing.length) lines.push(`  missing:  ${n.missing.join(', ')}`);
     if (n.issues.length) lines.push(`  issues:   ${n.issues.join('; ')}`);
     if (n.anomalies.length) lines.push(`  anomalies: ${n.anomalies.join(', ')}`);
+    // (transcript port) PROVENANCE + the honesty declaration: which executor adapter read this node and
+    // from which file. A capability the source cannot carry is printed as an explicit SKIP below — never as
+    // a zero — so "I cannot see this" is never mistaken for a finding.
+    const tr = n.transcript;
+    const thinkKnown = tr ? tr.capabilities.turnThinking : true;
+    if (tr) {
+      lines.push(`  source:   ${tr.executorId} · ${tr.origin.kind}${tr.origin.path ? ` (${tr.origin.path})` : ''}`);
+    }
     // (turn-dissection) the reasoning-effort summary + the per-turn timeline — "why was this node slow"
-    // in one read, no manual events.jsonl archaeology.
-    if (n.totalThinkChars) {
+    // in one read, no manual record archaeology.
+    if (!thinkKnown) {
+      lines.push(`  think:    SKIP: ${tr?.limitations.turnThinking ?? 'not carried by this executor record'}`);
+    } else if (n.totalThinkChars) {
       const lt = n.largestTurn;
       lines.push(`  think:    ${k(n.totalThinkChars)} chars total${lt ? ` · largest turn #${lt.turnIndex} (${k(lt.thinkChars)} chars/${secs(lt.durMs)})` : ''}`);
     }
-    if (n.turns?.length) {
+    if (tr && !tr.capabilities.turns) {
+      lines.push(`  turns:    SKIP: ${tr.limitations.turns ?? 'not carried by this executor record'}`);
+    } else if (n.turns?.length) {
       lines.push(`  turns (${n.turns.length}):`);
       lines.push(`    turn t+s      dur      think   tools`);
-      lines.push(...n.turns.map(turnRow));
+      lines.push(...n.turns.map((t) => turnRow(t, thinkKnown)));
     }
     // (op-integrity WS-I3) The per-node ops table — every DISPATCHED run op (id · exit · duration · integrity
     // verdict), from the recorded envelope. Distinct from `issues`/`opFailures` above: this shows what RAN,
@@ -171,6 +191,15 @@ export function renderEvent(e: TelemetryEvent): string {
 // ── the bin body ──────────────────────────────────────────────────────────────────────────────────────
 export async function runTelemetryCli(argv: string[]): Promise<void> {
   const a = parseTelemetryArgs(argv);
+  if (a.unknownFlags.length) {
+    process.stderr.write(
+      `telemetry: unknown flag(s) ${a.unknownFlags.join(', ')}\n` +
+      `usage: piflowctl telemetry <rundir> [nodeId] [${TELEMETRY_FLAGS.join('] [')}]\n` +
+      `note: the per-turn table is not behind a flag — it renders automatically for a node whose executor record carries turns.\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
 
   // RECORD: build the authoritative digest once from the on-disk run-view.
   const record = (): RunDigest | null => {

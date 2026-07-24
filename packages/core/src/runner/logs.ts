@@ -15,6 +15,8 @@ import path from 'node:path';
 import { nodeEventsFile, runJsonFile } from './layout.js';
 import type { PiEvent } from './events.js';
 import { readNodeObserveEvents, type SessionRef } from './pi-session.js';
+import { builtinDrivers, type DriverTable } from './drivers/table.js';
+import { WRITE_KINDS, type TranscriptSource } from '../observe/transcript.js';
 
 /** A node's event archive — the canonical `.pi/nodes/<id>/events.jsonl` (re-export of the layout helper). */
 export function eventsPath(outDir: string, nodeId: string): string {
@@ -144,10 +146,13 @@ interface StatusNode {
   killedIdle?: boolean;
   durationMs?: number;
   artifacts?: { path: string; exists: boolean; bytes?: number }[];
-  /** The node's pi native session (id/dir) — the source for recovering a STARVED events.jsonl (a
-   *  session-only node whose stdout tee carried no model turns; run 260715-02/plan). Absent ⇒ no fallback. */
+  /** The node's native session (id/dir) — the source an executor's transcript adapter falls back to when
+   *  the events.jsonl archive is starved or lossy (run 260715-02/plan). Absent ⇒ no fallback. */
   sessionId?: string;
   sessionDir?: string;
+  /** (P3) The stamped executor/driver id — the key that routes this node to its transcript adapter. Absent
+   *  on a pre-P3 record ⇒ `DriverTable.get(undefined)` defaults to `pi`, the historical behaviour. */
+  driverId?: string;
 }
 interface StatusShape {
   run?: string;
@@ -182,46 +187,64 @@ export interface NodeDiagnosis {
   lastSay: string;   // the model's last emitted text (the smoking gun on a never-write)
   stderr: string[];
   note: string;      // the one-line diagnosis
+  /** Set when the node's executor adapter CANNOT read this node's record — the reason, verbatim. When
+   *  present, `writes`/`reads`/`tools` are UNKNOWN, not zero, and the renderer prints `?w/?r/?t`. */
+  blind?: string;
 }
 
-function countNode(events: PiEvent[]): Pick<NodeDiagnosis, 'writes' | 'reads' | 'tools' | 'lastSay' | 'stderr'> {
-  let writes = 0, reads = 0, tools = 0, lastSay = '', textAcc = '';
-  const stderr: string[] = [];
-  for (const ev of events) {
-    if (ev.type === 'tool_execution_start') {
-      tools++;
-      const tn = ev.toolName;
-      if (tn === 'write' || tn === 'edit') writes++;
-      else if (tn === 'read') reads++;
-    } else if (ev.type === 'stderr' && typeof ev.text === 'string') {
-      stderr.push(ev.text);
-    }
-    const a = inner(ev);
-    if (a?.type === 'text_delta' && typeof a.delta === 'string') textAcc += a.delta;
-    else if (a?.type === 'text_end') { if (textAcc.trim()) lastSay = textAcc; textAcc = ''; }
+/**
+ * Tally one node's activity from the shared transcript vocabulary — EXECUTOR-BLIND. `writes`/`reads`/`tools`
+ * come from the port's op KINDS, so a claude-code `Write` counts exactly like a pi `write` without this
+ * function knowing either name. (Pre-port this switched on pi's lowercase tool names against pi's flat
+ * events, which is why every claude node reported `0w/0r/0t` — a zero that reads like a never-write verdict
+ * on a node that had written three files.)
+ *
+ * `stderr` stays on the RAW events: it is a piflow CAPTURE artifact (the runner's own stderr tee), not part
+ * of any executor's model transcript, so it has no place in the port's vocabulary.
+ */
+function countNode(source: TranscriptSource, events: PiEvent[]): Pick<NodeDiagnosis, 'writes' | 'reads' | 'tools' | 'lastSay' | 'stderr'> {
+  let writes = 0, reads = 0;
+  const ops = source.ops();
+  for (const op of ops) {
+    if (WRITE_KINDS.has(op.kind)) writes++;
+    else if (op.kind === 'read') reads++;
   }
-  if (textAcc.trim()) lastSay = textAcc;
-  return { writes, reads, tools, lastSay, stderr };
+  // the model's LAST non-empty utterance — the smoking gun beside a zero write count.
+  let lastSay = '';
+  for (const t of source.turns()) if (t.text.trim()) lastSay = t.text;
+  const stderr: string[] = [];
+  for (const ev of events) if (ev.type === 'stderr' && typeof ev.text === 'string') stderr.push(ev.text);
+  return { writes, reads, tools: ops.length, lastSay, stderr };
 }
 
-/** Read a run dir → a per-node diagnosis (run-status ⋈ event archive). Pure over the files. */
-export function diagnoseRun(outDir: string): { run?: string; done?: boolean; ok?: boolean | null; nodes: NodeDiagnosis[] } {
+/**
+ * Read a run dir → a per-node diagnosis (run-status ⋈ the node's transcript). Pure over the files.
+ * `drivers` defaults to `builtinDrivers()`; each node routes to ITS executor's transcript adapter by the
+ * stamped `driverId`, so the tally is honest for every registered executor and an unknown/unread one reports
+ * `SKIP` rather than zeros.
+ */
+export function diagnoseRun(outDir: string, drivers: DriverTable = builtinDrivers()): { run?: string; done?: boolean; ok?: boolean | null; nodes: NodeDiagnosis[] } {
   const st = readStatus(outDir);
   const nodes: NodeDiagnosis[] = [];
   for (const n of Object.values(st?.nodes ?? {})) {
     if (n.status === 'pending') continue;
-    // RECOVER a starved events.jsonl (session-only node) from pi's native session so `--summary` reflects the
-    // node's REAL tool/write activity, not a false 0w/0r/0t. No-op passthrough for a normally-captured archive.
-    const c = countNode(readNodeObserveEvents(outDir, n.id, sessionRef(n)));
+    // Route to the node's OWN executor adapter (which owns its source policy — e.g. pi recovers a starved
+    // events.jsonl from its native session; claude-code prefers its native transcript over the lossy archive).
+    const source = drivers.transcriptFor(n.driverId, outDir, n.id, sessionRef(n));
+    const c = countNode(source, readNodeObserveEvents(outDir, n.id, sessionRef(n)));
+    const blind = source.capabilities().ops ? null : source.limitation('ops');
     const missing = (n.artifacts ?? []).filter((a) => !a.exists).map((a) => a.path);
     const killed = n.killedTimeout ? 'timeout' : n.killedStall ? 'stall' : n.killedToolLoop ? 'tool-loop' : n.killedIdle ? 'idle' : undefined;
     let note: string;
     if (n.status === 'ok' || n.status === 'reused') note = 'ok';
     else if (killed) note = `killed: ${killed === 'timeout' ? 'node-timeout' : killed === 'stall' ? 'silent-stall' : killed === 'idle' ? 'idle-watchdog (request silent, re-execs exhausted)' : 'tool-loop (identical-args)'}`;
+    // The never-write verdict is a claim about what the model DID — only assertable when the transcript is
+    // actually readable. With a blind source the counts are unknown, not zero, so we say that instead.
+    else if (blind) note = `SKIP: ${blind}`;
     else if (c.writes === 0 && missing.length && c.lastSay) note = 'never-write: emitted text but called NO write tool';
     else if (missing.length) note = `missing ${missing.length} declared artifact(s)`;
     else note = n.status;
-    nodes.push({ id: n.id, status: n.status, exitCode: n.exitCode, killed, durationMs: n.durationMs, ...c, missing, note });
+    nodes.push({ id: n.id, status: n.status, exitCode: n.exitCode, killed, durationMs: n.durationMs, ...c, missing, note, ...(blind ? { blind } : {}) });
   }
   return { run: st?.run, done: st?.done, ok: st?.ok, nodes };
 }
@@ -234,7 +257,10 @@ export function renderDiagnosis(d: ReturnType<typeof diagnoseRun>): string[] {
   for (const n of d.nodes) {
     const mark = ok(n.status) ? '✓' : '✕';
     const secs = n.durationMs != null ? ` ${Math.round(n.durationMs / 1000)}s` : '';
-    out.push(`${mark} ${n.id}  [${n.status}${n.exitCode != null ? ` exit ${n.exitCode}` : ''}${secs}] — ${n.writes}w/${n.reads}r/${n.tools}t · ${n.note}`);
+    // A blind source renders `?w/?r/?t` — an UNKNOWN is not a zero, and `0w/0r/0t` on an unreadable node is
+    // the exact false finding the transcript port exists to prevent.
+    const tally = n.blind ? '?w/?r/?t' : `${n.writes}w/${n.reads}r/${n.tools}t`;
+    out.push(`${mark} ${n.id}  [${n.status}${n.exitCode != null ? ` exit ${n.exitCode}` : ''}${secs}] — ${tally} · ${n.note}`);
     if (n.missing.length) out.push(`    missing: ${n.missing.join(', ')}`);
     if (!ok(n.status) && n.lastSay) out.push(`    last said: ${oneLine(n.lastSay, 200)}`);
     if (n.stderr.length) out.push(`    stderr: ${oneLine(n.stderr.join(' '), 200)}`);

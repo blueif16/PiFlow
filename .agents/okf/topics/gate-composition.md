@@ -111,6 +111,7 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
 - [[workflow-v2-codegen-first]]
+- [[writer-fails-at-wiring-seams]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -120,5 +121,5 @@ OUTSIDE this slice. (4) Covered by `packages/core/test/gate-list-profiles.test.t
 - `GateAuthorSpec` (packages/core/src/workflow/gate-authoring.ts:129) — 8 callers in `packages/core/src/workflow/gate-list.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-authoring.ts`; tests: `packages/core/test/gate-authoring.test.ts`
 - `GateListError` (packages/core/src/workflow/gate-list.ts:25) — 6 callers in `packages/core/src/workflow/template/loader.ts`, `packages/core/src/index.ts`, `packages/core/src/workflow/gate-list.ts`; tests: `packages/core/test/inline-hitl-fanout.test.ts`
 
-<sub>derived 2026-07-21 · arc=6 commits · files=3 · lessons=30</sub>
+<sub>derived 2026-07-24 · arc=6 commits · files=3 · lessons=31</sub>
 <!-- okf:auto-end -->

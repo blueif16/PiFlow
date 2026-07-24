@@ -1,4 +1,10 @@
-// pi-session.ts — the ONE home for locating + reading a pi node's NATIVE session (`.pi/sessions/*.jsonl`).
+// pi-session.ts — the ONE home for locating + reading a PI node's NATIVE session (`.pi/sessions/*.jsonl`).
+//
+// SCOPE: this module is PI-SPECIFIC by design — the `.pi/sessions` dir, the `_<sessionId>.jsonl` filename
+// convention and the `{type:'message'}` record schema below are pi's, and no other executor writes them. It
+// is consumed by the `pi` adapter of the transcript port (observe/transcript-pi.ts); a claude-code (or any
+// future) node reaches its own record through ITS adapter, never through here. Do NOT add an executor branch
+// to this file — register a `transcript` on that executor's driver instead (observe/transcript.ts).
 //
 // pi persists each per-node session as `<sessionDir>/<ISO-timestamp>_<sessionId>.jsonl` (openclaw
 // session-manager). The timestamp prefix is minted by pi, so PIFLOW never knows the exact filename a-priori —
@@ -115,8 +121,10 @@ export function recoverNodeEvents(runDir: string, ref: SessionRef, nodeId: strin
   return events.length ? events : null;
 }
 
-/** Parse one node's events.jsonl into PiEvent[] (order-preserving, torn lines skipped). */
-function parseEventsFile(file: string): PiEvent[] {
+/** Parse one node's events.jsonl into PiEvent[] (order-preserving, torn lines skipped). Exported because the
+ *  transcript adapters need the RAW archive separately from the recovery decision, so they can report which
+ *  source their answers came from (`TranscriptSource.origin()`). */
+export function parseNodeEventsFile(file: string): PiEvent[] {
   let raw: string;
   try { raw = fssync.readFileSync(file, 'utf8'); } catch { return []; }
   const out: PiEvent[] = [];
@@ -135,7 +143,7 @@ function parseEventsFile(file: string): PiEvent[] {
  * Returns the archive events untouched on the happy path, so a normal captured run is byte-identical.
  */
 export function readNodeObserveEvents(runDir: string, nodeId: string, ref: SessionRef = {}): PiEvent[] {
-  const events = parseEventsFile(nodeEventsFile(runDir, nodeId));
+  const events = parseNodeEventsFile(nodeEventsFile(runDir, nodeId));
   if (eventsHaveModelActivity(events)) return events;
   const recovered = recoverNodeEvents(runDir, ref, nodeId);
   return recovered ?? events;

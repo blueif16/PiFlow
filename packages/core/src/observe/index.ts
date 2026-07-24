@@ -24,6 +24,21 @@ export type { ContextOp, NodeComposition, NodeContext, ContextBuildCtx, ReadsMan
 // marker count). A PROJECTION over events.jsonl, computed once here (never in a view). See turnDissection.ts.
 export { buildNodeTurns, MEGA_THINK_CHARS, DERIVATION_MARKERS } from './turnDissection.js';
 export type { TurnRecord, TurnToolCall, TurnSummary, MegaThinkTurn, TurnDissection } from './turnDissection.js';
+
+// The TRANSCRIPT PORT — the ONE executor-neutral vocabulary every inspection verb speaks (`ops` · `turns` ·
+// `capabilities` · `origin`), plus the per-executor adapters registered by executor id on the DriverTable.
+// This is what makes `trace`/`logs --summary`/the telemetry turn table honest for EVERY executor instead of
+// silently reporting zeros for one whose event schema they did not know.
+export {
+  transcriptFor, nullTranscriptSource, argsPreview, capText, rangeOf,
+  CAPABILITY_KEYS, READ_KINDS, WRITE_KINDS, ALL_CAPABILITIES, TRANSCRIPT_TEXT_CAP, ARGS_PREVIEW_CAP,
+} from './transcript.js';
+export type {
+  TranscriptSource, TranscriptReader, TranscriptProvider, TranscriptOp, TranscriptOpKind, TranscriptTurn,
+  TranscriptCapabilities, TranscriptOrigin, TranscriptRef,
+} from './transcript.js';
+export { piTranscript } from './transcript-pi.js';
+export { claudeTranscript, locateClaudeSessionFile } from './transcript-claude.js';
 // The pure per-node DISPLAY derivation (zones/rankings/unified outputs) `buildRunView` stamps on each node
 // as `derived` — the ONE compute site so the GUI + TUI render identical numbers and re-derive nothing.
 export { deriveNode, cacheTone, toolErrorTone, contextTone, timeTone, retriesTone } from './derive.js';

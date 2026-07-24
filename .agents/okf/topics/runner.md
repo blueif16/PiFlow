@@ -262,5 +262,5 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `RunContext` (packages/core/src/runner/run-context.ts:32) — 17 callers in `packages/core/src/runner/inline-checkpoint.ts`, `packages/core/src/runner/retry.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/node-lanes.ts` +2 more; ⚠ no covering tests found
 - `RunScope` (packages/core/src/types.ts:838) — 3 callers in `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-21 · arc=183 commits · files=7 · lessons=12</sub>
+<sub>derived 2026-07-24 · arc=183 commits · files=7 · lessons=12</sub>
 <!-- okf:auto-end -->

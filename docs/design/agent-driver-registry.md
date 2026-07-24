@@ -299,6 +299,62 @@ Today `assembleNode` gets `rich` ONLY from `createNodeAccumulator` replaying pi'
 
 > **Reviewer note — parse and decode read DIFFERENT bytes (fixed).** `parseResult` runs at the runner spawn seam over the FULL `result.stdout` (`node-lifecycle.ts:613`). The streaming decoder runs in observe over the PERSISTED, SLIMMED `events.jsonl` — which truncates each archived line to `MAX_LINE: 8192` and tool-result payloads to `MAX_RESULT: 2048` (`events.ts:24-26,133`). A driver must NOT assume the two inputs are the same bytes. Consequence for the Claude driver: token/cost/context (the authoritative `NodeUsage`) come from `parseResult` over full stdout — the load-bearing path — so slimming cannot corrupt them. The decoder over `events.jsonl` produces only the tool sequence/counts, which survive slimming (tool NAMES and args-prefixes are small). The `result` event's `usage` block is **not** relied upon by the decoder (it is already captured by `parseResult`), so the 8192-byte cap on the archived `result` line is a non-issue for the numbers that matter. `KEEP_MSG_FIELDS` (`events.ts:35`) already preserves `usage` on the archived message for pi; the Claude decoder does not depend on it.
 
+### 4.3 The INSPECTION surface — `AgentDriver.transcript` (the transcript port)
+
+> **Landed after P5, from a real defect.** Parity (§4) covers the METRICS spine — tokens, cost, tool counts.
+> It does NOT cover the INSPECTION projections a human or an optimizer actually reads: the ordered
+> per-op element tree (`piflowctl trace`), the per-turn reasoning timeline (`telemetry`'s turn table) and
+> the write/read tally (`logs --summary`). Those three were written OUTSIDE the registry and each parsed
+> `events.jsonl` with pi's vocabulary inline — so a `claude-code` node decoded to nothing and every verb
+> printed **zeros that read like findings**: `readFiles=0`, `0w/0r/0t`, "17 advertised, 17 BLIND SPOT" on a
+> node that had really performed 7 reads, 3 writes, 1 edit and 5 bash calls. Parity was green throughout;
+> the metrics rollup was correct the whole time. **A registry only removes blindness where the surface
+> actually routes through it.**
+
+**The fix is a fifth driver obligation, not a fifth branch.** `AgentDriver.transcript?: TranscriptReader`
+(`observe/transcript.ts`) returns a `TranscriptSource` for one node — the ONE executor-neutral vocabulary
+every inspection verb speaks, whose METHOD NAMES are the vocabulary:
+
+| member | the question it answers |
+|---|---|
+| `ops(): TranscriptOp[]` | what tool calls did the agent make, in order? (`kind · toolName · toolCallId · path · range · ok`) |
+| `turns(): TranscriptTurn[]` | what did each model turn cost? (`startMs · durMs · thinkChars · textChars · toolCalls`) |
+| `capabilities(): TranscriptCapabilities` | which of the above can this source HONESTLY answer? |
+| `limitation(cap): string \| null` | why not — the text a verb renders as `SKIP: <reason>` |
+| `origin(): TranscriptOrigin` | which file the answers came from (`archive` \| `native-session`) |
+
+Four rules make it a standard rather than a second special case:
+
+1. **No normalizer.** An adapter decodes its executor's OWN record and emits the vocabulary DIRECTLY. Nothing
+   transcodes Claude's `tool_use`/`tool_result` content blocks into pi's flat `tool_execution_*` events to
+   re-feed pi's parser — a lossy round-trip through a foreign schema is exactly the coupling this removes.
+2. **The adapter owns its SOURCE POLICY.** pi reads the archive and recovers from its native session when the
+   archive is starved; claude-code prefers its native transcript because the archive is provably lossy for it
+   (the slim keeps only tool blocks on an assistant/user line, and its 8192-byte line cap tore 4 of 16
+   tool_result lines in the verified run). The port dictates neither.
+3. **Capabilities are per-SOURCE and honest.** `capabilities()` is computed from the bytes the adapter
+   actually landed on, not from the executor id — so the same adapter declares `opResults:true` off a native
+   transcript and `false` (with the reason) after an archive fallback. A verb renders a false capability as
+   `SKIP: <reason>`, never as `0`. Claude's `turnThinking` is permanently false: Claude Code persists
+   `thinking` blocks with the text redacted to `""`, and `thinkChars: 0` would be a lie.
+4. **Absence is visible, never silent.** `DriverTable.transcriptFor(id, …)` is the ONE routing seam; a driver
+   with no reader — or an executor id this build does not know — yields `nullTranscriptSource`, so every verb
+   SKIPs with a reason naming the executor. Unlike `get`, it FAILS SOFT: choosing a driver must never be
+   fatal to INSPECTION, only to EXECUTION.
+
+**The gate** is `packages/core/test/transcript-conformance.test.ts` — the §4-style conformance idea applied to
+inspection, table-driven over every registered adapter with ground truth hand-counted off real captured
+bytes. It enforces exact per-kind op counts, **DECLARED ⇒ DELIVERED** (a capability declared true must show
+evidence on a fixture that exercises it) and **DECLARED FALSE ⇒ A STATED REASON**, so an adapter can pass
+neither by declaring everything false nor by declaring everything true. A cross-executor mutation guard pins
+the defect itself: the claude record must be invisible to the pi adapter and fully visible to its own.
+
+**Naming.** Record fields take the OTel GenAI semconv name where one exists (`gen_ai.tool.name` → `toolName`,
+`gen_ai.tool.call.id` → `toolCallId`, `gen_ai.tool.call.arguments` → `argsPreview`, `gen_ai.tool.call.result`
+→ `resultText`, `code.file.path` → `path`), continuing what contextComposition.ts already did. OTel GenAI has
+no term for a model TURN, for read COVERAGE, or for the advertised-vs-read BLIND SPOT — those keep this
+codebase's own words rather than inventing a third dialect.
+
 ---
 
 ## 5. Thrust-3 cross-run metrics

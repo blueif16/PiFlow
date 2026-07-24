@@ -450,6 +450,17 @@ export type { ContextOp, NodeComposition, NodeContext, ContextBuildCtx, ReadsMan
 // per-turn timeline table.
 export { buildNodeTurns, MEGA_THINK_CHARS, DERIVATION_MARKERS } from './observe/index.js';
 export type { TurnRecord, TurnToolCall, TurnSummary, MegaThinkTurn, TurnDissection } from './observe/index.js';
+// The TRANSCRIPT PORT + its per-executor adapters — the shared inspection vocabulary (`ops`/`turns`/
+// `capabilities`/`origin`) both projections above are now computed FROM. Registered by executor id on the
+// DriverTable (`AgentDriver.transcript`), so a new executor lights up every verb without touching a verb.
+export {
+  transcriptFor, nullTranscriptSource, CAPABILITY_KEYS, READ_KINDS, WRITE_KINDS, ALL_CAPABILITIES,
+  piTranscript, claudeTranscript, locateClaudeSessionFile,
+} from './observe/index.js';
+export type {
+  TranscriptSource, TranscriptReader, TranscriptProvider, TranscriptOp, TranscriptOpKind, TranscriptTurn,
+  TranscriptCapabilities, TranscriptOrigin, TranscriptRef,
+} from './observe/index.js';
 // The falsifiable full-run rubric — the reusable "did this run actually succeed?" assessor (see §5 of
 // docs/design/full-run-simulation.md) that smoke drivers + E2E tiers call instead of substring checks.
 export { assessRunView } from './observe/index.js';

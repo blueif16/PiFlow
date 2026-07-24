@@ -17,6 +17,7 @@ import path from 'node:path';
 import { createNodeAccumulator, type RichNode } from './distill.js';
 import { buildNodeContext, type ContextOp, type NodeComposition, type ReadsManifest } from './contextComposition.js';
 import { buildNodeTurns, type TurnRecord, type TurnSummary } from './turnDissection.js';
+import { CAPABILITY_KEYS, type TranscriptCapabilities, type TranscriptOrigin } from './transcript.js';
 import { resolveStructure } from './structure.js';
 import { deriveNode, type NodeDerived } from './derive.js';
 import { loadModelCatalog, contextWindowFor, type ModelCatalog } from './models.js';
@@ -110,6 +111,20 @@ export interface RunViewNode {
    *  turn that burned ≥ MEGA_THINK_CHARS of thinking with ZERO tool calls — pure deliberation, no action),
    *  and `derivationMarkerCount`. See observe/turnDissection.ts. */
   turnSummary?: TurnSummary;
+  /**
+   * (transcript port) The PROVENANCE + HONESTY declaration behind `context`/`composition`/`turns`: which
+   * executor adapter read this node, which file it read, what it can answer, and — for each capability it
+   * CANNOT answer — why. A renderer reads `capabilities` to decide between printing a number and printing
+   * `SKIP: <limitations[cap]>`; it must never present a zero for a capability declared false.
+   * See observe/transcript.ts.
+   */
+  transcript?: {
+    executorId: string;
+    origin: TranscriptOrigin;
+    capabilities: TranscriptCapabilities;
+    /** keyed by the FALSE capability names only — the SKIP reason for each. */
+    limitations: Partial<Record<keyof TranscriptCapabilities, string>>;
+  };
   summary?: string;
   issues?: string[];
   /** (A1) op[] action failures on their DEDICATED TYPED channel — carried verbatim from the record so an
@@ -553,8 +568,22 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
     // (context-composition) ADDITIVE: reconstruct the ordered element tree (force-injected prompt + every
     // agent read, each with range/coverage/sha/order) + the blind-spot roll-up. Reads events.jsonl a SECOND
     // time post-hoc (fine). Best-effort — a build error never perturbs the parity-critical assembleNode set.
+    // (transcript port) ONE source per node, routed by the stamped `driverId` through the DriverTable — the
+    // SAME registry `replayEvents` selects its accumulator from. Both projections below read this source, so
+    // neither knows any executor's event schema, and an executor with no reader (or an unknown id) surfaces
+    // as a declared SKIP on `node.transcript` rather than as zeros.
+    const source = drivers.transcriptFor(rec.driverId, runDir, id, { sessionId: rec.sessionId, sessionDir: rec.sessionDir });
+    const caps = source.capabilities();
+    node.transcript = {
+      executorId: source.executorId,
+      origin: source.origin(),
+      capabilities: caps,
+      limitations: Object.fromEntries(
+        CAPABILITY_KEYS.filter((k) => !caps[k]).map((k) => [k, source.limitation(k) ?? 'unavailable']),
+      ),
+    };
     try {
-      const nc = buildNodeContext(runDir, id, {
+      const nc = buildNodeContext(caps.ops ? source.ops() : [], {
         displayPath,
         scopeOf: (abs, dp) => (underRun(abs) ? 'run' : scopeKind(dp)),
         promptText: readTextSafe(path.join(runDir, '.pi', 'nodes', id, 'prompt.md')),
@@ -568,10 +597,10 @@ export function buildRunView(runDir: string, opts: BuildRunViewOpts = {}): { vie
       node.composition = nc.composition;
     } catch { /* context is a projection add-on — never let it break the run-view */ }
     // (turn-dissection) ADDITIVE: per-turn reasoning-effort timeline (thinking/text volume + tool calls) +
-    // the mega-think/derivation-marker rollup. Reads events.jsonl a THIRD time post-hoc (fine — same
-    // best-effort contract as context-composition above; never let it break the run-view).
+    // the mega-think/derivation-marker rollup, folded from the SAME transcript source (same best-effort
+    // contract as context-composition above; never let it break the run-view).
     try {
-      const td = buildNodeTurns(runDir, id);
+      const td = buildNodeTurns(caps.turns ? source.turns() : []);
       if (td.turns.length) node.turns = td.turns;
       node.turnSummary = td.summary;
     } catch { /* turn dissection is a projection add-on — never let it break the run-view */ }

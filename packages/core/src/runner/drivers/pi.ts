@@ -13,6 +13,7 @@ import { resolveNodeModel } from '../model-routing.js';
 import { lastJsonBlock } from '../return-parse.js';
 import { createNodeAccumulator } from '../../observe/distill.js';
 import { contextWindowFor } from '../../observe/models.js';
+import { piTranscript } from '../../observe/transcript-pi.js';
 
 /**
  * The `pi` driver — wraps the shipped pi functions with ZERO behavior change. Registered under id `pi`;
@@ -70,6 +71,10 @@ export const piDriver: AgentDriver = {
   eventAccumulator() {
     return createNodeAccumulator();
   },
+
+  // (transcript port) The INSPECTION reader — pi's flat tool/turn events decoded into the shared vocabulary,
+  // with pi's own source policy (archive first, native session when the archive is starved).
+  transcript: piTranscript,
 
   // The context-window denominator when the run didn't self-report one.
   modelCaps(model, catalog) {

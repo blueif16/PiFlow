@@ -37,6 +37,23 @@ export const nodeDir = (run: string, id: string): string => path.join(piDir(run)
 /** `${run}/.pi/sessions` — the per-run pi session-storage dir (a dedicated subdir UNDER `.pi/`). */
 export const piSessionsDir = (run: string): string => path.join(piDir(run), 'sessions');
 
+// ── per-node CLAUDE-CODE config jail — a claude node's `CLAUDE_CONFIG_DIR`, OUTSIDE `.pi/`. ──────────
+// A `claude-code` node runs with `CLAUDE_CONFIG_DIR` pointed at a per-node dir under the RUN dir (the
+// jail-writable workdir lane), so the executor's own state never touches the host's `~/.claude`. Claude
+// persists its session transcript beneath it as `projects/<cwd-slug>/<sessionId>.jsonl` — the `claude-code`
+// transcript adapter's native source (observe/transcript-claude.ts). It sits OUTSIDE `.pi/` because `.pi/`
+// is the ENGINE-owned namespace; this dir is a foreign executor's own store, which the engine only sites.
+// The slug is Claude's own encoding of the cwd, so a reader LOCATES the file (glob + sessionId) rather than
+// reconstructing the slug — the same "locate, never reconstruct" discipline `locatePiSessionFile` uses.
+
+/** `${run}/.claude-config/<id>` — a claude-code node's `CLAUDE_CONFIG_DIR` jail. */
+export const claudeConfigDir = (run: string, id: string): string =>
+  path.join(run, '.claude-config', id);
+
+/** `${run}/.claude-config/<id>/projects` — where Claude Code roots its per-cwd session transcripts. */
+export const claudeProjectsDir = (run: string, id: string): string =>
+  path.join(claudeConfigDir(run, id), 'projects');
+
 /** `${run}/.pi/nodes/<id>/io.json` — the per-node I/O ledger record. */
 export const nodeIoFile = (run: string, id: string): string => path.join(nodeDir(run, id), 'io.json');
 

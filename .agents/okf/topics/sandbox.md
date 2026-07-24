@@ -188,6 +188,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
 - `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
+- `9d51758` 2026-07-21 — fix(cli): dry-run preview carries --mcp-config for a claude-code mcp node
 
 ### Lessons — memory cluster
 
@@ -257,6 +258,7 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - [[verify-nodes-never-in-dev-arms]]
 - [[w1-prd-direction]]
 - [[w2b-glyph-corruption-is-model-degeneration]]
+- [[writer-fails-at-wiring-seams]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -266,5 +268,5 @@ routed through the jail, every out-of-tree op cmd will need execCwd too. · DRIF
 - `seatbeltExecPlan` (packages/core/src/sandbox/seatbelt.ts:255) — 3 callers in `packages/core/src/sandbox/jail.ts`, `packages/core/src/sandbox/seatbelt.ts`; ⚠ no covering tests found
 - `buildBwrapArgs` (packages/core/src/sandbox/bwrap.ts:218) — 3 callers in `packages/core/src/sandbox/bwrap.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/sandbox-bwrap.test.ts`
 
-<sub>derived 2026-07-21 · arc=103 commits · files=8 · lessons=65</sub>
+<sub>derived 2026-07-24 · arc=104 commits · files=8 · lessons=66</sub>
 <!-- okf:auto-end -->

@@ -219,6 +219,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[frozen-input-reruns]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
+- [[game-omni-concise-stack-and-snippets-as-thinking]]
 - [[game-omni-reference-product]]
 - [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
@@ -288,12 +289,14 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
 - [[workflow-v2-codegen-first]]
+- [[writer-fails-at-wiring-seams]]
 
 ### Code anchors / blast radius (codegraph)
 
+- `CHECK_KINDS` (packages/core/src/checks.ts:116) — 2 callers in `packages/core/src/index.ts`, `packages/core/src/observe/contextComposition.ts`; ⚠ no covering tests found
 - `collectChecks` (packages/core/src/workflow/template/render.ts:22) — 3 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/workflow/template/loader.ts`; ⚠ no covering tests found
-- `evaluateChecks` (packages/core/src/checks.ts:253) — 5 callers in `packages/core/src/checks.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
+- `evaluateChecks` (packages/core/src/checks.ts:253) — 6 callers in `packages/core/src/checks.ts`, `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; ⚠ no covering tests found
 - `runHooks` (packages/core/src/hooks/index.ts:65) — 6 callers in `packages/core/src/runner/node-lanes.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/hooks.test.ts`
 
-<sub>derived 2026-07-21 · arc=120 commits · files=8 · lessons=101</sub>
+<sub>derived 2026-07-24 · arc=120 commits · files=8 · lessons=103</sub>
 <!-- okf:auto-end -->
