@@ -8,6 +8,7 @@
 
 import type { AgentDriver } from './types.js';
 import type { PiEvent } from '../events.js';
+import { nullTranscriptSource, transcriptFor, type TranscriptRef, type TranscriptSource } from '../../observe/transcript.js';
 import { piDriver } from './pi.js';
 import { claudeCodeDriver } from './claude-code.js';
 
@@ -71,6 +72,28 @@ export class DriverTable {
       if (d.sniffsEvents?.(sample)) return d;
     }
     return this.get(undefined);
+  }
+
+  /**
+   * (transcript port) The ONE routing seam every inspection verb goes through: a node's stamped executor id
+   * → that executor's `TranscriptSource` (observe/transcript.ts). No verb, projection or renderer ever
+   * branches on an executor id; they all call this and then read the returned source's `capabilities()`.
+   *
+   * Deliberately FAIL-SOFT where `get` fails closed: an UNKNOWN id (a run stamped by a build that knew an
+   * executor this one does not) yields the honest `nullTranscriptSource` — every verb prints
+   * `SKIP: <reason>` — because refusing to render a run's OTHER nodes over one unknown id would be a worse
+   * answer than saying which node cannot be read. Routing (choosing a driver) must never be fatal to
+   * INSPECTION, only to EXECUTION.
+   */
+  transcriptFor(id: string | undefined, runDir: string, nodeId: string, ref?: TranscriptRef): TranscriptSource {
+    let driver: AgentDriver;
+    try {
+      driver = this.get(id);
+    } catch (e) {
+      if (!(e instanceof UnknownDriverError)) throw e;
+      return nullTranscriptSource(id ?? 'unknown', `${e.message} — this build cannot read that executor's record`);
+    }
+    return transcriptFor(driver, runDir, nodeId, ref);
   }
 }
 

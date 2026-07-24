@@ -109,6 +109,13 @@ export interface NodeDigest {
   megaThinkTurns?: MegaThinkTurn[];
   /** occurrences of the derivation-vocabulary markers (sqrt(/discriminant/quadratic by default) in thinking. */
   derivationMarkerCount?: number;
+  /**
+   * (transcript port) The node's inspection PROVENANCE + honesty declaration — which executor adapter read
+   * it, from which file, and which signals that source genuinely cannot carry. A renderer MUST consult
+   * `capabilities` before printing any turn/op number: a capability declared false means the value is
+   * UNKNOWN, and the surface owes the reader `SKIP: <limitations[cap]>` instead of a zero.
+   */
+  transcript?: RunViewNode['transcript'];
 }
 
 /** Failure-onset localization: the earliest decisive upstream node for a failure, via the file-flow DAG. */
@@ -198,6 +205,8 @@ interface NodeMetrics {
   largestTurn?: { turnIndex: number; thinkChars: number; durMs: number } | null;
   megaThinkTurns?: MegaThinkTurn[];
   derivationMarkerCount?: number;
+  /** (transcript port) carried verbatim from the run-view node — see NodeDigest.transcript. */
+  transcript?: RunViewNode['transcript'];
 }
 
 const isFailed = (status: string): boolean => status === 'blocked' || status === 'error';
@@ -297,6 +306,7 @@ function projectNode(m: NodeMetrics, th: TelemetryThresholds): { digest: NodeDig
     ...(m.largestTurn !== undefined ? { largestTurn: m.largestTurn } : {}),
     ...(m.megaThinkTurns ? { megaThinkTurns: m.megaThinkTurns } : {}),
     ...(m.derivationMarkerCount != null ? { derivationMarkerCount: m.derivationMarkerCount } : {}),
+    ...(m.transcript ? { transcript: m.transcript } : {}),
   };
   return { digest, anomalies };
 }
@@ -343,6 +353,7 @@ function metricsFromView(n: RunViewNode): NodeMetrics {
       megaThinkTurns: n.turnSummary.megaThinkTurns,
       derivationMarkerCount: n.turnSummary.derivationMarkerCount,
     } : {}),
+    ...(n.transcript ? { transcript: n.transcript } : {}),
   };
 }
 

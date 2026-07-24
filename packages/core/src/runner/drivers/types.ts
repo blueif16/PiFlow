@@ -11,6 +11,7 @@
 import type { NodeUsage } from '../status.js';
 import type { NodeSpec, ResolveResult, PiCommandOptions, SecretResolver } from '../../types.js';
 import type { NodeAccumulator } from '../../observe/distill.js';
+import type { TranscriptReader } from '../../observe/transcript.js';
 import type { ModelCatalog } from '../../observe/models.js';
 import type { CommandContext } from '../command.js';
 import type { NodeRouting, RunRouting } from '../model-routing.js';
@@ -136,6 +137,19 @@ export interface AgentDriver {
   /** a STREAMING accumulator over the persisted events.jsonl (push/snapshot/finalize) — pi:
    *  createNodeAccumulator; claude: a stream-json accumulator (P5). Absent ⇒ no event decode. */
   eventAccumulator?(): NodeAccumulator | undefined;
+  /**
+   * (transcript port) The INSPECTION reader — this executor's own record decoded NATIVELY into the shared
+   * `TranscriptOp`/`TranscriptTurn` vocabulary that `trace`, `logs --summary` and the telemetry turn table
+   * speak (observe/transcript.ts). Distinct from `eventAccumulator`: that folds the LIVE stream into the
+   * metrics spine (tokens/tool counts); this reconstructs the ORDERED per-op / per-turn record a human or an
+   * agent reads post-hoc, and it owns its own source policy (which file, and what to do when it is starved).
+   *
+   * ABSENT ⇒ every inspection verb reports `SKIP: <reason>` for this executor (`nullTranscriptSource`), never
+   * a zero. That is the contract that makes an unread executor VISIBLE instead of falsely empty — the exact
+   * defect the port closed for claude-code, where `trace` reported `readFiles=0` and "17 advertised, 17 BLIND
+   * SPOT" on a node that had actually performed 7 reads, 3 writes, 1 edit and 5 bash calls.
+   */
+  transcript?: TranscriptReader;
   /** the context-window denominator when the run didn't self-report one (pi: contextWindowFor; claude: usage cap). */
   modelCaps(model: string | null, catalog: ModelCatalog): number | null;
   /**

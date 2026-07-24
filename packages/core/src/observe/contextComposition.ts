@@ -19,34 +19,28 @@
 //
 // Naming aligns to OTel GenAI semconv where a canonical name exists (`gen_ai.tool.call.id` → toolCallId,
 // `code.file.path` → path); range/coverage are our extension (no standard carries them).
+//
+// EXECUTOR-BLIND BY CONSTRUCTION: this module no longer reads `events.jsonl` and no longer knows any
+// executor's event vocabulary. It consumes `TranscriptOp[]` — the shared vocabulary produced by the node's
+// own executor adapter (observe/transcript.ts) — so the coverage math, the version/sha join and the
+// blind-spot roll-up below work identically for pi, claude-code, and any executor registered later. The
+// pre-port version decoded pi's `tool_execution_start` events inline, which is why a claude-code node
+// reported `readFiles=0` and flagged every advertised file as unread.
 
 import fssync from 'node:fs';
 import { createHash } from 'node:crypto';
-import { readNodeObserveEvents } from '../runner/pi-session.js';
 import { CHECK_KINDS, escapeRegex } from '../checks.js';
+import { READ_KINDS, TRANSCRIPT_TEXT_CAP, type TranscriptOp } from './transcript.js';
 import type { ScopeKind } from './runView.js';
 
-/** pi's per-call read page: ~2000 lines / 50 KB. A no-offset read of a file under BOTH is whole-file. */
+/** An agent's per-call read page: ~2000 lines / 50 KB (pi's `truncateHead`; Claude's Read is the same order).
+ *  A no-offset read of a file under BOTH is whole-file. */
 const READ_PAGE_LINES = 2000;
 const READ_PAGE_BYTES = 50 * 1024;
-/** Bounded plaintext cap for the opt-in `preview` (mirrors distill.ts `PREVIEW_CAP`). */
-const PREVIEW_CAP = 8000;
+/** Bounded plaintext cap for the opt-in `preview` (the port already caps `resultText` to the same value). */
+const PREVIEW_CAP = TRANSCRIPT_TEXT_CAP;
 /** coverage ≥ this counts as full (floating-point-safe threshold). */
 const FULL_THRESHOLD = 0.999;
-
-const READ_OPS = new Set(['read', 'grep']);
-/** map a pi toolName → a ContextOp op kind; returns null for a tool we do not surface as context. */
-function opKind(toolName: string): ContextOp['op'] | null {
-  switch (toolName) {
-    case 'read': return 'read';
-    case 'grep': return 'grep';
-    case 'edit': return 'edit';
-    case 'write': return 'write';
-    case 'ls': case 'find': return 'list';
-    case 'bash': return 'bash';
-    default: return null;
-  }
-}
 
 const baseName = (p: string): string => p.split('/').pop() ?? p;
 
@@ -122,22 +116,12 @@ export interface ContextBuildCtx {
   readContract?: ReadContractEntry[];
 }
 
-interface RawEvent {
-  type?: string;
-  toolCallId?: string;
-  toolName?: string;
-  args?: { path?: unknown; offset?: unknown; limit?: unknown };
-  result?: unknown;
-  isError?: unknown;
-  _t?: unknown;
-}
-
-/** A parsed tool_execution_start awaiting its matching _end. */
+/** One transcript op, augmented with the per-op values this projection derives. */
 interface PendingOp {
   seq: number; // provisional order among tool ops (before the inject prepend)
   op: ContextOp['op'];
   toolCallId: string;
-  toolName: string;
+  isRead: boolean; // the op DELIVERED file content (read/grep) — the coverage + blind-spot input set
   path: string;
   tMs: number | null;
   range: { offset: number; limit: number | null } | null;
@@ -146,18 +130,6 @@ interface PendingOp {
   returnedBytes: number | null;
   preview?: string;
   errorType?: string;
-}
-
-/** Pull the joined plaintext out of a `{content:[{type:'text',text}]}` result (best-effort, bounded). */
-function resultText(result: unknown): string | undefined {
-  const r = result as { content?: unknown } | null | undefined;
-  if (!r || !Array.isArray(r.content)) return undefined;
-  const text = (r.content as { type?: string; text?: string }[])
-    .filter((c) => c && c.type === 'text' && typeof c.text === 'string')
-    .map((c) => c.text as string)
-    .join('\n');
-  if (!text) return undefined;
-  return text.length > PREVIEW_CAP ? text.slice(0, PREVIEW_CAP) : text;
 }
 
 /** Extract the path-like tokens the injected prompt (incl. its DRIVER-* marker lines — same text) NAMES as
@@ -257,80 +229,53 @@ function coverageForPath(
 }
 
 /**
- * Reconstruct the ordered per-op context for one node run.
- * Reads `.pi/nodes/<id>/events.jsonl` line-by-line PRESERVING ORDER (NOT the distill accumulator, which
- * dedups reads first-seen — this needs every op, in order). One ContextOp per `tool_execution_start`,
- * paired with its `tool_execution_end` (by toolCallId) for ok/returnedBytes/logPreviewCapped. Prepends one
- * `op:'inject'` for the staged prompt.md.
+ * Reconstruct the ordered per-op context for one node run, from the shared `TranscriptOp` vocabulary the
+ * node's OWN executor adapter produced (`TranscriptSource.ops()` — observe/transcript.ts). ORDER-PRESERVING
+ * (NOT the distill accumulator, which dedups reads first-seen — this needs every op, in order). One
+ * ContextOp per surfaced op; ops the port bucketed as `other` (a submit_result, a Task) are not context and
+ * are skipped. Prepends one `op:'inject'` for the staged prompt.md.
+ *
+ * Callers get the ops through the driver — `transcriptFor(drivers.get(rec.driverId), runDir, id, ref).ops()`
+ * — so this projection never learns any executor's event schema.
  */
-export function buildNodeContext(runDir: string, nodeId: string, ctx: ContextBuildCtx): NodeContext {
-  // Read the node's ordered events, RECOVERING from pi's native session when events.jsonl is starved (a
-  // session-only node — run 260715-02/plan). The shared reader is a no-op passthrough for a normal captured
-  // archive, so the happy path is byte-identical; a starved node gets its read/edit elements from the session.
-  const events = readNodeObserveEvents(runDir, nodeId) as unknown as RawEvent[];
-
+export function buildNodeContext(ops: readonly TranscriptOp[], ctx: ContextBuildCtx): NodeContext {
   const pending: PendingOp[] = [];
-  const byId = new Map<string, PendingOp>();
   let toolSeq = 0;
-  for (const ev of events) {
-    if (ev.type === 'tool_execution_start') {
-      const toolName = typeof ev.toolName === 'string' ? ev.toolName : '';
-      const op = opKind(toolName);
-      if (!op) continue; // a tool we do not surface as context (e.g. submit_result)
-      const argPath = ev.args?.path;
-      const p = typeof argPath === 'string' ? argPath : '';
-      const offset = typeof ev.args?.offset === 'number' ? ev.args.offset : null;
-      const limit = typeof ev.args?.limit === 'number' ? ev.args.limit : null;
-      // Record the range whenever EITHER offset or limit is present. CRITICAL: an offset-only read
-      // (`offset=N`, no limit) is pi's CANONICAL pagination continuation ("Use offset=N to continue") — it
-      // must NOT be dropped to null (that mis-counts it as a second whole read and erases the paging).
-      // offset defaults to 1 (pi read.js: `startLine = offset ?? 1`).
-      const range = (offset != null || limit != null) ? { offset: offset ?? 1, limit } : null;
-      const rec: PendingOp = {
-        seq: toolSeq++,
-        op,
-        toolCallId: typeof ev.toolCallId === 'string' ? ev.toolCallId : '',
-        toolName,
-        path: p,
-        tMs: typeof ev._t === 'number' ? ev._t : null,
-        range,
-        ok: true,
-        logPreviewCapped: false,
-        returnedBytes: null,
-      };
-      pending.push(rec);
-      if (rec.toolCallId) byId.set(rec.toolCallId, rec);
-    } else if (ev.type === 'tool_execution_end') {
-      const id = typeof ev.toolCallId === 'string' ? ev.toolCallId : '';
-      const rec = id ? byId.get(id) : undefined;
-      if (!rec) continue;
-      rec.ok = !(ev.isError === true);
-      // ANTI-FOOTGUN: `result.truncated === true` is the events.jsonl 2048 preview cap — a LOGGING note,
-      // NOT a model truncation. It sets ONLY the cosmetic `logPreviewCapped`; coverage stays range-derived.
-      const result = ev.result as { truncated?: unknown } | undefined;
-      if (result && result.truncated === true) {
-        rec.logPreviewCapped = true;
-      } else if (rec.ok) {
-        // A SUCCESSFUL, non-capped result carries the real content → best-effort actual bytes delivered.
-        // (A FAILED read's `result` is an error message, NOT file content — never report it as delivered.)
-        const text = resultText(ev.result);
-        if (text != null) rec.returnedBytes = Buffer.byteLength(text, 'utf8');
-        if (ctx.includePreview && text) rec.preview = text;
-      }
-      if (!rec.ok && rec.errorType == null) {
-        const text = resultText(ev.result);
-        // e.g. "EPERM: operation not permitted ..." → "EPERM"
-        const code = text?.match(/^([A-Z][A-Za-z0-9_]+)/)?.[1];
-        rec.errorType = code ?? 'error';
-      }
+  for (const op of ops) {
+    if (op.kind === 'other') continue; // a tool we do not surface as context (e.g. submit_result)
+    const rec: PendingOp = {
+      seq: toolSeq++,
+      op: op.kind,
+      toolCallId: op.toolCallId ?? '',
+      isRead: READ_KINDS.has(op.kind),
+      path: op.path,
+      tMs: op.tMs,
+      range: op.range,
+      ok: op.ok,
+      logPreviewCapped: op.logPreviewCapped,
+      returnedBytes: null,
+    };
+    // ANTI-FOOTGUN: `logPreviewCapped` is the ARCHIVE's own preview cap — a LOGGING note, NOT a model
+    // truncation. It suppresses only the delivered-bytes read-back; coverage stays range-derived.
+    if (!rec.logPreviewCapped && rec.ok) {
+      // A SUCCESSFUL, non-capped result carries the real content → best-effort actual bytes delivered.
+      // (A FAILED read's payload is an error message, NOT file content — never report it as delivered.)
+      if (op.resultText != null) rec.returnedBytes = Buffer.byteLength(op.resultText, 'utf8');
+      if (ctx.includePreview && op.resultText) rec.preview = op.resultText;
     }
+    if (!rec.ok) {
+      // e.g. "EPERM: operation not permitted ..." → "EPERM"
+      const code = op.resultText?.match(/^([A-Z][A-Za-z0-9_]+)/)?.[1];
+      rec.errorType = code ?? 'error';
+    }
+    pending.push(rec);
   }
 
   // Per-distinct-path coverage: union every read op's range for that path (only read/grep count as coverage).
   const rangesByPath = new Map<string, ({ offset: number; limit: number | null } | null)[]>();
   const metaByPath = new Map<string, { lines: number | null; bytes: number | null; sha256: string | null }>();
   for (const rec of pending) {
-    if (!READ_OPS.has(rec.toolName) || !rec.path) continue;
+    if (!rec.isRead || !rec.path) continue;
     // meta (size/version) is for DISPLAY — compute it for every read path, whether the read succeeded or not.
     if (!metaByPath.has(rec.path)) metaByPath.set(rec.path, fileMeta(rec.path, ctx.manifest));
     // A FAILED read (EPERM/denied/missing) delivered NOTHING to the model: it contributes no coverage and is
@@ -400,8 +345,8 @@ export function buildNodeContext(runDir: string, nodeId: string, ctx: ContextBui
 
   const injectOffset = context.length; // 1 if an inject op was prepended, else 0
   for (const rec of pending) {
-    const meta = rec.path && READ_OPS.has(rec.toolName) ? metaByPath.get(rec.path) : undefined;
-    const cov = rec.path && READ_OPS.has(rec.toolName) ? coverageByPath.get(rec.path) : undefined;
+    const meta = rec.path && rec.isRead ? metaByPath.get(rec.path) : undefined;
+    const cov = rec.path && rec.isRead ? coverageByPath.get(rec.path) : undefined;
     const dp = rec.path ? ctx.displayPath(rec.path) : '';
     const op: ContextOp = {
       seq: rec.seq + injectOffset,
@@ -422,7 +367,7 @@ export function buildNodeContext(runDir: string, nodeId: string, ctx: ContextBui
       ok: rec.ok,
       ...(rec.errorType ? { errorType: rec.errorType } : {}),
       ...(rec.preview ? { preview: rec.preview } : {}),
-      ...(rec.path && READ_OPS.has(rec.toolName) && contractByPath.has(rec.path) ? { contract: contractByPath.get(rec.path)! } : {}),
+      ...(rec.path && rec.isRead && contractByPath.has(rec.path) ? { contract: contractByPath.get(rec.path)! } : {}),
     };
     context.push(op);
   }

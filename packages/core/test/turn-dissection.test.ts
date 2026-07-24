@@ -1,9 +1,9 @@
-// Tests for the per-turn "reasoning-effort" dissection (packages/core/src/observe/turnDissection.ts) —
-// segmenting one node's events.jsonl into per-model-turn records (thinking/text volume + the tool calls
-// each turn made) plus the derived node-level rollup (totalThinkChars, largestTurn, megaThinkTurns,
-// derivationMarkerCount). Each assertion FAILS when the code is wrong: turn boundaries drift off
-// turn_start, char sums miscount, or (the mutation this suite exists to pin) the mega-think flag drops its
-// "AND zero tool calls" guard and starts flagging productive-but-big turns as pure deliberation.
+// Tests for the per-turn "reasoning-effort" dissection — the PI ADAPTER's turn segmentation
+// (observe/transcript-pi.ts) folded by the executor-neutral rollup (observe/turnDissection.ts). The suite
+// drives REAL fixture bytes through the real adapter, exactly as `buildRunView` does, so it fails when
+// EITHER half is wrong: turn boundaries drift off turn_start, char sums miscount, or (the mutation this
+// suite exists to pin) the mega-think flag drops its "AND zero tool calls" guard and starts flagging
+// productive-but-big turns as pure deliberation.
 //
 // Run: npx vitest run packages/core/test/turn-dissection.test.ts
 
@@ -12,14 +12,16 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildNodeTurns, MEGA_THINK_CHARS, DERIVATION_MARKERS } from '../src/observe/turnDissection.js';
+import { piTranscript } from '../src/observe/transcript-pi.js';
 
-/** Stage a synthetic events.jsonl into a real tmp run dir and build the turn dissection off it. */
+/** Stage a synthetic events.jsonl into a real tmp run dir and build the turn dissection off it, THROUGH the
+ *  pi transcript adapter (the same path the run-view takes). */
 async function buildFrom(lines: unknown[]): Promise<ReturnType<typeof buildNodeTurns>> {
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'turns-'));
   const nodeDir = path.join(tmp, '.pi', 'nodes', 'n');
   await fs.mkdir(nodeDir, { recursive: true });
   await fs.writeFile(path.join(nodeDir, 'events.jsonl'), lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
-  return buildNodeTurns(tmp, 'n');
+  return buildNodeTurns(piTranscript(tmp, 'n').turns());
 }
 
 // ── event builders — the verified live shapes (top-level {type,_t}; message_update wraps assistantMessageEvent) ──
@@ -183,14 +185,14 @@ describe('buildNodeTurns — robustness', () => {
     const goodLines = [turnStart(0), thinkingDelta(1, 'ok')].map((l) => JSON.stringify(l));
     const raw = [goodLines[0], '{"type":"message_update","assistantMessageEvent":{"type":"thinking_delta","delta":"unterminated', goodLines[1]].join('\n') + '\n';
     await fs.writeFile(path.join(nodeDir, 'events.jsonl'), raw);
-    const { turns } = await buildNodeTurns(tmp, 'n');
+    const { turns } = buildNodeTurns(piTranscript(tmp, 'n').turns());
     expect(turns).toHaveLength(1);
     expect(turns[0].thinkChars).toBe(2); // 'ok' — the corrupted line contributed nothing
   });
 
   it('a missing events.jsonl file yields an empty dissection, never throws', async () => {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'turns-missing-'));
-    const { turns, summary } = buildNodeTurns(tmp, 'nope');
+    const { turns, summary } = buildNodeTurns(piTranscript(tmp, 'nope').turns());
     expect(turns).toEqual([]);
     expect(summary).toEqual({ totalThinkChars: 0, largestTurn: null, megaThinkTurns: [], derivationMarkerCount: 0 });
   });

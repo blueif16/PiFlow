@@ -48,7 +48,7 @@ import {
   writeStatus,
   artifactState,
 } from './status.js';
-import { piSessionsDir, writeNodePid, clearNodePid, nodeDir, nodeEventsFile } from './layout.js';
+import { piSessionsDir, writeNodePid, clearNodePid, nodeDir, nodeEventsFile, claudeConfigDir as claudeConfigDirFor } from './layout.js';
 import { locatePiSessionFile, supersedeStaleSession } from './pi-session.js';
 import {
   envelopeHash,
@@ -307,7 +307,9 @@ export async function runNode(ctx: RunContext, node: NodeSpec, scope: RunScope, 
   // the API), and point CLAUDE_CONFIG_DIR at a per-node dir under the run dir (the jail-writable workdir lane)
   // so session/history isolate there. `{}` for a pi node ⇒ byte-identical. The credential rides the ENV, NOT
   // a jail read-grant — so `readScope` stays exactly the node's declared scope (no ~/.claude widening).
-  const claudeConfigDir = path.join(ctx.outDir, '.claude-config', node.id);
+  // ONE layout helper, so the transcript adapter that later READS this jail derives the same path the runner
+  // WROTE it to (never a second hardcoded string that can drift).
+  const claudeConfigDir = claudeConfigDirFor(ctx.outDir, node.id);
   // (P3 — Fork C) The pre-spawn credential/sandbox coupling now routes through the node's DRIVER: a driver
   // with `augmentSandbox` (claude-code wraps `claudeExecutorEnvAdditions`) contributes env; pi OMITS the
   // method ⇒ `{}` (byte-identical). Only `add.env` is consumed in P3 — `read`/`write` additions are reserved

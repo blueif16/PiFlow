@@ -1,7 +1,9 @@
 // Tests for the context-composition "element tree" (packages/core/src/observe/contextComposition.ts) — the
 // ordered per-op reconstruction of what reached the model (force-injected prompt + every agent read, each
 // with range/coverage/sha/order) + the advertised-vs-read blind-spot. Driven off a fixture DERIVED from
-// gm10's real gameplay `events.jsonl` (a trimmed slice copied into test/fixtures/context-composition).
+// gm10's real gameplay `events.jsonl` (a trimmed slice copied into test/fixtures/context-composition),
+// fed THROUGH the pi transcript adapter (observe/transcript-pi.ts) — the same path `buildRunView` takes —
+// so a decode regression in EITHER the adapter or the projection fails this suite.
 //
 // Each assertion FAILS when the code is wrong: the anti-footgun case (a truncated:true log preview must NOT
 // become covered:'partial'), the coverage math (half-file range → ~0.5 partial), and the blind-spot
@@ -15,6 +17,7 @@ import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { buildNodeContext, type ContextOp, type NodeContext } from '../src/observe/contextComposition.js';
+import { piTranscript } from '../src/observe/transcript-pi.js';
 import { makeDisplayPath, scopeKind } from '../src/observe/runView.js';
 import { emitReadsManifest } from '../src/runner/node-lifecycle.js';
 
@@ -39,7 +42,7 @@ async function buildFromFixture(): Promise<NodeContext> {
 
   const displayPath = makeDisplayPath(RUN, WS);
   const underRun = (abs: string) => abs === RUN || abs.startsWith(RUN + '/');
-  return buildNodeContext(tmp, 'gameplay', {
+  return buildNodeContext(piTranscript(tmp, 'gameplay').ops(), {
     displayPath,
     scopeOf: (abs, dp) => (underRun(abs) ? 'run' : scopeKind(dp)),
     promptText,
@@ -165,7 +168,7 @@ describe('buildNodeContext — offset-only pagination coverage (the pctx01 regre
     await fs.mkdir(nodeDir, { recursive: true });
     await fs.writeFile(path.join(nodeDir, 'events.jsonl'), events);
     const RUN2 = '/ws/run';
-    return buildNodeContext(tmp, 'g', {
+    return buildNodeContext(piTranscript(tmp, 'g').ops(), {
       displayPath: makeDisplayPath(RUN2, '/ws'),
       scopeOf: (abs, dp) => (abs === RUN2 || abs.startsWith(RUN2 + '/') ? 'run' : scopeKind(dp)),
       promptText: '', promptPath: null, manifest: manifest as never,
@@ -266,7 +269,7 @@ describe('buildNodeContext — the readContract marker backstop (op-integrity WS
       JSON.stringify({ type: 'tool_execution_end', toolCallId: 'a', result: { content: [{ type: 'text', text: fileContent }] }, isError: false, _t: 2 }),
     ].join('\n') + '\n';
     await fs.writeFile(path.join(nodeDir, 'events.jsonl'), events);
-    return buildNodeContext(tmp, 'plan', {
+    return buildNodeContext(piTranscript(tmp, 'plan').ops(), {
       displayPath: makeDisplayPath(RUN, tmp),
       scopeOf: (a, dp) => (a === RUN || a.startsWith(RUN + '/') ? 'run' : scopeKind(dp)),
       promptText: null,

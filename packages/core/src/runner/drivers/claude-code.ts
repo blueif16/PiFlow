@@ -19,6 +19,7 @@ import { parseClaudeResult, nodeUsageFromClaude } from '../claude-result.js';
 import { claudeExecutorEnvAdditions } from '../claude-executor.js';
 import { contextWindowFor } from '../../observe/models.js';
 import { createClaudeAccumulator } from '../../observe/claude-distill.js';
+import { claudeTranscript } from '../../observe/transcript-claude.js';
 import { lastJsonBlock } from '../return-parse.js';
 
 /**
@@ -122,6 +123,11 @@ export const claudeCodeDriver: AgentDriver = {
   eventAccumulator() {
     return createClaudeAccumulator();
   },
+
+  // (transcript port) The INSPECTION reader — Claude's NESTED tool_use/tool_result blocks and per-record
+  // timestamps decoded into the shared vocabulary, off Claude's OWN session transcript (the archive slim
+  // drops assistant text and tears long tool_result lines, so it is the declared-lossy fallback only).
+  transcript: claudeTranscript,
 
   // The context-window denominator FALLBACK when the run didn't self-report one (the real per-run
   // contextWindow rides usage from parseResult — the modelUsage[model].contextWindow off the result event).

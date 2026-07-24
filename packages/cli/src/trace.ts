@@ -73,13 +73,24 @@ function compositionBlock(c: NodeComposition): string[] {
   return lines;
 }
 
-/** Render one node's `context`/`composition` (both may be absent — the node recorded no events + no prompt). */
+/** Render one node's `context`/`composition`.
+ *
+ *  HONESTY GATE (transcript port): when the node's executor adapter declares it CANNOT enumerate ops, this
+ *  prints `SKIP: <reason>` and NOTHING ELSE. Rendering the composition block for a blind source would emit
+ *  `readFiles=0` and list every advertised file as a BLIND SPOT — numbers that read like findings but only
+ *  mean "this executor's record was not read". That false report is the defect this verb had for every
+ *  claude-code node, and the gate is what makes it structurally impossible for the next executor too. */
 function renderNode(n: RunViewNode): string {
-  if (!n.context?.length && !n.composition) return `node "${n.id}" (${n.label}) — no context recorded`;
   const head = `node "${n.id}" (${n.label})`;
+  const tr = n.transcript;
+  if (tr && !tr.capabilities.ops) {
+    return `${head}\n  SKIP: ${tr.limitations.ops ?? 'this executor record could not be read'}`;
+  }
+  if (!n.context?.length && !n.composition) return `${head} — no context recorded`;
+  const provenance = tr ? [`  source: ${tr.executorId} · ${tr.origin.kind}${tr.origin.path ? ` (${tr.origin.path})` : ''}`] : [];
   const rows = (n.context ?? []).map(opRow);
   const comp = n.composition ? compositionBlock(n.composition) : [];
-  return [head, ...rows, ...comp].join('\n');
+  return [head, ...provenance, ...rows, ...comp].join('\n');
 }
 
 /** Render every node that carries `context`/`composition` (a run may have nodes with none — skip silently
