@@ -115,6 +115,7 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
 - `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
+- `9d51758` 2026-07-21 — fix(cli): dry-run preview carries --mcp-config for a claude-code mcp node
 
 ### Lessons — memory cluster
 
@@ -138,9 +139,9 @@ anchors ✓ (opened + confirmed) · scope = the seeds above · re-derive when th
 
 - `pieSlugList` (packages/core/src/names/slugify.ts:64) — 5 callers in `packages/core/src/names/generate-pies.mjs`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `pieSlug` (packages/core/src/names/slugify.ts:43) — 4 callers in `packages/core/src/names/slugify.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
-- `generateRunName` (packages/core/src/names/generator.ts:40) — 8 callers in `packages/server/src/start-run.ts`, `packages/core/src/optimize/substrate/judge.ts`, `packages/core/src/names/index.ts`, `packages/core/src/index.ts` +1 more; tests: `packages/core/test/names.test.ts`
+- `generateRunName` (packages/core/src/names/generator.ts:40) — 8 callers in `packages/server/src/start-run.ts`, `packages/core/src/optimize/substrate/judge.ts`, `packages/core/src/names/index.ts`, `packages/cli/src/run.ts` +1 more; tests: `packages/core/test/names.test.ts`
 - `ADJECTIVES` (packages/core/src/names/generator.ts:19) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 - `PIES` (packages/core/src/names/generator.ts:21) — 3 callers in `packages/core/src/names/index.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/names.test.ts`
 
-<sub>derived 2026-07-21 · arc=56 commits · files=7 · lessons=14</sub>
+<sub>derived 2026-07-24 · arc=57 commits · files=7 · lessons=14</sub>
 <!-- okf:auto-end -->

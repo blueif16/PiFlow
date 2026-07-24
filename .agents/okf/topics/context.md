@@ -147,6 +147,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `c693648` 2026-07-15 — feat(core,cli): op-integrity WS-I3 — status + telemetry ops-table surfacing
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
 - `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
+- `9d51758` 2026-07-21 — fix(cli): dry-run preview carries --mcp-config for a claude-code mcp node
 
 ### Lessons — memory cluster
 
@@ -164,6 +165,7 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - [[expert-representations]]
 - [[fixes-go-to-subagents]]
 - [[g6-agenttype-presets]]
+- [[game-omni-concise-stack-and-snippets-as-thinking]]
 - [[gui-nodehud-redesign]]
 - [[guidance-node-sonnet5-routing]]
 - [[hooks-give-info-never-autofix]]
@@ -203,5 +205,5 @@ _generate.mjs --check context` (deterministic line-check against the working tre
 - `resolveActive` (packages/cli/src/context-store.ts:134) — 10 callers in `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts`, `packages/cli/src/run.ts`; tests: `packages/cli/test/context-store.test.ts`
 - `isCloudEntry` (packages/cli/src/context-store.ts:195) — 11 callers in `packages/cli/src/context-store.ts`, `packages/cli/src/context.ts`, `packages/cli/src/remote.ts`, `packages/cli/src/migrate.ts` +1 more; tests: `packages/cli/test/context-store.test.ts`
 
-<sub>derived 2026-07-21 · arc=61 commits · files=3 · lessons=43</sub>
+<sub>derived 2026-07-24 · arc=62 commits · files=3 · lessons=44</sub>
 <!-- okf:auto-end -->

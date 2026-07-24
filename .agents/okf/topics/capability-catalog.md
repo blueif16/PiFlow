@@ -130,6 +130,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[flexibility-over-hardcoded-plans]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
+- [[game-omni-concise-stack-and-snippets-as-thinking]]
 - [[game-omni-reference-product]]
 - [[github-native-issue-driven-flow]]
 - [[gui-live-viewer-scope]]
@@ -184,6 +185,7 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - [[verify-nodes-never-in-dev-arms]]
 - [[w1-prd-direction]]
 - [[workflow-v2-codegen-first]]
+- [[writer-fails-at-wiring-seams]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -193,5 +195,5 @@ anchors ✓ (every line opened + confirmed) · scope = the seeds above · re-der
 - `assembleRunTools` (packages/core/src/runner/tool-config.ts:60) — 5 callers in `packages/core/src/runner/entry.ts`; tests: `packages/core/test/catalog-client.test.ts`, `packages/core/test/tool-config.test.ts`, `packages/core/test/catalog-introspect.test.ts`
 - `mcpToolsToEntries` (packages/core/src/tools/ingest.ts:38) — 9 callers in `packages/core/src/runner/tool-config.ts`, `packages/core/src/catalog/introspect.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/tools-ingest.test.ts`, `packages/core/test/tools-verify.test.ts`, `packages/core/test/runner.test.ts`
 
-<sub>derived 2026-07-21 · arc=35 commits · files=9 · lessons=79</sub>
+<sub>derived 2026-07-24 · arc=35 commits · files=9 · lessons=81</sub>
 <!-- okf:auto-end -->

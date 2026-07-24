@@ -182,6 +182,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `669aec8` 2026-07-16 — feat(cli): node --rerun accepts --executor — per-target override
 - `d7b0869` 2026-07-17 — fix(cli): --dry-run refuses to clobber an existing NON-DRY run record
 - `d92ae6b` 2026-07-21 — chore(okf): resync code-map anchors after mcp-wiring line shifts
+- `9d51758` 2026-07-21 — fix(cli): dry-run preview carries --mcp-config for a claude-code mcp node
 
 ### Lessons — memory cluster
 
@@ -256,7 +257,7 @@ anchors ✓ (all opened + line-verified in this worktree) · scope = the seeds a
 - `E2bSandboxProvider` (packages/e2b/src/e2b.ts:436) — 6 callers in `packages/e2b/src/e2b-sdk.ts`, `packages/e2b/src/index.ts`; tests: `packages/e2b/test/sandbox-e2b-parity.test.ts`, `packages/e2b/test/n127-negative-twin.test.ts`, `packages/e2b/test/nbreach-parity.test.ts`
 - `createDaytonaProvider` (packages/daytona/src/daytona-sdk.ts:179) — 2 callers in `packages/daytona/src/index.ts`; tests: `packages/daytona/test/sandbox-daytona-e2e.test.ts`
 - `DaytonaSandboxProvider` (packages/daytona/src/daytona.ts:493) — 7 callers in `packages/daytona/src/daytona-sdk.ts`, `packages/daytona/src/index.ts`; tests: `packages/daytona/test/cloud-provider-stage.test.ts`, `packages/daytona/test/sandbox-daytona-parity.test.ts`, `packages/daytona/test/sandbox-daytona-streaming.test.ts`
-- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/index.ts`, `packages/core/src/runner/runner.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
+- `CLOUD_KINDS` (packages/core/src/runner/env-staging.ts:23) — 4 callers in `packages/core/src/runner/runner.ts`, `packages/core/src/runner/index.ts`, `packages/core/src/index.ts`, `packages/core/src/runner/node-lifecycle.ts`; ⚠ no covering tests found
 
-<sub>derived 2026-07-21 · arc=120 commits · files=8 · lessons=63</sub>
+<sub>derived 2026-07-24 · arc=121 commits · files=8 · lessons=63</sub>
 <!-- okf:auto-end -->

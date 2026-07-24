@@ -167,6 +167,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[expert-representations]]
 - [[g11-g13-node-action-protocol]]
 - [[g6-agenttype-presets]]
+- [[game-omni-concise-stack-and-snippets-as-thinking]]
 - [[gui-live-viewer-scope]]
 - [[harden-node-completes-run-to-completion]]
 - [[issue-lifecycle-gate-redesign]]
@@ -205,6 +206,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - [[w2b-glyph-corruption-is-model-degeneration]]
 - [[workflow-gate-policy-vs-measurement-issue-systems]]
 - [[workflow-v2-codegen-first]]
+- [[writer-fails-at-wiring-seams]]
 
 ### Code anchors / blast radius (codegraph)
 
@@ -212,7 +214,7 @@ anchors ✓ · scope = the seeds above · re-derive when they change · DRIFT NO
 - `parseMarkers` (packages/core/src/contract.ts:139) — 6 callers in `.claude/skills/piflow-init/scripts/parse-claude-workflow.mjs`, `templates/pi-runner/sdk/bridge.mjs`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `emitMarkers` (packages/core/src/contract.ts:115) — 9 callers in `packages/core/src/workflow/template/render.ts`, `packages/core/src/runner/resume.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/contract.test.ts`, `packages/core/test/op-codec-roundtrip.test.ts`
 - `loadTemplate` (packages/core/src/workflow/template/loader.ts:281) — 10 callers in `packages/core/src/optimize/substrate/child-run.ts`, `packages/cli/src/run.ts`, `packages/core/src/index.ts`; tests: `packages/core/test/gate-list-profiles.test.ts`, `packages/core/test/journal.test.ts`, `packages/cli/test/node-rerun.test.ts`, `packages/cli/test/run.test.ts`
-- `NodeSpec` (packages/core/src/types.ts:17) — 19 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/node-lifecycle.ts`, `packages/core/src/types.ts`; tests: `packages/core/test/claude-command.test.ts`, `packages/core/test/runner.test.ts`
+- `NodeSpec` (packages/core/src/types.ts:17) — 22 callers in `packages/core/src/dag.ts`, `packages/core/src/runner/command.ts`, `packages/core/src/runner/drivers/types.ts`, `packages/core/src/runner/node-lifecycle.ts` +1 more; tests: `packages/core/test/claude-command.test.ts`, `packages/core/test/runner.test.ts`
 
-<sub>derived 2026-07-21 · arc=90 commits · files=5 · lessons=55</sub>
+<sub>derived 2026-07-24 · arc=90 commits · files=5 · lessons=57</sub>
 <!-- okf:auto-end -->
