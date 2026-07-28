@@ -4,12 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-// The skill endpoint's bare-id search must use THE SAME ordered ring roots the runner stages from —
-// core's `skillSearchRoots(workspace)` = [<workspace>/.agents/skills, <piflowHome>/skills] — so a skill
-// the GUI can display is a skill the runtime actually stages (display ≡ staging). PIFLOW_HOME-hermetic
-// temp dirs prove: (1) the INSTALLED ring ($PIFLOW_HOME/skills — NOT a hardcoded ~/.piflow) resolves;
-// (2) the WORKSPACE ring shadows the installed ring (core's ordering); (3) the realpath confinement
-// still 404s an out-of-root path even when the file exists.
+// The skill endpoint's bare-id search must use THE SAME ordered ring roots the runner stages from:
+// core's `skillSearchRoots(workspace)` = [<workspace>/.agents/skills, <workspace>/.claude/skills].
+// A skill the GUI can display is therefore a skill the runtime can stage. Hermetic temp dirs prove:
+// (1) the project-installed ring resolves; (2) the workspace ring shadows it; (3) realpath confinement
+// still returns 404 for an out-of-root path even when that file exists.
 
 let runDirStub: { runDir: string; workspaceRoot: string | null; historyDirs: string[] } | null = null;
 vi.mock("../src/resolve.js", async () => {
@@ -52,28 +51,20 @@ allowed: [read]
 describe("skill endpoint — bare-id search uses core's ring roots (workspace ring then installed ring)", () => {
   let scratch: string;
   let workspace: string;
-  let home: string;
-  let prevHome: string | undefined;
 
   beforeEach(() => {
     scratch = mkdtempSync(join(tmpdir(), "piflow-skill-rings-"));
     workspace = join(scratch, "ws");
-    home = join(scratch, "piflow-home");
     mkdirSync(workspace, { recursive: true });
-    mkdirSync(home, { recursive: true });
-    prevHome = process.env.PIFLOW_HOME;
-    process.env.PIFLOW_HOME = home;
     runDirStub = { runDir: join(workspace, "runs", "r1"), workspaceRoot: workspace, historyDirs: [] };
   });
 
   afterEach(() => {
-    if (prevHome === undefined) delete process.env.PIFLOW_HOME;
-    else process.env.PIFLOW_HOME = prevHome;
     rmSync(scratch, { recursive: true, force: true });
   });
 
-  it("resolves a bare id from the INSTALLED ring ($PIFLOW_HOME/skills), not a hardcoded ~/.piflow", async () => {
-    const dir = join(home, "skills", "ring1-only-skill-x7q");
+  it("resolves a bare id from the project-installed ring (<workspace>/.claude/skills)", async () => {
+    const dir = join(workspace, ".claude", "skills", "ring1-only-skill-x7q");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "SKILL.md"), skillMd("Installed-ring copy."));
 
@@ -84,13 +75,13 @@ describe("skill endpoint — bare-id search uses core's ring roots (workspace ri
     expect(r.resolvedFrom).toBe(realpathSync(join(dir, "SKILL.md")));
   });
 
-  it("the WORKSPACE ring (<ws>/.agents/skills) shadows the installed ring — core's staging order", async () => {
+  it("the WORKSPACE ring (<ws>/.agents/skills) shadows the installed ring", async () => {
     const wsDir = join(workspace, ".agents", "skills", "both-rings-skill-x7q");
-    const homeDir = join(home, "skills", "both-rings-skill-x7q");
+    const installedDir = join(workspace, ".claude", "skills", "both-rings-skill-x7q");
     mkdirSync(wsDir, { recursive: true });
-    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(installedDir, { recursive: true });
     writeFileSync(join(wsDir, "SKILL.md"), skillMd("WORKSPACE copy."));
-    writeFileSync(join(homeDir, "SKILL.md"), skillMd("Installed copy."));
+    writeFileSync(join(installedDir, "SKILL.md"), skillMd("Installed copy."));
 
     const { status, json } = await call(piflowSkill, { method: "GET", url: "/__piflow/skill/r1?skill=both-rings-skill-x7q" });
     expect(status).toBe(200);
@@ -110,5 +101,28 @@ describe("skill endpoint — bare-id search uses core's ring roots (workspace ri
     });
     expect(status).toBe(404);
     expect((json as { error: string }).error).toMatch(/not found in known skill dirs/);
+  });
+
+  it("does not derive project rings from cwd when the workspace is missing", async () => {
+    const previousCwd = process.cwd();
+    const serverCwd = join(scratch, "server-cwd");
+    const cwdSkill = join(serverCwd, ".claude", "skills", "cwd-only-skill-x7q");
+    const orphanRun = join(scratch, "orphan-run");
+    mkdirSync(cwdSkill, { recursive: true });
+    mkdirSync(orphanRun, { recursive: true });
+    writeFileSync(join(cwdSkill, "SKILL.md"), skillMd("Cwd-only copy."));
+    runDirStub = { runDir: orphanRun, workspaceRoot: null, historyDirs: [] };
+
+    process.chdir(serverCwd);
+    try {
+      const { status, json } = await call(piflowSkill, {
+        method: "GET",
+        url: "/__piflow/skill/orphan?skill=cwd-only-skill-x7q",
+      });
+      expect(status).toBe(404);
+      expect((json as { error: string }).error).toMatch(/not found in known skill dirs/);
+    } finally {
+      process.chdir(previousCwd);
+    }
   });
 });

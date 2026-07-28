@@ -4,14 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-// `GET /__piflow/skills/<run>` is the MARKETPLACE listing the GUI panel renders: every skill in BOTH local
-// rings (the run's workspace `.agents/skills` + the installed `<piflowHome>/skills`) via core's `listSkills`,
-// each entry WIDENED with `mcpRequires` (the `mcp.*` ids its manifest `requires`) and `provisioned` (whether
-// every one of those ids is present in the cached `~/.piflow/catalog/mcp.index.json` slice). This drives the
-// REAL handler against real fixture dirs (PIFLOW_HOME-hermetic) — RED if listing drops a ring, if the shadow
-// flag is lost crossing the JSON wire, if mcp provisioning is mis-derived, or if an absent workspace root
-// 500s instead of degrading to the installed ring alone. `resolveRunDir` is stubbed (the SAME seam every
-// sibling run-scoped handler test stubs) so the fixture never touches the real global index.
+// `GET /__piflow/skills/<run>` is the MARKETPLACE listing the GUI panel renders: every skill in BOTH
+// project-local rings (`.agents/skills` and `.claude/skills`) via core's `listSkills`. Each entry is widened
+// with `mcpRequires` and `provisioned` against the cached `~/.piflow/catalog/mcp.index.json` slice. This
+// drives the REAL handler against fixture dirs. It fails if listing drops a ring, loses a shadow flag,
+// mis-derives MCP provisioning, scans a global skill ring, or returns 500 without a workspace. The
+// `resolveRunDir` stub keeps the fixture away from the real product registry.
 
 let runDirStub: { runDir: string; workspaceRoot: string | null; historyDirs: string[] } | null = null;
 vi.mock("../src/resolve.js", async () => {
@@ -93,7 +91,7 @@ describe("GET /__piflow/skills/<run> — the skill marketplace listing", () => {
 
   it("returns skills from BOTH rings for a fixture run", async () => {
     writeSkill(join(workspace, ".agents", "skills", "workspace-skill"), { desc: "lives in the workspace ring" });
-    writeSkill(join(home, "skills", "installed-skill"), { desc: "lives in the installed ring" });
+    writeSkill(join(workspace, ".claude", "skills", "installed-skill"), { desc: "lives in the installed ring" });
 
     const { status, json } = await call(piflowSkillsMarketplace, { method: "GET", url: "/__piflow/skills/r1" });
     expect(status).toBe(200);
@@ -106,7 +104,7 @@ describe("GET /__piflow/skills/<run> — the skill marketplace listing", () => {
 
   it("the shadow flag survives the JSON wire for an id present in both rings", async () => {
     writeSkill(join(workspace, ".agents", "skills", "dup-skill"), { desc: "workspace copy" });
-    writeSkill(join(home, "skills", "dup-skill"), { desc: "installed copy" });
+    writeSkill(join(workspace, ".claude", "skills", "dup-skill"), { desc: "installed copy" });
 
     const { json } = await call(piflowSkillsMarketplace, { method: "GET", url: "/__piflow/skills/r1" });
     const body = json as { skills: Entry[] };
@@ -119,15 +117,15 @@ describe("GET /__piflow/skills/<run> — the skill marketplace listing", () => {
   });
 
   it("derives mcpRequires from requires and marks provisioned against the catalog fixture", async () => {
-    writeSkill(join(home, "skills", "partially-provisioned"), {
+    writeSkill(join(workspace, ".claude", "skills", "partially-provisioned"), {
       desc: "needs two mcp tools, only one is cataloged",
       requires: ["mcp.github:search", "mcp.missing:tool"],
     });
-    writeSkill(join(home, "skills", "fully-provisioned"), {
+    writeSkill(join(workspace, ".claude", "skills", "fully-provisioned"), {
       desc: "needs one mcp tool that IS cataloged",
       requires: ["mcp.github:search"],
     });
-    writeSkill(join(home, "skills", "no-mcp-needs"), { desc: "no mcp requirement at all", requires: ["read"] });
+    writeSkill(join(workspace, ".claude", "skills", "no-mcp-needs"), { desc: "no mcp requirement at all", requires: ["read"] });
     writeCatalog(home, ["mcp.github:search"]);
 
     const { json } = await call(piflowSkillsMarketplace, { method: "GET", url: "/__piflow/skills/r1" });
@@ -146,15 +144,14 @@ describe("GET /__piflow/skills/<run> — the skill marketplace listing", () => {
     expect(body.mcpCatalog).toBe(true);
   });
 
-  it("no workspace root ⇒ the installed ring alone, 200 (never a 500)", async () => {
+  it("no workspace root returns an empty project-local catalog, 200, and never scans global skills", async () => {
     runDirStub = { runDir: join(scratch, "orphan-run"), workspaceRoot: null, historyDirs: [] };
-    writeSkill(join(home, "skills", "installed-only"), { desc: "installed ring skill" });
+    writeSkill(join(home, "skills", "global-only"), { desc: "must not leak into project-local results" });
 
     const { status, json } = await call(piflowSkillsMarketplace, { method: "GET", url: "/__piflow/skills/r1" });
     expect(status).toBe(200);
     const body = json as { skills: Entry[] };
-    expect(body.skills.every((s) => s.ring === "installed")).toBe(true);
-    expect(body.skills.some((s) => s.id === "installed-only")).toBe(true);
+    expect(body.skills).toEqual([]);
   });
 
   it("404s for an unknown run", async () => {
@@ -173,7 +170,7 @@ describe("GET /__piflow/skills/<run> — the skill marketplace listing", () => {
   it("SCALE: 50 fixture skills in the installed ring all return, correctly shaped", async () => {
     for (let i = 0; i < 50; i++) {
       const id = `bulk-skill-${String(i).padStart(3, "0")}`;
-      writeSkill(join(home, "skills", id), { desc: `bulk fixture #${i}`, requires: i % 2 === 0 ? ["mcp.bulk:tool"] : [] });
+      writeSkill(join(workspace, ".claude", "skills", id), { desc: `bulk fixture #${i}`, requires: i % 2 === 0 ? ["mcp.bulk:tool"] : [] });
     }
     writeCatalog(home, ["mcp.bulk:tool"]);
 

@@ -56,52 +56,110 @@ Format inside the brief:
 
 ## Crypto-only legs — Twitter (X) + Telegram
 
-**These two legs fire ONLY under this lens** (crypto / perps / on-chain / funding / venue
-topics). Do NOT run them in generic research — they are pay-per-result social feeds whose
-signal is mostly relevant to fast-moving crypto markets. When the trading lens is active,
-append them to the parallel fan-out so a trading run is **five legs** (A Reddit, B YouTube,
-C Exa, **D Twitter, E Telegram**) launched in one message.
+**These two legs require this lens and `crypto_scope=true`.** Set that flag only
+with the canonical predicate in `SKILL.md`; do not infer it again here. Generic
+research and non-crypto finance stay on three legs. A crypto run appends
+**D Twitter** and **E Telegram** to A–C in one parallel message.
 
-**Start from the curated registry, don't re-discover, and run one-shot.** Seed Leg D
-`--username` pulls and Leg E channel lists from `references/crypto-handles.md` (vetted
-accounts + channels + a "most-valuable shortlist" + actor best-practices + recorded
-gotchas). The actor mechanics are already known — **do NOT re-probe** (`fetch-actor-details`,
-key-status, 400-decoding) each run; just scrape. Only fall back to live Exa/web discovery
-when the registry has no fit, then **append the new vetted handle/channel back** so the list
-compounds.
+**Start from the curated registry, do not re-discover, and run one-shot.** Seed Leg D
+profile pulls and Leg E channel lists from `references/crypto-handles.md` (vetted accounts,
+channels, a "most-valuable shortlist", Actor practices, and recorded gotchas). Do not call
+`fetch-actor-details`, run key-status checks, or decode expected 400 responses on every run.
+Only fall back to live Exa/web discovery when the registry has no fit. Append each new vetted
+handle or channel so the list compounds.
 
-Both run through the GLOBAL Apify actor catalog via **Bash**, not an MCP:
+Use these routes:
 
-```
-python3 ~/.config/apify/actors.py twitter  "<query>" --max_posts 20 --search_type Latest
-python3 ~/.config/apify/actors.py telegram <ch1>,<ch2>,... --max_results 30 --start_date "3 days"
-```
+- Twitter/X posts: prefer `mcp__apify-xquik__xquik--x-tweet-scraper`. Retain the existing
+  `python3 ~/.config/apify/actors.py twitter ...` catalog command as fallback.
+- Public follower relationships: use `mcp__apify-xquik__xquik--x-follower-scraper` only when
+  the research question depends on audience overlap or source relationships. If unavailable,
+  skip this optional enrichment.
+- Telegram: keep the existing catalog route:
+  `python3 ~/.config/apify/actors.py telegram <ch1>,<ch2>,... --max_results 30 --start_date "3 days"`.
 
-Cost discipline: Twitter is ~$0.0003/post (free keys cap `max_posts` at **20**); Telegram is
-~$0.00035/msg **plus a $0.05 actor-start per channel**, so keep channels **≤ 4** and
-`max_results` between **10 and 30** (the `truefetch/telegram-channel-message` actor **floors
-`max_results` at 10** — <10 400s with "must be >= 10"; the schema shows only a prefill, not
-the floor). Single-quote Twitter queries to protect `$cashtags`. Keys rotate automatically (credit-aware). If the catalog or all keys
-are exhausted, **note the gap and skip** — never block the A/B/C legs.
+Before each paid run, verify the current Store price and obtain any required spend approval.
+For Xquik calls, set both `maxItems` and `callOptions.maxTotalChargeUsd`. For the Twitter
+catalog fallback, keep `max_posts` at 20. For Telegram, keep channels at **≤ 4** and
+`max_results` between **10 and 30** because the current Actor rejects values below 10.
+Single-quote catalog queries to protect `$cashtags`. Never put an Apify token in a URL, prompt,
+output, or log. If a social route or its credentials are unavailable, note the gap and skip it.
+Never block the A/B/C legs.
+
+Apply hard social-output budgets before returning either leg. Keep at most 20
+tweet rows, 40 follower rows, or 30 Telegram rows for analysis. Truncate source
+text to 1,000 characters and URLs to 2,048 characters before scoring. Never
+return raw Actor rows. Each final D/E block, including `### Keep verbatim`,
+must stay within 350 words and 4,000 characters. Return at most 10 findings and
+4 excerpts of at most 280 characters each.
 
 ### Leg D — Twitter (X) subagent prompt template
 
-```
+```text
 You are the Twitter/X leg of a multi-source-research fan-out. Topic: "{topic}".
 Recency window: last {N} days. Trading lens is ACTIVE.
 
-Use ONLY the Bash tool to run the global actor catalog (do not call any MCP):
-  python3 ~/.config/apify/actors.py twitter "{query}" --max_posts 20 --search_type Latest
-
 Build {query} for crypto: combine the cashtag(s) and the mechanism, e.g.
   "$BTC funding rate"  /  "$HYPE perp basis"  /  "{ticker} liquidations".
-Run 1-2 calls (vary the query phrasing / cashtag). Each returns a JSON list of tweets.
-To track a specific KOL instead of a search, use: --username <handle> (omit the query).
+
+Preferred route: use ONLY `mcp__apify-xquik__xquik--x-tweet-scraper`.
+Use `Top` as the authoritative ranking policy for both Xquik and catalog
+searches. The date range still enforces the requested recency window.
+Run one bounded search with two query variants:
+{
+  "mode": "search",
+  "searchTerms": ["{query 1}", "{query 2}"],
+  "time": {
+    "since": "{YYYY-MM-DD}",
+    "until": "{YYYY-MM-DD}"
+  },
+  "queryType": "Top",
+  "maxItems": 20,
+  "maxItemsPerTarget": 10,
+  "outputVariant": "rich",
+  "fieldStyle": "camelCase",
+  "outputPreset": "nested",
+  "includeSearchTerms": true,
+  "callOptions": {
+    "maxTotalChargeUsd": 0.10
+  }
+}
+Compute the dates from the requested recency window. To track specific KOLs, replace
+`mode` and `searchTerms` with `"mode": "profileTweets"` and
+`"twitterHandles": ["handle-a", "handle-b"]`; keep the same caps.
+
+When the question depends on audience overlap or source relationships, make one optional
+call to `mcp__apify-xquik__xquik--x-follower-scraper` for two relevant public accounts:
+{
+  "twitterHandles": ["handle-a", "handle-b"],
+  "relation": "followers",
+  "maxItems": 40,
+  "maxItemsPerTarget": 20,
+  "outputMode": "compact",
+  "overlapMode": true,
+  "includeTargetMetadata": true,
+  "callOptions": {
+    "maxTotalChargeUsd": 0.25
+  }
+}
+Report aggregate overlap and only the public accounts needed to support a claim. Treat
+follower relationships as weak signals, not endorsements. Never infer sensitive traits.
+
+Fallback route: if the Xquik Tweet tool is unavailable, use ONLY Bash:
+  python3 ~/.config/apify/actors.py twitter {query_as_one_posix_shell_word} --max_posts 20 --search_type Top
+Before invoking Bash, encode the complete query as one POSIX shell word
+(equivalent to Python `shlex.quote(query)`) and replace the placeholder with
+that encoded word. Never interpolate raw query text, use `eval`, or wrap a raw
+placeholder in double quotes. This preserves literal `$cashtags`, backticks,
+and command-substitution text as data.
+Run 1-2 catalog calls with varied queries, or add `--username <handle>` and omit the query.
+Do not substitute another follower scraper when the optional follower tool is unavailable.
 
 For each tweet: read the text; weight by engagement (likes/retweets/replies if present)
 and recency. Score 1-5: 5 = first-hand desk/PnL/positioning with specifics or a dated
 on-chain claim; 1 = price-cheerleading / influencer noise / unsourced calls.
-Discard obvious shill / airdrop-farming / bot spam.
+Discard obvious shill / airdrop-farming / bot spam. Enforce the shared social
+item and text limits before scoring.
 
 Return ONLY this markdown — no preamble, no raw tweet dumps:
 
@@ -115,12 +173,19 @@ Return ONLY this markdown — no preamble, no raw tweet dumps:
 ### Surprising / contrarian
 {tweets that cut against the crowd or flag a broken edge / venue issue}
 
-Cap output at 350 words. If a call returns nothing or errors, say so under "### Empty".
+### Audience overlap
+{include only when follower enrichment ran; summarize aggregate overlap and limitations}
+
+### Keep verbatim
+{at most 4 concrete excerpts, each ≤280 characters, with its tweet URL}
+
+Hard-cap the complete block at 350 words and 4,000 characters. Return at most
+10 findings. If a call returns nothing or errors, say so under "### Empty".
 ```
 
 ### Leg E — Telegram subagent prompt template
 
-```
+```text
 You are the Telegram leg of a multi-source-research fan-out. Topic: "{topic}".
 Recency window: last {N} days. Trading lens is ACTIVE.
 
@@ -135,7 +200,8 @@ Keep channels ≤ 4. Each returned item has: text, sender, view_count, reactions
 For each message: read text; weight by view_count + reactions; favor announcements that
 move markets (listings, delistings, halts, hacks, regulatory). Score 1-5: 5 = primary
 market-moving announcement or dated on-chain alert; 1 = ad / referral / recycled news.
-Build a source link as t.me/<channel>/<id> when no url is present.
+Build a source link as t.me/<channel>/<id> when no url is present. Enforce the
+shared social item and text limits before scoring.
 
 Return ONLY this markdown:
 
@@ -149,7 +215,11 @@ Return ONLY this markdown:
 ### Cross-channel echoes
 {claims appearing in ≥2 channels — higher confidence}
 
-Cap output at 350 words. If a channel returns nothing or errors, list it under "### Empty".
+### Keep verbatim
+{at most 4 concrete excerpts, each ≤280 characters, with its message URL}
+
+Hard-cap the complete block at 350 words and 4,000 characters. Return at most
+10 findings. If a channel returns nothing or errors, list it under "### Empty".
 ```
 
 ### Synthesis — crypto leg tags
@@ -160,8 +230,8 @@ alongside the existing `[R]/[Y]/[E]`.
 
 ## Default trading-lens scope hint
 
-When announcing scope at Step 1, prefer:
+When announcing an explicitly crypto-scoped query at Step 1, prefer:
 
-> "Scoping: last 30d, trading lens, deep dive — five legs in parallel (Reddit, YouTube, Exa, Twitter, Telegram)."
+> "Scoping: last 30d, crypto trading lens, deep dive: five legs in parallel (Reddit, YouTube, Exa, Twitter, Telegram)."
 
 over the generic phrasing.

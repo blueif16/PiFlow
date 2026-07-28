@@ -4,7 +4,7 @@ Persistent, **EXPANDABLE** list of vetted Twitter accounts + Telegram channels t
 multi-source-research **Twitter (Leg D)** and **Telegram (Leg E)** legs should **START FROM**
 each run — so we stop re-discovering channels every time and stop missing known-good sources.
 
-**How to use:** when the trading lens fires, seed Leg D `--username` pulls + Leg E `telegram`
+**How to use:** when the trading lens fires, seed Leg D profile pulls + Leg E `telegram`
 channel lists from the ⭐⭐+ entries below. **After every run, APPEND any new vetted find here**
 (with what it's good for + a star rating + today's date), and prune sources that have decayed.
 Stars: ⭐ = situational/noisy · ⭐⭐ = useful · ⭐⭐⭐ = high-signal, prioritize.
@@ -12,15 +12,23 @@ Stars: ⭐ = situational/noisy · ⭐⭐ = useful · ⭐⭐⭐ = high-signal, pr
 ---
 
 ## How to use the X/TG actors (best practice)
-1. **One-shot — don't re-probe.** Mechanics + gotchas are recorded here. Run the scrape directly; **skip `fetch-actor-details`, key-status checks, and 400-decoding** — that was first-time gotcha discovery, now done. (Only re-probe if an actor visibly changed.)
-2. **Start here; expand via Exa only if needed.** Seed from the shortlist below. Do live discovery (Exa/web) **only** when the registry has no fit for the topic — then append the find back.
-3. **Intent = candidate-selection / best-practice insight, NOT live emotion.** Go deep (10+ calls) — cost is trivial (~$0.0003/tweet, ~$0.05/TG-channel-start). Under-calling the focus legs "for cost" is the wrong instinct.
-4. **Twitter mechanics:** `--search_type Top` for methodology quality (`Latest` for live); `--username <handle>` for the method accounts (omit the query); single-quote queries to protect `$cashtags`; free keys cap `max_posts` at 20. **Filter on account-age + follower floor, NOT `verified`** (spam is blue-checked). `created_at` + cashtag entities present → mention-velocity harvestable; engagement counts (fav/RT/reply) come back **null** → no engagement-weighting from this feed.
-5. **Telegram mechanics:** `max_results` **10–30** (floors at 10); **$0.05 start/channel** → ≤4 channels/run, comma-listed in one call; `--start_date "N days"`. Returns text + ISO date + `view_count` + emoji `reactions` + reply/forward counts. **News channels LAG** (context only); for the leading families (signal/pump) you MUST build an **append-only edit/delete-tracking ingest first** (channels delete losing calls + edit targets → survivor bias; the actor exposes no edit flag).
-6. **Keys:** rotate automatically (credit-aware); `python3 ~/.config/apify/apify_rotate.py status` if you suspect exhaustion.
+1. **One-shot.** Mechanics and gotchas are recorded here. Run the scrape directly. Skip repeated `fetch-actor-details`, key-status, and expected 400-response probes unless an Actor visibly changed.
+2. **Start here; expand via Exa only if needed.** Seed from the shortlist below. Use live discovery only when the registry has no fit, then append the vetted find.
+3. **Bound every paid run.** Verify current Store pricing. Set `maxItems` plus `callOptions.maxTotalChargeUsd` on Xquik MCP calls. Keep catalog calls within the caps in `trading-lens.md`.
+4. **Twitter mechanics:** `Top` is the authoritative search ranking for this
+   lens. Use Xquik `search` with `queryType: "Top"` and `profileTweets` with
+   `twitterHandles` for method accounts. The catalog fallback uses
+   `--search_type Top` and `--username <handle>`. Encode every fallback query
+   as one POSIX shell word. Never interpolate it raw. This preserves literal
+   `$cashtags` and blocks shell expansion. Filter on account age and follower
+   floor, not `verified` alone. The catalog feed can return null engagement
+   counts, so do not invent engagement weights.
+5. **Follower mechanics:** use Xquik Follower Scraper only for public audience overlap or source-relationship questions. Compare two relevant handles, cap each target, aggregate the result, and never infer sensitive traits.
+6. **Telegram mechanics:** keep `max_results` at **10–30** because the current Actor rejects values below 10. Use at most four comma-listed channels per run and `--start_date "N days"`. Verify current pricing before the run. News channels lag and provide context only. Leading signal/pump families need an append-only edit/delete-tracking ingest first because channels can delete losing calls or edit targets.
+7. **Credentials:** the MCP route uses an `APIFY_TOKEN` authorization header. Never put tokens in URLs, prompts, output, or logs. The catalog fallback retains its existing credit-aware key rotation.
 
 ## ⭐ Most-valuable shortlist (the official recurring set)
-**Twitter — scrape via `--username` (methodology, high-value):**
+**Twitter: scrape via Xquik `profileTweets` or catalog `--username` (methodology, high-value):**
 - Tier-1: **@Keisan_Crypto** + **@kriptoholder** + **@abetrade** (spot-vs-perp CVD split = the sharpened #2), **@kimlage** (OOS gauntlet discipline), **@Alphractal** (slower-horizon mid-cap rotation delta = NEW-B).
 - Tier-2 order-flow: **@QuantFlows_xyz** (level-gate), **@MoFibz** (6-step checklist), **@sportytechworld**.
 - Liq-cascade (⚠️ #6 demoted to beta — discretionary read only): **@0xQuantyx**, **@simo_vanov**.
@@ -36,8 +44,10 @@ Stars: ⭐ = situational/noisy · ⭐⭐ = useful · ⭐⭐⭐ = high-signal, pr
 
 ---
 
-## Twitter / X — methodology & leading-signal practitioners
-_Pull with `--search_type Top` (quality) or `--username <handle>` (timeline). Single-quote queries to protect `$cashtags`._
+## Twitter / X: methodology & leading-signal practitioners
+_The authoritative search ranking is `Top`: use Xquik `queryType: "Top"` or
+`profileTweets`. The catalog fallback uses `--search_type Top` or
+`--username <handle>`._
 
 ### Order flow / CVD / microstructure (candidate #2)
 > _Deep-pass refinement 2026-06-04: the LEADING read is the **spot-vs-perp CVD SPLIT**, **size-filtered by clip** (100k/1M/5M), **level-gated**. Sign is **momentum, not fade** (contrarian IC −0.12). Public naive-VPIN edge **decayed to net-negative in 2026** + half-life ~5s → test where IC dies, model cost-hostile (4 bps taker floor)._
@@ -80,7 +90,7 @@ _Pull with `--search_type Top` (quality) or `--username <handle>` (timeline). Si
 ---
 
 ## Telegram — channels
-_Actor `truefetch/telegram-channel-message` **floors `max_results` at 10** (pass ≥10 or it 400s); **$0.05 actor-start per channel** → keep ≤4/run._
+_Actor `truefetch/telegram-channel-message` **floors `max_results` at 10** (pass ≥10 or it 400s). Keep ≤4 channels per run and verify current pricing first._
 
 ### News / market-moving CONFIRMERS (lag price — context only, not leading)
 - **@WatcherGuru** — liquidations, macro, fear/greed; ~36 msgs/3d; rich emoji reactions (crowd-emotion feature) — ⭐⭐ — 2026-06-04
