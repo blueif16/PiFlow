@@ -102,4 +102,27 @@ describe("skill endpoint — bare-id search uses core's ring roots (workspace ri
     expect(status).toBe(404);
     expect((json as { error: string }).error).toMatch(/not found in known skill dirs/);
   });
+
+  it("does not derive project rings from cwd when the workspace is missing", async () => {
+    const previousCwd = process.cwd();
+    const serverCwd = join(scratch, "server-cwd");
+    const cwdSkill = join(serverCwd, ".claude", "skills", "cwd-only-skill-x7q");
+    const orphanRun = join(scratch, "orphan-run");
+    mkdirSync(cwdSkill, { recursive: true });
+    mkdirSync(orphanRun, { recursive: true });
+    writeFileSync(join(cwdSkill, "SKILL.md"), skillMd("Cwd-only copy."));
+    runDirStub = { runDir: orphanRun, workspaceRoot: null, historyDirs: [] };
+
+    process.chdir(serverCwd);
+    try {
+      const { status, json } = await call(piflowSkill, {
+        method: "GET",
+        url: "/__piflow/skill/orphan?skill=cwd-only-skill-x7q",
+      });
+      expect(status).toBe(404);
+      expect((json as { error: string }).error).toMatch(/not found in known skill dirs/);
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
 });

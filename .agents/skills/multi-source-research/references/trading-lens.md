@@ -97,6 +97,8 @@ Build {query} for crypto: combine the cashtag(s) and the mechanism, e.g.
   "$BTC funding rate"  /  "$HYPE perp basis"  /  "{ticker} liquidations".
 
 Preferred route: use ONLY `mcp__apify-xquik__xquik--x-tweet-scraper`.
+Use `Top` as the authoritative ranking policy for both Xquik and catalog
+searches. The date range still enforces the requested recency window.
 Run one bounded search with two query variants:
 {
   "mode": "search",
@@ -105,7 +107,7 @@ Run one bounded search with two query variants:
     "since": "{YYYY-MM-DD}",
     "until": "{YYYY-MM-DD}"
   },
-  "queryType": "Latest",
+  "queryType": "Top",
   "maxItems": 20,
   "maxItemsPerTarget": 10,
   "outputVariant": "rich",
@@ -138,7 +140,12 @@ Report aggregate overlap and only the public accounts needed to support a claim.
 follower relationships as weak signals, not endorsements. Never infer sensitive traits.
 
 Fallback route: if the Xquik Tweet tool is unavailable, use ONLY Bash:
-  python3 ~/.config/apify/actors.py twitter "{query}" --max_posts 20 --search_type Latest
+  python3 ~/.config/apify/actors.py twitter {query_as_one_posix_shell_word} --max_posts 20 --search_type Top
+Before invoking Bash, encode the complete query as one POSIX shell word
+(equivalent to Python `shlex.quote(query)`) and replace the placeholder with
+that encoded word. Never interpolate raw query text, use `eval`, or wrap a raw
+placeholder in double quotes. This preserves literal `$cashtags`, backticks,
+and command-substitution text as data.
 Run 1-2 catalog calls with varied queries, or add `--username <handle>` and omit the query.
 Do not substitute another follower scraper when the optional follower tool is unavailable.
 

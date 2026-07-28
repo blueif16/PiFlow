@@ -15,7 +15,14 @@ Stars: ⭐ = situational/noisy · ⭐⭐ = useful · ⭐⭐⭐ = high-signal, pr
 1. **One-shot.** Mechanics and gotchas are recorded here. Run the scrape directly. Skip repeated `fetch-actor-details`, key-status, and expected 400-response probes unless an Actor visibly changed.
 2. **Start here; expand via Exa only if needed.** Seed from the shortlist below. Use live discovery only when the registry has no fit, then append the vetted find.
 3. **Bound every paid run.** Verify current Store pricing. Set `maxItems` plus `callOptions.maxTotalChargeUsd` on Xquik MCP calls. Keep catalog calls within the caps in `trading-lens.md`.
-4. **Twitter mechanics:** prefer Xquik `search` with `queryType: "Top"` for methodology quality and `profileTweets` with `twitterHandles` for method accounts. The catalog fallback uses `--search_type Top` and `--username <handle>`. Single-quote fallback queries to protect `$cashtags`. Filter on account age and follower floor, not `verified` alone. The catalog feed can return null engagement counts, so do not invent engagement weights.
+4. **Twitter mechanics:** `Top` is the authoritative search ranking for this
+   lens. Use Xquik `search` with `queryType: "Top"` and `profileTweets` with
+   `twitterHandles` for method accounts. The catalog fallback uses
+   `--search_type Top` and `--username <handle>`. Encode every fallback query
+   as one POSIX shell word. Never interpolate it raw. This preserves literal
+   `$cashtags` and blocks shell expansion. Filter on account age and follower
+   floor, not `verified` alone. The catalog feed can return null engagement
+   counts, so do not invent engagement weights.
 5. **Follower mechanics:** use Xquik Follower Scraper only for public audience overlap or source-relationship questions. Compare two relevant handles, cap each target, aggregate the result, and never infer sensitive traits.
 6. **Telegram mechanics:** keep `max_results` at **10–30** because the current Actor rejects values below 10. Use at most four comma-listed channels per run and `--start_date "N days"`. Verify current pricing before the run. News channels lag and provide context only. Leading signal/pump families need an append-only edit/delete-tracking ingest first because channels can delete losing calls or edit targets.
 7. **Credentials:** the MCP route uses an `APIFY_TOKEN` authorization header. Never put tokens in URLs, prompts, output, or logs. The catalog fallback retains its existing credit-aware key rotation.
@@ -38,7 +45,9 @@ Stars: ⭐ = situational/noisy · ⭐⭐ = useful · ⭐⭐⭐ = high-signal, pr
 ---
 
 ## Twitter / X: methodology & leading-signal practitioners
-_Use Xquik `queryType: "Top"` or `profileTweets`. The catalog fallback uses `--search_type Top` or `--username <handle>`._
+_The authoritative search ranking is `Top`: use Xquik `queryType: "Top"` or
+`profileTweets`. The catalog fallback uses `--search_type Top` or
+`--username <handle>`._
 
 ### Order flow / CVD / microstructure (candidate #2)
 > _Deep-pass refinement 2026-06-04: the LEADING read is the **spot-vs-perp CVD SPLIT**, **size-filtered by clip** (100k/1M/5M), **level-gated**. Sign is **momentum, not fade** (contrarian IC −0.12). Public naive-VPIN edge **decayed to net-negative in 2026** + half-life ~5s → test where IC dies, model cost-hostile (4 bps taker floor)._

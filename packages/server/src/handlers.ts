@@ -423,8 +423,7 @@ export const piflowSkill: Middleware = async (req, res, next) => {
   const { skillSearchRoots } = (await import(pathToFileURL(locateMod).href)) as {
     skillSearchRoots: (workspace: string) => string[];
   };
-  const allRings = skillSearchRoots(workspaceRoot ?? ".");
-  const ringRoots = workspaceRoot ? allRings : allRings.slice(1);
+  const ringRoots = workspaceRoot ? skillSearchRoots(workspaceRoot) : [];
   // Display-only extras the runner never stages from: the home dirs pi/Claude discover skills in natively.
   const discoveryRoots = [join(home, ".claude", "skills"), join(home, ".pi", "agent", "skills")];
   // The read allowlist (the jail): a resolved SKILL.md's realpath MUST live under one of these roots or it is

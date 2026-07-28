@@ -58,13 +58,15 @@ ONLY use these tools inside this skill:
 
 Do NOT use `WebFetch` for content already returned by Exa/Reddit/yt-rag. Do NOT mix in random web tools.
 
-## Architecture: three legs, one synthesis
+## Architecture: three base legs, one synthesis
 
 ```
 Main agent (lean — never reads raw posts/chunks)
 ├── Leg A: Reddit subagent      ──┐
 ├── Leg B: YouTube (yt-rag)     ──┤  launched IN PARALLEL via Agent
-├── Leg C: Exa web              ──┘  (+ optional WebSearch A/B probe)
+├── Leg C: Exa web              ──┤  (+ optional WebSearch A/B probe)
+├── Leg D: Twitter/X subagent   ──┤  trading lens only
+├── Leg E: Telegram subagent    ──┘  trading lens only
 └── Synthesis: merge → brief.md → present to user
 ```
 
@@ -72,7 +74,8 @@ Main agent (lean — never reads raw posts/chunks)
 
 **Why subagents?** A single Reddit thread or 5 yt-rag chunks can be 5-20k tokens. Three legs at 30+ items each = 100k+ tokens of raw text. Subagents process, dedupe, and return ~30 distilled bullets per leg plus a `### Keep verbatim` block of concrete specifics (≤2-3k tokens each). Main stays well under ~20k tokens regardless of query depth — while still receiving the details the final guide needs.
 
-**Parallelism:** launch all three Agent tool calls in a **single message** with multiple tool_use blocks. Do not serialize.
+**Parallelism:** launch A–C in one message for generic research. When the
+trading lens is active, launch A–E in one message. Do not serialize.
 
 ## Step 1 — Classify and scope the query
 
@@ -82,7 +85,8 @@ Before fan-out, decide three things:
 2. **Domain lens.** Check the overlay cues above. If trading lens fires, load `references/trading-lens.md` and apply its defaults. Otherwise treat the topic generically.
 3. **Depth.** Quick scan = top_k=5 per leg, ≤6 Exa results. Deep dive = top_k=15, 20+ Exa results, follow-up `web_fetch_exa` on the best 3 URLs.
 
-Tell the user the scope in one line before launching: *"Scoping: last 30d, {lens}, deep dive — three legs in parallel."*
+Tell the user the scope in one line before launching: *"Scoping: last 30d,
+{lens}, deep dive: {three generic | five trading} legs in parallel."*
 
 ## Step 2 — Inventory check + auto-enrich (yt-rag)
 
@@ -98,9 +102,12 @@ Before the YouTube leg runs, call `mcp__yt-rag__list_repository` **once** in mai
 
 Compounding: the corpus is global, so an enrichment ingest benefits every future run. The yt-rag MCP server has **no web/Exa access**, so the discovery half MUST live here in the skill — the server only exposes `ingest_videos` / `ingest_channel(s)`.
 
-## Step 3 — Launch the three legs in parallel
+## Step 3: Launch A–C or A–E in parallel
 
-Use one message with three `Agent` tool calls. Templates below. Each subagent must return a structured markdown block, not raw text.
+Use one message with three `Agent` calls for generic research. Use one message
+with five calls when the trading lens adds D and E. Templates are below and in
+`references/trading-lens.md`. Each subagent must return a structured markdown
+block, not raw text.
 
 **Detail-preservation rule (applies to ALL legs — overrides any "Return ONLY" / "no raw quotes" line in the templates).** The word caps in the templates keep the *ranked-findings bullets* lean — they are NOT a license to discard substance. In addition to its template sections, every leg must append a **`### Keep verbatim`** block holding the concrete specifics worth carrying into the final guide: exact example snippets, exact numbers/figures, named tools/formats/fields, precise phrasings, short high-signal quotes — each with its source URL/creator/subreddit. This block does **not** count toward the word cap. Rule of thumb: the synthesizer can always cut a detail, but it can never recover one a leg never returned — so when in doubt, preserve the specific over the summary.
 
@@ -241,7 +248,10 @@ Skip the probe on deep dives (too much overhead) or when the user has already de
 
 ## Step 5 — Synthesize
 
-Main agent receives 3-4 distilled blocks (findings bullets **+ each leg's `### Keep verbatim` block**). Do **not** read raw chunks again. You produce **two artifacts at different altitudes**:
+Main agent receives the A–C blocks, optional A/B probe, and the D/E blocks when
+the trading lens is active. Each block includes findings bullets and its
+`### Keep verbatim` section. Do **not** read raw chunks again. You produce
+**two artifacts at different altitudes**:
 
 - **Chat reply = concise.** Print the resolved file path, a tight TL;DR (3-5 bullets), and the 2-3 most decision-relevant findings. This is the *only* place brevity is the goal.
 - **Written file = comprehensive. Completeness over brevity.** This file gets reused later, so do NOT strip detail to look clean or to seem efficient. Fold in **every crucial, novel, or worth-keeping detail** the legs surfaced — especially everything in the `### Keep verbatim` blocks: concrete techniques, exact numbers, named tools/formats, example snippets, edge cases, contradictions. **Give each claim an inline source reference** — the `[R]`/`[Y]`/`[E]` tag *and* the specific creator/site/subreddit (and URL/timestamp where available) — so any reader can trace it. Cut only true noise and duplication, never substance. When unsure whether a detail earns its place, keep it (tagged) rather than cut it.
@@ -251,7 +261,7 @@ Default file template — these sections are **minimums, not caps**; expand any 
 ```markdown
 # {topic} — research brief
 _scope: {recency}, {lens}, {depth} • generated {date}_
-_source tags: [R]=Reddit • [Y]=YouTube (yt-rag) • [E]=Exa web. Inline citations name the specific creator/site so every claim is traceable._
+_source tags: [R]=Reddit • [Y]=YouTube (yt-rag) • [E]=Exa web • [X]=Twitter/X when active • [T]=Telegram when active. Inline citations name the specific creator/site so every claim is traceable._
 
 ## TL;DR
 {3-5 bullets — highest-confidence claims that survived ≥2 sources}
@@ -282,9 +292,13 @@ each with an inline source ref. Prose or bullets, whatever carries the detail be
 - {bullets with deep-link urls — keep the MM:SS timestamps}
 ### Exa
 - {bullets with urls}
+### Twitter/X (trading lens only)
+- {bullets with tweet urls}
+### Telegram (trading lens only)
+- {bullets with channel and message references}
 
 ## Method notes
-- Legs run: {A/B/C, ± A/B probe} • Empty legs: {any}
+- Legs run: {A/B/C for generic, A/B/C/D/E for trading, ± A/B probe} • Empty legs: {any}
 - {if A/B probe ran} Exa vs WebSearch: {overlap %, tilt}
 ```
 
@@ -324,7 +338,7 @@ Don't reach for these tools for ordinary "find me an article about X" queries �
 
 ## Performance & limits
 
-- A standard run = 3 legs in parallel, ~30-60s wall clock.
+- A generic run uses 3 parallel legs. A trading-lens run uses 5 parallel legs.
 - Each leg subagent stays under 8 tool calls. If a leg needs more, it's drifting — kill and re-scope.
 - Reddit (Apify `macrocosmos`) is pay-per-result. Verify current Store pricing before a run. One call fans across ALL listed subreddits, so keep `subreddits` ≤8 and `limit` ≤15 per call. Two calls per leg is plenty.
 - yt-rag `ingest_channel` is slow (30s-2min for 30 videos). Never call it inside a fan-out — only on explicit user OK. Remember: the corpus is global, so an ingest in one repo benefits every future run.
@@ -332,7 +346,7 @@ Don't reach for these tools for ordinary "find me an article about X" queries �
 
 ## Common failure modes
 
-- **Echo chamber.** All three legs cite the same Twitter thread. Down-score and note in synthesis.
+- **Echo chamber.** Multiple legs repeat one source. Down-score and note it in synthesis.
 - **Stale yt-rag.** If `published_at` on every chunk is >3mo old for a fast-moving topic, recommend ingest before trusting.
 - **Vendor astroturf.** Reddit posts shilling a paid product. Score 1, flag in "What's broken / contested".
 - **Exa hallucination via summary.** If `web_search_exa` returns a highlight that sounds too clean, fetch the URL with `web_fetch_exa` and verify before quoting.
