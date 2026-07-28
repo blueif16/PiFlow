@@ -374,7 +374,8 @@ Don't reach for these tools for ordinary "find me an article about X" queries �
 
 ## Performance & limits
 
-- A generic run uses 3 parallel legs. A trading-lens run uses 5 parallel legs.
+- A generic or non-crypto finance run uses 3 parallel legs. Only an explicitly
+  crypto-scoped trading-lens run uses 5 parallel legs.
 - Each leg subagent stays under 8 tool calls. If a leg needs more, it's drifting — kill and re-scope.
 - Reddit (Apify `macrocosmos`) is pay-per-result. Verify current Store pricing before a run. One call fans across ALL listed subreddits, so keep `subreddits` ≤8 and `limit` ≤15 per call. Two calls per leg is plenty.
 - yt-rag `ingest_channel` is slow (30s-2min for 30 videos). Never call it inside a fan-out — only on explicit user OK. Remember: the corpus is global, so an ingest in one repo benefits every future run.
