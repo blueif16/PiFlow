@@ -56,11 +56,10 @@ Format inside the brief:
 
 ## Crypto-only legs — Twitter (X) + Telegram
 
-**These two legs fire ONLY under this lens** (crypto / perps / on-chain / funding / venue
-topics). Do NOT run them in generic research — they are pay-per-result social feeds whose
-signal is mostly relevant to fast-moving crypto markets. When the trading lens is active,
-append them to the parallel fan-out so a trading run is **five legs** (A Reddit, B YouTube,
-C Exa, **D Twitter, E Telegram**) launched in one message.
+**These two legs require this lens and `crypto_scope=true`.** Set that flag only
+with the canonical predicate in `SKILL.md`; do not infer it again here. Generic
+research and non-crypto finance stay on three legs. A crypto run appends
+**D Twitter** and **E Telegram** to A–C in one parallel message.
 
 **Start from the curated registry, do not re-discover, and run one-shot.** Seed Leg D
 profile pulls and Leg E channel lists from `references/crypto-handles.md` (vetted accounts,
@@ -87,9 +86,16 @@ Single-quote catalog queries to protect `$cashtags`. Never put an Apify token in
 output, or log. If a social route or its credentials are unavailable, note the gap and skip it.
 Never block the A/B/C legs.
 
+Apply hard social-output budgets before returning either leg. Keep at most 20
+tweet rows, 40 follower rows, or 30 Telegram rows for analysis. Truncate source
+text to 1,000 characters and URLs to 2,048 characters before scoring. Never
+return raw Actor rows. Each final D/E block, including `### Keep verbatim`,
+must stay within 350 words and 4,000 characters. Return at most 10 findings and
+4 excerpts of at most 280 characters each.
+
 ### Leg D — Twitter (X) subagent prompt template
 
-```
+```text
 You are the Twitter/X leg of a multi-source-research fan-out. Topic: "{topic}".
 Recency window: last {N} days. Trading lens is ACTIVE.
 
@@ -127,8 +133,8 @@ call to `mcp__apify-xquik__xquik--x-follower-scraper` for two relevant public ac
 {
   "twitterHandles": ["handle-a", "handle-b"],
   "relation": "followers",
-  "maxItems": 100,
-  "maxItemsPerTarget": 50,
+  "maxItems": 40,
+  "maxItemsPerTarget": 20,
   "outputMode": "compact",
   "overlapMode": true,
   "includeTargetMetadata": true,
@@ -152,7 +158,8 @@ Do not substitute another follower scraper when the optional follower tool is un
 For each tweet: read the text; weight by engagement (likes/retweets/replies if present)
 and recency. Score 1-5: 5 = first-hand desk/PnL/positioning with specifics or a dated
 on-chain claim; 1 = price-cheerleading / influencer noise / unsourced calls.
-Discard obvious shill / airdrop-farming / bot spam.
+Discard obvious shill / airdrop-farming / bot spam. Enforce the shared social
+item and text limits before scoring.
 
 Return ONLY this markdown — no preamble, no raw tweet dumps:
 
@@ -169,12 +176,16 @@ Return ONLY this markdown — no preamble, no raw tweet dumps:
 ### Audience overlap
 {include only when follower enrichment ran; summarize aggregate overlap and limitations}
 
-Cap output at 350 words. If a call returns nothing or errors, say so under "### Empty".
+### Keep verbatim
+{at most 4 concrete excerpts, each ≤280 characters, with its tweet URL}
+
+Hard-cap the complete block at 350 words and 4,000 characters. Return at most
+10 findings. If a call returns nothing or errors, say so under "### Empty".
 ```
 
 ### Leg E — Telegram subagent prompt template
 
-```
+```text
 You are the Telegram leg of a multi-source-research fan-out. Topic: "{topic}".
 Recency window: last {N} days. Trading lens is ACTIVE.
 
@@ -189,7 +200,8 @@ Keep channels ≤ 4. Each returned item has: text, sender, view_count, reactions
 For each message: read text; weight by view_count + reactions; favor announcements that
 move markets (listings, delistings, halts, hacks, regulatory). Score 1-5: 5 = primary
 market-moving announcement or dated on-chain alert; 1 = ad / referral / recycled news.
-Build a source link as t.me/<channel>/<id> when no url is present.
+Build a source link as t.me/<channel>/<id> when no url is present. Enforce the
+shared social item and text limits before scoring.
 
 Return ONLY this markdown:
 
@@ -203,7 +215,11 @@ Return ONLY this markdown:
 ### Cross-channel echoes
 {claims appearing in ≥2 channels — higher confidence}
 
-Cap output at 350 words. If a channel returns nothing or errors, list it under "### Empty".
+### Keep verbatim
+{at most 4 concrete excerpts, each ≤280 characters, with its message URL}
+
+Hard-cap the complete block at 350 words and 4,000 characters. Return at most
+10 findings. If a channel returns nothing or errors, list it under "### Empty".
 ```
 
 ### Synthesis — crypto leg tags
@@ -214,8 +230,8 @@ alongside the existing `[R]/[Y]/[E]`.
 
 ## Default trading-lens scope hint
 
-When announcing scope at Step 1, prefer:
+When announcing an explicitly crypto-scoped query at Step 1, prefer:
 
-> "Scoping: last 30d, trading lens, deep dive — five legs in parallel (Reddit, YouTube, Exa, Twitter, Telegram)."
+> "Scoping: last 30d, crypto trading lens, deep dive: five legs in parallel (Reddit, YouTube, Exa, Twitter, Telegram)."
 
 over the generic phrasing.

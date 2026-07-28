@@ -34,12 +34,16 @@ If `apify-xquik` is missing, retain the existing Twitter catalog fallback and sk
 
 ## Domain overlays
 
-This skill is domain-agnostic by default. If the working directory or topic is finance/trading flavored, **read `references/trading-lens.md`** before launching legs and merge its defaults (subreddit list, channel ingest suggestions, Exa angles, invariant check, **plus two crypto-only legs: Twitter + Telegram**). Detection cues:
+This skill is domain-agnostic by default. If the working directory or topic is finance/trading flavored, **read `references/trading-lens.md`** before launching legs and merge its Reddit, YouTube, Exa, and invariant defaults. Detection cues:
 
 - Project `CLAUDE.md` mentions trading, quant, perps, alpha, crypto, market making, Hyperliquid, funding rates.
 - User query names a financial instrument, exchange, regime, drawdown, Sharpe, basis, or backtest.
 
-If neither applies, skip the overlay and use the generic templates as written.
+Decide the paid social scope separately. Launch Twitter/X and Telegram only
+when the project or query explicitly names crypto, a token or chain, on-chain
+activity, DeFi, perps, funding rates, MEV, or a crypto venue. Generic equities,
+portfolio, Sharpe, or backtest research stays on legs A–C. If neither finance
+cue applies, skip the overlay and use the generic templates as written.
 
 ## Tool restriction
 
@@ -60,33 +64,40 @@ Do NOT use `WebFetch` for content already returned by Exa/Reddit/yt-rag. Do NOT 
 
 ## Architecture: three base legs, one synthesis
 
-```
+```text
 Main agent (lean — never reads raw posts/chunks)
 ├── Leg A: Reddit subagent      ──┐
 ├── Leg B: YouTube (yt-rag)     ──┤  launched IN PARALLEL via Agent
 ├── Leg C: Exa web              ──┤  (+ optional WebSearch A/B probe)
-├── Leg D: Twitter/X subagent   ──┤  trading lens only
-├── Leg E: Telegram subagent    ──┘  trading lens only
+├── Leg D: Twitter/X subagent   ──┤  crypto scope only
+├── Leg E: Telegram subagent    ──┘  crypto scope only
 └── Synthesis: merge → brief.md → present to user
 ```
 
-**Trading lens adds two legs.** When `references/trading-lens.md` is active (crypto/perps/funding topics), legs **D Twitter** and **E Telegram** run in the SAME parallel message. Leg D prefers the Xquik Actor tools and retains `actors.py` as its fallback. Leg E keeps using the catalog. They never run in generic (non-crypto) research.
+**Crypto scope adds two legs.** When the trading lens and the explicit crypto
+predicate above are both active, legs **D Twitter** and **E Telegram** run in
+the SAME parallel message. Leg D prefers the Xquik Actor tools and retains
+`actors.py` as its fallback. Leg E keeps using the catalog. They never run in
+generic or non-crypto finance research.
 
 **Why subagents?** A single Reddit thread or 5 yt-rag chunks can be 5-20k tokens. Three legs at 30+ items each = 100k+ tokens of raw text. Subagents process, dedupe, and return ~30 distilled bullets per leg plus a `### Keep verbatim` block of concrete specifics (≤2-3k tokens each). Main stays well under ~20k tokens regardless of query depth — while still receiving the details the final guide needs.
 
-**Parallelism:** launch A–C in one message for generic research. When the
-trading lens is active, launch A–E in one message. Do not serialize.
+**Parallelism:** launch A–C in one message for generic or non-crypto finance
+research. When crypto scope is active, launch A–E in one message. Do not
+serialize.
 
 ## Step 1 — Classify and scope the query
 
 Before fan-out, decide three things:
 
 1. **Recency window.** "Latest on X" → last 30d. "Is X dead?" → 6mo. "How does X work?" → no recency filter.
-2. **Domain lens.** Check the overlay cues above. If trading lens fires, load `references/trading-lens.md` and apply its defaults. Otherwise treat the topic generically.
+2. **Domain lens.** Check the overlay cues above. If the trading lens fires,
+   load `references/trading-lens.md` and apply its defaults. Independently set
+   `crypto_scope=true` only when the explicit crypto predicate matches.
 3. **Depth.** Quick scan = top_k=5 per leg, ≤6 Exa results. Deep dive = top_k=15, 20+ Exa results, follow-up `web_fetch_exa` on the best 3 URLs.
 
 Tell the user the scope in one line before launching: *"Scoping: last 30d,
-{lens}, deep dive: {three generic | five trading} legs in parallel."*
+{lens}, deep dive: {three generic/non-crypto | five crypto} legs in parallel."*
 
 ## Step 2 — Inventory check + auto-enrich (yt-rag)
 
@@ -104,16 +115,16 @@ Compounding: the corpus is global, so an enrichment ingest benefits every future
 
 ## Step 3: Launch A–C or A–E in parallel
 
-Use one message with three `Agent` calls for generic research. Use one message
-with five calls when the trading lens adds D and E. Templates are below and in
-`references/trading-lens.md`. Each subagent must return a structured markdown
-block, not raw text.
+Use one message with three `Agent` calls for generic or non-crypto finance
+research. Use one message with five calls only when crypto scope adds D and E.
+Templates are below and in `references/trading-lens.md`. Each subagent must
+return a structured markdown block, not raw text.
 
-**Detail-preservation rule (applies to ALL legs — overrides any "Return ONLY" / "no raw quotes" line in the templates).** The word caps in the templates keep the *ranked-findings bullets* lean — they are NOT a license to discard substance. In addition to its template sections, every leg must append a **`### Keep verbatim`** block holding the concrete specifics worth carrying into the final guide: exact example snippets, exact numbers/figures, named tools/formats/fields, precise phrasings, short high-signal quotes — each with its source URL/creator/subreddit. This block does **not** count toward the word cap. Rule of thumb: the synthesizer can always cut a detail, but it can never recover one a leg never returned — so when in doubt, preserve the specific over the summary.
+**Detail-preservation rule (applies to ALL legs and overrides any "Return ONLY" or "no raw quotes" line in the templates).** The word caps keep the *ranked-findings bullets* lean. They are not a license to discard substance. Every leg must also append a **`### Keep verbatim`** block with the concrete specifics worth carrying into the final guide. Preserve exact snippets, numbers, named tools, formats, fields, precise phrasings, and short high-signal quotes. Attach the source URL, creator, or subreddit. This block does not count toward the ranked-bullet cap, but A–C must keep it within 2,000 words. Paid social legs D and E use the stricter item and character budgets in `references/trading-lens.md`. The synthesizer can cut a detail, but it cannot recover one a leg never returned. Preserve the specific within those budgets.
 
 ### Leg A — Reddit subagent prompt template
 
-```
+```text
 You are the Reddit leg of an multi-source-research fan-out. Topic: "{topic}".
 Recency window: last {N} days. Domain lens: {lens or "generic"}.
 
@@ -153,14 +164,16 @@ Return this markdown — no preamble (short high-signal verbatim snippets belong
 {bullet anything where high-karma comments contradict the OP or each other}
 
 ### Keep verbatim
-{concrete specifics worth carrying into the final guide — exact techniques, numbers, named tools/formats, short quotes — each with its post url. Does NOT count toward the word cap.}
+{concrete specifics worth carrying into the final guide: exact techniques, numbers, named tools/formats, and short quotes. Include each post URL. This does not count toward the bullet cap; keep it within the shared 2,000-word ceiling.}
 
-Cap the bullet sections at ~400 words (Keep-verbatim is uncapped). If a subreddit returns nothing, list it under "### Empty".
+Cap the bullet sections at ~400 words. Keep `### Keep verbatim` within the
+shared 2,000-word ceiling. If a subreddit returns nothing, list it under
+`### Empty`.
 ```
 
 ### Leg B — YouTube (yt-rag) subagent prompt template
 
-```
+```text
 You are the YouTube leg of an multi-source-research fan-out. Topic: "{topic}".
 
 Use ONLY mcp__yt-rag__search. Namespaces in scope: {namespace_list_from_step_2}
@@ -191,14 +204,16 @@ Return this markdown:
 {bullets — interesting claims made by exactly one creator, worth checking}
 
 ### Keep verbatim
-{concrete techniques/steps/numbers a creator actually demonstrates — name the channel + keep the MM:SS deep-link. Does NOT count toward the word cap.}
+{concrete techniques, steps, and numbers a creator actually demonstrates. Name the channel and keep the MM:SS deep-link. This does not count toward the bullet cap; keep it within the shared 2,000-word ceiling.}
 
-Cap the bullet sections at ~400 words (Keep-verbatim is uncapped). If a query returns nothing, suggest one channel to ingest.
+Cap the bullet sections at ~400 words. Keep `### Keep verbatim` within the
+shared 2,000-word ceiling. If a query returns nothing, suggest one channel to
+ingest.
 ```
 
 ### Leg C — Exa subagent prompt template
 
-```
+```text
 You are the Exa leg of an multi-source-research fan-out. Topic: "{topic}".
 
 Use ONLY mcp__exa__web_search_exa and mcp__exa__web_fetch_exa.
@@ -231,9 +246,10 @@ Return this markdown:
 {what the search did NOT surface — code? recent data? institutional view?}
 
 ### Keep verbatim
-{concrete techniques + example snippets (prompt fragments, config, code, exact structures/figures) extracted from the pages — each with its url. Preserve specifics rather than paraphrasing them away. Does NOT count toward the word cap.}
+{concrete techniques and example snippets (prompt fragments, config, code, exact structures/figures) extracted from the pages. Include each URL. Preserve specifics rather than paraphrasing them away. This does not count toward the bullet cap; keep it within the shared 2,000-word ceiling.}
 
-Cap the bullet sections at ~400 words (Keep-verbatim is uncapped).
+Cap the bullet sections at ~400 words. Keep `### Keep verbatim` within the
+shared 2,000-word ceiling.
 ```
 
 ## Step 4 — Optional: Exa vs WebSearch A/B probe
@@ -249,7 +265,7 @@ Skip the probe on deep dives (too much overhead) or when the user has already de
 ## Step 5 — Synthesize
 
 Main agent receives the A–C blocks, optional A/B probe, and the D/E blocks when
-the trading lens is active. Each block includes findings bullets and its
+crypto scope is active. Each block includes findings bullets and its
 `### Keep verbatim` section. Do **not** read raw chunks again. You produce
 **two artifacts at different altitudes**:
 
@@ -292,13 +308,13 @@ each with an inline source ref. Prose or bullets, whatever carries the detail be
 - {bullets with deep-link urls — keep the MM:SS timestamps}
 ### Exa
 - {bullets with urls}
-### Twitter/X (trading lens only)
+### Twitter/X (crypto scope only)
 - {bullets with tweet urls}
-### Telegram (trading lens only)
+### Telegram (crypto scope only)
 - {bullets with channel and message references}
 
 ## Method notes
-- Legs run: {A/B/C for generic, A/B/C/D/E for trading, ± A/B probe} • Empty legs: {any}
+- Legs run: {A/B/C for generic or non-crypto finance, A/B/C/D/E for crypto, ± A/B probe} • Empty legs: {any}
 - {if A/B probe ran} Exa vs WebSearch: {overlap %, tilt}
 ```
 
