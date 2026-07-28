@@ -10,7 +10,7 @@ display:
 
 # Multi-Source Research — three-source fan-out
 
-Run parallel deep searches across **Reddit**, the **local YouTube RAG (`yt-rag`)**, and **Exa** (with native `WebSearch` as a comparison probe), then synthesize into one brief. Main agent stays lean: subagents do the raw fetches and return distilled bullets **plus the concrete specifics worth keeping** (see the detail-preservation rule in Step 3). The written brief favors **completeness over brevity** — it is a reusable artifact, not a one-off chat answer (see Step 5).
+Run parallel deep searches across **Reddit**, the **local YouTube RAG (`yt-rag`)**, and **Exa** (with native `WebSearch` as a comparison probe), then synthesize into one brief. Main agent stays lean: subagents do the raw fetches and return distilled bullets **plus the concrete specifics worth keeping** (see the detail-preservation rule in Step 3). The written brief preserves the highest-value specifics within Step 5's hard budget.
 
 ## Prerequisites
 
@@ -269,10 +269,27 @@ crypto scope is active. Each block includes findings bullets and its
 `### Keep verbatim` section. Do **not** read raw chunks again. You produce
 **two artifacts at different altitudes**:
 
-- **Chat reply = concise.** Print the resolved file path, a tight TL;DR (3-5 bullets), and the 2-3 most decision-relevant findings. This is the *only* place brevity is the goal.
-- **Written file = comprehensive. Completeness over brevity.** This file gets reused later, so do NOT strip detail to look clean or to seem efficient. Fold in **every crucial, novel, or worth-keeping detail** the legs surfaced — especially everything in the `### Keep verbatim` blocks: concrete techniques, exact numbers, named tools/formats, example snippets, edge cases, contradictions. **Give each claim an inline source reference** — the `[R]`/`[Y]`/`[E]` tag *and* the specific creator/site/subreddit (and URL/timestamp where available) — so any reader can trace it. Cut only true noise and duplication, never substance. When unsure whether a detail earns its place, keep it (tagged) rather than cut it.
+- **Chat reply = concise.** Keep it under 500 words and 3,000 characters. Print the resolved file path, a tight TL;DR (3-5 bullets), and the 2-3 most decision-relevant findings.
+- **Written file = comprehensive within a hard budget.** Keep the complete rendered file at or below 4,000 words and 24,000 Unicode characters, whichever limit comes first. Give every retained claim an inline `[R]`/`[Y]`/`[E]`/`[X]`/`[T]` source tag plus the creator, site, subreddit, URL, or timestamp available.
 
-Default file template — these sections are **minimums, not caps**; expand any section as far as the material warrants:
+Apply this deterministic budget pass before writing:
+
+1. Deduplicate claims by normalized claim and source URL.
+2. Rank cross-source or primary-source findings first.
+3. Rank reproducible methods, exact figures, risks, and contradictions next.
+4. Reserve 1,200 words and 7,200 characters for the highest-ranked
+   `Keep verbatim` items. Release unused space to other content.
+5. Rank remaining context by source strength, recency, then leg order A–E.
+6. Render the file and count whitespace-delimited words and Unicode characters.
+7. If either cap is exceeded, remove the lowest-ranked complete item. Repeat.
+8. Never split a quote, code example, citation, or URL during truncation.
+9. End with `Budget note: {N} lower-ranked items omitted.` when anything is cut.
+
+Keep every source entry cited by a retained claim. Remove an entry only when no
+retained claim cites it. The budgeted `Keep verbatim` reserve takes priority
+over explanatory prose, but it does not override the total caps.
+
+Default file template. Expand sections only within the total file budget:
 
 ```markdown
 # {topic} — research brief
@@ -283,9 +300,9 @@ _source tags: [R]=Reddit • [Y]=YouTube (yt-rag) • [E]=Exa web • [X]=Twitte
 {3-5 bullets — highest-confidence claims that survived ≥2 sources}
 
 ## Key findings (in depth)
-{The substance — one subsection per major theme. Under each, ALL the concrete detail for that
-theme: techniques, mechanisms, exact numbers, named tools/formats, example snippets, caveats —
-each with an inline source ref. Prose or bullets, whatever carries the detail best. No length cap.}
+{One subsection per major theme. Retain the highest-ranked techniques,
+mechanisms, exact numbers, named tools/formats, snippets, and caveats. Give each
+item an inline source ref.}
 
 ## What's working (claimed)
 {bullets, each tagged + named source}
@@ -313,6 +330,9 @@ each with an inline source ref. Prose or bullets, whatever carries the detail be
 ### Telegram (crypto scope only)
 - {bullets with channel and message references}
 
+## Budget note
+{Only when truncation occurred: N lower-ranked items omitted.}
+
 ## Method notes
 - Legs run: {A/B/C for generic or non-crypto finance, A/B/C/D/E for crypto, ± A/B probe} • Empty legs: {any}
 - {if A/B probe ran} Exa vs WebSearch: {overlap %, tilt}
@@ -321,7 +341,7 @@ each with an inline source ref. Prose or bullets, whatever carries the detail be
 **Guide / playbook / reference mode.** When the user asks for a "guide", "design guide", "playbook", "reference", "best practices", "how-to", or anything meant to be read and reused later (not a one-off answer), upgrade the file beyond the template above:
 - Add a **"Ready-to-paste examples / worked scaffolds"** section: concrete, copyable artifacts (prompt snippets, configs, code, templates) reconstructed from the legs' findings — each block annotated with the exact source it came from.
 - Add a **"Practice → source quick-reference" table** with columns `Practice | Why it works | Source | Leg`, one row per actionable recommendation, so a future reader can trace every practice to its origin.
-- Preserve the example snippets from the `### Keep verbatim` blocks **verbatim** — don't paraphrase the specifics away.
+- Preserve the highest-ranked example snippets within the fixed verbatim reserve.
 - Add a short "how to read this" note up top, and state honestly where claims are practitioner-experience vs. benchmarked, so readers know what to trust.
 
 **Output path.** If the current working directory is inside a git repo, write to `research/{slug}-{YYYY-MM-DD}.md` (relative to repo root — `git rev-parse --show-toplevel`). Create `research/` if missing. Otherwise fall back to `~/research/{slug}-{YYYY-MM-DD}.md`. Print the resolved path and the TL;DR in the chat reply.
