@@ -19,6 +19,16 @@ import { compile } from '../src/index.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // packages/core/test -> repo root -> .piflow/<golden>/template
 const GOLDENS = path.resolve(HERE, '../../..', '.piflow');
+const AGENT_SEEDS = path.resolve(HERE, '../../..', '.claude/skills/piflow-init/references/agent-presets');
+
+let piflowHome: string;
+let savedPiflowHome: string | undefined;
+beforeAll(async () => {
+  piflowHome = await fs.mkdtemp(path.join(os.tmpdir(), 'piflow-home-'));
+  await fs.cp(AGENT_SEEDS, path.join(piflowHome, 'agents'), { recursive: true });
+  savedPiflowHome = process.env.PIFLOW_HOME;
+  process.env.PIFLOW_HOME = piflowHome;
+});
 
 // loadTemplate (re)writes the template's generated workflow.json lock, so — like the sibling subdag
 // test — we clone each golden into tmp and load from the clone, keeping the shipped source pristine.
@@ -31,7 +41,10 @@ async function loadGolden(name: string) {
   return { spec, wf: compile(spec) };
 }
 afterAll(async () => {
+  if (savedPiflowHome === undefined) delete process.env.PIFLOW_HOME;
+  else process.env.PIFLOW_HOME = savedPiflowHome;
   await Promise.all(clones.map((d) => fs.rm(d, { recursive: true, force: true })));
+  await fs.rm(piflowHome, { recursive: true, force: true });
 });
 
 // A stage's node set (compile keys stages by node id; in these goldens id === label).

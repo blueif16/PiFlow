@@ -2,7 +2,7 @@
 name: multi-source-research
 description: Fan out a research query across three source types — Reddit (practitioner sentiment), local YouTube transcript RAG via yt-rag (curated long-form), and Exa web search (semantic crawl) — then synthesize a distilled brief. Use when the user wants the newest/highest-quality information on a topic — vendor diligence, "what's actually working right now," tooling shootouts, technique comparisons, library evaluations, strategy/idea research, "is X dead," "compare X vs Y." Triggers on "research", "find approaches", "what's working", "scan reddit", "scan youtube", "deep dive", "latest on X", "is X dead", "compare X vs Y", "evaluate X."
 requires: [read, write, mcp.exa:web_search_exa]
-allowed: [read, write, bash, mcp.exa:web_search_exa, mcp.exa:web_fetch_exa]
+allowed: [read, write, bash, mcp.exa:web_search_exa, mcp.exa:web_fetch_exa, mcp.apify-xquik:xquik--x-tweet-scraper, mcp.apify-xquik:xquik--x-follower-scraper]
 display:
   label: Multi-Source Research
   icon: 🔎
@@ -14,17 +14,23 @@ Run parallel deep searches across **Reddit**, the **local YouTube RAG (`yt-rag`)
 
 ## Prerequisites
 
-Required MCPs (verify with `claude mcp list`):
+MCPs (verify with `claude mcp list`; Xquik is optional):
 
 | MCP | Tools | Install if missing |
 | --- | --- | --- |
 | `yt-rag` | `mcp__yt-rag__list_repository`, `mcp__yt-rag__search`, `mcp__yt-rag__ingest_channel` | already user-scope; if absent, ask the user (custom server at `/Users/tk/Desktop/yt-rag`) |
 | `exa` (HTTP) | `mcp__exa__web_search_exa`, `mcp__exa__web_fetch_exa`, `mcp__exa__deep_search_exa`, `mcp__exa__web_search_advanced_exa` | `claude mcp add --transport http exa "https://mcp.exa.ai/mcp?tools=web_search_exa,web_fetch_exa,deep_search_exa,web_search_advanced_exa" --header "x-api-key: $EXA_API_KEY" -s user` |
 | `apify-reddit` (HTTP) | `mcp__apify-reddit__macrocosmos--reddit-scraper` (wraps the Apify actor `macrocosmos/reddit-scraper`) | `claude mcp add --transport http apify-reddit "https://mcp.apify.com/?tools=macrocosmos/reddit-scraper" --header "Authorization: Bearer $APIFY_TOKEN" -s user` |
+| `apify-xquik` (HTTP, optional trading overlay) | [`xquik/x-tweet-scraper`](https://apify.com/xquik/x-tweet-scraper), [`xquik/x-follower-scraper`](https://apify.com/xquik/x-follower-scraper) | `claude mcp add --transport http apify-xquik "https://mcp.apify.com/?tools=xquik/x-tweet-scraper,xquik/x-follower-scraper" --header "Authorization: Bearer $APIFY_TOKEN" -s user` |
 
-> **Why not `reddit-mcp-buddy`?** As of May 2026 Reddit edge-blocks all anonymous/unauthenticated access (403 — keys on missing OAuth, not IP), which kills buddy's anonymous mode *and* live-scrape actors like `trudax/reddit-scraper-lite`. `macrocosmos/reddit-scraper` serves pre-harvested data ($0.50/1k results) so it dodges the block. See `[[reddit-data-access-2026]]` in memory.
+Keep `APIFY_TOKEN` in the authorization header. Never put tokens in MCP URLs, prompts, output, or logs.
+
+> Xquik is an independent third-party service. Not affiliated with X Corp. "Twitter" and "X" are trademarks of X Corp.
+
+> **Why not `reddit-mcp-buddy`?** As of May 2026 Reddit edge-blocks all anonymous/unauthenticated access (403 because OAuth is missing, not because of the IP). This breaks buddy's anonymous mode and live-scrape actors like `trudax/reddit-scraper-lite`. `macrocosmos/reddit-scraper` serves pre-harvested data, so it avoids the blocked live edge. See `[[reddit-data-access-2026]]` in memory.
 
 If `apify-reddit` is missing, **do not block** — run the YouTube + Exa legs and note the gap. Ask the user whether to install before retrying.
+If `apify-xquik` is missing, retain the existing Twitter catalog fallback and skip follower enrichment. Never block the Reddit, YouTube, or Exa legs.
 
 ## Domain overlays
 
@@ -44,8 +50,10 @@ ONLY use these tools inside this skill:
 - `mcp__exa__deep_search_exa` (with `outputSchema` — only when you need structured columns, see §"Advanced Exa")
 - `mcp__exa__web_search_advanced_exa` (with `category`/date/domain filters — only when filtering matters)
 - `mcp__apify-reddit__macrocosmos--reddit-scraper` (the Apify Reddit actor — the ONLY Reddit tool)
+- `mcp__apify-xquik__xquik--x-tweet-scraper` (preferred crypto-only Twitter/X post route)
+- `mcp__apify-xquik__xquik--x-follower-scraper` (optional crypto-only public network enrichment)
 - `WebSearch` — **only** as the A/B probe described in §"Exa vs WebSearch"
-- `Bash` — **only** to run the global Apify actor catalog (`python3 ~/.config/apify/actors.py …`) for the **crypto-only** Twitter/Telegram legs defined in `references/trading-lens.md`. Never for anything else.
+- `Bash`: **only** run the global Apify actor catalog (`python3 ~/.config/apify/actors.py …`) for the crypto-only Telegram leg and the existing Twitter fallback defined in `references/trading-lens.md`. Never use it for anything else.
 - `Agent` (for subagent fan-out), `Write` (for the brief file)
 
 Do NOT use `WebFetch` for content already returned by Exa/Reddit/yt-rag. Do NOT mix in random web tools.
@@ -60,7 +68,7 @@ Main agent (lean — never reads raw posts/chunks)
 └── Synthesis: merge → brief.md → present to user
 ```
 
-**Trading lens adds two legs.** When `references/trading-lens.md` is active (crypto/perps/funding topics), legs **D Twitter** and **E Telegram** run in the SAME parallel message via the global actor catalog (`actors.py`) — see that file for templates. They never run in generic (non-crypto) research.
+**Trading lens adds two legs.** When `references/trading-lens.md` is active (crypto/perps/funding topics), legs **D Twitter** and **E Telegram** run in the SAME parallel message. Leg D prefers the Xquik Actor tools and retains `actors.py` as its fallback. Leg E keeps using the catalog. They never run in generic (non-crypto) research.
 
 **Why subagents?** A single Reddit thread or 5 yt-rag chunks can be 5-20k tokens. Three legs at 30+ items each = 100k+ tokens of raw text. Subagents process, dedupe, and return ~30 distilled bullets per leg plus a `### Keep verbatim` block of concrete specifics (≤2-3k tokens each). Main stays well under ~20k tokens regardless of query depth — while still receiving the details the final guide needs.
 
@@ -107,7 +115,7 @@ POSTS (title, score, url, body/selftext) — there is NO comment-tree tool, so
 work from titles + bodies + scores. Input shape:
   { "subreddits": ["sub1","sub2"],   // names without r/; omit for site-wide
     "keyword": "{search terms}",       // optional; omit to just browse the subs
-    "limit": 15,                       // posts PER CALL (cost ≈ limit × $0.0005)
+    "limit": 15,                       // paid-result cap; verify current Store pricing
     "sort": "top" }                    // "top" | "hot" | "new" — use "top" for recency scans
 
 Make 2 calls in parallel (one message):
@@ -318,7 +326,7 @@ Don't reach for these tools for ordinary "find me an article about X" queries �
 
 - A standard run = 3 legs in parallel, ~30-60s wall clock.
 - Each leg subagent stays under 8 tool calls. If a leg needs more, it's drifting — kill and re-scope.
-- Reddit (Apify `macrocosmos`) is pay-per-result (~$0.0005/post). One call fans across ALL listed subreddits, so keep `subreddits` ≤8 and `limit` ≤15 per call — 2 calls per leg is plenty. (Free Apify tier ≈ 10k posts/mo.)
+- Reddit (Apify `macrocosmos`) is pay-per-result. Verify current Store pricing before a run. One call fans across ALL listed subreddits, so keep `subreddits` ≤8 and `limit` ≤15 per call. Two calls per leg is plenty.
 - yt-rag `ingest_channel` is slow (30s-2min for 30 videos). Never call it inside a fan-out — only on explicit user OK. Remember: the corpus is global, so an ingest in one repo benefits every future run.
 - `web_fetch_exa` costs more than `web_search_exa`. Cap at 3 fetches per leg.
 

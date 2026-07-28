@@ -10,7 +10,6 @@ import { readFile, writeFile, readdir, stat, realpath } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, isAbsolute, sep, basename, dirname } from "node:path";
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { findCore, findLib, pathToFileURL, readBody, resolveRunDir, resolveTemplateDir, sendJson, type Middleware, type Next } from "./resolve.js";
 import { parseChannel, sessionKeyFor } from "./control-channel.js";
 import { piflowStartRun, makePiflowStartRun } from "./start-run.js";
@@ -416,14 +415,13 @@ export const piflowSkill: Middleware = async (req, res, next) => {
   const workspaceRoot = resolved?.workspaceRoot ?? null;
   const home = homedir();
 
-  // The workspace/home rings come from core's `skillSearchRoots` — THE ordering the runner stages a bare
-  // id by (`[<ws>/.agents/skills, <piflowHome>/skills]`, PIFLOW_HOME-aware) — so what the panel shows is
-  // what the runtime stages (display ≡ staging, one source of truth). No workspace root ⇒ only the
-  // installed ring survives (drop the workspace-relative entry).
+  // The project rings come from core's `skillSearchRoots`: the same ordering the runner uses for a bare
+  // id (`[<ws>/.agents/skills, <ws>/.claude/skills]`). The panel therefore shows what runtime can stage.
+  // Without a workspace root, neither project-local ring is available.
   const locateMod = findCore("workflow/ops/skill-locate.js");
   if (!locateMod) return sendJson(res, 500, { error: "@piflow/core dist not found — run: npm run build (at repo root)" });
   const { skillSearchRoots } = (await import(pathToFileURL(locateMod).href)) as {
-    skillSearchRoots: (workspace: string, piflowHome?: string) => string[];
+    skillSearchRoots: (workspace: string) => string[];
   };
   const allRings = skillSearchRoots(workspaceRoot ?? ".");
   const ringRoots = workspaceRoot ? allRings : allRings.slice(1);
@@ -516,12 +514,10 @@ interface MarketplaceEntry {
   provisioned: boolean;
 }
 
-/** `GET /__piflow/skills/<run>` — the MARKETPLACE listing the GUI's skill panel renders: core's `listSkills`
- *  over BOTH local rings (the run's workspace `.agents/skills`, then the installed `<piflowHome>/skills`),
- *  each row WIDENED with its MCP provisioning status against the cached `~/.piflow/catalog/mcp.index.json`
- *  slice (core's `loadMcpCatalog`) — so the panel can flag "needs mcp.foo, not installed" with one request.
- *  A run with no workspace root (outside any registered repo) degrades to the installed ring alone, 200 —
- *  it never 500s for that; only a genuinely unresolved run 404s (the same shape sibling handlers use). */
+/** `GET /__piflow/skills/<run>` lists both project-local rings: `.agents/skills`, then `.claude/skills`.
+ *  Each row includes MCP provisioning status from the cached `~/.piflow/catalog/mcp.index.json` slice, so
+ *  the panel can flag a missing binding in one request. A run without a workspace returns an empty list and
+ *  200 because there is no project ring to scan. Only a genuinely unresolved run returns 404. */
 export const piflowSkillsMarketplace: Middleware = async (req, res, next) => {
   const m = req.url?.match(/^\/__piflow\/skills\/([^/?]+)/);
   if (!m) return next();
@@ -536,14 +532,13 @@ export const piflowSkillsMarketplace: Middleware = async (req, res, next) => {
 
   try {
     const { listSkills } = (await import(pathToFileURL(locateMod).href)) as {
-      listSkills: (opts: { workspace?: string; piflowHome?: string }) => Promise<Array<Omit<MarketplaceEntry, "mcpRequires" | "provisioned">>>;
+      listSkills: (opts: { workspace?: string }) => Promise<Array<Omit<MarketplaceEntry, "mcpRequires" | "provisioned">>>;
     };
     const { loadMcpCatalog } = (await import(pathToFileURL(catalogMod).href)) as {
       loadMcpCatalog: () => { entries: Array<{ address: string }>; servers: Record<string, unknown> };
     };
 
-    // No workspace root ⇒ pass `workspace: undefined` so `listSkills` searches the installed ring alone
-    // (its own documented fallback) rather than failing — matches this route's "never a 500" contract.
+    // No workspace root means no project-local rings. listSkills returns an empty list without failing.
     const skills = await listSkills({ workspace: resolved.workspaceRoot ?? undefined });
     const { entries } = loadMcpCatalog();
     const catalogAddresses = new Set(entries.map((e) => e.address));

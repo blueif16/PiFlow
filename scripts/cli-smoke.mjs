@@ -2,10 +2,10 @@
 // cli-smoke — prove the INSTALLED `piflowctl` bin actually runs (test-discipline: a gate that exercises
 // the real published shape, not the in-tree source).
 //
-// @piflow/cli depends on the UNPUBLISHED workspace packages @piflow/core (+ transitively @piflow/tool-bridge),
-// so `npm install @piflow/cli` alone would 404. To smoke-test the REAL artifact we:
-//   1. `pnpm pack` @piflow/core, @piflow/tool-bridge, @piflow/cli into a temp dir (tarballs).
-//   2. In a FRESH temp project, `npm install ./<core>.tgz ./<tool-bridge>.tgz ./<cli>.tgz` together
+// @piflow/cli depends on unpublished workspace packages, so `npm install @piflow/cli` alone would 404.
+// To smoke-test the REAL artifact we:
+//   1. Pack @piflow/tool-bridge, @piflow/core, @piflow/server, and @piflow/cli into a temp dir.
+//   2. In a FRESH temp project, install all four tarballs together
 //      (local tarballs satisfy the workspace:* deps without a registry).
 //   3. Resolve the installed bin from the temp project's node_modules/.bin and run `piflowctl --version`
 //      and `piflowctl --help`. Assert exit 0 + non-empty stdout for each. stderr is NOT swallowed —
@@ -25,8 +25,9 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // The cli + its unpublished workspace deps, in install order (deps first is not required for npm, but is
 // tidy). Each must be packed and installed together so workspace:* resolves to the local tarballs.
 const PACK = [
-  { name: '@piflow/core', dir: 'packages/core' },
   { name: '@piflow/tool-bridge', dir: 'packages/tool-bridge' },
+  { name: '@piflow/core', dir: 'packages/core' },
+  { name: '@piflow/server', dir: 'packages/server' },
   { name: '@piflow/cli', dir: 'packages/cli' },
 ];
 
