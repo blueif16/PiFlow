@@ -1,6 +1,6 @@
 {
   "name": "@piflow/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Pi Flow CLI — the docker-style front door to a run. `piflowctl status` (per-node table + stage/rollup) and `piflowctl watch` (a silent-until-it-matters sentinel) read the engine-owned `.pi/` run layout via @piflow/core's path helpers; `logs` is re-exported from core (one front door).",
   "license": "MIT",
